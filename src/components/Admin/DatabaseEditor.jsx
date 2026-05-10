@@ -390,173 +390,203 @@ const DatabaseEditor = ({ showNotification, currentUser: propCurrentUser, gtawUs
     };
 
     return (
-        <>
-            <Card className="mb-4">
-                <Card.Header>Firebase Realtime Database Editor</Card.Header>
-                <Card.Body>
-                    <Alert variant="warning">
-                        <i className="fas fa-exclamation-triangle me-2"></i>
-                        <strong>Warning:</strong> Editing the database directly can cause permanent data loss. Proceed with caution.
-                    </Alert>
-                    <Form.Group className="mb-3">
-                        <Form.Label>Database Path</Form.Label>
-                        <Form.Control
-                            type="text"
-                            value={path}
-                            onChange={(e) => setPath(e.target.value)}
-                            placeholder="e.g., /agencies/LSSD"
-                        />
-                    </Form.Group>
-                    <Button onClick={handleFetch} disabled={isLoading} className="me-2">
-                        {isLoading ? <Spinner as="span" animation="border" size="sm" /> : 'Fetch Data'}
+        <div className="admin-section">
+            <div className="d-flex justify-content-between align-items-center mb-5">
+                <h2 className="mb-0 fw-800"><i className="fas fa-database me-3 text-indigo"></i>Database Editor</h2>
+                <div className="d-flex gap-2">
+                    <Button onClick={handleFetch} disabled={isLoading} className="admin-btn admin-btn-primary shadow-sm">
+                        {isLoading ? <Spinner as="span" animation="border" size="sm" /> : <><i className="fas fa-download me-2"></i>Fetch Data</>}
                     </Button>
-                    <Button onClick={handleFetchMetrics} disabled={isFetchingMetrics} variant="info">
-                        {isFetchingMetrics ? <Spinner as="span" animation="border" size="sm" /> : 'Fetch Metrics'}
+                    <Button onClick={handleFetchMetrics} disabled={isFetchingMetrics} variant="info" className="admin-btn text-white shadow-sm">
+                        {isFetchingMetrics ? <Spinner as="span" animation="border" size="sm" /> : <><i className="fas fa-chart-pie me-2"></i>Analytics</>}
                     </Button>
-                    <hr />
-                    <Form.Group className="mb-3">
-                        <Form.Label>JSON Data</Form.Label>
-                        <Form.Control
-                            as="textarea"
-                            rows={20}
-                            value={jsonData}
-                            onChange={(e) => setJsonData(e.target.value)}
-                            placeholder="JSON data will appear here..."
-                        />
-                    </Form.Group>
-                    {error && <Alert variant="danger">{error}</Alert>}
-                    <Button onClick={handleSave} disabled={isLoading}>
-                        {isLoading ? <Spinner as="span" animation="border" size="sm" /> : 'Update Data at Path'}
-                    </Button>
-                </Card.Body>
-            </Card>
+                </div>
+            </div>
 
-            {metrics && (
-                <Card className="mb-4">
-                    <Card.Header>Database Metrics</Card.Header>
-                    <Card.Body>
-                        <h5>Total Reports: {metrics.totalReports}</h5>
-                        <hr />
-                        <h5>Report Types</h5>
-                        <ListGroup>
-                            {metrics.reportTypes.map(([type, count]) => (
-                                <ListGroup.Item key={type} className="d-flex justify-content-between align-items-center">
-                                    {type}
-                                    <Badge bg="primary" pill>
-                                        {count}
-                                    </Badge>
-                                </ListGroup.Item>
-                            ))}
-                        </ListGroup>
-                        <hr />
-                        <h5>Top 10 Users</h5>
-                        <ListGroup>
-                            {metrics.topUsers.map(([user, count]) => (
-                                <ListGroup.Item key={user} className="d-flex justify-content-between align-items-center">
-                                    {user}
-                                    <Badge bg="success" pill>
-                                        {count}
-                                    </Badge>
-                                </ListGroup.Item>
-                            ))}
-                        </ListGroup>
-                    </Card.Body>
-                </Card>
-            )}
-
-            <Card className="mb-4">
-                <Card.Header>Restore from JSON Backup</Card.Header>
-                <Card.Body>
-                    <Form.Group controlId="formFile" className="mb-3">
-                        <Form.Label>Select JSON Backup File</Form.Label>
-                        <Form.Control 
-                            type="file" 
-                            accept=".json"
-                            onChange={(e) => setRestoreFile(e.target.files[0])}
-                        />
-                    </Form.Group>
-                    <Button onClick={handleRestoreReports} disabled={isRestoring} className="me-2">
-                        {isRestoring ? <Spinner as="span" animation="border" size="sm" /> : 'Restore `savedReports`'}
-                    </Button>
-                    <Button onClick={handleRestoreBBCode} disabled={isRestoring} variant="secondary">
-                        {isRestoring ? <Spinner as="span" animation="border" size="sm" /> : 'Restore `savedReportBBCode`'}
-                    </Button>
-                </Card.Body>
-            </Card>
-
-            <Card className="mt-4">
-                <Card.Header>Select Options Editor</Card.Header>
-                <Card.Body>
-                    <Form.Group as={Row} className="mb-3">
-                        <Form.Label column sm={2}>Option Category</Form.Label>
-                        <Col sm={10}>
-                            <div className="d-flex">
+            <div className="row g-4">
+                <div className="col-lg-8">
+                    <div className="card border-0 shadow-sm mb-4">
+                        <div className="card-header bg-warning bg-opacity-10 text-warning border-warning border-opacity-25 py-3">
+                            <i className="fas fa-exclamation-triangle me-2"></i> Direct Write Warning
+                        </div>
+                        <div className="card-body p-4">
+                            <Form.Group className="mb-4">
+                                <Form.Label className="small text-muted uppercase fw-bold mb-2">Target Database Path</Form.Label>
                                 <Form.Control
                                     type="text"
+                                    className="bg-dark border-secondary text-white font-monospace"
+                                    value={path}
+                                    onChange={(e) => setPath(e.target.value)}
+                                    placeholder="e.g., /agencies/LSSD"
+                                />
+                            </Form.Group>
+
+                            <Form.Group className="mb-4">
+                                <Form.Label className="small text-muted uppercase fw-bold mb-2">JSON Structure Editor</Form.Label>
+                                <Form.Control
+                                    as="textarea"
+                                    rows={18}
+                                    className="admin-code-editor"
+                                    value={jsonData}
+                                    onChange={(e) => setJsonData(e.target.value)}
+                                    placeholder='{ "key": "value" }'
+                                />
+                            </Form.Group>
+
+                            {error && <Alert variant="danger" className="border-0 shadow-sm mb-4">{error}</Alert>}
+
+                            <Button 
+                                onClick={handleSave} 
+                                disabled={isLoading || !jsonData} 
+                                variant="success" 
+                                className="w-100 py-3 admin-btn shadow-lg fw-bold"
+                            >
+                                {isLoading ? <Spinner as="span" animation="border" size="sm" /> : <><i className="fas fa-save me-2"></i>Commit Changes to Path</>}
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="col-lg-4">
+                    {/* Select Options Editor */}
+                    <div className="card border-0 shadow-sm mb-4">
+                        <div className="card-header"><i className="fas fa-list-ul me-2 text-indigo"></i>Select Options</div>
+                        <div className="card-body p-4">
+                            <div className="input-group mb-3">
+                                <Form.Control
+                                    type="text"
+                                    className="bg-dark border-secondary text-white"
                                     value={optionCategory}
                                     onChange={(e) => setOptionCategory(e.target.value)}
-                                    placeholder="e.g., dnrTypes"
+                                    placeholder="Category ID..."
                                 />
-                                <Button onClick={handleLoadCategory} disabled={isLoadingOptions || !optionCategory} className="ms-2">
+                                <Button onClick={handleLoadCategory} disabled={isLoadingOptions || !optionCategory} variant="outline-primary">
                                     {isLoadingOptions ? <Spinner as="span" animation="border" size="sm" /> : 'Load'}
                                 </Button>
                             </div>
-                        </Col>
-                    </Form.Group>
 
-                    {currentOptions && (
-                        <>
-                            <hr />
-                            <h5>Current Options for &quot;{optionCategory}&quot;</h5>
-                            {currentOptions.length > 0 ? (
-                                <ListGroup style={{ maxHeight: '200px', overflowY: 'auto' }} className="mb-3">
-                                    {currentOptions.map((opt, index) => (
-                                        <ListGroup.Item key={index} className="d-flex justify-content-between align-items-center">
-                                            <div>
-                                                <strong>Label:</strong> {opt.label} <br />
-                                                <strong>Value:</strong> {opt.value}
-                                            </div>
-                                            <Button variant="danger" size="sm" onClick={() => handleDeleteOption(index)}>
-                                                Delete
-                                            </Button>
-                                        </ListGroup.Item>
-                                    ))}
-                                </ListGroup>
-                            ) : <p>No options found for this category. Add one below.</p>}
+                            {currentOptions && (
+                                <div className="mt-4 admin-section">
+                                    <h6 className="text-muted small uppercase fw-bold mb-3">Active Options</h6>
+                                    <div className="list-group list-group-flush bg-transparent border-top border-secondary border-opacity-25">
+                                        {currentOptions.length > 0 ? (
+                                            currentOptions.map((opt, index) => (
+                                                <div key={index} className="list-group-item bg-transparent border-secondary border-opacity-25 px-0 py-3 d-flex justify-content-between align-items-center">
+                                                    <div>
+                                                        <div className="text-white fw-bold small">{opt.label}</div>
+                                                        <code className="text-muted extra-small">{opt.value}</code>
+                                                    </div>
+                                                    <Button variant="link" className="text-danger p-0" onClick={() => handleDeleteOption(index)}>
+                                                        <i className="fas fa-trash-alt"></i>
+                                                    </Button>
+                                                </div>
+                                            ))
+                                        ) : <p className="text-muted small italic my-3">No entries found.</p>}
+                                    </div>
 
-                            <h5>Add New Option</h5>
-                            <Form.Group as={Row} className="mb-2">
-                                <Form.Label column sm={2}>New Label</Form.Label>
-                                <Col sm={10}>
-                                    <Form.Control
-                                        type="text"
-                                        value={newOptionLabel}
-                                        onChange={(e) => setNewOptionLabel(e.target.value)}
-                                        placeholder="e.g., Full Code"
-                                    />
-                                </Col>
+                                    <div className="mt-4 p-3 rounded bg-dark border border-secondary border-opacity-25">
+                                        <h6 className="text-indigo small fw-bold mb-3">Add Entry</h6>
+                                        <Form.Control size="sm" type="text" className="bg-black border-secondary text-white mb-2" value={newOptionLabel} onChange={(e) => setNewOptionLabel(e.target.value)} placeholder="Display Label" />
+                                        <Form.Control size="sm" type="text" className="bg-black border-secondary text-white mb-3" value={newOptionValue} onChange={(e) => setNewOptionValue(e.target.value)} placeholder="Internal Value" />
+                                        <Button size="sm" onClick={handleAddNewOption} disabled={isLoadingOptions} variant="primary" className="w-100">Add Option</Button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Restore Section */}
+                    <div className="card border-0 shadow-sm">
+                        <div className="card-header"><i className="fas fa-history me-2 text-warning"></i>Backup & Restore</div>
+                        <div className="card-body p-4">
+                            <Form.Group className="mb-4">
+                                <Form.Label className="small text-muted uppercase fw-bold">JSON Backup File</Form.Label>
+                                <Form.Control 
+                                    type="file" 
+                                    accept=".json"
+                                    className="bg-dark border-secondary text-white small"
+                                    onChange={(e) => setRestoreFile(e.target.files[0])}
+                                />
                             </Form.Group>
-                            <Form.Group as={Row} className="mb-3">
-                                <Form.Label column sm={2}>New Value</Form.Label>
-                                <Col sm={10}>
-                                    <Form.Control
-                                        type="text"
-                                        value={newOptionValue}
-                                        onChange={(e) => setNewOptionValue(e.target.value)}
-                                        placeholder="e.g., full_code"
-                                    />
-                                </Col>
-                            </Form.Group>
-                            <Button onClick={handleAddNewOption} disabled={isLoadingOptions}>
-                                {isLoadingOptions ? <Spinner as="span" animation="border" size="sm" /> : 'Add Option'}
-                            </Button>
-                        </>
-                    )}
-                </Card.Body>
-            </Card>
-        </>
+                            <div className="d-grid gap-2">
+                                <Button onClick={handleRestoreReports} disabled={isRestoring} variant="outline-warning" size="sm">
+                                    {isRestoring ? <Spinner as="span" animation="border" size="sm" /> : 'Restore Reports'}
+                                </Button>
+                                <Button onClick={handleRestoreBBCode} disabled={isRestoring} variant="outline-secondary" size="sm">
+                                    {isRestoring ? <Spinner as="span" animation="border" size="sm" /> : 'Restore BBCode'}
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Metrics View */}
+            {metrics && (
+                <div className="mt-5 admin-section">
+                    <h3 className="mb-4 fw-800"><i className="fas fa-chart-pie me-3 text-indigo"></i>Database Statistics</h3>
+                    <div className="admin-stat-row">
+                        <div className="admin-stat-card">
+                            <span className="stat-label">Total Document Count</span>
+                            <span className="stat-value">{metrics.totalReports}</span>
+                        </div>
+                    </div>
+
+                    <div className="row g-4">
+                        <div className="col-md-6">
+                            <div className="card border-0 shadow-sm">
+                                <div className="card-header">Report Distribution</div>
+                                <div className="card-body p-0">
+                                    <div className="admin-modern-table">
+                                        <Table hover size="sm">
+                                            <thead>
+                                                <tr><th>Type / Version</th><th className="text-end">Count</th></tr>
+                                            </thead>
+                                            <tbody>
+                                                {metrics.reportTypes.map(([type, count]) => (
+                                                    <tr key={type}>
+                                                        <td><span className="small">{type}</span></td>
+                                                        <td className="text-end fw-bold"><span className="admin-badge admin-badge-indigo">{count}</span></td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </Table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="col-md-6">
+                            <div className="card border-0 shadow-sm">
+                                <div className="card-header">Most Productive Users</div>
+                                <div className="card-body p-0">
+                                    <div className="admin-modern-table">
+                                        <Table hover size="sm">
+                                            <thead>
+                                                <tr><th>UCP / Author</th><th className="text-end">Submissions</th></tr>
+                                            </thead>
+                                            <tbody>
+                                                {metrics.topUsers.map(([user, count]) => (
+                                                    <tr key={user}>
+                                                        <td className="fw-bold">{user}</td>
+                                                        <td className="text-end"><span className="admin-badge admin-badge-success">{count}</span></td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </Table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+            <style>{`
+                .fw-800 { font-weight: 800; }
+                .uppercase { text-transform: uppercase; }
+                .extra-small { font-size: 0.7rem; }
+            `}</style>
+        </div>
     );
 };
 
 export default DatabaseEditor;
-

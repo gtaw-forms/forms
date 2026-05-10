@@ -5,6 +5,7 @@ import * as Sentry from "@sentry/react";
 import { getCharacterName, getCharacterID } from '../utils/characterUtils';
 import { comprehensiveSanitize } from '../utils/textUtils';
 import { useNotification } from '../contexts/NotificationContext';
+import { reportLogicalError } from '../utils/errorUtils';
 
 const parseCaseNumber = (url) => {
     if (!url) return '';
@@ -135,10 +136,58 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated) => {
             finalTitle = `[CASE #${currentYear}-${caseNumber}] ${decedentName} ((${decedentOOC})) - ${formattedDateOfDeath}`;
         }
 
-        const currentAuthor = getCharacterName(gtaWorldUser);
-        if (!currentAuthor) {
+        let currentAuthor = getCharacterName(gtaWorldUser);
+        
+        // --- EMERGENCY FALLBACK FOR authorName ---
+        // Catch cases where OAuth is active but name sync is incomplete ('GTAW User')
+        // We look for explicit employee names in formValues as a fallback truth.
+        if (currentAuthor === 'GTAW User' || !currentAuthor) {
+            const possibleAuthorFields = [
+                'coronerEmployee', 'phmcEmployee', 'employeeName', 'staffName',
+                'doctorName', 'examinerName', 'officerName'
+            ];
+            
+            let foundFallback = null;
+            for (const field of possibleAuthorFields) {
+                if (formValues[field] && typeof formValues[field] === 'string' && formValues[field].trim().length > 3) {
+                    foundFallback = formValues[field].trim();
+                    break;
+                }
+            }
+            
+            // Second level fallback: First + Last name combination
+            if (!foundFallback) {
+                const firstName = formValues.coronerFirstName || formValues.phmcFirstName || formValues.firstName;
+                const lastName = formValues.coronerLastName || formValues.phmcLastName || formValues.lastName;
+                if (firstName && lastName) {
+                    foundFallback = `${firstName} ${lastName}`.trim();
+                }
+            }
+
+            if (foundFallback) {
+                console.warn(`[useFormSaver] 🕵️ Author fallback triggered: Using "${foundFallback}" from form fields instead of "${currentAuthor || 'null'}".`);
+                
+                // Track this rare event via the Error Handler for debugging
+                reportLogicalError("Author Name Fallback Triggered", "OAuth data was incomplete (GTAW User), using form values as fallback truth.", {
+                    originalAuthor: currentAuthor || 'null',
+                    fallbackName: foundFallback,
+                    formId: selectedForm?.firebaseKey,
+                    gtaWorldUser: gtaWorldUser ? {
+                        username: gtaWorldUser.username,
+                        id: gtaWorldUser.id,
+                        hasFaction: !!gtaWorldUser.faction,
+                        characterName: gtaWorldUser.characterName
+                    } : 'null',
+                    formValuesKeys: Object.keys(formValues)
+                });
+
+                currentAuthor = foundFallback;
+            }
+        }
+
+        if (!currentAuthor || currentAuthor === 'GTAW User') {
             if (!options.silent) {
-                showNotification('Cannot determine report author. Please ensure you are signed in.', 'error');
+                showNotification('Cannot determine report author. Please ensure you are signed in and your name is correctly filled on the form.', 'error');
             }
             return { success: false, error: 'Cannot determine report author.' };
         }

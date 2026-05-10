@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { database } from '../../firebase';
 import { ref, get } from 'firebase/database';
-import { Spinner, Table, Form, InputGroup } from 'react-bootstrap';
+import { Spinner, Table, Form, InputGroup, Button } from 'react-bootstrap';
 
 const MetricsDashboard = () => {
     const [metricsData, setMetricsData] = useState(null);
@@ -131,53 +131,79 @@ const MetricsDashboard = () => {
     const userRows = viewMode === 'users' ? processUserMetrics() : [];
     const pageRows = viewMode === 'protocols' ? processPageMetrics() : [];
 
+    // Calculate quick stats
+    const totalActions = userRows.reduce((acc, row) => acc + row.totalVisits, 0);
+    const activeUsers = userRows.length;
+    const topAction = pageRows[0]?.id || 'N/A';
+
     return (
-        <div className="metrics-dashboard">
-            <div className="d-flex justify-content-between align-items-center mb-4">
-                <h4 className="mb-0">Application Usage Metrics</h4>
+        <div className="admin-section">
+            <div className="d-flex justify-content-between align-items-center mb-5">
+                <h2 className="mb-0 fw-800"><i className="fas fa-chart-line me-3 text-indigo"></i>Usage Metrics</h2>
                 <div className="btn-group">
-                    <button 
-                        className={`btn ${viewMode === 'users' ? 'btn-primary' : 'btn-outline-primary'}`}
+                    <Button 
+                        variant={viewMode === 'users' ? 'primary' : 'outline-secondary'}
                         onClick={() => setViewMode('users')}
+                        className="px-4"
                     >
                         <i className="fas fa-users me-2"></i> User Activity
-                    </button>
-                    <button 
-                        className={`btn ${viewMode === 'protocols' ? 'btn-primary' : 'btn-outline-primary'}`}
+                    </Button>
+                    <Button 
+                        variant={viewMode === 'protocols' ? 'primary' : 'outline-secondary'}
                         onClick={() => setViewMode('protocols')}
+                        className="px-4"
                     >
-                        <i className="fas fa-chart-bar me-2"></i> Page/Action Popularity
-                    </button>
+                        <i className="fas fa-chart-bar me-2"></i> Action Popularity
+                    </Button>
                 </div>
             </div>
 
-            <div className="card mb-4">
-                <div className="card-body">
-                    <InputGroup className="mb-3">
-                        <InputGroup.Text><i className="fas fa-search"></i></InputGroup.Text>
+            {/* Quick Stats Grid */}
+            <div className="admin-stat-row">
+                <div className="admin-stat-card">
+                    <span className="stat-label">Total Interactions</span>
+                    <span className="stat-value">{totalActions.toLocaleString()}</span>
+                </div>
+                <div className="admin-stat-card">
+                    <span className="stat-label">Active Users</span>
+                    <span className="stat-value">{activeUsers}</span>
+                </div>
+                <div className="admin-stat-card">
+                    <span className="stat-label">Most Used Tool</span>
+                    <span className="stat-value text-truncate" title={topAction} style={{ fontSize: '1.2rem' }}>
+                        {topAction.split('/').pop()?.replace('protocol_view_', '') || 'N/A'}
+                    </span>
+                </div>
+            </div>
+
+            <div className="card border-0 shadow-sm">
+                <div className="card-body p-4">
+                    <InputGroup className="mb-4">
+                        <InputGroup.Text className="bg-dark border-secondary text-muted"><i className="fas fa-search"></i></InputGroup.Text>
                         <Form.Control
-                            placeholder={viewMode === 'users' ? "Search users..." : "Search actions..."}
+                            className="bg-dark border-secondary text-white"
+                            placeholder={viewMode === 'users' ? "Search users by UCP..." : "Search protocols/actions..."}
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
                     </InputGroup>
 
-                    <div className="table-responsive" style={{ maxHeight: '600px', overflowY: 'auto' }}>
-                        <Table striped hover size="sm">
-                            <thead className="table-dark" style={{ position: 'sticky', top: 0 }}>
+                    <div className="admin-modern-table">
+                        <Table hover responsive>
+                            <thead>
                                 {viewMode === 'users' ? (
                                     <tr>
-                                        <th>UCP Name</th>
-                                        <th className="text-center">Total Actions</th>
-                                        <th className="text-center">Distinct Actions</th>
-                                        <th className="text-end">Last Active</th>
+                                        <th>UCP Identity</th>
+                                        <th className="text-center">Interactions</th>
+                                        <th className="text-center">Tools Used</th>
+                                        <th className="text-end">Last Session</th>
                                     </tr>
                                 ) : (
                                     <tr>
-                                        <th>Category / Action</th>
+                                        <th>Target Area</th>
                                         <th className="text-center">Total Hits</th>
-                                        <th className="text-center">Unique Users</th>
-                                        <th className="text-end">Last Accessed</th>
+                                        <th className="text-center">Unique Reach</th>
+                                        <th className="text-end">Last Hit</th>
                                     </tr>
                                 )}
                             </thead>
@@ -186,34 +212,36 @@ const MetricsDashboard = () => {
                                     userRows.length > 0 ? (
                                         userRows.map((user, idx) => (
                                             <tr key={idx}>
-                                                <td>{user.ucpName}</td>
-                                                <td className="text-center">{user.totalVisits}</td>
+                                                <td className="fw-bold text-indigo">{user.ucpName}</td>
+                                                <td className="text-center"><span className="badge bg-indigo bg-opacity-10 text-indigo px-3">{user.totalVisits}</span></td>
                                                 <td className="text-center">{user.actionsCount}</td>
-                                                <td className="text-end">
+                                                <td className="text-end text-muted small">
                                                     {user.lastActive ? new Date(user.lastActive).toLocaleString() : 'N/A'}
                                                 </td>
                                             </tr>
                                         ))
                                     ) : (
-                                        <tr><td colSpan="4" className="text-center">No matching users found</td></tr>
+                                        <tr><td colSpan="4" className="text-center py-5 text-muted">No matching users found</td></tr>
                                     )
                                 ) : (
                                     pageRows.length > 0 ? (
                                         pageRows.map((page, idx) => (
                                             <tr key={idx}>
                                                 <td>
-                                                    <span className="badge bg-secondary me-2">{page.category}</span>
-                                                    {page.action.replace(/^protocol_view_/, 'Protocol: ')}
+                                                    <span className="admin-badge admin-badge-indigo me-2">{page.category}</span>
+                                                    <span className="fw-500">{page.action.replace(/^protocol_view_/, '')}</span>
                                                 </td>
-                                                <td className="text-center">{page.totalViews}</td>
-                                                <td className="text-center">{page.uniqueUserCount}</td>
-                                                <td className="text-end">
+                                                <td className="text-center fw-bold">{page.totalViews}</td>
+                                                <td className="text-center">
+                                                    <span className="badge bg-secondary bg-opacity-25 px-2">{page.uniqueUserCount} Users</span>
+                                                </td>
+                                                <td className="text-end text-muted small">
                                                     {page.lastAccessed ? new Date(page.lastAccessed).toLocaleString() : 'N/A'}
                                                 </td>
                                             </tr>
                                         ))
                                     ) : (
-                                        <tr><td colSpan="4" className="text-center">No matching actions found</td></tr>
+                                        <tr><td colSpan="4" className="text-center py-5 text-muted">No matching actions found</td></tr>
                                     )
                                 )}
                             </tbody>
@@ -221,6 +249,11 @@ const MetricsDashboard = () => {
                     </div>
                 </div>
             </div>
+            <style>{`
+                .fw-800 { font-weight: 800; }
+                .fw-500 { font-weight: 500; }
+                .text-indigo { color: var(--admin-accent) !important; }
+            `}</style>
         </div>
     );
 };

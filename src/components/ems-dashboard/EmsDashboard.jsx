@@ -103,31 +103,13 @@ const EmsDashboard = () => {
     .sort((a, b) => a[1].name.localeCompare(b[1].name));
 
   const renderProtocolContent = (content = "", images = []) => {
-    const processMarkdown = (text) => {
-      if (!text) return "";
-      let formatted = text.replace(/\*([^*]+)\*/g, '<strong>$1</strong>').replace(/_([^_]+)_/g, '<u>$1</u>');
-      const lines = formatted.split('\n');
-      let html = [], openLists = [];
-      lines.forEach(line => {
-        const trimmed = line.trim();
-        let level = trimmed.startsWith('>>') ? 2 : trimmed.startsWith('>') ? 1 : 0;
-        const lineContent = trimmed.substring(level).trim();
-        while (openLists.length > level) { html.push('</ul>'); openLists.pop(); }
-        while (openLists.length < level) { html.push('<ul>'); openLists.push('ul'); }
-        if (level > 0) html.push(`<li>${lineContent}</li>`);
-        else if (trimmed) html.push(`<p>${trimmed}</p>`);
-      });
-      while (openLists.length > 0) { html.push('</ul>'); openLists.pop(); }
-      return html.join('');
-    };
-
     return content.split(/(\{image\d+\})/g).map((part, i) => {
       const imgMatch = part.match(/\{image(\d+)\}/);
       if (imgMatch) {
         const url = images[parseInt(imgMatch[1]) - 1];
         return url ? <div key={i} className={styles.imageWrapper}><img src={url} alt="Protocol" className={styles.protocolImage} /></div> : null;
       }
-      return <KeywordHighlighter key={i}>{processMarkdown(part)}</KeywordHighlighter>;
+      return <KeywordHighlighter key={i}>{part}</KeywordHighlighter>;
     });
   };
 

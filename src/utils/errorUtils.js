@@ -51,6 +51,9 @@ const categorizeError = (message) => {
 let lastDiscordErrorMessage = '';
 let lastDiscordErrorTimestamp = 0;
 let lastInputInteraction = null; // Tracks recent input field interactions
+let isProcessingDiscordQueue = false;
+let discordErrorWebhookQueue = [];
+let errorTimestamps = []; // Stores timestamps of recent errors for rate limiting (module-level)
 
 /**
  * Records input field interaction for error context
@@ -140,7 +143,6 @@ export const sendDiscordErrorWebhook = (errorDetails, sentryBlocked = false) => 
     const MAX_ERRORS_PER_WINDOW = 10; // Max errors in the rolling window
     const RATE_LIMIT_DURATION = 60 * 1000; // 1 minute rolling window
     let lastDiscordErrorStack = '';
-    let errorTimestamps = []; // Stores timestamps of recent errors for rate limiting
 
     const now = Date.now();
 
@@ -190,38 +192,71 @@ export const sendDiscordErrorWebhook = (errorDetails, sentryBlocked = false) => 
     const { category, suggestion } = categorizeError(errorMessage);
 
     const embed = {
-        title: errorDetails.isButtonClickError ? "🚨 Button Click Error 🚨" : "🚨 Unhandled Application Error 🚨",
-        description: "An unhandled error was caught by the global error handler.",
-        color: sentryBlocked ? 0xFFA500 : 0xDE354C, // Orange if Sentry is blocked, Red otherwise
+        title: errorDetails.isButtonClickError ? "🚨 Button Click Error 🚨" : errorDetails.isLogicalError ? "🧪 Logical Inconsistency Detected 🧪" : "🚨 Unhandled Application Error 🚨",
+        description: errorDetails.isLogicalError ? "A logical error or data inconsistency was detected by the application." : "An unhandled error was caught by the global error handler.",
+        color: errorDetails.isLogicalError ? 0x3498db : (sentryBlocked ? 0xFFA500 : 0xDE354C), // Blue for logical, Orange if Sentry blocked, Red otherwise
         fields: [
-            { name: "Error Type", value: errorDetails.isButtonClickError ? "UI Button Interaction" : errorDetails.isInputFieldError ? "Input Field Interaction" : "General", inline: true },
+            { name: "Error Type", value: errorDetails.isLogicalError ? "Logical/Data" : (errorDetails.isButtonClickError ? "UI Button Interaction" : (errorDetails.isInputFieldError ? "Input Field Interaction" : "General")), inline: true },
             { name: "Sentry Status", value: sentryBlocked ? "⚠️ Blocked / Unreachable" : "✅ Active", inline: true },
             { name: "Form Type", value: `\`${errorDetails.currentFormType || getCurrentFormType()}\``, inline: true },
-            { name: "Error Category", value: `**${category}**`, inline: false },
             { name: "Error Message", value: `\`${errorMessage}\``, inline: false },
             { name: "Context / Location", value: `**${errorDetails.context || errorDetails.source || "Unknown Location"}**`, inline: true },
-            { name: "Line/Col", value: `L${errorDetails.lineno || "N/A"}:C${errorDetails.colno || "N/A"}`, inline: true },
-            { name: "URL", value: errorDetails.url || 'N/A', inline: false },
-            { name: "Debugging Suggestion", value: suggestion, inline: false },
-            { name: "Source File", value: errorDetails.source || "N/A", inline: false },
+            !errorDetails.isLogicalError ? { name: "Line/Col", value: `L${errorDetails.lineno || "N/A"}:C${errorDetails.colno || "N/A"}`, inline: true } : null,
+            { name: "Debugging Suggestion", value: suggestion || "Check the provided context and logs.", inline: false },
             { name: "User Agent", value: `\`${navigator.userAgent}\``, inline: false },
-            errorDetails.isInputFieldError ? { name: "Input Field Type", value: `\`${errorDetails.inputFieldType}\``, inline: true } : null,
-            errorDetails.lastInputInteraction ? { name: "Last Input Interaction", value: `\`${errorDetails.lastInputInteraction.type} - ${errorDetails.lastInputInteraction.fieldName}\``, inline: true } : null,
-            { name: "Time Since Start", value: `\`${errorDetails.timeSinceStart || 'N/A'}\``, inline: true },
-            { name: "Referrer", value: `\`${errorDetails.referrer || 'None'}\``, inline: true },
-            { name: "Stack Trace", value: `\`${errorStack}\``, inline: false },
             sentryEventId ? { name: "Sentry Trace/Event ID", value: `\`${sentryEventId}\``, inline: false } : null,
             errorDetails.navigationHistory && errorDetails.navigationHistory.length > 0 ? { 
                 name: "Navigation History (Last 15)", 
                 value: `\`\`\`\n${errorDetails.navigationHistory.map(h => `[${h.timestamp}] (${h.type}) ${h.path}`).join('\n')}\n\`\`\``, 
                 inline: false 
             } : null,
-            errorDetails.userInfo ? { name: "User Info", value: `\`\`\`json\n${JSON.stringify(errorDetails.userInfo, null, 2)}\n\`\`\``, inline: true } : null,
-            errorDetails.clientInfo ? { name: "Client Info", value: `\`\`\`json\n${JSON.stringify(errorDetails.clientInfo, null, 2)}\n\`\`\``, inline: true } : null,
+            errorDetails.clientInfo ? { name: "Client Info", value: `\`\`\`json\n${JSON.stringify(errorDetails.clientInfo, null, 2)}\n\`\`\``, inline: false } : null,
         ].filter(Boolean),
         timestamp: new Date().toISOString(),
         footer: { text: `PHMC Tools - Global Error Handler | ` }
     };
     discordErrorWebhookQueue.push({ content: '<@228306972204597248>', embeds: [embed] });
     processDiscordErrorQueue(); // Start processing the queue if it's not already running
+};
+
+/**
+ * Reports a logical error or data inconsistency that doesn't cause a crash but needs attention.
+ * This is useful for catching rare bugs like the 'GTAW User' author name issue.
+ * @param {string} title - Brief title of the issue
+ * @param {string} message - Detailed description
+ * @param {Object} context - Relevant data context for debugging
+ */
+export const reportLogicalError = (title, message, context = {}) => {
+    const timestamp = new Date().toISOString();
+    
+    // 1. Log to Sentry
+    Sentry.captureMessage(`[Logical Error] ${title}`, {
+        level: "warning",
+        tags: {
+            errorType: 'logical_inconsistency',
+            formType: getCurrentFormType()
+        },
+        extra: {
+            description: message,
+            ...context,
+            navigationHistory: window.visitedForms || [],
+            timestamp
+        }
+    });
+
+    // 2. Queue for Discord
+    const errorDetails = {
+        message: `${title}: ${message}`,
+        context: "Logical Error Handler",
+        currentFormType: getCurrentFormType(),
+        isLogicalError: true,
+        userInfo: context.userInfo || null,
+        clientInfo: {
+            timestamp,
+            ...context
+        }
+    };
+    
+    // We reuse the existing Discord error webhook logic
+    sendDiscordErrorWebhook(errorDetails);
 };

@@ -1,12 +1,13 @@
 import { logAdminAction, getUserContext } from '../../utils/adminLogger';
 import React, { useState, useEffect } from 'react';
 import { database } from '../../firebase';
-import { ref, get, set } from 'firebase/database';
+import { ref, get, set, runTransaction } from 'firebase/database';
 import { useNotification } from '../../contexts/NotificationContext';
 import BaseModal from '../Modals/BaseModal';
 import { Button, Form } from 'react-bootstrap';
+import { renderMarkdown } from '../../utils/textUtils';
 
-const LsccEditModal = ({ show, onHide, item, onSave, categories, logAdminAction, gtawUser, gtawUsername }) => {
+const LsccEditModal = ({ show, onHide, item, onSave, categories, gtawUser, gtawUsername }) => {
   const { showNotification } = useNotification();
   const [currentItem, setCurrentItem] = useState(item || { name: '', content: '', category: '', images: [], uniqueWords: [] });
   const [rawUniqueWordsInput, setRawUniqueWordsInput] = useState('');
@@ -48,6 +49,10 @@ const LsccEditModal = ({ show, onHide, item, onSave, categories, logAdminAction,
 
       targetCat.protocols.push(savedItem);
       await set(protocolsRef, protocols.filter(cat => cat.protocols.length > 0));
+
+      // Bump LSCC version to update client caches
+      const metadataRef = ref(database, 'appMetadata/lsccDataVersion');
+      await runTransaction(metadataRef, (v) => (v || 0) + 1);
 
       const { userAgent, timeZone } = getUserContext();
       logAdminAction(gtawUsername, isEditing ? 'Edited LSCC Protocol' : 'Added LSCC Protocol', `Protocol: ${savedItem.name}`, 'LSCC Management', userAgent, timeZone, gtawUsername, gtawUser);
@@ -102,6 +107,42 @@ const LsccEditModal = ({ show, onHide, item, onSave, categories, logAdminAction,
           <Form.Label style={{ color: '#8b949e' }}>Unique Words (comma-separated)</Form.Label>
           <Form.Control type="text" name="uniqueWords" value={rawUniqueWordsInput} onChange={handleChange} style={{ backgroundColor: '#161b22', color: '#e6edf3', borderColor: '#30363d' }} />
         </Form.Group>
+
+        <div style={{ 
+          backgroundColor: 'rgba(56, 139, 253, 0.1)', 
+          border: '1px solid rgba(56, 139, 253, 0.4)', 
+          borderRadius: '6px', 
+          padding: '12px',
+          marginTop: '5px'
+        }}>
+          <div style={{ color: '#58a6ff', fontWeight: 600, fontSize: '0.85em', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <i className="fas fa-info-circle"></i> Markdown Formatting Guide
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '0.8em', color: '#c9d1d9' }}>
+            <div>
+              <code style={{ color: '#ff7b72' }}>**Bold**</code> → <strong>Bold</strong><br/>
+              <code style={{ color: '#ff7b72' }}>*Italic*</code> → <em>Italic</em><br/>
+              <code style={{ color: '#ff7b72' }}>__Underline__</code> → <u>Underline</u>
+            </div>
+            <div>
+              <code style={{ color: '#ff7b72' }}>&gt; List Item</code> → Bullet Point<br/>
+              <code style={{ color: '#ff7b72' }}>---</code> or <code style={{ color: '#ff7b72' }}>[hr]</code> → Line Break<br/>
+              <code style={{ color: '#ff7b72' }}>**__Both__**</code> → <strong><u>Both</u></strong>
+            </div>
+          </div>
+        </div>
+
+        <hr style={{ borderColor: '#30363d', margin: '5px 0' }} />
+        
+        <div style={{ backgroundColor: '#0d1117', padding: '15px', borderRadius: '8px', border: '1px solid #30363d' }}>
+          <Form.Label style={{ color: '#58a6ff', fontSize: '0.85em', fontWeight: 600, textTransform: 'uppercase', marginBottom: '10px', display: 'block' }}>
+            Live Preview
+          </Form.Label>
+          
+          <div style={{ color: '#e6edf3', fontSize: '1em', lineHeight: '1.6' }}>
+            <div dangerouslySetInnerHTML={{ __html: renderMarkdown(currentItem.content || 'No content...') }} />
+          </div>
+        </div>
       </Form>
     </BaseModal>
   );

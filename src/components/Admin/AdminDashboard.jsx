@@ -1,5 +1,5 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
-import { Button, Spinner, Alert, Form } from 'react-bootstrap';
+import { Button, Spinner, Alert, Form, Table } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import './AdminDashboard.css';
 import { formatAccessLevel } from '../../utils/textUtils';
@@ -10,11 +10,11 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getDatabase, ref, get, set } from 'firebase/database';
 import { isGoogleAuthenticated, getGoogleUser } from '../../services/gtaWorldAuth';
 import { runOAuthDiagnostics, testFirebaseFunctions, testProfileRetrieval, logEnvironmentInfo } from '../../services/firebaseDebug';
+import { triggerFetchExternalUrl } from '../../services/firebaseFunctions';
 import { WebhookProvider } from '../../contexts/WebhookProvider';
 
 // Static imports for managers (removed lazy loading)
 import DatabaseEditor from './DatabaseEditor';
-import WebhookLogs from './WebhookLogs';
 import FactionDataUpload from './FactionDataUpload';
 import WebhookManager from './WebhookManager';
 import FirebaseFunctionsTester from './FirebaseFunctionsTester';
@@ -23,6 +23,7 @@ import LsccManager from './LsccManager';
 import FormsManager from './FormsManager';
 import MetricsDashboard from './MetricsDashboard';
 import AgencyIncidentManager from './AgencyIncidentManager';
+import MorgueManager from './MorgueManager';
 
 const AdminDashboard = ({
 
@@ -59,6 +60,72 @@ const AdminDashboard = ({
     const [showMigrator, setShowMigrator] = useState(false);
     const [mapEnabled, setMapEnabled] = useState(false);
     const navigate = useNavigate();
+
+    const [externalStatuses, setExternalStatuses] = useState({
+        github: { status: 'checking', description: 'Checking...' },
+        cloudflare: { status: 'checking', description: 'Checking...' },
+        googlecloud: { status: 'checking', description: 'Checking...' },
+    });
+
+    useEffect(() => {
+        const fetchExternalStatuses = async () => {
+            const endpoints = [
+                { key: 'github', url: 'https://www.githubstatus.com/api/v2/status.json' },
+                { key: 'cloudflare', url: 'https://www.cloudflarestatus.com/api/v2/status.json' },
+                { key: 'googlecloud', url: 'https://status.cloud.google.com/incidents.json' },
+            ];
+
+            const results = { ...externalStatuses };
+
+            await Promise.all(
+                endpoints.map(async ({ key, url }) => {
+                    try {
+                        const response = await triggerFetchExternalUrl({ url });
+                        const data = response.data;
+                        
+                        if (key === 'googlecloud') {
+                            // Google Cloud returns an array of incidents. 
+                            // If empty, it's operational. If it has items, it's degraded/outage.
+                            const hasIncidents = Array.isArray(data) && data.length > 0;
+                            results[key] = {
+                                status: hasIncidents ? 'minor' : 'none',
+                                description: hasIncidents ? 'Issues Reported' : 'Operational',
+                            };
+                        } else {
+                            const indicator = data.status?.indicator;
+                            results[key] = {
+                                status: indicator || 'unknown',
+                                description: data.status?.description || 'Unknown',
+                            };
+                        }
+                    } catch (error) {
+                        console.error(`Failed to fetch ${key} status:`, error);
+                        results[key] = { status: 'unknown', description: 'Unable to reach' };
+                    }
+                })
+            );
+
+            setExternalStatuses(results);
+        };
+
+        fetchExternalStatuses();
+        const interval = setInterval(fetchExternalStatuses, 60000);
+        return () => clearInterval(interval);
+    }, []);
+
+    const getStatusIndicator = (status) => {
+        switch (status) {
+            case 'none':
+                return { className: 'online', label: 'Operational' };
+            case 'minor':
+                return { className: 'degraded', label: 'Degraded' };
+            case 'major':
+            case 'critical':
+                return { className: 'offline', label: 'Outage' };
+            default:
+                return { className: 'unknown', label: 'Unknown' };
+        }
+    };
 
     // State for PHMC Auth State upload
     const [phmcAuthStateInput, setPhmcAuthStateInput] = useState('');
@@ -360,19 +427,20 @@ const AdminDashboard = ({
     return (
         <div className="admin-dashboard-container">
             <div className="admin-dashboard-layout">
-                <div className="sidebar">
+                {/* Modern Admin Sidebar */}
+                <aside className="admin-sidebar">
                     <div className="sidebar-header">
-                        <h5>Admin Panel</h5>
-                        <p>Logged in as: {currentUser?.displayName || currentUser?.email || 'Unknown User'}</p>
-                        {gtaWorldUser && (
-                            <p className="text-info">
-                                <i className="fas fa-user me-1"></i>
-                                GTA World: {gtaWorldUser.username}
-                            </p>
-                        )}
+                        <h5><i className="fas fa-shield-alt"></i> <span>Admin Panel</span></h5>
+                        <div className="sidebar-user-info">
+                            <p><strong>{currentUser?.displayName || currentUser?.email || 'Unknown User'}</strong></p>
+                            {gtaWorldUser && (
+                                <p className="text-info"><i className="fas fa-user me-1"></i> {gtaWorldUser.username}</p>
+                            )}
+                        </div>
+                        
                         {currentUser && canUseGoogleAdminOverride && (
-                            <div className="mt-3">
-                                <div className="form-check form-switch">
+                            <div className="mt-3 px-1">
+                                <div className="form-check form-switch small">
                                     <input
                                         className="form-check-input"
                                         type="checkbox"
@@ -381,1021 +449,314 @@ const AdminDashboard = ({
                                         checked={googleAdminToggle}
                                         onChange={(e) => setGoogleAdminToggle(e.target.checked)}
                                     />
-                                    <label className="form-check-label" htmlFor="googleAdminToggle">
-                                        <small>Enable Google Admin Override</small>
+                                    <label className="form-check-label text-muted" htmlFor="googleAdminToggle">
+                                        Admin Override
                                     </label>
                                 </div>
-                                <small className="text-muted d-block mt-1">
-                                    Toggle to test faction permission restrictions
-                                </small>
                             </div>
                         )}
                     </div>
-                    <div className="nav-pills-flex-column">
+
+                    <nav className="sidebar-nav">
                         {hasBingoAccess && (
-                            <button className={`nav-link ${selectedSection === 'bingo' ? 'active' : ''}`} onClick={() => setSelectedSection('bingo')}><i className="fas fa-dice me-2"></i>Bingo</button>
+                            <button className={`nav-item-btn ${selectedSection === 'bingo' ? 'active' : ''}`} onClick={() => setSelectedSection('bingo')}>
+                                <i className="fas fa-dice"></i> <span>Bingo Manager</span>
+                            </button>
                         )}
                         {hasUsersAccess && (
-                            <button className={`nav-link ${selectedSection === 'metrics' ? 'active' : ''}`} onClick={() => setSelectedSection('metrics')}><i className="fas fa-chart-line me-2"></i>Metrics</button>
+                            <button className={`nav-item-btn ${selectedSection === 'metrics' ? 'active' : ''}`} onClick={() => setSelectedSection('metrics')}>
+                                <i className="fas fa-chart-line"></i> <span>User Metrics</span>
+                            </button>
                         )}
                         {hasAgencyIncidentAccess && (
-                            <button className={`nav-link ${selectedSection === 'agencyIncidents' ? 'active' : ''}`} onClick={() => setSelectedSection('agencyIncidents')}><i className="fas fa-shield-alt me-2 text-danger"></i>Agency Incidents</button>
+                            <button className={`nav-item-btn ${selectedSection === 'agencyIncidents' ? 'active' : ''}`} onClick={() => setSelectedSection('agencyIncidents')}>
+                                <i className="fas fa-shield-alt text-danger"></i> <span>Agency Incidents</span>
+                            </button>
                         )}
                         {hasEmployeeManagerAccess && (
-                            <button className={`nav-link ${selectedSection === 'employeeManager' ? 'active' : ''}`} onClick={() => setSelectedSection('employeeManager')}><i className="fas fa-users me-2"></i>Employee Report Metrics</button>
+                            <button className={`nav-item-btn ${selectedSection === 'employeeManager' ? 'active' : ''}`} onClick={() => setSelectedSection('employeeManager')}>
+                                <i className="fas fa-users-cog"></i> <span>Employee Metrics</span>
+                            </button>
                         )}
                         {hasLsccManagerAccess && (
-                            <button className={`nav-link ${selectedSection === 'lscc' ? 'active' : ''}`} onClick={() => setSelectedSection('lscc')}><i className="fas fa-building me-2"></i>LSCC Panel</button>
+                            <button className={`nav-item-btn ${selectedSection === 'lscc' ? 'active' : ''}`} onClick={() => setSelectedSection('lscc')}>
+                                <i className="fas fa-hospital-alt"></i> <span>LSCC Protocols</span>
+                            </button>
                         )}
                         {hasFormsManagerAccess && (
-                            <button className={`nav-link ${selectedSection === 'forms' ? 'active' : ''}`} onClick={() => setSelectedSection('forms')}><i className="fas fa-building me-2"></i>Forms Panel</button>
+                            <button className={`nav-item-btn ${selectedSection === 'forms' ? 'active' : ''}`} onClick={() => setSelectedSection('forms')}>
+                                <i className="fas fa-file-signature"></i> <span>Form Manager</span>
+                            </button>
                         )}
+                        <button className={`nav-item-btn ${selectedSection === 'webhooks' ? 'active' : ''}`} onClick={() => setSelectedSection('webhooks')}>
+                            <i className="fas fa-bullhorn"></i> <span>Webhooks</span>
+                        </button>
+                        <button className={`nav-item-btn ${selectedSection === 'factions' ? 'active' : ''}`} onClick={() => setSelectedSection('factions')}>
+                            <i className="fas fa-users"></i> <span>Faction Data</span>
+                        </button>
+                        <button className={`nav-item-btn ${selectedSection === 'database' ? 'active' : ''}`} onClick={() => setSelectedSection('database')}>
+                            <i className="fas fa-database"></i> <span>Database Editor</span>
+                        </button>
+                        <button className={`nav-item-btn ${selectedSection === 'morgue' ? 'active' : ''}`} onClick={() => setSelectedSection('morgue')}>
+                            <i className="fas fa-microscope"></i> <span>Morgue Records</span>
+                        </button>
+                        <button className={`nav-item-btn ${selectedSection === 'dev' ? 'active' : ''}`} onClick={() => setSelectedSection('dev')}>
+                            <i className="fas fa-terminal"></i> <span>Developer Console</span>
+                        </button>
+                    </nav>
+                </aside>
 
-                        <button className={`nav-link ${selectedSection === 'webhooks' ? 'active' : ''}`} onClick={() => setSelectedSection('webhooks')}><i className="fas fa-bullhorn me-2"></i>Webhooks</button>
-                        <button className={`nav-link ${selectedSection === 'factions' ? 'active' : ''}`} onClick={() => setSelectedSection('factions')}><i className="fas fa-users me-2"></i>Faction Data</button>
-                        <button className={`nav-link ${selectedSection === 'dev' ? 'active' : ''}`} onClick={() => setSelectedSection('dev')}><i className="fas fa-code me-2"></i>Developer</button>
-                        <button className={`nav-link ${selectedSection === 'database' ? 'active' : ''}`} onClick={() => setSelectedSection('database')}><i className="fas fa-database me-2"></i>Database</button>
-                    </div>
-                </div>
-                <div className="main-content">
-                    {/* Welcome Section for PHMC Users */}
-                    {isGtaAuthenticated && isFactionMember && factionData && (
-                            <div className="card mb-4">
-                                <div className="card-header bg-primary text-white">
-                                    <h5 className="mb-0">
-                                        <i className="fas fa-user-shield me-2"></i>
-                                        Welcome to PHMC Admin Panel
-                                    </h5>
-                                </div>
-                                <div className="card-body">
-                                    <div className="row">
+                <main className="admin-main-content">
+                    {/* Welcome Page / System Status */}
+                    {selectedSection === 'serviceStatus' && (
+                        <div className="welcome-hero">
+                            <div className="welcome-hero-content">
+                                <h1>Welcome back, {gtaWorldUser?.username || currentUser?.displayName || 'Admin'}</h1>
+                                <p className="lead text-muted mb-4">System Dashboard</p>
+                                
+                                <div className="row g-4">
+                                    {isGtaAuthenticated && isFactionMember && factionData && (
                                         <div className="col-md-6">
-                                            <h6 className="text-primary">Character Information</h6>
-                                            <p className="mb-1"><strong>Character Name:</strong> {factionData.characterName}</p>
-                                            <p className="mb-1"><strong>Character ID:</strong> {factionData.characterId}</p>
-                                            <p className="mb-1"><strong>UCP User:</strong> {gtaWorldUser.username}</p>
-                                        </div>
-                                        <div className="col-md-6">
-                                            <h6 className="text-primary">PHMC Status</h6>
-                                            <p className="mb-1"><strong>Rank:</strong> {factionData.rank}</p>
-                                            <p className="mb-1"><strong>Script Rank:</strong> {factionData.scriptRank}</p>
-                                            <p className="mb-1"><strong>Access Level:</strong> <span className="badge bg-success">{formatAccessLevel(accessLevel)}</span></p>
-                                            {factionData.activity && (
-                                                <p className="mb-1"><strong>Activity:</strong> {factionData.activity}</p>
-                                            )}
-                                        </div>
-                                    </div>
-                                    {factionData.lastOnline && (
-                                        <div className="mt-2">
-                                            <small className="text-muted">
-                                                <i className="fas fa-clock me-1"></i>
-                                                Last online: {factionData.lastOnline}
-                                            </small>
+                                            <div className="card h-100 bg-opacity-10 border-indigo">
+                                                <div className="card-header py-2 bg-transparent border-0">
+                                                    <i className="fas fa-user-shield me-2 text-indigo"></i> Profile Identity
+                                                </div>
+                                                <div className="card-body py-2">
+                                                    <div className="d-flex justify-content-between mb-1 small">
+                                                        <span className="text-muted">Character:</span>
+                                                        <strong>{factionData.characterName}</strong>
+                                                    </div>
+                                                    <div className="d-flex justify-content-between mb-1 small">
+                                                        <span className="text-muted">Rank:</span>
+                                                        <span>{factionData.rank}</span>
+                                                    </div>
+                                                    <div className="d-flex justify-content-between mb-1 small">
+                                                        <span className="text-muted">Access:</span>
+                                                        <span className="badge bg-success">{formatAccessLevel(accessLevel)}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
                                     )}
-                                </div>
-                            </div>
-                        )}
-                    {selectedSection === 'bingo' && (
-                        <div className="card">
-                            <div className="card-header">Bingo Management</div>
-                            <div className="card-body">
-                                {hasBingoAccess ? (
-                                    <>
-                                        <div className="form-group mb-3">
-                                    <label>Select Bingo Type:</label>
-                                    <select
-                                        value={selectedAdminBingoType}
-                                        onChange={(e) => setSelectedAdminBingoType(e.target.value)}
-                                        disabled={isUpdatingDb}
-                                        className="form-select"
-                                    >
-                                        {BINGO_TYPES.map(type => (
-                                            <option key={type.id} value={type.id}>{type.name}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <p className="text-info small mt-1">
-                                    The daily reset now runs automatically on the server at 09:00 UTC.
-                                </p>
-                                <Button
-                                    variant="secondary"
-                                    onClick={handleManualResetAllBingoCards}
-                                    disabled={isUpdatingDb}
-                                    className="mt-2 me-2"
-                                    title="Manually run the daily reset for all active bingo cards."
-                                >
-                                    {isUpdatingDb ? <Spinner as="span" animation="border" size="sm" /> : <><i className="fas fa-bomb"></i> Reset All Cards</>}
-                                </Button>
-
-                                <Button
-                                    variant="primary"
-                                    onClick={handleGenerateNewBingoCard}
-                                    disabled={isUpdatingDb}
-                                    className="mt-2 me-2"
-                                >
-                                    {isUpdatingDb ? <Spinner as="span" animation="border" size="sm" /> : <><i className="fas fa-sync-alt"></i> Generate New Card</>}
-                                </Button>
-                                <Button
-                                    variant="danger"
-                                    onClick={handleClearBingoActivity}
-                                    disabled={isUpdatingDb}
-                                    className="mt-2 me-2"
-                                >
-                                    {isUpdatingDb ? <Spinner as="span" animation="border" size="sm" /> : <><i className="fas fa-trash-alt"></i> Clear Activity Log</>}
-                                </Button>
-                                <Button
-                                    variant="warning"
-                                    onClick={handleDisableBingoCard}
-                                    disabled={isUpdatingDb}
-                                    className="mt-2 me-2"
-                                    title="This will remove the current card and log, effectively disabling the game until a new card is generated."
-                                >
-                                    {isUpdatingDb ? <Spinner as="span" animation="border" size="sm" /> : <><i className="fas fa-power-off"></i> Disable Card</>}
-                                </Button>
-                                <Button
-                                    variant="info"
-                                    onClick={() => setShowEditBingoPhrasesModal(true)}
-                                    disabled={isUpdatingDb || !selectedAdminBingoType}
-                                    className="mt-2 me-2"
-                                >
-                                    <i className="fas fa-edit"></i> Edit {selectedTypeForEdit?.name || 'Master'} Phrases
-                                </Button>
-                                <Button
-                                    variant="warning"
-                                            onClick={() => setShowReviewPhrasesModal(true)}
-                                            disabled={isUpdatingDb}
-                                            className="mt-2"
-                                        >
-                                            <i className="fas fa-inbox"></i> Review Phrase Requests
-                                        </Button>
-                                    </>
-                                ) : (
-                                    <div className="alert alert-danger">
-                                        <i className="fas fa-exclamation-triangle me-2"></i>
-                                        <strong>Access Denied:</strong> Your current faction rank ({factionData?.scriptRank || 'N/A'}) does not have permission to manage bingo activities.
-                                        <br />
-                                        <small>Required: Script Rank 14 or higher, or Google Admin access</small>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-                    {selectedSection === 'metrics' && (
-                        <div className="card">
-                            <div className="card-header">User Metrics & Engagement</div>
-                            <div className="card-body">
-                                {hasUsersAccess ? (
-                                    <MetricsDashboard />
-                                ) : (
-                                    <div className="alert alert-danger">
-                                        <i className="fas fa-exclamation-triangle me-2"></i>
-                                        <strong>Access Denied:</strong> Your current faction rank ({factionData?.scriptRank || 'N/A'}) does not have permission to view metrics.
-                                        <br />
-                                        <small>Required: Script Rank 14 or higher, or Google Admin access</small>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-                    {selectedSection === 'agencyIncidents' && (
-                        <div className="card">
-                            <div className="card-body">
-                                {hasAgencyIncidentAccess ? (
-                                    <AgencyIncidentManager />
-                                ) : (
-                                    <div className="alert alert-danger">
-                                        <i className="fas fa-exclamation-triangle me-2"></i>
-                                        <strong>Access Denied:</strong> Your current faction rank ({factionData?.scriptRank || 'N/A'}) does not have permission to view agency incidents.
-                                        <br />
-                                        <small>Required: Script Rank 14 or higher, or Google Admin access</small>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-                    {selectedSection === 'employeeManager' && (
-                        <div className="card">
-                            <div className="card-body">
-                                {hasEmployeeManagerAccess ? (
-                                    <EmployeeManager />
-                                ) : (
-                                    <div className="alert alert-danger">
-                                        <i className="fas fa-exclamation-triangle me-2"></i>
-                                        <strong>Access Denied:</strong> Your current faction rank ({factionData?.scriptRank || 'N/A'}) does not have permission to manage employees.
-                                        <br />
-                                        <small>Required: Script Rank 13 or higher, or Google Admin access</small>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-                    {selectedSection === 'lscc' && (
-                            <div className="card-body">
-                                {hasLsccManagerAccess ? (
-                                    <LsccManager />
-                                ) : (
-                                    <div className="alert alert-danger">
-                                        <i className="fas fa-exclamation-triangle me-2"></i>
-                                        <strong>Access Denied:</strong> Your current faction rank ({factionData?.scriptRank || 'N/A'}) does not have permission to access the LSCC Panel.
-                                        <br />
-                                        <small>Required: Script Rank 10 or higher, or Google Admin access</small>
-                                    </div>
-                                )}
-                        </div>
-                    )}
-                                        {selectedSection === 'forms' && (
-                            <div className="card-body">
-                                {hasFormsManagerAccess ? (
-                                    <FormsManager currentUser={currentUser} />
-                                ) : (
-                                    <div className="alert alert-danger">
-                                        <i className="fas fa-exclamation-triangle me-2"></i>
-                                        <strong>Access Denied:</strong> Your current faction rank ({factionData?.scriptRank || 'N/A'}) does not have permission to access the Forms Panel.
-                                        <br />
-                                        <small>Required: Script Rank 10 or higher, or Google Admin access</small>
-                                    </div>
-                                )}
-                        </div>
-                    )}
-
-                    {selectedSection === 'webhooks' && (
-                        <div className="card">
-                            <div className="card-header">
-                                <div className="d-flex justify-content-between align-items-center">
-                                    <h5 className="mb-0">Webhook Management</h5>
-                                                                        <h5 className="mb-0">This area is VERY Dangerous - Don&apos;t use </h5>
-
-                                    <div className="badge bg-secondary">
-                                        {webhooks.length} webhook{webhooks.length !== 1 ? 's' : ''} configured
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="card-body">
-                                {isGtaAuthenticated || currentUser ? (
-                                    hasWebhookAccess ? (
-                                        <div className="row">
-                                            {/* Left Column - Send Webhook */}
-                                            <div className="col-md-6">
-                                                <div className="card h-100">
-                                                    <div className="card-header bg-primary text-white">
-                                                        <h6 className="mb-0">
-                                                            <i className="fas fa-paper-plane me-2"></i>
-                                                            Send Webhook
-                                                        </h6>
-                                                    </div>
-                                                    <div className="card-body">
-                                                        <WebhookProvider>
-                                                            <WebhookManager />
-                                                        </WebhookProvider>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            {/* Right Column - Webhook Management */}
-                                            <div className="col-md-6">
-                                                <div className="card h-100">
-                                                    <div className="card-header bg-success text-white">
-                                                        <h6 className="mb-0">
-                                                            <i className="fas fa-cogs me-2"></i>
-                                                            {newWebhook.id ? 'Edit Webhook' : 'Add New Webhook'}
-                                                        </h6>
-                                                    </div>
-                                                    <div className="card-body">
-                                                        {newWebhook.id && (
-                                                            <div className="alert alert-info py-2 mb-3">
-                                                                <i className="fas fa-info-circle me-2"></i>
-                                                                Editing: <strong>{newWebhook.name}</strong>
-                                                                <button 
-                                                                    type="button" 
-                                                                    className="btn btn-sm btn-outline-secondary ms-2"
-                                                                    onClick={() => setNewWebhook({ name: '', url: '', type: 'coronerAlerts' })}
-                                                                >
-                                                                    Cancel
-                                                                </button>
-                                                            </div>
-                                                        )}
-                                                        <div className="form-group mb-3">
-                                                            <label className="form-label">Webhook Name</label>
-                                                            <input
-                                                                type="text"
-                                                                className="form-control"
-                                                                placeholder="e.g., Discord Notifications"
-                                                                value={newWebhook.name}
-                                                                onChange={(e) => setNewWebhook(prev => ({ ...prev, name: e.target.value }))}
-                                                            />
-                                                        </div>
-                                                        <div className="form-group mb-3">
-                                                            <label className="form-label">Webhook URL</label>
-                                                            <input
-                                                                type="url"
-                                                                className="form-control"
-                                                                placeholder="https://discord.com/api/webhooks/..."
-                                                                value={newWebhook.url}
-                                                                onChange={(e) => setNewWebhook(prev => ({ ...prev, url: e.target.value }))}
-                                                            />
-                                                        </div>
-                                                        <div className="form-group mb-3">
-                                                            <label className="form-label">Event Type</label>
-                                                            <select
-                                                                className="form-select"
-                                                                value={newWebhook.type}
-                                                                onChange={(e) => setNewWebhook(prev => ({ ...prev, type: e.target.value }))}
-                                                            >
-                                                                <option value="coronerAlerts">Coroner Alerts</option>
-                                                                <option value="phmcAlerts">PHMC Alerts</option>
-                                                                <option value="dev">local dev discord</option>
-                                                            </select>
-                                                        </div>
-                                                        <div className="d-flex gap-2">
-                                                            <Button 
-                                                                variant={newWebhook.id ? "warning" : "primary"} 
-                                                                onClick={handleAddWebhook} 
-                                                                disabled={isUpdatingWebhooks || !newWebhook.name || !newWebhook.url}
-                                                            >
-                                                                {isUpdatingWebhooks ? (
-                                                                    <Spinner as="span" animation="border" size="sm" />
-                                                                ) : (
-                                                                    <>
-                                                                        <i className={`fas ${newWebhook.id ? 'fa-save' : 'fa-plus'} me-2`}></i>
-                                                                        {newWebhook.id ? "Update" : "Add"} Webhook
-                                                                    </>
-                                                                )}
-                                                            </Button>
-                                                            {newWebhook.id && (
-                                                                <Button 
-                                                                    variant="secondary" 
-                                                                    onClick={() => setNewWebhook({ name: '', url: '', type: 'coronerAlerts' })}
-                                                                    disabled={isUpdatingWebhooks}
-                                                                >
-                                                                    Cancel
-                                                                </Button>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <div className="alert alert-warning">
-                                            <i className="fas fa-exclamation-triangle me-2"></i>
-                                            <strong>Access Denied:</strong> Your current faction rank ({factionData?.scriptRank || 'N/A'}) does not have webhook management permissions.
-                                            <br />
-                                            <small>Required: Script Rank 11 or higher</small>
-                                        </div>
-                                    )
-                                ) : (
-                                    <div className="alert alert-info">
-                                        <i className="fas fa-info-circle me-2"></i>
-                                        Please log in with your GTA World account to access webhook management features.
-                                    </div>
-                                )}
-
-                                {/* Existing Webhooks List */}
-                                {(isGtaAuthenticated || currentUser) && hasWebhookAccess && (
-                                    <div className="mt-4">
-                                        <div className="card">
-                                            <div className="card-header bg-info text-white">
-                                                <h6 className="mb-0">
-                                                    <i className="fas fa-list me-2"></i>
-                                                    Existing Webhooks ({webhooks.length})
-                                                </h6>
-                                            </div>
-                                            <div className="card-body">
-                                                {webhooks.length > 0 ? (
-                                                    <div className="table-responsive">
-                                                        <table className="table table-sm table-hover">
-                                                            <thead>
-                                                                <tr>
-                                                                    <th>Name</th>
-                                                                    <th>Type</th>
-                                                                    <th>URL</th>
-                                                                    <th>Actions</th>
-                                                                </tr>
-                                                            </thead>
-                                                            <tbody>
-                                                                {webhooks.map((webhook) => (
-                                                                    <tr key={webhook.id}>
-                                                                        <td>
-                                                                            <strong>{webhook.name}</strong>
-                                                                        </td>
-                                                                        <td>
-                                                                            <span className={`badge ${webhook.type === 'dev' ? 'bg-warning' : webhook.type === 'coronerAlerts' ? 'bg-danger' : 'bg-primary'}`}>
-                                                                                {webhook.type}
-                                                                            </span>
-                                                                        </td>
-                                                                        <td>
-                                                                            <small className="text-muted" title={webhook.url}>
-                                                                                {webhook.url.length > 40 ? `${webhook.url.substring(0, 40)}...` : webhook.url}
-                                                                            </small>
-                                                                        </td>
-                                                                        <td>
-                                                                            <div className="btn-group btn-group-sm">
-                                                                                <button
-                                                                                    className="btn btn-outline-primary"
-                                                                                    onClick={() => handleTestWebhook(webhook)}
-                                                                                    disabled={isUpdatingWebhooks}
-                                                                                    title="Test this webhook"
-                                                                                >
-                                                                                    <i className="fas fa-paper-plane"></i>
-                                                                                </button>
-                                                                                <button
-                                                                                    className="btn btn-outline-warning"
-                                                                                    onClick={() => setNewWebhook(webhook)}
-                                                                                    disabled={isUpdatingWebhooks}
-                                                                                    title="Edit this webhook"
-                                                                                >
-                                                                                    <i className="fas fa-edit"></i>
-                                                                                </button>
-                                                                                <button
-                                                                                    className="btn btn-outline-danger"
-                                                                                    onClick={() => handleDeleteWebhook(webhook.id)}
-                                                                                    disabled={isUpdatingWebhooks}
-                                                                                    title="Delete this webhook"
-                                                                                >
-                                                                                    <i className="fas fa-trash"></i>
-                                                                                </button>
-                                                                            </div>
-                                                                        </td>
-                                                                    </tr>
-                                                                ))}
-                                                            </tbody>
-                                                        </table>
-                                                    </div>
-                                                ) : (
-                                                    <div className="text-center text-muted py-3">
-                                                        <i className="fas fa-inbox fa-2x mb-2"></i>
-                                                        <p>No webhooks configured yet. Add one above to get started.</p>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Webhook Logs Section */}
-                                {(isGtaAuthenticated || currentUser) && hasWebhookAccess && (
-                                    <div className="mt-4">
-                                        <div className="card">
-                                            <div className="card-body p-0">
-                                                <WebhookLogs 
-                                                    refreshTrigger={logRefreshTrigger} 
-                                                    onRefresh={() => setLogRefreshTrigger(prev => prev + 1)}
-                                                />
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-                    {selectedSection === 'dev' && (
-                        <div className="card">
-                            <div className="card-header">Developer Tools</div>
-                            <div className="card-body">
-                                {/* PHMC Auth State Upload */}
-                                <div className="mb-4">
-                                    <h6>PHMC Forum Auth State Upload</h6>
-                                    <p className="text-muted small">
-                                        This area is used by the Form Developer to test features on a production server. 
-                                    </p>
-                                    <Form.Group className="mb-2">
-                                        <Form.Control
-                                            as="textarea"
-                                            rows={5}
-                                            placeholder="Provide the raw JSON outputted in tools/dev/output.json..."
-                                            value={phmcAuthStateInput}
-                                            onChange={(e) => setPhmcAuthStateInput(e.target.value)}
-                                            disabled={isUploadingPhmcAuthState || !hasAdminAccess}
-                                        />
-                                    </Form.Group>
-                                    <Button
-                                        variant="primary"
-                                        onClick={handleUploadPhmcAuthState}
-                                        disabled={isUploadingPhmcAuthState || !phmcAuthStateInput || !hasAdminAccess}
-                                    >
-                                        {isUploadingPhmcAuthState ? (
-                                            <Spinner as="span" animation="border" size="sm" />
-                                        ) : (
-                                            <i className="fas fa-upload me-2"></i>
-                                        )}
-                                        Upload PHMC Auth State
-                                    </Button>
-                                </div>
-
-                                <div className="mb-3">
-                                    <div className="card">
-                                        <div className="card-header">
-                                            <h6 className="mb-0">GTA World Authentication & Faction Status</h6>
-                                        </div>
-                                        <div className="card-body">
-                                            {isGtaAuthenticated || currentUser ? (
-                                                <div>
-                                                    <div className="alert alert-success d-flex align-items-center mb-3">
-                                                        <i className="fas fa-check-circle me-2"></i>
-                                                        <div>
-                                                            <strong>Connected as:</strong> {currentUser?.displayName || currentUser?.email || 'Unknown User'}
-                                                            <br />
-                                                            <small className="text-muted">
-                                                                User ID: {currentUser?.uid} | 
-                                                                {gtaWorldUser?.isFactionMember && gtaWorldUser?.faction?.scriptRank !== undefined ? 
-                                                                    ` Script Rank: ${gtaWorldUser.faction.scriptRank} |` : ''} 
-                                                                Last login: {new Date().toLocaleDateString()}
-                                                            </small>
-                                                        </div>
-                                                    </div>                                                    {/* Faction Status */}
-                                                    <div className="card border">
-                                                        <div className="card-header">
-                                                            <h6 className="mb-0">Faction Permissions</h6>
-                                                        </div>
-                                                        <div className="card-body">
-                                                            {factionLoading ? (
-                                                                <div className="d-flex align-items-center">
-                                                                    <Spinner animation="border" size="sm" className="me-2" />
-                                                                    Loading faction data...
-                                                                </div>
-                                                            ) : isFactionMember ? (
-                                                                <div>
-                                                                    {/* Google Admin Override */}
-                                                                    {currentUser && (
-                                                                        <div className={`alert ${googleAdminToggle ? 'alert-success' : 'alert-secondary'} py-2 mb-3`}>
-                                                                            <i className={`fas ${googleAdminToggle ? 'fa-crown' : 'fa-toggle-off'} me-2`}></i>
-                                                                            <strong>Google Admin Override: {googleAdminToggle ? 'ACTIVE' : 'DISABLED'}</strong>
-                                                                            {googleAdminToggle ? (
-                                                                                <span> - Full administrative privileges granted</span>
-                                                                            ) : (
-                                                                                <span> - Testing with normal permissions</span>
-                                                                            )}
-                                                                            <br />
-                                                                            <small>{googleAdminToggle ? 'All faction restrictions bypassed • Script Rank 15 equivalent' : 'Use toggle in sidebar to enable override for testing'}</small>
-                                                                        </div>
-                                                                    )}
-                                                                    
-                                                                    <div className="alert alert-success py-2">
-                                                                        <i className="fas fa-users me-2"></i>
-                                                                        <strong>PHMC Member</strong> - Access granted
-                                                                    </div>
-                                                                    {factionData && (
-                                                                        <div className="row">
-                                                                            <div className="col-md-6">
-                                                                                <p><strong>Character:</strong> {factionData.characterName}</p>
-                                                                                <p><strong>Script Rank:</strong> {factionData.scriptRank}</p>
-                                                                                <p><strong>Access Level:</strong> {formatAccessLevel(accessLevel)}</p>
-                                                                            </div>
-                                                                            <div className="col-md-6">
-                                                                                <p><strong>Permissions:</strong></p>
-                                                                                <ul className="list-unstyled">
-                                                                                    <li><i className={`fas ${canAccessAdmin ? 'fa-check text-success' : 'fa-times text-danger'}`}></i> Admin Access</li>
-                                                                                    <li><i className={`fas ${canAccessDatabase ? 'fa-check text-success' : 'fa-times text-danger'}`}></i> Database Access</li>
-                                                                                    <li><i className={`fas ${canUploadFactionData ? 'fa-check text-success' : 'fa-times text-danger'}`}></i> Faction Upload</li>
-                                                                                    <li><i className={`fas ${canManageWebhooks ? 'fa-check text-success' : 'fa-times text-danger'}`}></i> Webhook Management</li>
-                                                                                </ul>
-                                                                            </div>
-                                                                        </div>
-                                                                    )}
-                                                                    <Button 
-                                                                        variant="outline-primary" 
-                                                                        size="sm" 
-                                                                        onClick={refreshFactionData}
-                                                                        disabled={factionLoading}
-                                                                    >
-                                                                        <i className="fas fa-refresh me-2"></i>
-                                                                        Refresh Faction Data
-                                                                    </Button>
-                                                                </div>
-                                                            ) : (
-                                                                <div>
-                                                                    {/* Google Admin Override */}
-                                                                    {currentUser && (
-                                                                        <div className={`alert ${googleAdminToggle ? 'alert-success' : 'alert-secondary'} py-2 mb-3`}>
-                                                                            <i className={`fas ${googleAdminToggle ? 'fa-crown' : 'fa-toggle-off'} me-2`}></i>
-                                                                            <strong>Google Admin Override: {googleAdminToggle ? 'ACTIVE' : 'DISABLED'}</strong>
-                                                                            {googleAdminToggle ? (
-                                                                                <span> - Full administrative privileges granted</span>
-                                                                            ) : (
-                                                                                <span> - Testing with normal permissions</span>
-                                                                            )}
-                                                                            <br />
-                                                                            <small>{googleAdminToggle ? 'All faction restrictions bypassed • Script Rank 15 equivalent' : 'Use toggle in sidebar to enable override for testing'}</small>
-                                                                        </div>
-                                                                    )}
-                                                                    
-                                                                    {!currentUser && (
-                                                                        <div className="alert alert-warning py-2">
-                                                                            <i className="fas fa-exclamation-triangle me-2"></i>
-                                                                            <strong>Not a PHMC Member</strong> - Limited access
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            ) : (
-                                                <div>
-                                                    <p className="text-muted mb-3">
-                                                        Connect your GTA World account for enhanced admin features and OAuth testing.
-                                                    </p>
-                                                    <GtaWorldLoginButton 
-                                                        variant="primary"
-                                                        returnPath="/admin"
-                                                        disabled={gtaAuthLoading || factionLoading}
-                                                        onError={(error) => showInAppNotification && showInAppNotification(`Login failed: ${error}`, 'error')}
-                                                        onSuccess={() => {
-                                                            console.log('Login successful');
-                                                            refreshFactionData();
-                                                        }}
-                                                        onInitiate={() => {
-                                                            // Mark as token exchange for testing purposes
-                                                            sessionStorage.setItem('oauth-exchange-in-progress', 'true');
-                                                        }}
-                                                        title={gtaAuthLoading ? "Checking authentication..." : "Connect your GTA World account"}
-                                                    >
-                                                        {gtaAuthLoading ? (
-                                                            <>
-                                                                <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                                                                Checking authentication...
-                                                            </>
-                                                        ) : (
-                                                            <>
-                                                                <i className="fas fa-sign-in-alt me-2"></i>
-                                                                Connect GTA World Account
-                                                            </>
-                                                        )}
-                                                    </GtaWorldLoginButton>
-                                                </div>
-                                            )}
-                                            
-                                            {gtaAuthError && (
-                                                <div className="alert alert-warning mt-2">
-                                                    <i className="fas fa-exclamation-triangle me-2"></i>
-                                                    {gtaAuthError}
-                                                </div>
-                                            )}
-
-                                            {/* NEW: SuperAdmin Authorization Linker */}
-                                            {isGoogleAdminActive && gtaWorldUser && (
-                                                <div className="card mt-3 border-danger">
-                                                    <div className="card-header bg-danger text-white py-2">
-                                                        <h6 className="mb-0 small"><i className="fas fa-link me-2"></i>SuperAdmin Authorization</h6>
-                                                    </div>
-                                                    <div className="card-body py-2">
-                                                        <p className="small mb-2">You are currently in <strong>Dual-Auth Mode</strong>. You can link this character identity to permanent SuperAdmin access.</p>
-                                                        <div className="d-flex align-items-center justify-content-between">
-                                                            <code className="text-danger">UID: gtaw:{gtaWorldUser.id}</code>
-                                                            <div className="d-flex gap-2">
-                                                                <Button 
-                                                                    variant="outline-secondary" 
-                                                                    size="sm"
-                                                                    onClick={() => {
-                                                                        const cmd = `gtaw:${gtaWorldUser.id}`;
-                                                                        navigator.clipboard.writeText(cmd);
-                                                                        showInAppNotification(`UID ${cmd} copied to clipboard!`, 'info');
-                                                                    }}
-                                                                >
-                                                                    Copy
-                                                                </Button>
-                                                                <Button 
-                                                                    variant="danger" 
-                                                                    size="sm"
-                                                                    onClick={async () => {
-                                                                        if (!window.confirm(`Are you sure you want to GRANT PERMANENT SUPERADMIN ACCESS to ${gtaWorldUser.username} (gtaw:${gtaWorldUser.id})?`)) return;
-                                                                        try {
-                                                                            const db = getDatabase();
-                                                                            await set(ref(db, `admin_config/super_admins/uids/gtaw:${gtaWorldUser.id}`), true);
-                                                                            showInAppNotification(`Successfully granted SuperAdmin access to gtaw:${gtaWorldUser.id}`, 'success');
-                                                                        } catch (error) {
-                                                                            console.error('Failed to grant superadmin:', error);
-                                                                            showInAppNotification(`Failed to grant access: ${error.message}`, 'error');
-                                                                        }
-                                                                    }}
-                                                                >
-                                                                    Grant Access
-                                                                </Button>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="mb-3">
-                                    <h6>Firebase Functions Diagnostics</h6>
-                                    <div className="d-flex gap-2 mb-3">
-                                        <Button 
-                                            variant="info" 
-                                            size="sm"
-                                            onClick={handleTestFirebase}
-                                            disabled={!hasDatabaseAccess}
-                                            title={hasDatabaseAccess ? "Test Firebase Functions connectivity" : "Requires database access permission"}
-                                        >
-                                            <i className="fas fa-network-wired me-2"></i>
-                                            Test Firebase Functions
-                                        </Button>
-                                        <Button
-                                            variant="danger"
-                                            size="sm"
-                                            onClick={handleMigrateReports}
-                                            disabled={isMigratingReports || !hasAdminAccess}
-                                            title={hasAdminAccess ? "Migrate old report data to new structure" : "Requires admin access permission"}
-                                        >
-                                            {isMigratingReports ? (
-                                                <Spinner as="span" animation="border" size="sm" />
-                                            ) : (
-                                                <i className="fas fa-database me-2"></i>
-                                            )}
-                                            Migrate Reports
-                                        </Button>
-                                        <Button 
-                                            variant="success" 
-                                            size="sm"
-                                            onClick={handleTestProfile}
-                                            title="Get raw profile data from GTA World API"
-                                        >
-                                            <i className="fas fa-user-circle me-2"></i>
-                                            Get Raw Profile
-                                        </Button>
-                                        <GtaWorldLoginButton 
-                                            variant="warning"
-                                            size="sm"
-                                            returnPath="/admin"
-                                            disabled={gtaAuthLoading || factionLoading}
-                                            onError={(error) => showInAppNotification && showInAppNotification(`OAuth Login Test Failed: ${error}`, 'error')}
-                                            onSuccess={() => {
-                                                console.log('OAuth Login Test successful');
-                                                showInAppNotification && showInAppNotification('OAuth Login Test completed successfully!', 'success');
-                                                refreshFactionData();
-                                            }}
-                                            onInitiate={() => {
-                                                console.log('OAuth Login Test initiated');
-                                                showInAppNotification && showInAppNotification('Testing OAuth login flow...', 'info');
-                                            }}
-                                            title={gtaAuthLoading ? "Checking authentication..." : "Test OAuth login flow from this section"}
-                                        >
-                                            {gtaAuthLoading ? (
-                                                <>
-                                                    <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                                                    Checking auth...
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <i className="fas fa-sign-in-alt me-2"></i>
-                                                    Test OAuth Login
-                                                </>
-                                            )}
-                                        </GtaWorldLoginButton>
-                                        <Button 
-                                            variant="secondary" 
-                                            size="sm"
-                                            onClick={logEnvironmentInfo}
-                                            title="Log environment information to console"
-                                        >
-                                            <i className="fas fa-info-circle me-2"></i>
-                                            Log Environment Info
-                                        </Button>
-                                        <Button
-                                            variant="info"
-                                            size="sm"
-                                            onClick={() => setShowMigrator(true)}
-                                            disabled={!hasAdminAccess}
-                                            title={hasAdminAccess ? "Migrate a legacy report to the new format" : "Requires admin access permission"}
-                                        >
-                                            <i className="fas fa-magic me-2"></i>
-                                            Migrate Legacy Report (Experimental)
-                                        </Button>
-                                        <Button
-                                            variant="outline-warning"
-                                            size="sm"
-                                            onClick={handleScanLocations}
-                                            disabled={isScanningLocations || !hasAdminAccess}
-                                            title="Scan reports for unknown locations and log them for mapping."
-                                        >
-                                            {isScanningLocations ? <Spinner as="span" animation="border" size="sm" /> : <i className="fas fa-search-location me-2"></i>}
-                                            Scan for Untracked
-                                        </Button>
-                                    </div>
-
-                                    <h6 className="mt-4">Feature Toggles</h6>
-                                    <Form.Check 
-                                        type="switch"
-                                        id="map-toggle-switch"
-                                        label="Enable Map Feature"
-                                        checked={mapEnabled}
-                                        onChange={handleToggleMap}
-                                        disabled={!hasAdminAccess}
-                                    />
-
-                                    <h6 className="mt-4">Coroner Report Manual Triggers (Webhook Test)</h6>
-                                    <div className="d-flex gap-2 mb-3 flex-wrap">
-                                        <Button
-                                            variant="outline-primary"
-                                            size="sm"
-                                            onClick={() => handleTriggerCoronerReport('weekly')}
-                                            disabled={isTriggeringReport || !hasAdminAccess}
-                                        >
-                                            {isTriggeringReport ? <Spinner size="sm" /> : <i className="fas fa-calendar-week me-1"></i>} Force Weekly Report
-                                        </Button>
-                                        <Button
-                                            variant="outline-primary"
-                                            size="sm"
-                                            onClick={() => handleTriggerCoronerReport('monthly')}
-                                            disabled={isTriggeringReport || !hasAdminAccess}
-                                        >
-                                            {isTriggeringReport ? <Spinner size="sm" /> : <i className="fas fa-calendar-alt me-1"></i>} Force Monthly Report
-                                        </Button>
-                                        <Button
-                                            variant="outline-primary"
-                                            size="sm"
-                                            onClick={() => handleTriggerCoronerReport('yearly')}
-                                            disabled={isTriggeringReport || !hasAdminAccess}
-                                        >
-                                            {isTriggeringReport ? <Spinner size="sm" /> : <i className="fas fa-calendar me-1"></i>} Force Yearly Report
-                                        </Button>
-                                    </div>
                                     
-                                    {diagnosticsResult && (
-                                        <div className="card">
-                                            <div className="card-header">
-                                                <h6 className="mb-0">
-                                                    Diagnostics Results 
-                                                    <span className={`badge ms-2 ${diagnosticsResult.summary?.allTestsPassed ? 'bg-success' : 'bg-danger'}`}>
-                                                        {diagnosticsResult.summary?.allTestsPassed ? 'All Tests Passed' : 'Issues Found'}
-                                                    </span>
-                                                </h6>
+                                    <div className="col-md-6">
+                                        <div className="card h-100 bg-opacity-10 border-info">
+                                            <div className="card-header py-2 bg-transparent border-0">
+                                                <i className="fas fa-microchip me-2 text-info"></i> System Health
                                             </div>
-                                            <div className="card-body">
-                                                {diagnosticsResult.summary && (
-                                                    <div className="mb-3">
-                                                        <p><strong>Tests:</strong> {diagnosticsResult.summary.passedTests}/{diagnosticsResult.summary.totalTests} passed</p>
-                                                        {diagnosticsResult.summary.criticalIssues.length > 0 && (
-                                                            <Alert variant="danger">
-                                                                <strong>Critical Issues:</strong>
-                                                                <ul className="mb-0 mt-2">
-                                                                    {diagnosticsResult.summary.criticalIssues.map((issue, idx) => (
-                                                                        <li key={idx}><strong>{issue.test}:</strong> {issue.error}</li>
-                                                                    ))}
-                                                                </ul>
-                                                            </Alert>
-                                                        )}
-                                                    </div>
-                                                )}
-                                                <details>
-                                                    <summary>View Detailed Results</summary>
-                                                    <pre className="mt-2" style={{ fontSize: '12px', maxHeight: '300px', overflow: 'auto' }}>
-                                                        {JSON.stringify(diagnosticsResult, null, 2)}
-                                                    </pre>
-                                                </details>
+                                            <div className="card-body py-2">
+                                                <div className="d-flex align-items-center gap-2 mb-2">
+                                                    <div className="status-indicator online"></div>
+                                                    <span className="small text-light">Firebase Realtime DB: Connected</span>
+                                                </div>
+                                                {Object.entries(externalStatuses).map(([key, service]) => {
+                                                    const indicator = getStatusIndicator(service.status);
+                                                    return (
+                                                        <div key={key} className="d-flex align-items-center gap-2 mb-2">
+                                                            <div className={`status-indicator ${indicator.className}`}></div>
+                                                            <span className="small text-light">{key === 'googlecloud' ? 'Google Cloud' : key.charAt(0).toUpperCase() + key.slice(1)}: {service.description}</span>
+                                                        </div>
+                                                    );
+                                                })}
                                             </div>
                                         </div>
-                                    )}
+                                    </div>
                                 </div>
-                                <Button variant="danger" onClick={() => {
-                                    try {
-                                        null.throwError();
-                                    } catch (error) {
-                                        Sentry.captureException(error, { extra: { context: 'Test Error Button Clicked' } });
-                                        if (showInAppNotification) showInAppNotification('Test error sent to Sentry!', 'check-circle');
-                                        throw error; // Re-throw the error to trigger the global handler
-                                    }
-                                }}>
-                                    <i className="fas fa-bug"></i> Test Sentry Error
-                                </Button>
-                                <div className="mt-3">
-                                    <FirebaseFunctionsTester showInAppNotification={showInAppNotification} />
-                                </div>
+                            </div>
+                        </div>
+                    )}
 
-                                {/* HOTFIX: Local SuperAdmin Whitelist Manager */}
-                                {window.location.hostname === 'localhost' && isGoogleAdminActive && (
-                                    <div className="mt-4 border-top pt-4">
-                                        <h6 className="text-danger"><i className="fas fa-tools me-2"></i>[DEV] SuperAdmin Whitelist Manager</h6>
-                                        <p className="small text-muted">Directly manage the dynamic SuperAdmin whitelist in Realtime Database. Only visible on localhost.</p>
-                                        
-                                        <div className="row g-2">
-                                            <div className="col-md-6">
-                                                <div className="input-group input-group-sm">
-                                                    <input type="text" id="dev-ucp-name" className="form-control" placeholder="UCP Name (SuperAdmin)" />
-                                                    <Button variant="outline-danger" onClick={async () => {
-                                                        const val = document.getElementById('dev-ucp-name').value;
-                                                        if (!val) return;
-                                                        try {
-                                                            await set(ref(getDatabase(), `admin_config/super_admins/ucp_names/${val}`), true);
-                                                            showInAppNotification(`Added UCP ${val} to whitelist`, 'success');
-                                                            document.getElementById('dev-ucp-name').value = '';
-                                                        } catch (e) { showInAppNotification(e.message, 'error'); }
-                                                    }}>Add SuperAdmin (UCP)</Button>
+                    {/* Section Rendering */}
+                    <div className="section-content-wrapper">
+                        {selectedSection === 'bingo' && (
+                            hasBingoAccess ? (
+                                <div className="admin-section">
+                                    <div className="d-flex justify-content-between align-items-center mb-5">
+                                        <h2 className="mb-0 fw-800"><i className="fas fa-dice me-3 text-warning"></i>Bingo Management</h2>
+                                    </div>
+                                    <div className="card border-0 shadow-lg">
+                                        <div className="card-body p-4">
+                                            <div className="row mb-4">
+                                                <div className="col-md-6">
+                                                    <label className="form-label text-muted small uppercase fw-bold mb-2">Select Active Category</label>
+                                                    <select
+                                                        value={selectedAdminBingoType}
+                                                        onChange={(e) => setSelectedAdminBingoType(e.target.value)}
+                                                        disabled={isUpdatingDb}
+                                                        className="form-select bg-dark border-secondary text-white"
+                                                    >
+                                                        {BINGO_TYPES.map(type => (
+                                                            <option key={type.id} value={type.id}>{type.name}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                                <div className="col-md-6 d-flex align-items-end">
+                                                    <p className="text-info small mb-2 italic">
+                                                        <i className="fas fa-info-circle me-1"></i>
+                                                        Server handles daily resets automatically at 09:00 UTC.
+                                                    </p>
                                                 </div>
                                             </div>
-                                            <div className="col-md-6">
-                                                <div className="input-group input-group-sm">
-                                                    <input type="text" id="dev-uid" className="form-control" placeholder="gtaw:ID (SuperAdmin)" />
-                                                    <Button variant="outline-danger" onClick={async () => {
-                                                        const val = document.getElementById('dev-uid').value;
-                                                        if (!val) return;
-                                                        try {
-                                                            await set(ref(getDatabase(), `admin_config/super_admins/uids/${val}`), true);
-                                                            showInAppNotification(`Added UID ${val} to whitelist`, 'success');
-                                                            document.getElementById('dev-uid').value = '';
-                                                        } catch (e) { showInAppNotification(e.message, 'error'); }
-                                                    }}>Add SuperAdmin (UID)</Button>
-                                                </div>
-                                            </div>
-                                            <div className="col-md-6">
-                                                <div className="input-group input-group-sm">
-                                                    <input type="text" id="dev-email" className="form-control" placeholder="Email (SuperAdmin)" />
-                                                    <Button variant="outline-danger" onClick={async () => {
-                                                        const val = document.getElementById('dev-email').value;
-                                                        if (!val) return;
-                                                        try {
-                                                            const safeEmail = val.replace(/\./g, ',');
-                                                            await set(ref(getDatabase(), `admin_config/super_admins/emails/${safeEmail}`), true);
-                                                            showInAppNotification(`Added Email ${val} to whitelist`, 'success');
-                                                            document.getElementById('dev-email').value = '';
-                                                        } catch (e) { showInAppNotification(e.message, 'error'); }
-                                                    }}>Add SuperAdmin (Email)</Button>
-                                                </div>
-                                            </div>
-                                            <div className="col-md-6">
-                                                <div className="input-group input-group-sm">
-                                                    <input type="text" id="dev-gtaw-staff-name" className="form-control" placeholder="UCP Name (for Staff Access)" />
-                                                    <Button variant="outline-success" onClick={async () => {
-                                                        const val = document.getElementById('dev-gtaw-staff-name').value;
-                                                        if (!val) return;
-                                                        try {
-                                                            await set(ref(getDatabase(), `verified_admins/${val}`), { isGtawStaff: true });
-                                                            showInAppNotification(`Added ${val} to GTAW Staff whitelist`, 'success');
-                                                            document.getElementById('dev-gtaw-staff-name').value = '';
-                                                        } catch (e) { showInAppNotification(e.message, 'error'); }
-                                                    }}>Add Staff</Button>
-                                                </div>
+
+                                            <div className="d-flex flex-wrap gap-2">
+                                                <Button variant="secondary" onClick={handleManualResetAllBingoCards} disabled={isUpdatingDb} className="admin-btn">
+                                                    {isUpdatingDb ? <Spinner animation="border" size="sm" /> : <><i className="fas fa-bomb me-2"></i>Reset All Cards</>}
+                                                </Button>
+                                                <Button variant="primary" onClick={handleGenerateNewBingoCard} disabled={isUpdatingDb} className="admin-btn">
+                                                    {isUpdatingDb ? <Spinner animation="border" size="sm" /> : <><i className="fas fa-sync-alt me-2"></i>Generate New Card</>}
+                                                </Button>
+                                                <Button variant="danger" onClick={handleClearBingoActivity} disabled={isUpdatingDb} className="admin-btn">
+                                                    {isUpdatingDb ? <Spinner animation="border" size="sm" /> : <><i className="fas fa-trash-alt me-2"></i>Clear Activity Log</>}
+                                                </Button>
+                                                <Button variant="warning" onClick={handleDisableBingoCard} disabled={isUpdatingDb} className="admin-btn">
+                                                    {isUpdatingDb ? <Spinner animation="border" size="sm" /> : <><i className="fas fa-power-off me-2"></i>Disable Card</>}
+                                                </Button>
+                                                <Button variant="info" onClick={() => setShowEditBingoPhrasesModal(true)} disabled={isUpdatingDb || !selectedAdminBingoType} className="admin-btn text-white">
+                                                    <i className="fas fa-edit me-2"></i>Edit {selectedTypeForEdit?.name || 'Master'} Phrases
+                                                </Button>
+                                                <Button variant="outline-warning" onClick={() => setShowReviewPhrasesModal(true)} disabled={isUpdatingDb} className="admin-btn">
+                                                    <i className="fas fa-inbox me-2"></i>Review Requests
+                                                </Button>
                                             </div>
                                         </div>
                                     </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-                    {selectedSection === 'factions' && (
-                        <div className="card">
-                            <div className="card-header">
-                                <h3>Faction Data Management</h3>
-                            </div>
-                            <div className="card-body">
-                                {isGtaAuthenticated || currentUser ? (
-                                    hasFactionUpload ? (
-                                        <div>
-                                            <p className="text-muted mb-4">
-                                                Upload and manage faction member data for access control and reporting.
-                                            </p>
-                                            <FactionDataUpload showNotification={showInAppNotification} />
+                                </div>
+                            ) : (
+                                <div className="admin-section">
+                                    <div className="alert alert-danger border-0 bg-opacity-25 shadow-sm p-4">
+                                        <div className="d-flex gap-3 align-items-center">
+                                            <i className="fas fa-exclamation-triangle fa-2x"></i>
+                                            <div>
+                                                <h5 className="mb-1 fw-bold">Unauthorized Access</h5>
+                                                <p className="mb-0 text-muted">Your current faction rank ({factionData?.scriptRank || 'N/A'}) does not have permission to manage bingo activities. Required: Rank 14+.</p>
+                                            </div>
                                         </div>
-                                    ) : (
-                                        <div className="alert alert-warning">
-                                            <i className="fas fa-exclamation-triangle me-2"></i>
-                                            <strong>Access Denied:</strong> Your current faction rank ({factionData?.scriptRank || 'N/A'}) does not have permission to upload faction data.
-                                            <br />
-                                            <small>Required: Script Rank 10 or higher</small>
-                                        </div>
-                                    )
-                                ) : (
-                                    <div className="alert alert-info">
-                                        <i className="fas fa-info-circle me-2"></i>
-                                        Please log in with your GTA World account to access faction management features.
                                     </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-                    {selectedSection === 'database' && (
-                        <div className="card">
-                            <div className="card-header">Database Editor</div>
-                            <div className="card-body">
-                                {isGtaAuthenticated || currentUser ? (
-                                    hasDatabaseAccess ? (
-                                        <DatabaseEditor 
-    showNotification={showInAppNotification} 
-    currentUser={currentUser} 
-    gtawUser={gtaWorldUser} 
-/>
-                                    ) : (
-                                        <div className="alert alert-warning">
-                                            <i className="fas fa-exclamation-triangle me-2"></i>
-                                            <strong>Access Denied:</strong> Your current faction rank ({factionData?.scriptRank || 'N/A'}) does not have database access permissions.
-                                            <br />
-                                            <small>Required: Script Rank 12 or higher</small>
-                                        </div>
-                                    )
-                                ) : (
-                                    <div className="alert alert-info">
-                                        <i className="fas fa-info-circle me-2"></i>
-                                        Please log in with your GTA World account to access database management features.
+                                </div>
+                            )
+                        )}
+
+                        {selectedSection === 'metrics' && (
+                            hasUsersAccess ? <MetricsDashboard /> : <div className="admin-section"><div className="alert alert-danger border-0 bg-opacity-25 shadow-sm p-4">Access Denied</div></div>
+                        )}
+
+                        {selectedSection === 'agencyIncidents' && (
+                            hasAgencyIncidentAccess ? <AgencyIncidentManager /> : <div className="admin-section"><div className="alert alert-danger border-0 bg-opacity-25 shadow-sm p-4">Access Denied</div></div>
+                        )}
+
+                        {selectedSection === 'employeeManager' && (
+                            hasEmployeeManagerAccess ? <EmployeeManager /> : <div className="admin-section"><div className="alert alert-danger border-0 bg-opacity-25 shadow-sm p-4">Access Denied</div></div>
+                        )}
+
+                        {selectedSection === 'lscc' && (
+                            hasLsccManagerAccess ? <div className="dark"><LsccManager /></div> : <div className="admin-section"><div className="alert alert-danger border-0 bg-opacity-25 shadow-sm p-4">Access Denied</div></div>
+                        )}
+
+                        {selectedSection === 'forms' && (
+                            hasFormsManagerAccess ? <FormsManager currentUser={currentUser} /> : <div className="admin-section"><div className="alert alert-danger border-0 bg-opacity-25 shadow-sm p-4">Access Denied</div></div>
+                        )}
+
+                        {selectedSection === 'webhooks' && (
+                            hasWebhookAccess ? (
+                                <div className="admin-section">
+                                    <div className="d-flex justify-content-between align-items-center mb-5">
+                                        <h2 className="mb-0 fw-800"><i className="fas fa-bullhorn me-3 text-indigo"></i>Webhook Management</h2>
+                                        <span className="admin-badge admin-badge-indigo">{webhooks.length} Registered</span>
                                     </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-                </div>
+                                    <div className="row g-4">
+                                        <div className="col-lg-5">
+                                            <div className="card h-100 border-0 shadow-sm">
+                                                <div className="card-header bg-transparent py-3 small text-muted uppercase fw-bold">Register Webhook</div>
+                                                <div className="card-body p-4">
+                                                    <div className="form-group mb-3">
+                                                        <label className="form-label small text-muted">Friendly Name</label>
+                                                        <input type="text" className="form-control bg-dark border-secondary text-white" placeholder="e.g., Dispatch Alerts" value={newWebhook.name} onChange={(e) => setNewWebhook(prev => ({ ...prev, name: e.target.value }))} />
+                                                    </div>
+                                                    <div className="form-group mb-3">
+                                                        <label className="form-label small text-muted">Webhook URL</label>
+                                                        <input type="url" className="form-control bg-dark border-secondary text-white font-monospace small" placeholder="https://discord.com/..." value={newWebhook.url} onChange={(e) => setNewWebhook(prev => ({ ...prev, url: e.target.value }))} />
+                                                    </div>
+                                                    <div className="form-group mb-4">
+                                                        <label className="form-label small text-muted">Event Type</label>
+                                                        <select className="form-select bg-dark border-secondary text-white" value={newWebhook.type} onChange={(e) => setNewWebhook(prev => ({ ...prev, type: e.target.value }))}>
+                                                            <option value="coronerAlerts">Coroner Alerts</option>
+                                                            <option value="phmcAlerts">PHMC Alerts</option>
+                                                            <option value="dev">Local Dev Alerts</option>
+                                                        </select>
+                                                    </div>
+                                                    <Button variant="primary" onClick={handleAddWebhook} disabled={isUpdatingWebhooks || !newWebhook.name || !newWebhook.url} className="w-100 py-2 admin-btn fw-bold">
+                                                        {isUpdatingWebhooks ? <Spinner animation="border" size="sm" /> : <><i className={`fas ${newWebhook.id ? 'fa-save' : 'fa-plus'} me-2`}></i>{newWebhook.id ? "Update Webhook" : "Register Webhook"}</>}
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="col-lg-7">
+                                            <div className="admin-modern-table mb-0 h-100">
+                                                <Table hover responsive className="mb-0">
+                                                    <thead>
+                                                        <tr><th>Target Name</th><th>Type</th><th className="text-end">Actions</th></tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {webhooks.map((webhook) => (
+                                                            <tr key={webhook.id}>
+                                                                <td className="fw-bold">{webhook.name}</td>
+                                                                <td><span className={`admin-badge ${webhook.type === 'coronerAlerts' ? 'admin-badge-danger' : 'admin-badge-indigo'}`}>{webhook.type}</span></td>
+                                                                <td className="text-end">
+                                                                    <div className="btn-group">
+                                                                        <Button variant="link" className="text-info p-1" onClick={() => handleTestWebhook(webhook)}><i className="fas fa-paper-plane"></i></Button>
+                                                                        <Button variant="link" className="text-warning p-1" onClick={() => setNewWebhook(webhook)}><i className="fas fa-edit"></i></Button>
+                                                                        <Button variant="link" className="text-danger p-1" onClick={() => handleDeleteWebhook(webhook.id)}><i className="fas fa-trash"></i></Button>
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </Table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <WebhookProvider>
+                                        <div className="card border-0 shadow-sm mt-5">
+                                            <div className="card-header bg-transparent py-3">
+                                                <h4 className="mb-0 text-indigo fw-bold small uppercase"><i className="fas fa-paper-plane me-2"></i>Send Webhook Announcement</h4>
+                                            </div>
+                                            <div className="card-body p-4">
+                                                <WebhookManager />
+                                            </div>
+                                        </div>
+                                    </WebhookProvider>
+                                </div>
+                            ) : <div className="admin-section"><div className="alert alert-warning border-0 bg-opacity-25 shadow-sm p-4">Webhook Access Denied</div></div>
+                        )}
+
+                        {selectedSection === 'dev' && <div className="admin-section"><FirebaseFunctionsTester showInAppNotification={showInAppNotification} /></div>}
+
+                        {selectedSection === 'factions' && (
+                            hasFactionUpload ? <FactionDataUpload showNotification={showInAppNotification} /> : <div className="admin-section"><div className="alert alert-warning border-0 bg-opacity-25 shadow-sm p-4">Denied</div></div>
+                        )}
+
+                        {selectedSection === 'database' && (
+                            hasDatabaseAccess ? <DatabaseEditor showNotification={showInAppNotification} currentUser={currentUser} gtawUser={gtaWorldUser} /> : <div className="admin-section"><div className="alert alert-warning border-0 bg-opacity-25 shadow-sm p-4">Denied</div></div>
+                        )}
+
+                        {selectedSection === 'morgue' && (
+                            hasDatabaseAccess ? <MorgueManager showNotification={showInAppNotification} /> : <div className="admin-section"><div className="alert alert-warning border-0 bg-opacity-25 shadow-sm p-4">Denied</div></div>
+                        )}
+                    </div>
+                </main>
             </div>
+            <style>{`
+                .status-indicator { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+                .status-indicator.online { background-color: var(--admin-success); box-shadow: 0 0 8px var(--admin-success); }
+                .status-indicator.degraded { background-color: #ffc107; box-shadow: 0 0 8px #ffc107; }
+                .status-indicator.offline { background-color: #dc3545; box-shadow: 0 0 8px #dc3545; }
+                .status-indicator.unknown { background-color: #6c757d; }
+                .text-indigo { color: var(--admin-accent) !important; }
+                .border-indigo { border-color: var(--admin-accent) !important; }
+                .bg-indigo { background-color: var(--admin-accent) !important; }
+                .uppercase { text-transform: uppercase; }
+                .italic { font-style: italic; }
+            `}</style>
         </div>
     );
 };

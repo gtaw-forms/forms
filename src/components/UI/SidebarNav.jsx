@@ -80,6 +80,14 @@ const SidebarNav = ({
           <i className="fas fa-tachometer-alt"></i> EMS Dashboard
         </button>
 
+        <button className={panelStyles.panelButton} onClick={() => handleAction(() => navigate('/shop'))}>
+          <i className="fas fa-shopping-cart"></i> Shop
+        </button>
+
+        <button className={panelStyles.panelButton} onClick={() => handleAction(() => navigate('/morgue'))}>
+          <i className="fas fa-microscope"></i> Morgue Intake
+        </button>
+
         <button className={panelStyles.panelButton} onClick={() => handleAction(() => navigate('/'))}>
           <i className="fas fa-file-medical"></i> Form Handler
         </button>

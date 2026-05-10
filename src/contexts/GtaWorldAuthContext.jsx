@@ -205,28 +205,6 @@ export const GtaWorldAuthProvider = ({ children }) => {
             const names = extractNames(characterData.characterName || characterData.name);
             const finalName = characterData.characterName || characterData.name || (characterData.firstname ? `${characterData.firstname} ${characterData.lastname || ''}`.trim() : null) || 'Unknown';
 
-            // Capture debug data if character appears to be faction member but match failed
-            if (!factionMatch && factionChars.length > 0 && user?.isFactionMember) {
-                Sentry.captureMessage('Faction character lookup failed - potential ID mismatch', {
-                    level: 'warning',
-                    extra: {
-                        userId: user?.id,
-                        username: user?.username,
-                        characterName: finalName,
-                        characterId: charId,
-                        characterIdType: typeof (characterData.characterId || characterData.id),
-                        factionCharsCount: factionChars.length,
-                        factionCharsIdTypes: factionChars.map(fc => ({
-                            id: String(fc.character?.characterId || fc.id),
-                            type: typeof (fc.character?.characterId || fc.id),
-                            name: fc.character?.characterName || fc.characterName || fc.name
-                        })),
-                        sourceCharsLength: sourceChars.length,
-                        context: 'swappableCharacters memo - Non Faction Member error'
-                    }
-                });
-            }
-
             return {
                 id: charId,
                 characterId: charId,

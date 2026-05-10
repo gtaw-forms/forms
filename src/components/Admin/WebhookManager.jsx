@@ -2,7 +2,7 @@ import { logAdminAction, getUserContext } from '../../utils/adminLogger';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import React, { useState, useEffect } from 'react';
 import { useWebhook } from '../../contexts/WebhookProvider';
-import { Form, Button, Alert } from 'react-bootstrap';
+import { Form, Button, Alert, Spinner } from 'react-bootstrap';
 import { getDatabase, ref, get } from 'firebase/database';
 
 const WebhookManager = () => {
@@ -189,212 +189,166 @@ const WebhookManager = () => {
     const resultToShow = customResult || sendResult;
 
     return (
-        <div className="webhook-manager-container">
+        <div className="admin-section">
             {resultToShow && (
-                <Alert variant={resultToShow.success ? "success" : "danger"} className="mb-3">
-                    <i className={`fas ${resultToShow.success ? 'fa-check' : 'fa-exclamation-triangle'} me-2`}></i>
+                <Alert variant={resultToShow.success ? "success" : "danger"} className="border-0 shadow-sm mb-4">
+                    <i className={`fas ${resultToShow.success ? 'fa-check-circle' : 'fa-exclamation-triangle'} me-2`}></i>
                     {resultToShow.message}
                 </Alert>
             )}
             
-            {/* Webhook Selection */}
-            <div className="form-group mb-3">
-                <label className="form-label">
-                    <i className="fas fa-bullhorn me-2"></i>Select Webhook Destination
-                </label>
-                <Form.Select
-                    value={selectedWebhookId}
-                    onChange={(e) => setSelectedWebhookId(e.target.value)}
-                >
-                    <option value="">Default Webhooks (Dev/PHMC)</option>
-                    {availableWebhooks.map((webhook) => (
-                        <option key={webhook.id} value={webhook.id}>
-                            {webhook.name} ({webhook.type})
-                        </option>
-                    ))}
-                </Form.Select>
-                <small className="form-text text-muted">
-                    {selectedWebhookId ? 'Sending to selected custom webhook' : 'Sending to default environment webhooks'}
-                </small>
-            </div>
-            
-            <div className="webhook-form">
-                <div className="form-group mb-3">
-                    <label className="form-label" htmlFor="webhookEmbedTitle">
-                        <i className="fas fa-heading me-2"></i>Embed Title
-                    </label>
-                    <Form.Control
-                        type="text"
-                        id="webhookEmbedTitle"
-                        placeholder={titlePlaceholder}
-                        value={webhookTitle}
-                        onChange={(e) => setWebhookTitle(e.target.value)}
-                        autoComplete="off"
-                    />
+            <div className="row g-4">
+                <div className="col-12">
+                    <div className="form-group mb-4">
+                        <label className="form-label small text-muted uppercase fw-bold mb-2">
+                            <i className="fas fa-bullhorn me-2 text-indigo"></i>Target Destination
+                        </label>
+                        <Form.Select
+                            className="bg-dark border-secondary text-white py-2"
+                            value={selectedWebhookId}
+                            onChange={(e) => setSelectedWebhookId(e.target.value)}
+                        >
+                            <option value="">Default System Webhooks (Production)</option>
+                            {availableWebhooks.map((webhook) => (
+                                <option key={webhook.id} value={webhook.id}>
+                                    {webhook.name} [{webhook.type}]
+                                </option>
+                            ))}
+                        </Form.Select>
+                        <div className="mt-2 text-muted italic small">
+                            {selectedWebhookId ? 'Broadcasting to selected high-priority endpoint' : 'Broadcasting to default environment alerts'}
+                        </div>
+                    </div>
                 </div>
-                
-                <div className="form-group mb-3">
-                    <label className="form-label" htmlFor="webhookMessageTextarea">
-                        <i className="fas fa-align-left me-2"></i>Embed Body
-                    </label>
-                    <Form.Control
-                        as="textarea"
-                        id="webhookMessageTextarea"
-                        rows={4}
-                        placeholder={messagePlaceholder}
-                        value={webhookMessage}
-                        onChange={(e) => setWebhookMessage(e.target.value)}
-                        autoComplete="off"
-                    />
-                    <small className="form-text text-muted">
-                        Supports basic Markdown. Media links will be appended automatically.
-                    </small>
-                </div>
-                
-                <div className="form-group mb-3">
-                    <label className="form-label" htmlFor="webhookUrlInput">
-                        <i className="fas fa-link me-2"></i>Add Media URL
-                    </label>
-                    <div className="input-group">
-                        <input
-                            type="url"
-                            id="webhookUrlInput"
-                            className="form-control"
-                            placeholder="Paste Image or Streamable URL..."
-                            value={urlInput}
-                            onChange={(e) => setUrlInput(e.target.value)}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter') { 
-                                    e.preventDefault(); 
-                                    handleAddUrl(); 
-                                }
-                            }}
+
+                <div className="col-md-6">
+                    <div className="form-group mb-3">
+                        <label className="form-label small text-muted uppercase fw-bold mb-2" htmlFor="webhookEmbedTitle">
+                            <i className="fas fa-heading me-2"></i>Announcement Title
+                        </label>
+                        <Form.Control
+                            className="bg-dark border-secondary text-white"
+                            type="text"
+                            id="webhookEmbedTitle"
+                            placeholder={titlePlaceholder}
+                            value={webhookTitle}
+                            onChange={(e) => setWebhookTitle(e.target.value)}
                             autoComplete="off"
                         />
-                        <button 
-                            type="button" 
-                            className="btn btn-outline-secondary" 
-                            onClick={handleAddUrl}
-                            disabled={!urlInput.trim()}
-                        >
-                            <i className="fas fa-plus"></i>
-                        </button>
                     </div>
-                </div>
-                
-                <div className="form-group mb-3">
-                    <label className="form-label">
-                        <i className="fas fa-upload me-2"></i>Upload Images
-                    </label>
-                    <div className="d-grid">
-                        <button
-                            type="button"
-                            className={`btn btn-outline-primary ${isUploading ? 'disabled' : ''}`}
-                            disabled={isUploading}
-                            onClick={() => document.getElementById('webhook-image-input-manager').click()}
-                        >
-                            <i className={`fas ${isUploading ? 'fa-spinner fa-spin' : 'fa-upload'} me-2`}></i>
-                            {isUploading ? 'Uploading...' : 'Upload Image(s)'}
-                        </button>
-                        <input
-                            id="webhook-image-input-manager"
-                            type="file"
-                            accept="image/*"
-                            multiple
-                            style={{ display: 'none' }}
-                            onChange={handleLocalImageUpload}
-                        />
-                    </div>
-                    <small className="form-text text-muted">
-                        Upload one or more images. Hosted by ImgBB.
-                    </small>
-                </div>
-                
-                {mediaUrls.length > 0 && (
+                    
                     <div className="form-group mb-3">
-                        <label className="form-label">
-                            <i className="fas fa-images me-2"></i>Added Media ({mediaUrls.length})
+                        <label className="form-label small text-muted uppercase fw-bold mb-2" htmlFor="webhookMessageTextarea">
+                            <i className="fas fa-align-left me-2"></i>Announcement Body
                         </label>
-                        <div className="webhook-media-preview d-flex flex-wrap gap-2 mb-2">
-                            {mediaUrls.map((url, index) => (
-                                <div key={index} className="webhook-media-item">
-                                    {isImageUrl(url) ? (
-                                        <img
-                                            src={url}
-                                            alt={`Preview ${index + 1}`}
-                                            className="webhook-media-image rounded"
-                                            title={url}
-                                            onClick={() => window.open(url, '_blank')}
-                                            style={{ 
-                                                cursor: 'pointer',
-                                                width: '60px',
-                                                height: '60px',
-                                                objectFit: 'cover'
-                                            }}
-                                        />
-                                    ) : isStreamableUrl(url) ? (
-                                        <div
-                                            className="webhook-media-link btn btn-outline-info btn-sm"
-                                            title={url}
-                                            onClick={() => window.open(url, '_blank')}
-                                            style={{ cursor: 'pointer' }}
-                                        >
-                                            <i className="fas fa-video me-1"></i>
-                                            Video
-                                        </div>
-                                    ) : (
-                                        <div
-                                            className="webhook-media-link btn btn-outline-secondary btn-sm"
-                                            title={url}
-                                            onClick={() => window.open(url, '_blank')}
-                                            style={{ cursor: 'pointer' }}
-                                        >
-                                            <i className="fas fa-link me-1"></i>
-                                            Link
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
+                        <Form.Control
+                            className="bg-dark border-secondary text-white"
+                            as="textarea"
+                            id="webhookMessageTextarea"
+                            rows={6}
+                            placeholder={messagePlaceholder}
+                            value={webhookMessage}
+                            onChange={(e) => setWebhookMessage(e.target.value)}
+                            autoComplete="off"
+                        />
+                        <div className="mt-2 text-muted small">
+                            Markdown supported. Standard headers will be appended automatically.
                         </div>
-                        <button
-                            type="button"
-                            className="btn btn-sm btn-outline-danger"
-                            onClick={clearMedia}
-                            title="Clear All Media"
-                        >
-                            <i className="fas fa-trash me-1"></i>
-                            Clear All ({mediaUrls.length})
-                        </button>
                     </div>
-                )}
+                </div>
 
-                <div className="d-grid mt-4">
+                <div className="col-md-6">
+                    <div className="form-group mb-4">
+                        <label className="form-label small text-muted uppercase fw-bold mb-2" htmlFor="webhookUrlInput">
+                            <i className="fas fa-link me-2"></i>External Asset Link
+                        </label>
+                        <div className="input-group">
+                            <Form.Control
+                                type="url"
+                                id="webhookUrlInput"
+                                className="bg-dark border-secondary text-white font-monospace small"
+                                placeholder="Paste asset URL..."
+                                value={urlInput}
+                                onChange={(e) => setUrlInput(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddUrl(); } }}
+                                autoComplete="off"
+                            />
+                            <Button variant="outline-primary" onClick={handleAddUrl} disabled={!urlInput.trim()}>
+                                <i className="fas fa-plus"></i>
+                            </Button>
+                        </div>
+                    </div>
+                    
+                    <div className="form-group mb-4">
+                        <label className="form-label small text-muted uppercase fw-bold mb-2">
+                            <i className="fas fa-upload me-2"></i>Upload Visual Assets
+                        </label>
+                        <div className="d-grid">
+                            <Button
+                                variant="outline-info"
+                                className="py-3 admin-btn border-dashed"
+                                disabled={isUploading}
+                                onClick={() => document.getElementById('webhook-image-input-manager').click()}
+                            >
+                                {isUploading ? (
+                                    <><Spinner animation="border" size="sm" className="me-2" /> Processing...</>
+                                ) : (
+                                    <><i className="fas fa-cloud-upload-alt me-2"></i>Attach Images</>
+                                )}
+                            </Button>
+                            <input id="webhook-image-input-manager" type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={handleLocalImageUpload} />
+                        </div>
+                    </div>
+                    
+                    {mediaUrls.length > 0 && (
+                        <div className="form-group mb-3">
+                            <label className="form-label small text-muted uppercase fw-bold mb-2">
+                                <i className="fas fa-images me-2"></i>Linked Assets ({mediaUrls.length})
+                            </label>
+                            <div className="d-flex flex-wrap gap-2 mb-3">
+                                {mediaUrls.map((url, index) => (
+                                    <div key={index} className="position-relative">
+                                        {isImageUrl(url) ? (
+                                            <img src={url} alt="asset" className="rounded border border-secondary" style={{ width: '60px', height: '60px', objectFit: 'cover' }} />
+                                        ) : (
+                                            <div className="btn btn-dark btn-sm rounded font-monospace small px-2 py-3" style={{ height: '60px' }}>
+                                                {url.includes('streamable') ? 'VIDEO' : 'LINK'}
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                            <Button variant="outline-danger" size="sm" onClick={clearMedia} className="admin-btn small"><i className="fas fa-trash me-2"></i>Clear Assets</Button>
+                        </div>
+                    )}
+                </div>
+
+                <div className="col-12 mt-4">
                     <Button 
                         variant="primary"
-                        size="lg"
+                        className="w-100 py-3 admin-btn shadow-lg fw-bold"
                         onClick={handleSendWebhook}
                         disabled={!canSend || isSending || customSending}
                     >
-                        {(isSending || customSending) ? (
+                        {isSending || customSending ? (
                             <>
-                                <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                                Sending Webhook...
+                                <Spinner as="span" animation="border" size="sm" className="me-2" /> Broadcasting...
                             </>
                         ) : (
                             <>
                                 <i className="fas fa-paper-plane me-2"></i>
-                                Send to {selectedWebhookId ? availableWebhooks.find(w => w.id === selectedWebhookId)?.name || 'Selected' : 'Default'} Webhook
+                                Send to {selectedWebhookId ? availableWebhooks.find(w => w.id === selectedWebhookId)?.name || 'Endpoint' : 'System Alerts'}
                             </>
                         )}
                     </Button>
+                    {!canSend && <div className="text-center text-muted small mt-3 italic">Select destination and provide message body or assets to enable broadcast.</div>}
                 </div>
-                
-                {!canSend && (
-                    <small className="text-muted text-center d-block mt-2">
-                        Add a title, message, or media to enable sending
-                    </small>
-                )}
             </div>
+            <style>{`
+                .uppercase { text-transform: uppercase; }
+                .italic { font-style: italic; }
+                .border-dashed { border-style: dashed !important; border-width: 2px !important; }
+            `}</style>
         </div>
     );
 };
