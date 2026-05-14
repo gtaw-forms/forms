@@ -1,6 +1,7 @@
 import { httpsCallable } from 'firebase/functions';
 import { signInWithCustomToken, signOut } from 'firebase/auth';
-import { functions, auth } from '../firebase';
+import { ref, get } from 'firebase/database';
+import { functions, auth, database } from '../firebase';
 import * as Sentry from "@sentry/react";
 import { getCharacterID, getCharacterName } from '../utils/characterUtils';
 import { logAuthErrorToDiscord } from '../utils/authLogger';
@@ -237,10 +238,9 @@ export const handleOAuthCallback = async (code, state, onSuccess, onError, onPro
             localStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(result.userData));
             sessionStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, result.accessToken);
             
-            // Persistence enhancement: If user opted-in to "Stay Logged In", store token in localStorage
-            if (localStorage.getItem('phmc_gtaw_oauth_persist_enabled') === 'true') {
-                localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, result.accessToken);
-            }
+            // Persistence: Store token in localStorage for cross-session access (enabled by default)
+            localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, result.accessToken);
+            localStorage.setItem('phmc_gtaw_oauth_persist_enabled', 'true');
             
             sessionStorage.removeItem(STORAGE_KEYS.OAUTH_STATE);
             sessionStorage.removeItem(STORAGE_KEYS.OAUTH_REQUEST_LOCK);
@@ -387,6 +387,21 @@ export const validateSession = async () => {
     if (user?.id && user?.username) return { valid: true, userData: user };
     logout();
     return { valid: false };
+};
+
+export const checkFactionMembershipInDb = async (characterIds) => {
+    const ids = Array.isArray(characterIds) ? characterIds.filter(Boolean).map(String) : [];
+    if (ids.length === 0) return null;
+    try {
+        const membersRef = ref(database, 'factions/364/members');
+        const snapshot = await get(membersRef);
+        if (!snapshot.exists()) return false;
+        const members = snapshot.val();
+        return ids.some(id => !!members[id]);
+    } catch (error) {
+        console.error('[GTA Auth] Faction membership DB check failed:', error);
+        return null;
+    }
 };
 
 export const hasPermission = (perm) => isGoogleAuthenticated() || (getStoredUserData()?.permissions?.includes(perm) ?? false);

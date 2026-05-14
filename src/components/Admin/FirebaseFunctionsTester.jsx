@@ -16,7 +16,13 @@ import {
     triggerManualMaintenance
 } from '../../services/firebaseFunctions';
 
+import { database } from '../../firebase';
+import { ref, set } from 'firebase/database';
+import { logAdminAction, getUserContext } from '../../utils/adminLogger'; // Adjust path if needed, assuming it's available in context
+import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
+
 const FirebaseFunctionsTester = ({ showInAppNotification }) => {
+    const { user: gtawUser, username: gtawUsername } = useGtaWorldAuth();
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState(null);
     const [authCode, setAuthCode] = useState('');
@@ -29,6 +35,41 @@ const FirebaseFunctionsTester = ({ showInAppNotification }) => {
     const [characterIds, setCharacterIds] = useState('');
     const [externalUrl, setExternalUrl] = useState('https://phmc.gta.world/viewforum.php?f=265');
     const [cookie, setCookie] = useState('');
+
+    const handleTriggerGlobalKillSwitch = async () => {
+        const confirmFirst = window.confirm("EXTREMELY DANGEROUS: Are you sure you want to trigger a GLOBAL STORAGE CLEARANCE?\n\nThis will FORCE EVERY USER to log out and clear their local/session storage instantly \n\n Only use this for critical security fixes.");
+        if (!confirmFirst) return;
+
+        const confirmSecond = window.prompt("To confirm, type 'PURGE' in all caps below:");
+        if (confirmSecond !== 'PURGE') return;
+
+        setLoading(true);
+        try {
+            const { userAgent, timeZone } = getUserContext();
+            const killSwitchRef = ref(database, 'appMetadata/globalKillSwitch');
+            const timestamp = Date.now();
+            
+            await set(killSwitchRef, timestamp);
+
+            logAdminAction(
+                gtawUsername || 'Unknown Admin',
+                'Triggered Global Kill-Switch',
+                `Action: Global Storage Purge triggered at ${new Date(timestamp).toISOString()}`,
+                'Security/Developer Tools',
+                userAgent,
+                timeZone,
+                gtawUsername,
+                gtawUser
+            );
+
+            showInAppNotification('GLOBAL KILL-SWITCH TRIGGERED. Every client will now be purged.', 'success');
+        } catch (err) {
+            console.error('[Kill-Switch] Trigger failed:', err);
+            showInAppNotification(`Failed to trigger kill-switch: ${err.message}`, 'error');
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const handleTriggerFunction = async (func, ...args) => {
         setLoading(true);
@@ -52,64 +93,6 @@ const FirebaseFunctionsTester = ({ showInAppNotification }) => {
             <div className="card-body">
                 <p className="text-muted small">Scheduled functions (dailyTaskHandler, weeklyDuplicateReportsCleanup) cannot be triggered directly from the client. Use Firebase Console or CLI for manual triggers.</p>
                 
-                <h4 className="mt-3">OAuth & Token Management</h4>
-                <div className="d-flex flex-wrap gap-2 mb-3">
-                    <Form.Control type="text" placeholder="Auth Code" value={authCode} onChange={(e) => setAuthCode(e.target.value)} className="w-auto" />
-                    <Form.Control type="text" placeholder="Redirect URI" value={redirectUri} onChange={(e) => setRedirectUri(e.target.value)} className="w-auto" />
-                    <Button variant="primary" size="sm" onClick={() => handleTriggerFunction(triggerExchangeAuthCodeForToken, { code: authCode, redirectUri })} disabled={loading || !authCode || !redirectUri}>
-                        {loading ? <Spinner as="span" animation="border" size="sm" /> : 'exchangeAuthCodeForToken'}
-                    </Button>
-                    <Button variant="primary" size="sm" onClick={() => handleTriggerFunction(triggerGetTokenForSecrets, { code: authCode, redirectUri })} disabled={loading || !authCode || !redirectUri}>
-                        {loading ? <Spinner as="span" animation="border" size="sm" /> : 'getTokenForSecrets'}
-                    </Button>
-                    <Button variant="primary" size="sm" onClick={() => handleTriggerFunction(triggerGetManagedGtaWorldToken)} disabled={loading}>
-                        {loading ? <Spinner as="span" animation="border" size="sm" /> : 'getManagedGtaWorldToken'}
-                    </Button>
-                    <Button variant="primary" size="sm" onClick={() => handleTriggerFunction(triggerGetProfileWithManagedToken)} disabled={loading}>
-                        {loading ? <Spinner as="span" animation="border" size="sm" /> : 'getProfileWithManagedToken'}
-                    </Button>
-                </div>
-
-                <h7 className="mt-3">Profile & Validation</h7>
-                <div className="d-flex flex-wrap gap-2 mb-3">
-                    <Form.Control type="text" placeholder="Access Token" value={accessToken} onChange={(e) => setAccessToken(e.target.value)} className="w-auto" />
-                    <Button variant="primary" size="sm" onClick={() => handleTriggerFunction(triggerValidateGtaWorldToken, { accessToken })} disabled={loading || !accessToken}>
-                        {loading ? <Spinner as="span" animation="border" size="sm" /> : 'validateGtaWorldToken'}
-                    </Button>
-                    <Button variant="primary" size="sm" onClick={() => handleTriggerFunction(triggerGetCachedGtaWorldProfile, { accessToken })} disabled={loading || !accessToken}>
-                        {loading ? <Spinner as="span" animation="border" size="sm" /> : 'getCachedGtaWorldProfile'}
-                    </Button>
-                    <Button variant="primary" size="sm" onClick={() => handleTriggerFunction(triggerGetGtaWorldProfile, { accessToken })} disabled={loading || !accessToken}>
-                        {loading ? <Spinner as="span" animation="border" size="sm" /> : 'getGtaWorldProfile'}
-                    </Button>
-                </div>
-
-                <h7 className="mt-3">Faction Data Management</h7>
-                <div className="d-flex flex-wrap gap-2 mb-3">
-                    <Form.Control type="text" placeholder="Character ID (single)" value={characterId} onChange={(e) => setCharacterId(e.target.value)} className="w-auto" />
-                    <Form.Control type="text" placeholder="Faction ID (default: 364)" value={factionId} onChange={(e) => setFactionId(e.target.value)} className="w-auto" />
-                    <Button variant="primary" size="sm" onClick={() => handleTriggerFunction(triggerCheckFactionMembership, { characterId: parseInt(characterId), factionId: parseInt(factionId), accessToken })} disabled={loading || !characterId || !factionId}>
-                        {loading ? <Spinner as="span" animation="border" size="sm" /> : 'checkFactionMembership'}
-                    </Button>
-                    <Form.Control type="text" placeholder="Character IDs (comma-separated)" value={characterIds} onChange={(e) => setCharacterIds(e.target.value)} className="w-auto" />
-                    <Button variant="primary" size="sm" onClick={() => handleTriggerFunction(triggerBatchCheckFactionMembership, { characterIds: characterIds.split(',').map(id => parseInt(id.trim())), factionId: parseInt(factionId), accessToken })} disabled={loading || !characterIds || !factionId}>
-                        {loading ? <Spinner as="span" animation="border" size="sm" /> : 'batchCheckFactionMembership'}
-                    </Button>
-                    <Form.Control type="text" placeholder="Faction Data (JSON array)" value={factionData} onChange={(e) => setFactionData(e.target.value)} className="w-auto" />
-                    <Form.Control type="text" placeholder="Metadata (JSON object)" value={metadata} onChange={(e) => setMetadata(e.target.value)} className="w-auto" />
-                    <Button variant="primary" size="sm" onClick={() => handleTriggerFunction(triggerUploadFactionData, { factionData: JSON.parse(factionData), metadata: JSON.parse(metadata) })} disabled={loading || !factionData || !metadata}>
-                        {loading ? <Spinner as="span" animation="border" size="sm" /> : 'uploadFactionData'}
-                    </Button>
-                </div>
-
-                <h7 className="mt-3">System Health Monitor</h7>
-                <div className="d-flex flex-wrap gap-2 mb-3">
-                    <Button variant="danger" size="sm" onClick={() => handleTriggerFunction(triggerTestHealthAlert)} disabled={loading}>
-                        {loading ? <Spinner as="span" animation="border" size="sm" /> : 'Trigger Test Health Alert'}
-                    </Button>
-                    <p className="text-muted small w-100">Dispatches a mock &quot;Critical Outage&quot; alert to verify Discord webhooks and User pings.</p>
-                </div>
-
                 <h7 className="mt-3">Maintenance Tasks</h7>
                 <div className="d-flex flex-wrap gap-2 mb-3">
                     <Button variant="warning" size="sm" onClick={() => handleTriggerFunction(triggerManualMaintenance)} disabled={loading}>
@@ -118,14 +101,42 @@ const FirebaseFunctionsTester = ({ showInAppNotification }) => {
                     <p className="text-muted small w-100">Manually runs the daily maintenance task, which includes bingo board resets, report cleanup, and other routine jobs.</p>
                 </div>
 
-                <h7 className="mt-3">External Proxy Tester</h7>
+                <h7 className="mt-3">Developer Debug Tools</h7>
                 <div className="d-flex flex-wrap gap-2 mb-3">
-                    <Form.Control type="text" placeholder="External URL" value={externalUrl} onChange={(e) => setExternalUrl(e.target.value)} className="w-50" />
-                    <Form.Control type="text" placeholder="Cookie (e.g., phpbb3_..._sid=...)" value={cookie} onChange={(e) => setCookie(e.target.value)} className="w-25" />
-                    <Button variant="primary" size="sm" onClick={() => handleTriggerFunction(triggerFetchExternalUrl, { url: externalUrl, cookie })} disabled={loading || !externalUrl}>
-                        {loading ? <Spinner as="span" animation="border" size="sm" /> : 'Fetch URL'}
+                    <Button variant="outline-danger" size="sm" onClick={() => {
+                        console.critical("Manual Test CRITICAL Error triggered via Admin Dashboard.");
+                        showInAppNotification("Test Critical Error triggered. Check Discord & Sentry.", "info");
+                    }}>
+                        Trigger console.critical
                     </Button>
-                    <p className="text-muted small w-100">Fetches the raw content of the specified URL via Firebase Functions proxy. <strong>Note:</strong> Protected pages require a valid session cookie.</p>
+                    <Button variant="outline-danger" size="sm" onClick={() => {
+                        console.error("Standard console.error (Only Discord if Sentry blocked)");
+                        showInAppNotification("Standard error triggered. Only Discord if Sentry blocked.", "info");
+                    }}>
+                        Trigger console.error
+                    </Button>
+                    <Button variant="outline-warning" size="sm" onClick={() => {
+                        console.warn("[CRITICAL] PHMC Debug: Manual Test Warning triggered.");
+                        showInAppNotification("Test Warning triggered. Check Discord.", "info");
+                    }}>
+                        Trigger console.warn
+                    </Button>
+                    <Button variant="outline-secondary" size="sm" onClick={() => {
+                        throw new Error("PHMC Unhandled Exception Test: This is a manual test of the global error listener.");
+                    }}>
+                        Trigger Unhandled Exception
+                    </Button>
+                </div>
+
+                <h7 className="mt-3 text-danger">EXTREMELY DANGEROUS - SECURITY & DEVELOPER TOOLS</h7>
+                <div className="d-flex flex-wrap gap-2 mb-3 border border-danger p-3 rounded bg-danger bg-opacity-10">
+                    <Button variant="danger" size="lg" className="w-100 fw-bold" onClick={handleTriggerGlobalKillSwitch} disabled={loading}>
+                        {loading ? <Spinner as="span" animation="border" size="sm" /> : <><i className="fas fa-radiation-alt me-2"></i> TRIGGER GLOBAL STORAGE PURGE</>}
+                    </Button>
+                    <p className="text-danger small w-100 mt-2 mb-0">
+                        <strong>WARNING:</strong> This action will instantly FORCE LOGOUT every single active user on the platform by wiping their <code>localStorage</code> and <code>sessionStorage</code>. 
+                        Use this ONLY in case of extreme data corruption, security breach, or platform-wide cache desync.
+                    </p>
                 </div>
 
                 {result && (

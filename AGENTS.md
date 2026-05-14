@@ -4,15 +4,7 @@
 
 **PHMC Forms** is a Form Utility for GTA World (GTA 5 RP) that processes BBCode and Form Inputs for EMS personnel. It contains an EMS Dashboard with medical protocols, Admin Panel, and integrates with GTA World OAuth and Discord.
 
-## Key Guidelines
-
-- **Avoid React-Bootstrap `Modal`** - Use custom div-based overlays instead
-- **Prefer inline SVGs** for icons and small decorative images
-- Use **Sentry** for error tracking
-- Legacy code exists in `MainApp.jsx` - avoid unless required
-
 ## ShopDashboard Context
-
 **STATUS: Active Development / Proof of Concept**
 
 The ShopDashboard (`src/components/Shop/ShopDashboard.jsx`) is a fun side project actively being developed with agentic coding assistance. The products are placeholder items for testing/shell purposes:
@@ -51,6 +43,6 @@ src/components/
 
 ## Firebase Context
 
-- **Forms are stored in Firebase** as BBCode templates (JSON schema)
+- **Forms are stored in Firebase** as BBCode templates (JSON schema), consult user in event of form specific errors for triage / debugging, ask them to upload to `/forms` directory and remove from `.gitignore`
 - **When debugging form issues**, ask the user to provide the Firebase template/schema JSON for the specific form
 - The Form Handler renders forms based on Firebase-hosted definitions

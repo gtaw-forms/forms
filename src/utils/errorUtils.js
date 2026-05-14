@@ -21,6 +21,13 @@ const ErrorCategory = {
 const categorizeError = (message) => {
     const lowerMessage = (message || '').toLowerCase();
 
+    if (lowerMessage === 'script error.') {
+        return {
+            category: 'Cross-Origin / Masked Error',
+            suggestion: "The browser suppressed the details of this error because it occurred in a script from a different origin (CORS). Possible causes: 1. A script from a CDN failing. 2. A browser extension injecting code. 3. A script loaded without 'crossorigin=\"anonymous\"'. Since this is an iPhone user, it could also be a failure in a WebKit-injected script."
+        };
+    }
+
     if (/\.map is not a function|\.find is not a function|\.filter is not a function|cannot read properties of undefined/.test(lowerMessage)) {
         return {
             category: ErrorCategory.DATA_PROCESSING,
@@ -82,6 +89,88 @@ export const recordInputInteraction = (inputType, fieldName) => {
  * @returns {Object|null}
  */
 export const getLastInputInteraction = () => lastInputInteraction;
+
+// --- Console Interceptor ---
+let isConsoleIntercepted = false;
+const originalConsoleError = console.error;
+const originalConsoleWarn = console.warn;
+
+/**
+ * Initializes interceptors for console.error and console.warn to redirect them to Discord
+ * when Sentry is blocked or unreachable.
+ */
+export const initConsoleInterceptor = (isSentryBlockedProvider) => {
+    if (isConsoleIntercepted) return;
+    isConsoleIntercepted = true;
+
+    // Add a custom 'critical' level to the console object
+    console.critical = (...args) => {
+        // Prepend [CRITICAL] to ensure it bypasses the Discord filter logic
+        console.error('[CRITICAL]', ...args);
+    };
+
+    console.error = (...args) => {
+        originalConsoleError.apply(console, args);
+        
+        const isSentryBlocked = typeof isSentryBlockedProvider === 'function' 
+            ? isSentryBlockedProvider() 
+            : isSentryBlockedProvider;
+
+        // Only redirect to Discord if Sentry is blocked or if it's a critical PHMC error
+        const message = args.map(arg => 
+            typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+        ).join(' ');
+
+        if (isSentryBlocked || message.includes('PHMC') || message.includes('CRITICAL')) {
+            // Avoid infinite loops if sendDiscordErrorWebhook calls console.error
+            if (message.includes('[Discord Error Webhook]')) return;
+
+            const errorDetails = {
+                message: `[Console Error] ${message}`,
+                source: 'Console Interceptor',
+                lineno: 0,
+                colno: 0,
+                stack: new Error().stack,
+                currentFormType: getCurrentFormType(),
+                lastInputInteraction: getLastInputInteraction(),
+                url: window.location.href,
+                navigationHistory: window.navigationHistory || [],
+                isConsoleError: true
+            };
+            sendDiscordErrorWebhook(errorDetails, isSentryBlocked);
+        }
+    };
+
+    console.warn = (...args) => {
+        originalConsoleWarn.apply(console, args);
+
+        const isSentryBlocked = typeof isSentryBlockedProvider === 'function' 
+            ? isSentryBlockedProvider() 
+            : isSentryBlockedProvider;
+
+        const message = args.map(arg => 
+            typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+        ).join(' ');
+
+        // Only redirect warnings to Discord if they seem critical and Sentry is blocked
+        if (isSentryBlocked && (message.includes('PHMC') || message.includes('CRITICAL') || message.includes('Security'))) {
+            if (message.includes('[Discord Error Webhook]')) return;
+
+            const errorDetails = {
+                message: `[Console Warn] ${message}`,
+                source: 'Console Interceptor',
+                lineno: 0,
+                colno: 0,
+                currentFormType: getCurrentFormType(),
+                lastInputInteraction: getLastInputInteraction(),
+                url: window.location.href,
+                navigationHistory: window.navigationHistory || [],
+                isConsoleError: true
+            };
+            sendDiscordErrorWebhook(errorDetails, isSentryBlocked);
+        }
+    };
+};
 
 /**
  * Automatically determines the current form type from localStorage.

@@ -11,10 +11,11 @@ import { ModalProvider } from './contexts/ModalProvider.jsx';
 import { useNotification } from './contexts/NotificationContext';
 import * as Sentry from "@sentry/react";
 import ErrorBoundary from './components/UI/ErrorBoundary';
-import { sendDiscordErrorWebhook, getLastInputInteraction, getCurrentFormType } from './utils/errorUtils';
+import { sendDiscordErrorWebhook, getLastInputInteraction, getCurrentFormType, initConsoleInterceptor } from './utils/errorUtils';
 
 // --- Navigation Tracking ---
 const navigationHistory = [];
+window.navigationHistory = navigationHistory; // Expose for error reporting
 const recordNavigation = (url, type = 'push') => {
     try {
         const path = url || window.location.pathname + window.location.search;
@@ -79,14 +80,11 @@ const handleChunkError = (error) => {
     return false;
 };
 
-window.addEventListener('unhandledrejection', (event) => {
-    if (handleChunkError(event.reason)) {
-        event.preventDefault();
-    }
-});
-
 let isSentryBlocked = false;
 const appStartTime = Date.now();
+
+// Initialize console interceptor to redirect to Discord when Sentry is blocked
+initConsoleInterceptor(() => isSentryBlocked);
 
 init({
   dsn: "https://5dfa5683e8dc9adbc7f30e44757995c7@o4509126124765184.ingest.de.sentry.io/4509126125813840",
@@ -120,16 +118,23 @@ init({
   },
 });
 
-window.onerror = (message, source, lineno, colno, errorObject) => {
+// Use addEventListener to avoid overwriting Sentry's handlers
+window.addEventListener('error', (event) => {
+    const { message, filename, lineno, colno, error } = event;
+    
     if (typeof message === 'string') {
-        if (message.includes("ResizeObserver loop limit exceeded")) return true;
-        if (message.includes("Loading chunk") && message.includes("failed")) return true;
+        if (message.includes("ResizeObserver loop limit exceeded")) return;
+        if (message.includes("Loading chunk") && message.includes("failed")) return;
     }
 
     const lastInputInteraction = getLastInputInteraction();
     const errorDetails = {
-        message, source, lineno, colno, error: errorObject,
-        stack: errorObject ? errorObject.stack : 'N/A',
+        message, 
+        source: filename, 
+        lineno, 
+        colno, 
+        error: error,
+        stack: error ? error.stack : 'N/A',
         currentFormType: getCurrentFormType(),
         lastInputInteraction,
         url: window.location.href,
@@ -137,8 +142,31 @@ window.onerror = (message, source, lineno, colno, errorObject) => {
         timeSinceStart: `${Math.round((Date.now() - appStartTime) / 1000)}s`
     };
     sendDiscordErrorWebhook(errorDetails, isSentryBlocked);
-    return false;
-};
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+    // Handle chunk errors specifically
+    if (handleChunkError(event.reason)) {
+        event.preventDefault();
+        return;
+    }
+
+    const lastInputInteraction = getLastInputInteraction();
+    const errorDetails = {
+        message: event.reason?.message || String(event.reason),
+        source: 'Promise Rejection',
+        lineno: 0,
+        colno: 0,
+        error: event.reason,
+        stack: event.reason?.stack || 'N/A',
+        currentFormType: getCurrentFormType(),
+        lastInputInteraction,
+        url: window.location.href,
+        navigationHistory,
+        timeSinceStart: `${Math.round((Date.now() - appStartTime) / 1000)}s`
+    };
+    sendDiscordErrorWebhook(errorDetails, isSentryBlocked);
+});
 
 const Root = () => {
     const { showNotification, removeNotification } = useNotification();

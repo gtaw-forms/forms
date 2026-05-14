@@ -1,70 +1,88 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { database } from '../../firebase';
+import { ref, set } from 'firebase/database';
 import { useData } from '../../contexts/DataContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useGtaWorldAuth } from '../../hooks/useGtaWorldAuth';
 import { useNotification } from '../../contexts/NotificationContext';
 import AutopsyModal from '../Modals/AutopsyModal';
-import RequestMorgueAccessModal from '../Modals/RequestMorgueAccessModal';
 import SidebarNav from '../UI/SidebarNav';
+import * as Sentry from "@sentry/react";
+import { reportLogicalError } from '../../utils/errorUtils';
 
 const MorgueLookup = () => {
-    const { morgueRecords, morgueWhitelist, isLoadingData } = useData();
+    const { morgueRecords, factionsData, isLoadingData } = useData();
     const { isPhmcMember, user: firebaseUser } = useAuth();
     const { user: gtawUser, isAuthenticated } = useGtaWorldAuth();
     const { showNotification } = useNotification();
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedRecord, setSelectedRecord] = useState(null);
     const [showModal, setShowModal] = useState(false);
-    const [showRequestModal, setShowRequestModal] = useState(false);
-    const [devAccessOverride, setDevAccessOverride] = useState(null); // 'employee', 'whitelist', 'denied'
+    const [isReporting, setIsReporting] = useState(false);
+    const [devAccessOverride, setDevAccessOverride] = useState(null); // 'employee', 'denied'
     const isLocalHost = window.location.hostname === 'localhost';
     
     // Pagination state
     const [currentPage, setCurrentPage] = useState(1);
     const recordsPerPage = 15;
 
-    // Access control logic
+    // Diagnostic state
+    const [showDiagnostics, setShowDiagnostics] = useState(false);
+
+    // Display info for the sidebar
+    const userDisplayInfo = useMemo(() => {
+        if (!isAuthenticated || !gtawUser) {
+            if (isLocalHost && devAccessOverride) {
+                 return {
+                    name: 'Dev User',
+                    dept: devAccessOverride === 'employee' ? 'PHMC Staff' : 'Authorized Personnel'
+                };
+            }
+            return null;
+        }
+
+        return {
+            name: gtawUser.faction?.characterName || gtawUser.activeCharacter?.characterName || gtawUser.username,
+            dept: gtawUser.faction?.rank || (isPhmcMember ? 'PHMC Employee' : 'Authorized Personnel')
+        };
+    }, [isPhmcMember, gtawUser, isAuthenticated, isLocalHost, devAccessOverride]);
+
+    // Access control logic: Grant access if authenticated or override exists
     const hasAccess = useMemo(() => {
         if (isLocalHost && devAccessOverride) {
             if (devAccessOverride === 'employee') return true;
-            if (devAccessOverride === 'whitelist') return true;
             return false;
         }
 
-        if (!isAuthenticated) return false;
-        
-        // PHMC Members always have access
-        if (isPhmcMember) return true;
-
-        // Check whitelist
-        if (morgueWhitelist && gtawUser) {
-            const charId = String(gtawUser.faction?.characterId || gtawUser.faction?.id || '');
-            const username = gtawUser.username?.toLowerCase();
-            
-            // Check if character ID or username is whitelisted
-            return Object.values(morgueWhitelist).some(entry => {
-                const entryVal = String(entry.id || entry.username || entry).toLowerCase();
-                return entryVal === charId || entryVal === username;
-            });
-        }
-
-        return false;
-    }, [isAuthenticated, isPhmcMember, morgueWhitelist, gtawUser, devAccessOverride, isLocalHost]);
+        // Simplifed: Grant access if the user is signed in with GTA World OAuth
+        return isAuthenticated;
+    }, [isAuthenticated, devAccessOverride, isLocalHost]);
 
     const effectiveIsPhmcMember = useMemo(() => {
         if (isLocalHost && devAccessOverride === 'employee') return true;
         return isPhmcMember;
     }, [isPhmcMember, devAccessOverride, isLocalHost]);
 
-    const lastUpdatedTime = useMemo(() => {
+    const syncStatus = useMemo(() => {
         if (!hasAccess || !morgueRecords || morgueRecords.length === 0) return null;
         const latest = Math.max(...morgueRecords.map(r => r.lastUpdated || 0));
-        return latest ? new Date(latest).toLocaleString() : null;
+        if (!latest) return null;
+
+        const now = Date.now();
+        const cycleMs = 24 * 60 * 60 * 1000;
+        const nextUpdate = latest + cycleMs;
+        const hoursRemaining = Math.max(0, Math.ceil((nextUpdate - now) / (1000 * 60 * 60)));
+
+        return {
+            last: new Date(latest).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }),
+            next: hoursRemaining > 0 ? `${hoursRemaining}h` : 'Soon',
+            isOverdue: now > nextUpdate
+        };
     }, [morgueRecords, hasAccess]);
 
     const filteredRecords = useMemo(() => {
         if (!hasAccess || !morgueRecords) return [];
-        // Sort by caseId descending (highest case # first)
+        // Sort by caseId descending
         const sorted = [...morgueRecords].sort((a, b) => {
             const caseA = Number(a.caseId) || 0;
             const caseB = Number(b.caseId) || 0;
@@ -85,6 +103,38 @@ const MorgueLookup = () => {
     const totalPages = Math.ceil(filteredRecords.length / recordsPerPage);
 
     const handleViewRecord = (record) => {
+        // --- DETAILED AUDIT LOGGING ---
+        const oauthName = gtawUser?.username || 'Unknown OAuth';
+        const characterName = gtawUser?.faction?.characterName || gtawUser?.activeCharacter?.characterName || 'Unknown Character';
+        const timestamp = new Date().toLocaleString();
+        
+        console.log(`[Audit] USER - ${oauthName} - ${characterName} has accessed CASE #${record.caseId} - ${record.name} at ${timestamp}`);
+        
+        // Discord Webhook for record access
+        const payload = {
+            embeds: [{
+                title: 'Morgue Record Accessed',
+                color: 0x3498db,
+                description: `**${characterName}** ((${oauthName})) is viewing a detailed autopsy report.`,
+                fields: [
+                    { name: 'Case Number', value: String(record.caseId), inline: true },
+                    { name: 'Decedent Name', value: record.name, inline: true },
+                    { name: 'Time of Death', value: record.timeOfDeath || 'Unknown', inline: true },
+                    { name: 'Access Time', value: timestamp, inline: false }
+                ],
+                footer: { text: 'PHMC Morgue Access Audit' }
+            }]
+        };
+
+        const webhookUrl = import.meta.env.VITE_DISCORD_WEBHOOK_ADMIN || import.meta.env.VITE_DEV_WEBHOOK;
+        if (webhookUrl) {
+            fetch(webhookUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            }).catch(err => console.error('Failed to send access audit:', err));
+        }
+
         setSelectedRecord(record);
         setShowModal(true);
     };
@@ -95,12 +145,133 @@ const MorgueLookup = () => {
         document.querySelector('.morgue-table-container')?.scrollTo(0, 0);
     };
 
+    const handleReportAccessIssue = async () => {
+        if (!isAuthenticated || !gtawUser) return;
+        
+        setIsReporting(true);
+        try {
+            const charId = gtawUser.faction?.characterId || gtawUser.faction?.id || 'N/A';
+            const factionName = gtawUser.faction?.name || 'N/A';
+            const rank = gtawUser.faction?.rank || 'N/A';
+
+            reportLogicalError(
+                'Morgue Access Issue Reported',
+                `User ${gtawUser.username} reported an access issue while signed in.`,
+                {
+                    characterName: gtawUser.faction?.characterName || 'Unknown',
+                    characterId: charId,
+                    faction: factionName,
+                    rank: rank,
+                    isPhmcMember: isPhmcMember,
+                    clientTimestamp: new Date().toISOString()
+                }
+            );
+
+            showNotification('Access issue report sent to developers. Thank you.', 'success');
+        } catch (error) {
+            console.error('Failed to report access issue:', error);
+            showNotification('Failed to send report.', 'error');
+        } finally {
+            setIsReporting(false);
+        }
+    };
+
+    // Hidden shortcut for diagnostics: Ctrl + Alt + D
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (e.ctrlKey && e.altKey && e.key.toLowerCase() === 'd') {
+                const newState = !showDiagnostics;
+                setShowDiagnostics(newState);
+                
+                if (newState) {
+                    console.log('[MorgueLookup] Diagnostics Enabled');
+                    
+                    // resolve identity for logging
+                    const charId = gtawUser?.faction?.characterId || gtawUser?.activeCharacter?.characterId || gtawUser?.faction?.id;
+                    const charName = gtawUser?.faction?.characterName || gtawUser?.activeCharacter?.characterName;
+
+                    // log a detailed snapshot to Sentry for remote debugging
+                    Sentry.captureMessage(`Morgue Access Diagnostic: ${charName || 'Unknown'} (${gtawUser?.username || 'No User'})`, {
+                        level: 'info',
+                        tags: {
+                            component: 'MorgueLookup',
+                            access_status: hasAccess ? 'granted' : 'denied',
+                            is_phmc: isPhmcMember
+                        },
+                        extra: {
+                            identity: { charId, charName, username: gtawUser?.username, isAuthenticated },
+                            access_logic: { hasAccess, isPhmcMember, devAccessOverride, isLocalHost },
+                            database: { recordsCount: morgueRecords?.length || 0, filteredCount: filteredRecords?.length || 0 },
+                            timestamp: new Date().toISOString()
+                        }
+                    });
+                }
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [showDiagnostics, isAuthenticated, gtawUser, hasAccess, isPhmcMember]);
+
+    // Notification for granted access
+    useEffect(() => {
+        if (hasAccess && isAuthenticated && gtawUser) {
+            // Resolve character identity with fallback chain
+            const charId = gtawUser.faction?.characterId || gtawUser.activeCharacter?.characterId || gtawUser.faction?.id;
+            const charName = gtawUser.faction?.characterName || gtawUser.activeCharacter?.characterName;
+
+            // Don't log if we still don't have a name/id
+            if (!charId || !charName) {
+                console.log('[MorgueLookup] Access granted but character data not yet resolved. Deferring audit log...');
+                return;
+            }
+
+            const sessionKey = `morgue_access_notified_${charId}`;
+            const hasNotified = sessionStorage.getItem(sessionKey);
+
+            if (!hasNotified) {
+                const payload = {
+                    embeds: [{
+                        title: 'Morgue Lookup Access: GRANTED',
+                        color: 0x2ecc71,
+                        fields: [
+                            { name: 'Username', value: gtawUser.username || 'Unknown', inline: true },
+                            { name: 'Character', value: charName, inline: true },
+                            { name: 'Character ID', value: String(charId), inline: true },
+                            { name: 'Timestamp', value: new Date().toLocaleString(), inline: false }
+                        ],
+                        footer: { text: 'PHMC Morgue Security Audit' }
+                    }]
+                };
+
+                const webhookUrl = import.meta.env.VITE_DISCORD_WEBHOOK_ADMIN || import.meta.env.VITE_DEV_WEBHOOK;
+                if (webhookUrl) {
+                    fetch(webhookUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    }).catch(err => console.error('Failed to send morgue access notification:', err));
+                }
+                
+                sessionStorage.setItem(sessionKey, 'true');
+            }
+        }
+    }, [hasAccess, isAuthenticated, gtawUser]);
+
     return (
         <div className="morgue-lookup-page">
             <SidebarNav />
             
             <aside className="morgue-sidebar">
                 <div className="morgue-sidebar-header">Morgue Intake System</div>
+                
+                {userDisplayInfo && (
+                    <div className="morgue-user-welcome mb-4 p-3 rounded bg-dark bg-opacity-25 border border-secondary border-opacity-50">
+                        <div className="small opacity-75 text-uppercase fw-bold mb-1" style={{ fontSize: '0.65rem', letterSpacing: '1px', color: '#3498db' }}>Welcome Back</div>
+                        <div className="fw-bold text-white mb-1" style={{ fontSize: '1.05rem' }}>{userDisplayInfo.name}</div>
+                        <div className="small opacity-75" style={{ fontSize: '0.8rem', fontStyle: 'italic' }}>{userDisplayInfo.dept}</div>
+                    </div>
+                )}
+
                 <div className="morgue-search-box">
                     <label htmlFor="decedentSearch">DECEDENT LOOKUP</label>
                     <input 
@@ -133,12 +304,6 @@ const MorgueLookup = () => {
                                 Simulate Employee
                             </button>
                             <button 
-                                className={`btn btn-sm ${devAccessOverride === 'whitelist' ? 'btn-primary' : 'btn-outline-primary text-light'}`}
-                                onClick={() => setDevAccessOverride(devAccessOverride === 'whitelist' ? null : 'whitelist')}
-                            >
-                                Simulate Whitelist
-                            </button>
-                            <button 
                                 className={`btn btn-sm ${devAccessOverride === 'denied' ? 'btn-danger' : 'btn-outline-danger text-light'}`}
                                 onClick={() => setDevAccessOverride(devAccessOverride === 'denied' ? null : 'denied')}
                             >
@@ -162,6 +327,56 @@ const MorgueLookup = () => {
                     </div>
                 </header>
 
+                {showDiagnostics && (
+                    <div className="morgue-diagnostics-panel p-3 border-bottom bg-info bg-opacity-10">
+                        <div className="d-flex justify-content-between align-items-start mb-2">
+                            <h6 className="mb-0 text-info fw-bold"><i className="fas fa-microscope me-2"></i>Access Diagnostics</h6>
+                            <button className="btn-close btn-close-sm" onClick={() => setShowDiagnostics(false)}></button>
+                        </div>
+                        <div className="row g-3">
+                            <div className="col-md-3">
+                                <div className="diag-item">
+                                    <label>Authentication</label>
+                                    <div className={isAuthenticated ? 'text-success' : 'text-danger'}>
+                                        {isAuthenticated ? 'AUTHENTICATED' : 'NOT AUTHENTICATED'}
+                                    </div>
+                                    <small className="text-muted">{gtawUser?.username || 'No Username'}</small>
+                                </div>
+                            </div>
+                            <div className="col-md-3">
+                                <div className="diag-item">
+                                    <label>Access Status</label>
+                                    <div className={hasAccess ? 'text-success' : 'text-danger'}>
+                                        {hasAccess ? 'GRANTED' : 'DENIED'}
+                                    </div>
+                                    <div className="diag-tags mt-1">
+                                        {isPhmcMember && <span className="badge bg-primary me-1">PHMC</span>}
+                                        {isLocalHost && <span className="badge bg-warning text-dark me-1">Local</span>}
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="col-md-3">
+                                <div className="diag-item">
+                                    <label>Resolved Identity</label>
+                                    <div className="text-truncate" title={userDisplayInfo?.name}>
+                                        {userDisplayInfo?.name || 'Unknown'}
+                                    </div>
+                                    <small className="font-monospace text-muted" style={{ fontSize: '0.7rem' }}>
+                                        ID: {gtawUser?.faction?.characterId || gtawUser?.activeCharacter?.characterId || 'None'}
+                                    </small>
+                                </div>
+                            </div>
+                            <div className="col-md-3">
+                                <div className="diag-item">
+                                    <label>Database State</label>
+                                    <div>Records: {morgueRecords?.length || 0}</div>
+                                    <small className="text-muted">Filtered: {filteredRecords.length}</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 <div className="morgue-table-container">
                     {isLoadingData ? (
                         <div className="text-center p-5">
@@ -175,15 +390,12 @@ const MorgueLookup = () => {
                             </div>
                             <h3 className="fw-bold">Access Restricted</h3>
                             <p className="text-muted mx-auto" style={{ maxWidth: '500px' }}>
-                                The Morgue Intake Database contains sensitive information. Access is restricted to PHMC Employees and authorized Law Enforcement personnel.
+                                The Morgue Intake Database contains sensitive information. Access is restricted to authenticated PHMC Employees and authorized Law Enforcement personnel. <br />  <br />Please click the 'Sign In' button below to authenticate with GTA World OAuth. <br />  <br />Any bugs or issues with access, please report using the button below or contact Fr0styDev (Alyson Frost) in the PHMC Discord.
                             </p>
                             <div className="mt-4 d-flex justify-content-center gap-3">
-                                <button className="morgue-btn-request px-4 py-2" onClick={() => setShowRequestModal(true)}>
-                                    <i className="fas fa-paper-plane me-2"></i>Request Access
-                                </button>
                                 {!isAuthenticated && (
                                     <button className="morgue-btn-add px-4 py-2" onClick={() => window.location.hash = '/login'}>
-                                        <i className="fas fa-sign-in-alt me-2"></i>Sign In
+                                        <i className="fas fa-sign-in-alt me-2"></i>Sign In with GTA World
                                     </button>
                                 )}
                             </div>
@@ -259,15 +471,36 @@ const MorgueLookup = () => {
                 </div>
 
                 <footer className="morgue-footer">
-                    {lastUpdatedTime && (
-                        <div className="morgue-status-badge">
+                    <div className="me-auto small text-muted opacity-75 d-flex align-items-center">
+                        <i className="fas fa-info-circle me-2"></i>
+                        Any issues with accessing, please contact Fr0styDev (Alyson Frost) in the PHMC Discord.
+                    </div>
+
+                    {syncStatus && (
+                        <div className={`morgue-status-badge ${syncStatus.isOverdue ? 'overdue' : ''}`} title="Manual update process (24h cycle)">
                             <i className="fas fa-sync-alt fa-spin-hover me-2"></i>
-                            <span className="label">LATEST UPDATE:</span>
-                            <span className="time">{lastUpdatedTime}</span>
+                            <span className="label">UPDATED:</span>
+                            <span className="time">{syncStatus.last}</span>
+                            <span className="divider mx-2">|</span>
+                            <span className="label">NEXT:</span>
+                            <span className="time">{syncStatus.next}</span>
                         </div>
                     )}
 
-                    <button className="morgue-btn-request" onClick={() => setShowRequestModal(true)}>Request Access</button>
+                    {hasAccess && (
+                        <>
+                            {isAuthenticated && (
+                                <button 
+                                    className="btn btn-outline-warning btn-sm ms-2" 
+                                    onClick={handleReportAccessIssue}
+                                    disabled={isReporting}
+                                >
+                                    <i className={`fas ${isReporting ? 'fa-spinner fa-spin' : 'fa-bug'} me-2`}></i>
+                                    Report Access Issue
+                                </button>
+                            )}
+                        </>
+                    )}
                     {effectiveIsPhmcMember && <button className="morgue-btn-add" onClick={() => window.location.hash = '/admin'}>Admin Panel</button>}
                 </footer>
             </main>
@@ -276,12 +509,6 @@ const MorgueLookup = () => {
                 show={showModal} 
                 onClose={() => setShowModal(false)} 
                 record={selectedRecord} 
-            />
-
-            <RequestMorgueAccessModal
-                show={showRequestModal}
-                onHide={() => setShowRequestModal(false)}
-                showNotification={showNotification}
             />
 
             <style>{`
@@ -488,6 +715,14 @@ const MorgueLookup = () => {
 
                 .fa-spin-hover:hover {
                     animation: fa-spin 2s infinite linear;
+                }
+
+                .morgue-status-badge.overdue {
+                    border: 1px solid #e74c3c;
+                }
+
+                .morgue-status-badge.overdue .label:last-of-type {
+                    color: #e74c3c;
                 }
 
                 @media (max-width: 768px) {

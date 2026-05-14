@@ -1,9 +1,11 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import * as Sentry from "@sentry/react";
 import { httpsCallable } from 'firebase/functions';
-import { functions } from '../firebase';
+import { database, functions } from '../firebase';
+import { ref, onValue, get } from 'firebase/database';
 import { useAuth } from './AuthContext';
 import { triggerRefreshGtawUser } from '../services/firebaseFunctions';
+import { useInactivityReload } from '../hooks/useInactivityReload';
 import {
     initiateGtaWorldLogin,
     handleOAuthCallback,
@@ -13,7 +15,8 @@ import {
     logout,
     makeAuthenticatedRequest,
     isFactionMember as checkIsFactionMember,
-    isGtawStaff
+    isGtawStaff,
+    checkFactionMembershipInDb
 } from '../services/gtaWorldAuth';
 
 const GtaWorldAuthContext = createContext(null);
@@ -33,6 +36,7 @@ const getUrlParams = () => {
 };
 
 export const GtaWorldAuthProvider = ({ children }) => {
+    const { getIsInactivityWarningTriggered } = useInactivityReload();
     const [user, setUser] = useState(() => {
         if (isAuthenticated()) {
             return getCurrentUser();
@@ -279,6 +283,34 @@ export const GtaWorldAuthProvider = ({ children }) => {
         } else {
             // No callback detected or no matching session state
             setIsLoading(false);
+
+            // validate user's faction membership
+            if (user && (!code && !state || getIsInactivityWarningTriggered())) {
+                const activeId = user?.faction?.characterId || user?.activeCharacter?.characterId;
+                const allIds = (user?.allFactionCharacters || [])
+                    .map(c => String(c?.character?.characterId || c?.id))
+                    .filter(Boolean);
+                const charIds = [...new Set([String(activeId), ...allIds].filter(Boolean))];
+
+                if (charIds.length > 0) {
+                    setIsValidatingSession(true);
+                    checkFactionMembershipInDb(charIds)
+                        .then(isMember => {
+                            if (isMember === false) {
+                                console.warn('[GtaWorldAuthContext] No faction character found in faction DB. Clearing session.');
+                                logout();
+                                setUser(null);
+                                setActiveCharacter(null);
+                            }
+                        })
+                        .catch(err => {
+                            console.error('[GtaWorldAuthContext] Faction membership check failed:', err);
+                        })
+                        .finally(() => {
+                            setIsValidatingSession(false);
+                        });
+                }
+            }
             
             // Clean up URL if there are stray params but no session state
             if (code || state) {
@@ -287,10 +319,38 @@ export const GtaWorldAuthProvider = ({ children }) => {
                 window.history.replaceState({}, document.title, newUrl);
             }
         }
-    }, [processCallback]);
+    }, [processCallback, getIsInactivityWarningTriggered]);
+
+    // REAL-TIME MEMBERSHIP ENFORCEMENT
+    useEffect(() => {
+        if (!user || isGoogleAdmin || isStaff) return;
+
+        const activeId = user?.faction?.characterId || user?.activeCharacter?.characterId;
+        if (!activeId) return;
+
+        console.log(`[GtaWorldAuthContext] Setting up real-time membership listener for character ${activeId}`);
+        const memberRef = ref(database, `factions/364/members/${activeId}`);
+
+        const unsubscribe = onValue(memberRef, (snapshot) => {
+            if (!snapshot.exists()) {
+                console.warn('[GtaWorldAuthContext] Real-time check: Membership revoked or character deleted from DB. Logging out...');
+                handleLogout();
+                // We use a small delay before reload to ensure state settles
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1000);
+            }
+        });
+
+        return () => {
+            console.log('[GtaWorldAuthContext] Cleaning up real-time membership listener');
+            unsubscribe();
+        };
+    }, [user, isGoogleAdmin, isStaff, handleLogout]);
 
     const value = useMemo(() => ({
         user,
+        username: user?.username || null,
         isAuthenticated: !!user,
         isLoading: isLoading || authLoading,
         error,

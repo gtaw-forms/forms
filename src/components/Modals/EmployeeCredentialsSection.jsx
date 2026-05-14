@@ -56,7 +56,7 @@ const EmployeeCredentialsSection = ({
   const isLoading = authHook.isLoading;
 
   const [useGtawName, setUseGtawName] = useState(false);
-  const [internalPersistEnabled, setInternalPersistEnabled] = useState(() => localStorage.getItem('phmc_gtaw_oauth_persist_enabled') === 'true');
+  const [internalPersistEnabled, setInternalPersistEnabled] = useState(true);
 
   const persistEnabled = propPersistEnabled !== undefined ? propPersistEnabled : internalPersistEnabled;
   const setSetPersistEnabled = propSetPersistEnabled !== undefined ? propSetPersistEnabled : setInternalPersistEnabled;

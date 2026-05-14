@@ -12,6 +12,7 @@ import { decedentItemSchema } from '../../formSchemas/decedentSchema';
 import { formatCharacterNameForDisplay } from '../../utils/characterUtils'; // Import the new utility
 import { useModal } from '../../contexts/ModalProvider';
 import { evaluateFieldVisibility } from '../../utils/formValidation';
+import { sanitizeMorgueText } from '../../utils/textUtils';
 
 import morgueGif from '../../assets/morgue-copy-tutorial.gif';
 
@@ -793,15 +794,16 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
       const mapMorgueRecordToFormData = (record) => {
         const data = {};
         if (record.caseId) data.caseNumber = record.caseId;
-        if (record.adminNote) data.adminNote = record.adminNote;
+        if (record.adminNote) data.adminNote = sanitizeMorgueText(record.adminNote);
         
         if (record.name) {
-            const oocMatch = record.name.match(/\(\(\s*(.*?)\s*\)\)/);
+            const sanitizedName = sanitizeMorgueText(record.name);
+            const oocMatch = sanitizedName.match(/\(\(\s*(.*?)\s*\)\)/);
             if (oocMatch) {
-                data.decedentName = record.name.replace(/\(\(\s*(.*?)\s*\)\)/, '').trim();
+                data.decedentName = sanitizedName.replace(/\(\(\s*(.*?)\s*\)\)/, '').trim();
                 data.decedentOOC = oocMatch[1].trim();
             } else {
-                data.decedentName = record.name;
+                data.decedentName = sanitizedName;
             }
         }
 
@@ -812,21 +814,22 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
         const isCk = lowerName.includes('ck') || lowerCod.includes('ck');
         data.deathType = isCk ? 'CK' : (isPk ? 'PK' : 'Unknown');
 
-        if (record.location) data.placeOfDeath = record.location;
+        if (record.location) data.placeOfDeath = sanitizeMorgueText(record.location);
         if (record.dnaProfile) data.dnaProfile = record.dnaProfile;
         if (record.sex) data.sex = record.sex;
         if (record.timeOfDeath) data.dateTime = record.timeOfDeath;
         if (record.bac) data.bacLevel = record.bac;
-        if (record.narcotics) data.narcoticTraces = record.narcotics;
+        if (record.narcotics) data.narcoticTraces = sanitizeMorgueText(record.narcotics);
         
         // External Exam
         let externalExam = "** The Morgue Technician provides a written description below of the Decedent  ** ((This section is descriptive purposes only and is automatically generated from the Morgue Records )) **\n\n";
-        if (record.physicalDescription) externalExam += `Physical Description:\n${record.physicalDescription}\n\n`;
+        if (record.physicalDescription) externalExam += `Physical Description:\n${sanitizeMorgueText(record.physicalDescription)}\n\n`;
         
         // Only add Tattoos if they aren't already in the narrative
         if (record.tattoos && record.tattoos !== 'None' && record.tattoos !== 'Unknown') {
+            const sanitizedTattoos = sanitizeMorgueText(record.tattoos);
             if (!record.physicalDescription || !record.physicalDescription.includes(record.tattoos)) {
-                externalExam += `Tattoos/Marks:\n${record.tattoos}\n\n`;
+                externalExam += `Tattoos/Marks:\n${sanitizedTattoos}\n\n`;
             }
         }
         
@@ -849,16 +852,18 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
             let hasGunshotToHead = false;
 
             data.anatomicSummaryListItems = record.findings.map(f => {
-                const typeLower = (f.type || '').toLowerCase();
-                const partLower = (f.part || '').toLowerCase();
+                const type = sanitizeMorgueText(f.type || '');
+                const part = sanitizeMorgueText(f.part || '');
+                const typeLower = type.toLowerCase();
+                const partLower = part.toLowerCase();
                 
                 // Skip headers or empty types
                 if (!typeLower || 
                     typeLower.includes('wound type') || 
                     partLower.includes('body part') || 
                     typeLower === 'blood loss' || 
-                    f.part === '—' ||
-                    f.part === 'N/A') {
+                    part === '—' ||
+                    part === 'N/A') {
                     return null;
                 }
 
@@ -867,13 +872,15 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
                 const distRounded = !isNaN(distParsed) ? Math.floor(distParsed) : null;
                 
                 uniqueWoundTypes.add(typeLower);
-                if (typeLower === 'gunshot wound' && partLower === 'head') hasGunshotToHead = true;
+                if (typeLower.includes('gunshot wound') && partLower === 'head') hasGunshotToHead = true;
 
-                if (typeLower === 'gunshot wound') {
+                if (typeLower.includes('gunshot wound')) {
                     const rangeText = distRounded !== null ? `, estimated range ${distRounded}m` : '';
-                    return `Gunshot Wound to ${f.part}${rangeText}`;
+                    return `Gunshot Wound to ${part}${rangeText}`;
                 }
-                return `${f.type} to ${f.part}${distRounded !== null ? ` (${distRounded}m)` : ''}`;
+                
+                const hideDist = typeLower.includes('blunt force trauma') || typeLower.includes('stab wound');
+                return `${type} to ${part}${(distRounded !== null && !hideDist) ? ` (${distRounded}m)` : ''}`;
             }).filter(Boolean);
 
             // Generate suggestions
@@ -891,12 +898,13 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
 
         // Bullets
         if (record.bullets && Array.isArray(record.bullets)) {
-            data.casings = record.bullets.map(b => `Bullet found with striation marks (${b.type}) #${b.id}`);
+            data.casings = record.bullets.map(b => `Bullet found with striation marks (${sanitizeMorgueText(b.type)}) #${b.id}`);
             data.RadiologyResult = `${record.bullets.length} projectiles/slugs were identified via fluoroscopy and recovered during the autopsy.`;
         }
 
         return data;
       };
+
 
       const sendMorgueParseWebhook = async (rawText, parsedData) => {
         try {
@@ -944,17 +952,18 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
       };
 
       const parseMorgueData = (text) => {
+        const sanitizedText = sanitizeMorgueText(text);
         const data = {};
         
         // Helper to extract multiline or single line values
         const extractField = (label) => {
           const regex = new RegExp(`${label}:\\s*\\n?\\s*([\\s\\S]*?)(?=\\n[A-Z\\s]+:|$|\\n----------------|\\nDNA PROFILE|\\nPHYSICAL DESCRIPTION|\\nFORENSIC DETAILS|\\nAUTOPSY FINDINGS)`, 'i');
-          const match = text.match(regex);
+          const match = sanitizedText.match(regex);
           return match ? match[1].trim() : null;
         };
 
         // Case Number
-        const caseMatch = text.match(/CASE\s+#(\d+)/i);
+        const caseMatch = sanitizedText.match(/CASE\s+#(\d+)/i);
         if (caseMatch) data.caseNumber = caseMatch[1];
         
         // Name and OOC
@@ -972,7 +981,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
         }
 
         // DNA Profile
-        data.dnaProfile = extractField('DNA PROFILE') || text.match(/DNA PROFILE\s*\n?\s*([A-F0-9]+)/i)?.[1];
+        data.dnaProfile = extractField('DNA PROFILE') || sanitizedText.match(/DNA PROFILE\s*\n?\s*([A-F0-9]+)/i)?.[1];
 
         // Sex
         const sex = extractField('SEX');
@@ -984,7 +993,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
         data.placeOfDeath = extractField('LOCATION');
         
         // Physical Description -> External Examination
-        const physicalDescMatch = text.match(/PHYSICAL DESCRIPTION\s*\n([\s\S]*?)(?=Tattoos description|Estimated age|FORENSIC DETAILS|AUTOPSY FINDINGS|$)/);
+        const physicalDescMatch = sanitizedText.match(/PHYSICAL DESCRIPTION\s*\n([\s\S]*?)(?=Tattoos description|Estimated age|FORENSIC DETAILS|AUTOPSY FINDINGS|$)/);
         if (physicalDescMatch) {
           const prefix = data.decedentOOC ? `(( ${data.decedentOOC}'s /examine\n\n` : "** The Morgue Technician provides a written description below of the Decedent  ** ((This section is descriptive purposes only and is automatically generated from the Morgue Records )) \n\n";
           data.externalExamination = prefix + physicalDescMatch[1].trim() + (data.decedentOOC ? ' ))' : '');
@@ -998,7 +1007,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
         const casingRegex = /Bullet recovered with striation marks - (.*?)\s*\n#(.*)/g;
         let casingMatch;
         const casings = [];
-        while ((casingMatch = casingRegex.exec(text)) !== null) {
+        while ((casingMatch = casingRegex.exec(sanitizedText)) !== null) {
           casings.push(`Bullet found with striation marks (${casingMatch[1].trim()}) #${casingMatch[2].trim()}`);
         }
         const hasCasings = casings.length > 0; // Evaluate once
@@ -1008,7 +1017,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
         }
 
         // Autopsy Findings
-        const findingsSection = text.split('AUTOPSY FINDINGS')[1];
+        const findingsSection = sanitizedText.split('AUTOPSY FINDINGS')[1];
         if (findingsSection) {
           const lines = findingsSection.trim().split('\n');
           const findings = lines.map(line => {
@@ -1032,10 +1041,10 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
                 return null;
               }
               
-              if (typeLower === 'gunshot wound') {
+              if (typeLower.includes('gunshot wound')) {
                 const rangeText = distRounded !== null ? `, estimated range ${distRounded}m` : '';
                 return `Gunshot Wound to ${part}${rangeText}`;
-              } else if (typeLower === 'blunt force trauma' || typeLower === 'stab wound') {
+              } else if (typeLower.includes('blunt force trauma') || typeLower.includes('stab wound')) {
                 const formattedType = typeLower.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
                 return `${formattedType} to ${part}`;
               }
