@@ -1,3 +1,5 @@
+import { sanitizeMorgueText } from './textUtils';
+
 /**
  * Utility to parse raw morgue records from text logs.
  */
@@ -5,11 +7,14 @@
 export const parseMorgueRecord = (text) => {
     if (!text || !text.trim()) return null;
 
+    // Sanitize input text to handle malformed characters
+    const sanitizedText = sanitizeMorgueText(text);
+
     const record = {};
-    const lines = text.split('\n').map(line => line.trim());
+    const lines = sanitizedText.split('\n').map(line => line.trim());
 
     // Case Number
-    const caseMatch = text.match(/CASE\s+#(\d+)/i);
+    const caseMatch = sanitizedText.match(/CASE\s+#(\d+)/i);
     record.caseId = caseMatch ? caseMatch[1] : 'Unknown';
 
     // Helper to extract multiline or single line values (Newline-agnostic)
@@ -17,7 +22,7 @@ export const parseMorgueRecord = (text) => {
         // Look for the label and capture everything until the next known header or section divider
         const boundaries = '(?:NAME:|SEX:|IDENTIFIED:|LOCATION:|TIME OF DEATH:|CAUSE OF DEATH:|SIGNATURE:|DNA PROFILE|PHYSICAL DESCRIPTION|FORENSIC DETAILS|AUTOPSY FINDINGS|-----------------|$|\\n[A-Z\\s]+:)';
         const regex = new RegExp(`${label}:\\s*\\n?\\s*([\\s\\S]*?)(?=\\s*${boundaries})`, 'i');
-        const match = text.match(regex);
+        const match = sanitizedText.match(regex);
         return match ? match[1].trim() : 'Unknown';
     };
 
@@ -29,30 +34,30 @@ export const parseMorgueRecord = (text) => {
     record.causeOfDeath = extractField('CAUSE OF DEATH');
 
     // DNA Profile (Resilient extraction)
-    const dnaMatch = text.match(/DNA PROFILE\s*\n?\s*([0-9A-F]{10,})/i);
+    const dnaMatch = sanitizedText.match(/DNA PROFILE\s*\n?\s*([0-9A-F]{10,})/i);
     record.dnaProfile = dnaMatch ? dnaMatch[1].trim() : 'N/A';
 
     // Estimated Age (Boundary based)
-    const ageMatch = text.match(/Estimated age:\s*\n?\s*([\s\S]*?)(?=\s*(?:FORENSIC DETAILS|AUTOPSY FINDINGS|$))/i);
+    const ageMatch = sanitizedText.match(/Estimated age:\s*\n?\s*([\s\S]*?)(?=\s*(?:FORENSIC DETAILS|AUTOPSY FINDINGS|$))/i);
     record.estimatedAge = ageMatch ? ageMatch[1].trim() : 'Unknown';
 
     // Tattoos (Resilient extraction)
-    const tattooMatch = text.match(/Tattoos description:\s*\n?\s*([\s\S]*?)(?=\s*(?:Estimated age:|FORENSIC DETAILS|AUTOPSY FINDINGS|$))/i);
+    const tattooMatch = sanitizedText.match(/Tattoos description:\s*\n?\s*([\s\S]*?)(?=\s*(?:Estimated age:|FORENSIC DETAILS|AUTOPSY FINDINGS|$))/i);
     record.tattoos = tattooMatch ? tattooMatch[1].trim() : 'None';
 
     // Forensic Details (Resilient extraction)
-    const bacMatch = text.match(/Blood alcohol concentration \(BAC\)\s*\n?\s*([\d.]+%?)/i);
+    const bacMatch = sanitizedText.match(/Blood alcohol concentration \(BAC\)\s*\n?\s*([\d.]+%?)/i);
     record.bac = bacMatch ? bacMatch[1].trim() : '0.00%';
 
-    const narcoticsMatch = text.match(/Traces of narcotics\s*\n?\s*([\s\S]*?)(?=\s*(?:Bullet|AUTOPSY FINDINGS|$))/i);
+    const narcoticsMatch = sanitizedText.match(/Traces of narcotics\s*\n?\s*([\s\S]*?)(?=\s*(?:Bullet|AUTOPSY FINDINGS|$))/i);
     record.narcotics = narcoticsMatch ? narcoticsMatch[1].trim() : 'None';
 
     // Bullets (Multiple)
-    const bulletMatches = [...text.matchAll(/Bullet recovered with striation marks - (.*)\s*#(\d+)/gi)];
+    const bulletMatches = [...sanitizedText.matchAll(/Bullet recovered with striation marks - (.*)\s*#(\d+)/gi)];
     record.bullets = bulletMatches.map(m => ({ type: m[1].trim(), id: m[2] }));
 
     // Autopsy Findings Table (Ultra Robust - identifies rows by timestamp)
-    const findingsSectionMatch = text.match(/AUTOPSY FINDINGS[\s\S]*?TIME\s+WOUND TYPE\s+BODY PART\s+DIST\.([\s\S]*?)(?=\n----------------|$)/i);
+    const findingsSectionMatch = sanitizedText.match(/AUTOPSY FINDINGS[\s\S]*?TIME\s+WOUND TYPE\s+BODY PART\s+DIST\.([\s\S]*?)(?=\n----------------|$)/i);
     if (findingsSectionMatch) {
         const tableBody = findingsSectionMatch[1].trim();
         // Split by timestamp pattern to identify rows even if newlines are missing
@@ -80,18 +85,19 @@ export const parseMorgueRecord = (text) => {
     }
 
     // Physical Description Text (Full) - Re-calculate stop index to be sure
-    const physicalStart = text.indexOf('PHYSICAL DESCRIPTION');
+    const physicalStart = sanitizedText.indexOf('PHYSICAL DESCRIPTION');
     if (physicalStart !== -1) {
-        const ageStart = text.indexOf('Estimated age:');
-        const tattooStart = text.indexOf('Tattoos description:');
-        const forensicStart = text.indexOf('FORENSIC DETAILS');
+        const ageStart = sanitizedText.indexOf('Estimated age:');
+        const tattooStart = sanitizedText.indexOf('Tattoos description:');
+        const forensicStart = sanitizedText.indexOf('FORENSIC DETAILS');
         const stopKeywords = [ageStart, tattooStart, forensicStart].filter(idx => idx !== -1 && idx > physicalStart);
-        const stopIndex = stopKeywords.length > 0 ? Math.min(...stopKeywords) : text.length;
-        record.physicalDescription = text.substring(physicalStart + 20, stopIndex).trim();
+        const stopIndex = stopKeywords.length > 0 ? Math.min(...stopKeywords) : sanitizedText.length;
+        record.physicalDescription = sanitizedText.substring(physicalStart + 20, stopIndex).trim();
     }
 
     return record;
 };
+
 
 export const parseBulkMorgueRecords = (text) => {
     if (!text || !text.trim()) return [];

@@ -5,7 +5,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { Card, Button, Alert, Table, Badge, Spinner, Tabs, Tab, Form } from 'react-bootstrap';
 import { useDropzone } from 'react-dropzone';
 import { httpsCallable } from 'firebase/functions';
-import { ref, get, set } from 'firebase/database';
+import { ref, get, set, remove } from 'firebase/database';
 import { functions, database } from '../../firebase';
 import * as Sentry from "@sentry/react";
 
@@ -25,12 +25,56 @@ const FactionDataUpload = ({ showNotification }) => {
     // Database content state
     const [storedData, setStoredData] = useState(null);
     const [loadingStored, setLoadingStored] = useState(false);
+    const [isRevoking, setIsRevoking] = useState(null); // ID of member being revoked
     const [activeTab, setActiveTab] = useState('upload');
     const [lastUpdateInfo, setLastUpdateInfo] = useState(null);
 
     // Remote Sync State
     const [isSyncing, setIsSyncing] = useState(false);
     const [isUploadingAuth, setIsUploadingAuth] = useState(false);
+
+    const handleRevokeMember = async (member) => {
+        if (!member || !member.characterId) return;
+
+        const confirmMessage = `ARE YOU SURE?\n\nThis will PERMANENTLY remove ${member.characterName} (ID: ${member.characterId}) from the local database.\n\nIF THEY ARE CURRENTLY LOGGED IN, THEIR SESSION WILL BE INSTANTLY TERMINATED.`;
+        
+        if (!window.confirm(confirmMessage)) return;
+
+        setIsRevoking(member.characterId);
+        try {
+            const { userAgent, timeZone } = getUserContext();
+            
+            // 1. Remove from database
+            await remove(ref(database, `factions/364/members/${member.characterId}`));
+
+            // 2. Update version to trigger cache invalidation
+            const factionsVersionRef = ref(database, 'appMetadata/factionsDataVersion');
+            await set(factionsVersionRef, Date.now());
+
+            // 3. Log action
+            logAdminAction(
+                gtawUsername,
+                'Revoked Faction Membership',
+                `Target: ${member.characterName} (ID: ${member.characterId})\nAction: Manual Revocation/Removal`,
+                'Faction Data Management',
+                userAgent,
+                timeZone,
+                gtawUsername,
+                gtawUser
+            );
+
+            showNotification && showNotification(`Successfully revoked access for ${member.characterName}.`, 'success');
+            
+            // Refresh local state
+            await loadStoredFactionData();
+        } catch (err) {
+            console.error('[Faction Data] Revoke error:', err);
+            showNotification && showNotification(`Failed to revoke access: ${err.message}`, 'error');
+            Sentry.captureException(err);
+        } finally {
+            setIsRevoking(null);
+        }
+    };
 
     const handleTriggerRemoteSync = async () => {
         setIsSyncing(true);
@@ -796,7 +840,8 @@ const FactionDataUpload = ({ showNotification }) => {
                                                             <th>Rank</th>
                                                             <th className="text-center">Script</th>
                                                             <th className="text-center">ABAS</th>
-                                                            <th className="text-end">Access Level</th>
+                                                            <th className="text-center">Access Level</th>
+                                                            <th className="text-end">Actions</th>
                                                         </tr>
                                                     </thead>
                                                     <tbody>
@@ -825,8 +870,23 @@ const FactionDataUpload = ({ showNotification }) => {
                                                                     <td className="text-center font-monospace">
                                                                         <span className={`admin-badge ${activityClass}`}>{isMissingData ? 'MANUAL' : activity.toFixed(2)}</span>
                                                                     </td>
-                                                                    <td className="text-end">
+                                                                    <td className="text-center">
                                                                         <span className={`admin-badge ${levelClass}`}>{accessLevel}</span>
+                                                                    </td>
+                                                                    <td className="text-end">
+                                                                        <Button 
+                                                                            variant="outline-danger" 
+                                                                            size="sm" 
+                                                                            className="admin-btn-table"
+                                                                            disabled={isRevoking !== null}
+                                                                            onClick={() => handleRevokeMember(member)}
+                                                                        >
+                                                                            {isRevoking === member.characterId ? (
+                                                                                <Spinner size="sm" animation="border" />
+                                                                            ) : (
+                                                                                <><i className="fas fa-user-slash me-1"></i> Revoke</>
+                                                                            )}
+                                                                        </Button>
                                                                     </td>
                                                                 </tr>
                                                             );

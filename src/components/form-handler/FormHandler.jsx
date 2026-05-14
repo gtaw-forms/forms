@@ -70,7 +70,7 @@ export const FormHandler = () => {
   const [currentUtcTime, setCurrentUtcTime] = useState(getUtcFormattedDateTime());
   const [isUploading, setIsUploading] = useState(false);
   const [keepCredentials, setKeepCredentials] = useState(() => {
-    return localStorage.getItem('phmc_gtaw_oauth_persist_enabled') === 'true';
+    return true;
   });
   const [showBugReportModal, setShowBugReportModal] = useState(false);
   const [showAgencyIncidentModal, setShowAgencyIncidentModal] = useState(false);
@@ -238,59 +238,16 @@ export const FormHandler = () => {
       }, [isAuthenticated, showNotification, removeNotification]);  
 
   useEffect(() => {
-    const hasSeenPrompt = localStorage.getItem('seenKeepCredentialsPrompt') === 'true';
-    const hasSeenThisSession = sessionStorage.getItem('hasSeenKeepCredentialsPrompt_session') === 'true';
-    
-    // Check if the token is already in localStorage (meaning they are already persisted)
-    const isAlreadyPersisted = !!localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
-
-    if (isPhmcMember && !hasSeenPrompt && !hasSeenThisSession && !isAlreadyPersisted) {
-      sessionStorage.setItem('hasSeenKeepCredentialsPrompt_session', 'true');
-      showNotification(
-        'Do you want us to keep you logged in and remember your employee credentials across sessions?',
-        'info',
-        0, // Set to 0 to make it persistent until an action is taken
-        { actions: [
-          {
-            label: 'Yes, Persist',
-            handler: (id) => {
-              localStorage.setItem('phmc_gtaw_oauth_persist_enabled', 'true');
-              setKeepCredentials(true);
-              
-              const token = sessionStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
-              if (token) {
-                localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, token);
-              }
-
-              localStorage.setItem('seenKeepCredentialsPrompt', 'true');
-              removeNotification(id);
-              showNotification('You will stay logged in across sessions.', 'success');
-            },
-          },
-          {
-            label: 'No, Session Only',
-            handler: (id) => {
-              localStorage.setItem('phmc_gtaw_oauth_persist_enabled', 'false');
-              setKeepCredentials(false);
-              localStorage.setItem('seenKeepCredentialsPrompt', 'true');
-              removeNotification(id);
-            },
-          },
-          {
-            label: 'Ask Me Later',
-            handler: (id) => {
-              removeNotification(id);
-            },
-          },
-        ]}
-      );
-    } else if (isAlreadyPersisted && !hasSeenPrompt) {
-      // If they are already persisted, don't show the prompt and mark as seen
-      localStorage.setItem('seenKeepCredentialsPrompt', 'true');
+    if (isPhmcMember && !localStorage.getItem('seenKeepCredentialsPrompt')) {
       localStorage.setItem('phmc_gtaw_oauth_persist_enabled', 'true');
-      if (!keepCredentials) setKeepCredentials(true);
+      const token = sessionStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+      if (token) {
+        localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, token);
+      }
+      setKeepCredentials(true);
+      localStorage.setItem('seenKeepCredentialsPrompt', 'true');
     }
-  }, [isPhmcMember, showNotification, removeNotification, setKeepCredentials, keepCredentials]);
+  }, [isPhmcMember, setKeepCredentials]);
 
   // NEW: Track form handler visit
   useEffect(() => {
@@ -329,7 +286,7 @@ export const FormHandler = () => {
   }, [formsData]); // Run once when formsData is available
 
   const { showEmsBingoModal, setShowEmsBingoModal } = useModal();
-  const { saveReport: saveNewReport } = useFormSaver(user, isAuthenticated);
+  const { saveReport: saveNewReport, validateMembership } = useFormSaver(user, isAuthenticated);
   const modalCloseTimer = React.useRef(null);
 
   // Memos
@@ -887,7 +844,8 @@ export const FormHandler = () => {
       isAttachMode
   } = useReportAttachment(
       loadReportForUser,
-      formValues, setFormValues, selectedForm, showNotification, removeNotification, modalCloseTimer
+      formValues, setFormValues, selectedForm, showNotification, removeNotification, modalCloseTimer,
+      validateMembership
   );
 
   const handleLoadReport = useCallback((report, userId) => {

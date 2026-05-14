@@ -1,10 +1,12 @@
-import React, { useState, lazy, Suspense } from 'react';
+import React, { useState, lazy, Suspense, useEffect } from 'react';
 import { HashRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import { useNotification } from './contexts/NotificationContext.jsx';
 import { FormProvider } from './contexts/FormContext.jsx';
 import * as Sentry from "@sentry/react";
 import { sendDiscordErrorWebhook } from './utils/errorUtils';
 import { Spinner } from 'react-bootstrap';
+import { database } from './firebase';
+import { ref, onValue } from 'firebase/database';
 
 import { FormHandler } from './components/form-handler/FormHandler.jsx';
 import ProtectedRoute from './components/Auth/ProtectedRoute.jsx';
@@ -25,6 +27,48 @@ function App() {
     const [setShowAdblockNotification] = useState(false);
 
     const { showNotification, removeNotification } = useNotification();
+
+    // GLOBAL SECURITY KILL-SWITCH LISTENER
+    useEffect(() => {
+        const killSwitchRef = ref(database, 'appMetadata/globalKillSwitch');
+        
+        // Use a ref to store the initial value to avoid purging on first load
+        let isInitialLoad = true;
+
+        const unsubscribe = onValue(killSwitchRef, (snapshot) => {
+            const serverTimestamp = snapshot.val();
+            if (!serverTimestamp) return;
+
+            if (isInitialLoad) {
+                isInitialLoad = false;
+                // If the kill-switch was triggered in the last 60 seconds, purge anyway (handles offline -> online)
+                const now = Date.now();
+                if (now - serverTimestamp > 60000) {
+                    return;
+                }
+            }
+
+            console.warn('!!! [App] GLOBAL KILL-SWITCH DETECTED !!! PURGING ALL STORAGE...');
+            
+            // Wipe everything
+            localStorage.clear();
+            sessionStorage.clear();
+
+            // Sentry Breadcrumb
+            Sentry.addBreadcrumb({
+                category: 'security',
+                message: 'Global Kill-Switch Triggered',
+                level: 'fatal'
+            });
+
+            // Force reload after a short delay
+            setTimeout(() => {
+                window.location.href = window.location.origin + window.location.pathname;
+            }, 1500);
+        });
+
+        return () => unsubscribe();
+    }, []);
 
     const LoadingFallback = () => (
         <div className="d-flex justify-content-center align-items-center" style={{ height: '100vh', backgroundColor: '#0d1117' }}>

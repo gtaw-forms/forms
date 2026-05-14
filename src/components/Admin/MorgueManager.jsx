@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Form, Button, Table, Alert, Card, Tabs, Tab, Spinner, InputGroup, Modal } from 'react-bootstrap';
 import { ref, update, onValue, remove, push, set } from 'firebase/database';
 import { database } from '../../firebase';
 import { parseBulkMorgueRecords } from '../../utils/morgueParser';
 import { useData } from '../../contexts/DataContext';
+import { useDropzone } from 'react-dropzone';
 
 const MorgueManager = ({ showNotification }) => {
     const { morgueWhitelist } = useData();
@@ -14,6 +15,11 @@ const MorgueManager = ({ showNotification }) => {
     const [isLoading, setIsLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('upload');
     
+    // Search and Pagination state
+    const [searchTerm, setSearchTerm] = useState('');
+    const [currentPage, setCurrentPage] = useState(1);
+    const recordsPerPage = 15;
+
     // Note editing state
     const [editingNoteRecord, setEditingNoteRecord] = useState(null);
     const [noteValue, setNoteValue] = useState('');
@@ -21,6 +27,7 @@ const MorgueManager = ({ showNotification }) => {
     
     // Whitelist state
     const [newWhitelistEntry, setNewWhitelistEntry] = useState('');
+    const [newWhitelistName, setNewWhitelistName] = useState('');
     const [whitelistType, setWhitelistType] = useState('characterId');
 
     useEffect(() => {
@@ -44,9 +51,29 @@ const MorgueManager = ({ showNotification }) => {
         return () => unsubscribe();
     }, []);
 
+    const onDrop = useCallback((acceptedFiles) => {
+        const file = acceptedFiles[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const text = e.target.result;
+            setRawLogs(text);
+            showNotification('File loaded. Click "Parse & Preview" to process.', 'info');
+        };
+        reader.onerror = () => showNotification('Failed to read file.', 'error');
+        reader.readAsText(file);
+    }, [showNotification]);
+
+    const { getRootProps, getInputProps, isDragActive } = useDropzone({
+        onDrop,
+        accept: { 'text/plain': ['.txt', '.log'] },
+        multiple: false
+    });
+
     const handleParse = () => {
         if (!rawLogs.trim()) {
-            showNotification('Please paste some logs first.', 'warning');
+            showNotification('Please paste some logs or upload a file first.', 'warning');
             return;
         }
         const records = parseBulkMorgueRecords(rawLogs);
@@ -155,6 +182,26 @@ const MorgueManager = ({ showNotification }) => {
         }
     };
 
+    // Filtered and Paginated records
+    const filteredRecords = useMemo(() => {
+        return existingRecords.filter(record => 
+            (record.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+            String(record.caseId || '').toLowerCase().includes(searchTerm.toLowerCase())
+        );
+    }, [existingRecords, searchTerm]);
+
+    const paginatedRecords = useMemo(() => {
+        const startIndex = (currentPage - 1) * recordsPerPage;
+        return filteredRecords.slice(startIndex, startIndex + recordsPerPage);
+    }, [filteredRecords, currentPage]);
+
+    const totalPages = Math.ceil(filteredRecords.length / recordsPerPage);
+
+    const handlePageChange = (newPage) => {
+        setCurrentPage(newPage);
+        document.querySelector('.table-responsive')?.scrollTo(0, 0);
+    };
+
     const handleAddWhitelist = async (e) => {
         e.preventDefault();
         if (!newWhitelistEntry.trim()) return;
@@ -165,11 +212,13 @@ const MorgueManager = ({ showNotification }) => {
             const newEntryRef = push(whitelistRef);
             await set(newEntryRef, {
                 [whitelistType === 'characterId' ? 'id' : 'username']: newWhitelistEntry.trim().toLowerCase(),
-                addedAt: Date.now(),
+                characterName: newWhitelistName.trim() || 'Manual Entry',
+                grantedAt: Date.now(),
                 type: whitelistType
             });
             showNotification('User added to whitelist.', 'success');
             setNewWhitelistEntry('');
+            setNewWhitelistName('');
         } catch (error) {
             console.error('Error adding to whitelist:', error);
             showNotification('Failed to add to whitelist.', 'error');
@@ -223,17 +272,30 @@ const MorgueManager = ({ showNotification }) => {
                             <h4 className="mb-0"><i className="fas fa-file-import me-2"></i>Import New Records</h4>
                         </Card.Header>
                         <Card.Body>
+                            <div 
+                                {...getRootProps()} 
+                                className={`mb-3 border-2 border-dashed p-4 text-center cursor-pointer transition-colors rounded ${isDragActive ? 'border-primary bg-primary bg-opacity-10' : 'border-secondary'}`}
+                                style={{ minHeight: '150px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            >
+                                <input {...getInputProps()} />
+                                <div>
+                                    <i className="fas fa-cloud-upload-alt fa-3x mb-3 opacity-50"></i>
+                                    <p className="mb-1">{isDragActive ? 'Drop logs here...' : 'Drag & drop .txt logs here, or click to select'}</p>
+                                    <p className="small opacity-50">You can also paste logs into the text area below</p>
+                                </div>
+                            </div>
+
                             <Form.Group className="mb-3">
-                                <Form.Label>Paste Raw Morgue Logs</Form.Label>
+                                <Form.Label>Raw Morgue Logs</Form.Label>
                                 <Form.Control
                                     as="textarea"
-                                    rows={8}
-                                    placeholder="Paste logs here..."
+                                    rows={5}
+                                    placeholder="Paste logs here if not uploading a file..."
                                     value={rawLogs}
                                     onChange={(e) => setRawLogs(e.target.value)}
                                     className="bg-dark text-light border-secondary"
                                 />
-                                <Form.Text className="text-muted">
+                                <Form.Text className="opacity-75">
                                     Records must be separated by the "MORGUE" header.
                                 </Form.Text>
                             </Form.Group>
@@ -292,18 +354,36 @@ const MorgueManager = ({ showNotification }) => {
 
                 <Tab eventKey="manage" title={<span><i className="fas fa-list me-2"></i>Manage Existing ({existingRecords.length})</span>}>
                     <Card className="bg-dark text-light border-secondary shadow">
-                        <Card.Header className="border-secondary d-flex justify-content-between align-items-center">
+                        <Card.Header className="border-secondary d-flex justify-content-between align-items-center flex-wrap gap-3">
                             <h4 className="mb-0">Existing Morgue Records</h4>
-                            {existingRecords.length > 0 && (
-                                <Button 
-                                    variant="outline-danger" 
-                                    size="sm" 
-                                    onClick={handlePurgeRecords} 
-                                    disabled={isProcessing}
-                                >
-                                    <i className="fas fa-bomb me-2"></i>Purge All Records
-                                </Button>
-                            )}
+                            
+                            <div className="d-flex gap-3 align-items-center">
+                                <InputGroup size="sm" style={{ maxWidth: '300px' }}>
+                                    <InputGroup.Text className="bg-dark border-secondary text-light">
+                                        <i className="fas fa-search"></i>
+                                    </InputGroup.Text>
+                                    <Form.Control
+                                        placeholder="Search records..."
+                                        className="bg-dark border-secondary text-light"
+                                        value={searchTerm}
+                                        onChange={(e) => {
+                                            setSearchTerm(e.target.value);
+                                            setCurrentPage(1);
+                                        }}
+                                    />
+                                </InputGroup>
+
+                                {existingRecords.length > 0 && (
+                                    <Button 
+                                        variant="outline-danger" 
+                                        size="sm" 
+                                        onClick={handlePurgeRecords} 
+                                        disabled={isProcessing}
+                                    >
+                                        <i className="fas fa-bomb me-2"></i>Purge All
+                                    </Button>
+                                )}
+                            </div>
                         </Card.Header>
                         <Card.Body className="p-0">
                             {isLoading ? (
@@ -312,58 +392,86 @@ const MorgueManager = ({ showNotification }) => {
                                     <p className="mt-2">Loading database...</p>
                                 </div>
                             ) : (
-                                <div className="table-responsive" style={{ maxHeight: '600px' }}>
-                                    <Table striped bordered hover variant="dark" className="mb-0">
-                                        <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
-                                            <tr>
-                                                <th>Case #</th>
-                                                <th>Name</th>
-                                                <th>Location</th>
-                                                <th>Last Updated</th>
-                                                <th className="text-center">Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {existingRecords.length > 0 ? (
-                                                existingRecords.map((record) => (
-                                                    <tr key={record.firebaseKey}>
-                                                        <td>{record.caseId}</td>
-                                                        <td><strong>{record.name}</strong></td>
-                                                        <td>{record.location}</td>
-                                                        <td className="small text-muted">
-                                                            {record.lastUpdated ? new Date(record.lastUpdated).toLocaleString() : 'N/A'}
-                                                        </td>
-                                                        <td className="text-center">
-                                                            <div className="d-flex gap-2 justify-content-center">
-                                                                <Button 
-                                                                    variant="outline-info" 
-                                                                    size="sm"
-                                                                    onClick={() => {
-                                                                        setEditingNoteRecord(record);
-                                                                        setNoteValue(record.adminNote || '');
-                                                                    }}
-                                                                >
-                                                                    <i className="fas fa-edit"></i> Note
-                                                                </Button>
-                                                                <Button 
-                                                                    variant="outline-danger" 
-                                                                    size="sm"
-                                                                    onClick={() => handleDeleteRecord(record.firebaseKey, record.name)}
-                                                                >
-                                                                    <i className="fas fa-trash-alt"></i>
-                                                                </Button>
-                                                            </div>
+                                <>
+                                    <div className="table-responsive" style={{ maxHeight: '600px' }}>
+                                        <Table striped bordered hover variant="dark" className="mb-0">
+                                            <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
+                                                <tr>
+                                                    <th>Case #</th>
+                                                    <th>Name</th>
+                                                    <th>Location</th>
+                                                    <th>Last Updated</th>
+                                                    <th className="text-center">Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {paginatedRecords.length > 0 ? (
+                                                    paginatedRecords.map((record) => (
+                                                        <tr key={record.firebaseKey}>
+                                                            <td>{record.caseId}</td>
+                                                            <td><strong>{record.name}</strong></td>
+                                                            <td>{record.location}</td>
+                                                            <td className="small opacity-75">
+                                                                {record.lastUpdated ? new Date(record.lastUpdated).toLocaleString() : 'N/A'}
+                                                            </td>
+                                                            <td className="text-center">
+                                                                <div className="d-flex gap-2 justify-content-center">
+                                                                    <Button 
+                                                                        variant="outline-info" 
+                                                                        size="sm"
+                                                                        onClick={() => {
+                                                                            setEditingNoteRecord(record);
+                                                                            setNoteValue(record.adminNote || '');
+                                                                        }}
+                                                                    >
+                                                                        <i className="fas fa-edit"></i> Note
+                                                                    </Button>
+                                                                    <Button 
+                                                                        variant="outline-danger" 
+                                                                        size="sm"
+                                                                        onClick={() => handleDeleteRecord(record.firebaseKey, record.name)}
+                                                                    >
+                                                                        <i className="fas fa-trash-alt"></i>
+                                                                    </Button>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    ))
+                                                ) : (
+                                                    <tr>
+                                                        <td colSpan="5" className="text-center p-4">
+                                                            {searchTerm ? `No records found matching "${searchTerm}"` : 'No records found in database.'}
                                                         </td>
                                                     </tr>
-                                                ))
-                                            ) : (
-                                                <tr>
-                                                    <td colSpan="5" className="text-center p-4">No records found in database.</td>
-                                                </tr>
-                                            )}
-                                        </tbody>
-                                    </Table>
-                                </div>
+                                                )}
+                                            </tbody>
+                                        </Table>
+                                    </div>
+                                    
+                                    {totalPages > 1 && (
+                                        <div className="d-flex justify-content-center align-items-center p-3 border-top border-secondary">
+                                            <Button 
+                                                variant="outline-secondary" 
+                                                size="sm" 
+                                                disabled={currentPage === 1}
+                                                onClick={() => handlePageChange(currentPage - 1)}
+                                            >
+                                                <i className="fas fa-chevron-left"></i>
+                                            </Button>
+                                            <span className="mx-3 small">
+                                                Page <strong>{currentPage}</strong> of {totalPages}
+                                            </span>
+                                            <Button 
+                                                variant="outline-secondary" 
+                                                size="sm" 
+                                                disabled={currentPage === totalPages}
+                                                onClick={() => handlePageChange(currentPage + 1)}
+                                            >
+                                                <i className="fas fa-chevron-right"></i>
+                                            </Button>
+                                        </div>
+                                    )}
+                                </>
                             )}
                         </Card.Body>
                     </Card>
@@ -376,32 +484,45 @@ const MorgueManager = ({ showNotification }) => {
                         </Card.Header>
                         <Card.Body>
                             <Form onSubmit={handleAddWhitelist}>
-                                <div className="d-flex gap-3 align-items-end">
-                                    <Form.Group className="flex-grow-1">
-                                        <Form.Label>Search Value (ID or Username)</Form.Label>
+                                <div className="row g-3">
+                                    <Form.Group className="col-md-3">
+                                        <Form.Label>Auth Type</Form.Label>
+                                        <Form.Select 
+                                            className="bg-dark text-light border-secondary"
+                                            value={whitelistType}
+                                            onChange={(e) => setWhitelistType(e.target.value)}
+                                        >
+                                            <option value="characterId">Character ID</option>
+                                            <option value="username">Username</option>
+                                        </Form.Select>
+                                    </Form.Group>
+                                    
+                                    <Form.Group className="col-md-4">
+                                        <Form.Label>{whitelistType === 'characterId' ? 'Character ID' : 'Username'}</Form.Label>
+                                        <Form.Control
+                                            placeholder={`e.g. ${whitelistType === 'characterId' ? '1234' : 'JohnDoe'}`}
+                                            value={newWhitelistEntry}
+                                            onChange={(e) => setNewWhitelistEntry(e.target.value)}
+                                            className="bg-dark text-light border-secondary"
+                                        />
+                                    </Form.Group>
+
+                                    <Form.Group className="col-md-5">
+                                        <Form.Label>Character Name (Optional)</Form.Label>
                                         <InputGroup>
-                                            <Form.Select 
-                                                style={{ maxWidth: '150px' }} 
-                                                className="bg-dark text-light border-secondary"
-                                                value={whitelistType}
-                                                onChange={(e) => setWhitelistType(e.target.value)}
-                                            >
-                                                <option value="characterId">Character ID</option>
-                                                <option value="username">Username</option>
-                                            </Form.Select>
                                             <Form.Control
-                                                placeholder={`Enter ${whitelistType === 'characterId' ? 'Character ID (e.g. 1234)' : 'Username (e.g. JohnDoe)'}`}
-                                                value={newWhitelistEntry}
-                                                onChange={(e) => setNewWhitelistEntry(e.target.value)}
+                                                placeholder="e.g. Dwayne Burke"
+                                                value={newWhitelistName}
+                                                onChange={(e) => setNewWhitelistName(e.target.value)}
                                                 className="bg-dark text-light border-secondary"
                                             />
+                                            <Button variant="success" type="submit" disabled={isProcessing || !newWhitelistEntry}>
+                                                <i className="fas fa-user-plus me-2"></i>Add
+                                            </Button>
                                         </InputGroup>
                                     </Form.Group>
-                                    <Button variant="success" type="submit" disabled={isProcessing || !newWhitelistEntry}>
-                                        <i className="fas fa-user-plus me-2"></i>Whitelist User
-                                    </Button>
                                 </div>
-                                <Form.Text className="text-muted mt-2 d-block">
+                                <Form.Text className="opacity-75 mt-2 d-block">
                                     Whitelisted users gain READ access to the Morgue Intake Database even if they are not PHMC employees.
                                 </Form.Text>
                             </Form>
@@ -416,8 +537,8 @@ const MorgueManager = ({ showNotification }) => {
                             <Table striped bordered hover variant="dark" className="mb-0">
                                 <thead>
                                     <tr>
-                                        <th>Type</th>
-                                        <th>Value</th>
+                                        <th>Identity</th>
+                                        <th>Auth Info</th>
                                         <th>Date Added</th>
                                         <th className="text-center">Actions</th>
                                     </tr>
@@ -427,13 +548,17 @@ const MorgueManager = ({ showNotification }) => {
                                         Object.entries(morgueWhitelist).map(([key, entry]) => (
                                             <tr key={key}>
                                                 <td>
-                                                    <span className={`badge bg-${entry.type === 'username' ? 'info' : 'primary'}`}>
-                                                        {entry.type === 'username' ? 'Username' : 'Character ID'}
-                                                    </span>
+                                                    <strong>{entry.characterName || 'Unknown Name'}</strong>
+                                                    {entry.faction && <div className="extra-small opacity-50">{entry.faction}</div>}
                                                 </td>
-                                                <td><code className="text-light">{entry.id || entry.username}</code></td>
-                                                <td className="small text-muted">
-                                                    {entry.addedAt ? new Date(entry.addedAt).toLocaleString() : 'Unknown'}
+                                                <td>
+                                                    <span className={`badge bg-${entry.type === 'username' ? 'info' : 'primary'} me-2`}>
+                                                        {entry.type === 'username' ? 'U' : 'ID'}
+                                                    </span>
+                                                    <code className="text-light">{entry.id || entry.username}</code>
+                                                </td>
+                                                <td className="small opacity-75">
+                                                    {entry.grantedAt || entry.addedAt ? new Date(entry.grantedAt || entry.addedAt).toLocaleString() : 'Legacy Entry'}
                                                 </td>
                                                 <td className="text-center">
                                                     <Button 
@@ -477,7 +602,7 @@ const MorgueManager = ({ showNotification }) => {
                             onChange={(e) => setNoteValue(e.target.value)}
                             className="bg-dark text-light border-secondary"
                         />
-                        <Form.Text className="text-muted">
+                        <Form.Text className="opacity-75">
                             This note will be displayed directly in the Morgue Intake Lookup table for authorized users.
                         </Form.Text>
                     </Form.Group>
@@ -508,10 +633,12 @@ const MorgueManager = ({ showNotification }) => {
                     color: white;
                     border-bottom: 2px solid #555;
                 }
+                .cursor-pointer { cursor: pointer; }
+                .transition-colors { transition: all 0.2s ease-in-out; }
+                .extra-small { font-size: 0.7rem; }
             `}</style>
         </div>
     );
 };
 
 export default MorgueManager;
-

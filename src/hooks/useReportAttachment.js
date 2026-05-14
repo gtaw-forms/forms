@@ -9,7 +9,8 @@ export const useReportAttachment = (
     selectedForm,
     showNotification,
     removeNotification,
-    modalCloseTimer
+    modalCloseTimer,
+    validateMembership
 ) => {
     const [reportSelectionFilter, setReportSelectionFilter] = useState(null);
     const [preselectedEmployeeType, setPreselectedEmployeeType] = useState(null);
@@ -100,6 +101,11 @@ export const useReportAttachment = (
     ) => {
         if (event) event.preventDefault();
 
+        // --- FINAL SECURITY FAIL-SAFE ---
+        if (!showSavedReports && validateMembership && !validateMembership()) {
+            return;
+        }
+
         if (showSavedReports) {
             setShowSavedReports(false);
             setReportSelectionFilter(null); // Clear filter when closing
@@ -122,7 +128,7 @@ export const useReportAttachment = (
         }
         
         setShowSavedReports(true);
-    }, [showSavedReports]);
+    }, [showSavedReports, validateMembership]);
 
     return {
         handleReportSelectedForAttachment,

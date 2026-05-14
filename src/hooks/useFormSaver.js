@@ -98,10 +98,26 @@ const formatToMMM_DD_YYYY = (isoDateTime) => {
     }
 };
 
+import { useGtaWorldAuthContext } from '../contexts/GtaWorldAuthContext';
+
 export const useFormSaver = (gtaWorldUser, isGtaAuthenticated) => {
     const { showNotification } = useNotification();
+    const { isFactionMember } = useGtaWorldAuthContext();
+
+    const validateMembership = useCallback(() => {
+        if (!isFactionMember) {
+            showNotification('ACCESS DENIED: You are no longer recognized as a faction member. Action blocked.', 'error', 10000);
+            return false;
+        }
+        return true;
+    }, [isFactionMember, showNotification]);
 
     const saveReport = useCallback(async (selectedForm, formValues, title, bbCode, options = {}) => {
+        // validate user's faction membership
+        if (!validateMembership()) {
+            return { success: false, error: 'Membership validation failed.' };
+        }
+
         if (!selectedForm || !formValues || !title || !bbCode) {
             const missingFields = [];
             if (!selectedForm) missingFields.push('selectedForm');
@@ -368,5 +384,5 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated) => {
         }
     }, [gtaWorldUser, isGtaAuthenticated, showNotification]);
 
-    return { saveReport };
+    return { saveReport, validateMembership };
 };
