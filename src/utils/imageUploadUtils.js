@@ -1,12 +1,9 @@
 import * as Sentry from "@sentry/react";
 import { functions } from '../firebase';
 import { httpsCallable } from 'firebase/functions';
-import { sendDiscordWebhook } from './webhookUtils';
+import { triggerWebhookProxy } from '../services/firebaseFunctions';
 
 const logUploadFailureToDiscord = async (error, service, context) => {
-  const webhookUrl = import.meta.env.VITE_DISCORD_WEBHOOK_ERRORS || import.meta.env.VITE_DEV_WEBHOOK;
-  if (!webhookUrl) return;
-
   const payload = {
     embeds: [{
       title: "🚨 Image Upload Failure",
@@ -22,7 +19,7 @@ const logUploadFailureToDiscord = async (error, service, context) => {
   };
 
   try {
-    await sendDiscordWebhook(webhookUrl, payload);
+    await triggerWebhookProxy('error', payload);
   } catch (e) {
     console.error("Failed to log upload failure to Discord:", e);
   }

@@ -36,7 +36,6 @@ build/*
 .sentryclirc
 
 # firebase
-functions/
 firebase-admin-key.json
 
 
@@ -48,3 +47,8 @@ tools/service-account.json
 tools/
 docs/
 
+# functions (Firebase Cloud Functions API/proxy endpoints)
+functions/
+
+# AI context artifact
+changelog.md

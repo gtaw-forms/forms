@@ -5,7 +5,7 @@ import { database } from '../../firebase';
 import { ref, push, set } from 'firebase/database';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import { useData } from '../../contexts/DataContext';
-import { sendDiscordWebhook } from '../../utils/webhookUtils';
+import { triggerWebhookProxy } from '../../services/firebaseFunctions';
 import { useImageUpload } from '../../hooks/useImageUpload';
 import * as Sentry from "@sentry/react";
 
@@ -88,26 +88,23 @@ const AgencyIncidentModal = ({ show, onHide, showNotification }) => {
             await set(newIncidentRef, payload);
 
             // Discord Webhook
-            const webhookUrl = import.meta.env.VITE_DISCORD_WEBHOOK_ADMIN || import.meta.env.VITE_DEV_WEBHOOK;
-            if (webhookUrl) {
-                const embed = {
-                    title: "🚨 New Agency Incident Reported",
-                    color: 0xff4757,
-                    fields: [
-                        { name: "Agency", value: payload.agencyLabel, inline: true },
-                        { name: "Incident Time", value: dateTime, inline: true },
-                        { name: "Reporter", value: reporter, inline: true },
-                        { name: "Description", value: payload.description || "No description provided.", inline: false },
-                        { name: "Server Time (FR)", value: serverTime, inline: true }
-                    ],
-                    timestamp: new Date().toISOString(),
-                    footer: { text: "Agency Incident Tracker" }
-                };
-                if (payload.screenshotUrl) {
-                    embed.image = { url: payload.screenshotUrl };
-                }
-                await sendDiscordWebhook(webhookUrl, { embeds: [embed] });
+            const embed = {
+                title: "🚨 New Agency Incident Reported",
+                color: 0xff4757,
+                fields: [
+                    { name: "Agency", value: payload.agencyLabel, inline: true },
+                    { name: "Incident Time", value: dateTime, inline: true },
+                    { name: "Reporter", value: reporter, inline: true },
+                    { name: "Description", value: payload.description || "No description provided.", inline: false },
+                    { name: "Server Time (FR)", value: serverTime, inline: true }
+                ],
+                timestamp: new Date().toISOString(),
+                footer: { text: "Agency Incident Tracker" }
+            };
+            if (payload.screenshotUrl) {
+                embed.image = { url: payload.screenshotUrl };
             }
+            await triggerWebhookProxy('admin', { embeds: [embed] });
 
             showNotification('Agency incident reported successfully.', 'success');
             onHide();

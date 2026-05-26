@@ -5,6 +5,7 @@ import { functions, auth, database } from '../firebase';
 import * as Sentry from "@sentry/react";
 import { getCharacterID, getCharacterName } from '../utils/characterUtils';
 import { logAuthErrorToDiscord } from '../utils/authLogger';
+import { triggerValidateGtaWorldToken, triggerCheckFactionMembership, triggerRefreshGtawUser, triggerWebhookProxy } from './firebaseFunctions';
 
 /**
  * Unified GTA World Authentication Service
@@ -77,16 +78,15 @@ const getRedirectUri = () => {
     return `${window.location.origin}/#/auth/gta/callback`;
 };
 
-const sendLoginWebhook = (userData) => {
-    const webhookUrl = import.meta.env.VITE_DISCORD_WEBHOOK_AUTH || import.meta.env.VITE_DEV_WEBHOOK;
-    if (!webhookUrl) return;
-
+const sendLoginWebhook = (userData, role) => {
     try {
+        const roleLabel = role === 'employee' ? 'PHMC Employee' : 'Non Employee';
         const embed = {
             title: 'GTAW User Login',
             description: `**${userData.username}** (ID: ${userData.id}) just logged in.`,
             color: userData.isFactionMember ? 0x00ff00 : 0x0000ff,
             fields: [
+                { name: 'Login Type', value: roleLabel, inline: true },
                 { name: 'Faction Member', value: userData.isFactionMember ? 'Yes' : 'No', inline: true },
             ],
             timestamp: new Date().toISOString(),
@@ -119,11 +119,7 @@ const sendLoginWebhook = (userData) => {
 
         const payload = { username: 'Login Bot', embeds: [embed] };
 
-        fetch(webhookUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        }).catch(error => {
+        triggerWebhookProxy('auth', payload).catch(error => {
             console.error('Failed to send login webhook:', error);
             Sentry.captureException(error);
         });
@@ -135,9 +131,9 @@ const sendLoginWebhook = (userData) => {
 /**
  * Initiates the GTA World OAuth flow
  */
-export const initiateGtaWorldLogin = (options = {}) => {
+export const initiateGtaWorldLogin = async (options = {}) => {
     try {
-        const restoredSession = tryRestoreSession();
+        const restoredSession = await tryRestoreSession();
         if (restoredSession && restoredSession.user) {
             sendLoginWebhook(restoredSession.user);
             if (options.onSuccess) {
@@ -156,13 +152,15 @@ export const initiateGtaWorldLogin = (options = {}) => {
         const state = generateOAuthState();
         const redirectUri = getRedirectUri();
         const returnPath = options.returnPath || window.location.hash || '#/';
+        const role = options.role || 'employee';
 
         const oauthData = {
             state,
             returnPath,
             redirectUri,
             timestamp: Date.now(),
-            clientId: GTA_WORLD_CONFIG.CLIENT_ID
+            clientId: GTA_WORLD_CONFIG.CLIENT_ID,
+            role
         };
 
         sessionStorage.setItem(STORAGE_KEYS.OAUTH_STATE, JSON.stringify(oauthData));
@@ -218,7 +216,14 @@ export const handleOAuthCallback = async (code, state, onSuccess, onError, onPro
         const result = await exchangeAuthCodeForToken(code, storedOAuthData.redirectUri);
 
         if (result.success) {
-            sendLoginWebhook(result.userData);
+            // Validate user data structure before storing
+            const userData = result.userData;
+            if (!userData || !userData.id || !userData.username) {
+                console.error('[GTA Auth] Invalid user data received from auth server:', userData);
+                throw new Error('Authentication failed: Invalid user data received');
+            }
+
+            sendLoginWebhook(userData, storedOAuthData.role);
             
             // Firebase Sign-in
             if (result.firebaseCustomToken) {
@@ -235,7 +240,8 @@ export const handleOAuthCallback = async (code, state, onSuccess, onError, onPro
 
             // SECURITY FIX: Access Token moved to sessionStorage to prevent persistent clear-text storage.
             // User Data remains in localStorage for performance, but sensitive tokens are now volatile.
-            localStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(result.userData));
+            const userDataToStore = { ...userData, loginRole: storedOAuthData.role || 'employee' };
+            localStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(userDataToStore));
             sessionStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, result.accessToken);
             
             // Persistence: Store token in localStorage for cross-session access (enabled by default)
@@ -308,7 +314,7 @@ const exchangeAuthCodeForToken = async (code, redirectUri) => {
 /**
  * Attempts to restore authentication session
  */
-export const tryRestoreSession = () => {
+export const tryRestoreSession = async () => {
     try {
         const userData = localStorage.getItem(STORAGE_KEYS.USER_DATA);
         const accessToken = sessionStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN) || localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
@@ -316,10 +322,33 @@ export const tryRestoreSession = () => {
         if (!userData || !accessToken) return null;
         
         const parsedUserData = JSON.parse(userData);
-        if (!parsedUserData.id || !parsedUserData.username) return null;
+        if (!parsedUserData.id || !parsedUserData.username) {
+            console.warn('[GTA Auth] Session restore failed: Missing required user fields', {
+                hasId: !!parsedUserData.id,
+                hasUsername: !!parsedUserData.username,
+                keys: Object.keys(parsedUserData)
+            });
+            localStorage.removeItem(STORAGE_KEYS.USER_DATA);
+            return null;
+        }
+        
+        // Validate token via Firebase function (avoids CORS issues with direct API calls)
+        try {
+            const result = await triggerValidateGtaWorldToken({ accessToken });
+            if (result?.valid === false) {
+                console.warn('[GTA Auth] Session restore: Token validation failed, clearing session');
+                localStorage.removeItem(STORAGE_KEYS.USER_DATA);
+                localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
+                sessionStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
+                return null;
+            }
+        } catch (err) {
+            console.warn('[GTA Auth] Session restore: Token validation skipped (network error):', err.message);
+        }
         
         return { user: parsedUserData, accessToken, restored: true };
     } catch (error) {
+        console.error('[GTA Auth] Session restore error:', error);
         localStorage.removeItem(STORAGE_KEYS.USER_DATA);
         return null;
     }
@@ -355,7 +384,44 @@ export const getAccessToken = () => {
     return sessionStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN) || localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
 };
 
-export const isAuthenticated = () => !!(getCurrentUser() && getAccessToken());
+export const isAuthenticated = () => {
+    const user = getCurrentUser();
+    const token = getAccessToken();
+    return !!(user && token && user.id && user.username);
+};
+
+/**
+ * Validates the stored session and returns session status
+ * Returns: { valid: boolean, reason?: string, user?: object }
+ */
+export const validateStoredSession = async () => {
+    if (!isAuthenticated()) {
+        return { valid: false, reason: 'No stored session' };
+    }
+    
+    const user = getCurrentUser();
+    if (!user?.id || !user?.username) {
+        return { valid: false, reason: 'Invalid user data' };
+    }
+    
+    const accessToken = getAccessToken();
+    if (!accessToken) {
+        return { valid: false, reason: 'No access token' };
+    }
+    
+    // Validate token via Firebase function (avoids CORS issues with direct API calls)
+    try {
+        const result = await triggerValidateGtaWorldToken({ accessToken });
+        if (result?.valid === false) {
+            return { valid: false, reason: 'Token expired or revoked' };
+        }
+        
+        return { valid: true, user };
+    } catch (err) {
+        // Network errors don't invalidate session
+        return { valid: true, user, warning: 'Token validation skipped (network error)' };
+    }
+};
 
 export const logout = () => {
     signOut(auth).catch(() => {});
@@ -392,14 +458,40 @@ export const validateSession = async () => {
 export const checkFactionMembershipInDb = async (characterIds) => {
     const ids = Array.isArray(characterIds) ? characterIds.filter(Boolean).map(String) : [];
     if (ids.length === 0) return null;
+    console.log('[GTA Auth] checkFactionMembershipInDb called with IDs:', ids);
     try {
+        // Try Firebase function first (server-side, no CORS issues)
+        try {
+            console.log('[GTA Auth] Calling checkFactionMembership Firebase function...');
+            const result = await triggerCheckFactionMembership({ characterIds: ids });
+            console.log('[GTA Auth] checkFactionMembership function result:', result);
+            if (result && typeof result.isMember === 'boolean') {
+                return result.isMember;
+            }
+        } catch (fnErr) {
+            console.warn('[GTA Auth] Faction membership function call failed, falling back to DB check:', fnErr.message);
+        }
+        
+        // Fallback to direct DB check
+        console.log('[GTA Auth] Falling back to direct DB check at factions/364/members');
         const membersRef = ref(database, 'factions/364/members');
         const snapshot = await get(membersRef);
-        if (!snapshot.exists()) return false;
+        if (!snapshot.exists()) {
+            console.log('[GTA Auth] factions/364/members does not exist');
+            return false;
+        }
         const members = snapshot.val();
-        return ids.some(id => !!members[id]);
+        const memberKeys = Object.keys(members);
+        console.log('[GTA Auth] DB check - member keys:', memberKeys, 'checking for:', ids);
+        const found = ids.some(id => {
+            const exists = !!members[id];
+            console.log(`[GTA Auth] DB check - ID "${id}" exists:`, exists);
+            return exists;
+        });
+        console.log('[GTA Auth] DB check result:', found);
+        return found;
     } catch (error) {
-        console.error('[GTA Auth] Faction membership DB check failed:', error);
+        console.error('[GTA Auth] Faction membership check failed:', error);
         return null;
     }
 };
@@ -487,6 +579,11 @@ export const refreshFactionData = async () => {
 
     if (result.data?.success && result.data?.user) {
         const user = result.data.user;
+        // Validate user data structure
+        if (!user.id || !user.username) {
+            console.error('[GTA Auth] Refresh returned invalid user data:', user);
+            throw new Error('Refresh failed: Invalid user data structure');
+        }
         if (result.data.firebaseCustomToken && (!auth.currentUser || auth.currentUser.uid.startsWith('gtaw:'))) {
             signInWithCustomToken(auth, result.data.firebaseCustomToken).catch(() => {});
         }

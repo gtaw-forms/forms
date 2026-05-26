@@ -16,7 +16,7 @@ import { useReportAttachment } from '../../hooks/useReportAttachment';
 import { useFormSaver } from '../../hooks/useFormSaver';
 import FormQuickLinks from './FormQuickLinks';
 import { validateForm, evaluateFieldVisibility } from '../../utils/formValidation';
-import { sendDiscordWebhook } from '../../utils/webhookUtils';
+import { triggerWebhookProxy } from '../../services/firebaseFunctions';
 import { sendBingoNotification, sendPhraseRequestNotification } from '../UI/notificationService';
 import { useInactivityReload } from '../../hooks/useInactivityReload';
 import { useUserMetrics } from '../../hooks/useUserMetrics';
@@ -70,7 +70,7 @@ export const FormHandler = () => {
   const [currentUtcTime, setCurrentUtcTime] = useState(getUtcFormattedDateTime());
   const [isUploading, setIsUploading] = useState(false);
   const [keepCredentials, setKeepCredentials] = useState(() => {
-    return true;
+    return localStorage.getItem('phmc_gtaw_oauth_persist_enabled') !== 'false';
   });
   const [showBugReportModal, setShowBugReportModal] = useState(false);
   const [showAgencyIncidentModal, setShowAgencyIncidentModal] = useState(false);
@@ -789,7 +789,7 @@ export const FormHandler = () => {
           notificationDuration = 10000;
         }
       } else {
-        finalNotificationMessage = 'Failed to save report.';
+        finalNotificationMessage = `Failed to save report: ${saveResult?.error || 'Unknown error'}`;
         finalNotificationType = 'error';
       }
 
@@ -1278,7 +1278,6 @@ export const FormHandler = () => {
       const validationErrors = validateForm(selectedForm, finalSelectOptions);
 
       if (validationErrors.length > 0) {
-        const webhookUrl = import.meta.env.VITE_DISCORD_WEBHOOK_ADMIN || import.meta.env.VITE_DEV_WEBHOOK;
         const formName = selectedForm.name;
         const errorList = validationErrors.map(e => `- ${e}`).join('\n');
 
@@ -1286,7 +1285,7 @@ export const FormHandler = () => {
           embeds: [
             {
               title: "Form Validation Error Detected",
-              color: 15158332, // Red
+              color: 15158332,
               fields: [
                 {
                   name: "Form Name",
@@ -1310,7 +1309,7 @@ export const FormHandler = () => {
           ],
         };
 
-        sendDiscordWebhook(webhookUrl, payload);
+        triggerWebhookProxy('admin', payload).catch(err => console.error('Validation webhook failed:', err));
         
         // Also notify the dev in the console
         console.warn(`[Form Validation Error] Form "${formName}" has configuration issues:`, validationErrors);
@@ -1486,9 +1485,9 @@ export const FormHandler = () => {
                     <img src={phmcLogo} alt="PHMC Logo" style={{ height: '120px', marginBottom: '1.5rem', opacity: 0.8 }} />
                     <h3 style={{ color: "#ffffff", fontWeight: "bold" }}>Something has gone wrong, unexpected response from Google Firebase</h3>
                     <p style={{ fontSize: "1.1rem", marginTop: "1rem" }}>
-                        We are unable to connect to the database.
+                        Unable to establish a connection to the Firebase database.
                         <br /><br />
-                        Please contact a maintainer or try again later.
+                        Try again later or notify the developer of this site with this screenshot.
                     </p>
                 </div>
             ) : !isAuthenticated ? (
@@ -1806,7 +1805,6 @@ export const FormHandler = () => {
         <BugReportModal
           show={showBugReportModal}
           onClose={() => setShowBugReportModal(false)}
-          webhookUrl={import.meta.env.VITE_DISCORD_WEBHOOK_ADMIN || import.meta.env.VITE_DEV_WEBHOOK}
           showNotification={showNotification}
         />
       </Suspense>

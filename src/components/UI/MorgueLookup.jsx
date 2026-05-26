@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { database } from '../../firebase';
 import { ref, set } from 'firebase/database';
 import { useData } from '../../contexts/DataContext';
@@ -6,9 +6,11 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useGtaWorldAuth } from '../../hooks/useGtaWorldAuth';
 import { useNotification } from '../../contexts/NotificationContext';
 import AutopsyModal from '../Modals/AutopsyModal';
+import EmployeeCredentialsSection from '../Modals/EmployeeCredentialsSection';
 import SidebarNav from '../UI/SidebarNav';
 import * as Sentry from "@sentry/react";
 import { reportLogicalError } from '../../utils/errorUtils';
+import { triggerWebhookProxy } from '../../services/firebaseFunctions';
 
 const MorgueLookup = () => {
     const { morgueRecords, factionsData, isLoadingData } = useData();
@@ -41,20 +43,23 @@ const MorgueLookup = () => {
             return null;
         }
 
+        const firstFactionChar = gtawUser?.allFactionCharacters?.[0];
+        const fallbackName = firstFactionChar?.character?.characterName || firstFactionChar?.characterName || gtawUser.username;
+        const chars = gtawUser?.character || gtawUser?.characters;
+        const rawCharName = chars && chars.length > 0 ? (chars[0].characterName || `${chars[0].firstname} ${chars[0].lastname}`.trim() || chars[0].name) : null;
         return {
-            name: gtawUser.faction?.characterName || gtawUser.activeCharacter?.characterName || gtawUser.username,
+            name: gtawUser.faction?.characterName || gtawUser.activeCharacter?.characterName || fallbackName || rawCharName || gtawUser.username,
             dept: gtawUser.faction?.rank || (isPhmcMember ? 'PHMC Employee' : 'Authorized Personnel')
         };
     }, [isPhmcMember, gtawUser, isAuthenticated, isLocalHost, devAccessOverride]);
 
     // Access control logic: Grant access if authenticated or override exists
     const hasAccess = useMemo(() => {
-        if (isLocalHost && devAccessOverride) {
-            if (devAccessOverride === 'employee') return true;
-            return false;
+        if (isLocalHost) {
+            if (devAccessOverride === 'denied') return false;
+            return true;
         }
 
-        // Simplifed: Grant access if the user is signed in with GTA World OAuth
         return isAuthenticated;
     }, [isAuthenticated, devAccessOverride, isLocalHost]);
 
@@ -104,11 +109,48 @@ const MorgueLookup = () => {
 
     const handleViewRecord = (record) => {
         // --- DETAILED AUDIT LOGGING ---
-        const oauthName = gtawUser?.username || 'Unknown OAuth';
-        const characterName = gtawUser?.faction?.characterName || gtawUser?.activeCharacter?.characterName || 'Unknown Character';
+        // Fallback to localStorage if gtawUser state hasn't synced yet
+        const getFallbackIdentity = () => {
+            try {
+                const data = localStorage.getItem('gta-user-data');
+                if (data) {
+                    const parsed = JSON.parse(data);
+                    const chars = parsed?.character || parsed?.characters;
+                    const rawCharName = chars && chars.length > 0 ? (chars[0].characterName || `${chars[0].firstname} ${chars[0].lastname}`.trim() || chars[0].name) : null;
+                    return {
+                        username: parsed?.username,
+                        characterName: parsed?.faction?.characterName || parsed?.activeCharacter?.characterName || rawCharName
+                    };
+                }
+            } catch (e) {}
+            return { username: null, characterName: null };
+        };
+
+        const fallback = getFallbackIdentity();
+        const oauthName = gtawUser?.username || fallback.username || 'Unknown OAuth';
+        
+        const resolveCharName = () => {
+            if (gtawUser?.faction?.characterName) return gtawUser.faction.characterName;
+            if (gtawUser?.activeCharacter?.characterName) return gtawUser.activeCharacter.characterName;
+            const first = gtawUser?.allFactionCharacters?.[0];
+            if (first) return first.character?.characterName || first.characterName;
+            const chars = gtawUser?.character || gtawUser?.characters;
+            if (chars && chars.length > 0) {
+                const firstChar = chars[0];
+                return firstChar.characterName || `${firstChar.firstname} ${firstChar.lastname}`.trim() || firstChar.name;
+            }
+            return fallback.characterName;
+        };
+        const characterName = resolveCharName() || 'Unknown Character';
         const timestamp = new Date().toLocaleString();
         
-        console.log(`[Audit] USER - ${oauthName} - ${characterName} has accessed CASE #${record.caseId} - ${record.name} at ${timestamp}`);
+        // Guard: Prevent viewing if identity is completely unknown (except localhost dev)
+        if (!isLocalHost && oauthName === 'Unknown OAuth' && characterName === 'Unknown Character') {
+            showNotification("Session not fully loaded. Please refresh and try again.", "warning");
+            return;
+        }
+
+        console.log(`[Audit] [${isLocalHost ? 'Local Dev' : 'Production'}] USER - ${oauthName} - ${characterName} has accessed CASE #${record.caseId} - ${record.name} at ${timestamp}`);
         
         // Discord Webhook for record access
         const payload = {
@@ -117,6 +159,7 @@ const MorgueLookup = () => {
                 color: 0x3498db,
                 description: `**${characterName}** ((${oauthName})) is viewing a detailed autopsy report.`,
                 fields: [
+                    { name: 'Environment', value: isLocalHost ? '🔧 Local Dev' : '🌐 Production', inline: true },
                     { name: 'Case Number', value: String(record.caseId), inline: true },
                     { name: 'Decedent Name', value: record.name, inline: true },
                     { name: 'Time of Death', value: record.timeOfDeath || 'Unknown', inline: true },
@@ -126,14 +169,7 @@ const MorgueLookup = () => {
             }]
         };
 
-        const webhookUrl = import.meta.env.VITE_DISCORD_WEBHOOK_ADMIN || import.meta.env.VITE_DEV_WEBHOOK;
-        if (webhookUrl) {
-            fetch(webhookUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            }).catch(err => console.error('Failed to send access audit:', err));
-        }
+        triggerWebhookProxy('admin', payload).catch(err => console.error('Failed to send access audit:', err));
 
         setSelectedRecord(record);
         setShowModal(true);
@@ -143,37 +179,6 @@ const MorgueLookup = () => {
         setCurrentPage(pageNumber);
         // Scroll to top of table
         document.querySelector('.morgue-table-container')?.scrollTo(0, 0);
-    };
-
-    const handleReportAccessIssue = async () => {
-        if (!isAuthenticated || !gtawUser) return;
-        
-        setIsReporting(true);
-        try {
-            const charId = gtawUser.faction?.characterId || gtawUser.faction?.id || 'N/A';
-            const factionName = gtawUser.faction?.name || 'N/A';
-            const rank = gtawUser.faction?.rank || 'N/A';
-
-            reportLogicalError(
-                'Morgue Access Issue Reported',
-                `User ${gtawUser.username} reported an access issue while signed in.`,
-                {
-                    characterName: gtawUser.faction?.characterName || 'Unknown',
-                    characterId: charId,
-                    faction: factionName,
-                    rank: rank,
-                    isPhmcMember: isPhmcMember,
-                    clientTimestamp: new Date().toISOString()
-                }
-            );
-
-            showNotification('Access issue report sent to developers. Thank you.', 'success');
-        } catch (error) {
-            console.error('Failed to report access issue:', error);
-            showNotification('Failed to send report.', 'error');
-        } finally {
-            setIsReporting(false);
-        }
     };
 
     // Hidden shortcut for diagnostics: Ctrl + Alt + D
@@ -187,8 +192,12 @@ const MorgueLookup = () => {
                     console.log('[MorgueLookup] Diagnostics Enabled');
                     
                     // resolve identity for logging
-                    const charId = gtawUser?.faction?.characterId || gtawUser?.activeCharacter?.characterId || gtawUser?.faction?.id;
-                    const charName = gtawUser?.faction?.characterName || gtawUser?.activeCharacter?.characterName;
+                    const chars = gtawUser?.character || gtawUser?.characters;
+                    const rawCharName = chars && chars.length > 0 ? (chars[0].characterName || `${chars[0].firstname} ${chars[0].lastname}`.trim() || chars[0].name) : null;
+                    const rawCharId = chars && chars.length > 0 ? chars[0].id : null;
+
+                    const charId = gtawUser?.faction?.characterId || gtawUser?.activeCharacter?.characterId || gtawUser?.faction?.id || rawCharId;
+                    const charName = gtawUser?.faction?.characterName || gtawUser?.activeCharacter?.characterName || rawCharName;
 
                     // log a detailed snapshot to Sentry for remote debugging
                     Sentry.captureMessage(`Morgue Access Diagnostic: ${charName || 'Unknown'} (${gtawUser?.username || 'No User'})`, {
@@ -215,11 +224,13 @@ const MorgueLookup = () => {
     // Notification for granted access
     useEffect(() => {
         if (hasAccess && isAuthenticated && gtawUser) {
-            // Resolve character identity with fallback chain
-            const charId = gtawUser.faction?.characterId || gtawUser.activeCharacter?.characterId || gtawUser.faction?.id;
-            const charName = gtawUser.faction?.characterName || gtawUser.activeCharacter?.characterName;
+            const chars = gtawUser?.character || gtawUser?.characters;
+            const rawCharName = chars && chars.length > 0 ? (chars[0].characterName || `${chars[0].firstname} ${chars[0].lastname}`.trim() || chars[0].name) : null;
+            const rawCharId = chars && chars.length > 0 ? chars[0].id : null;
 
-            // Don't log if we still don't have a name/id
+            const charId = gtawUser.faction?.characterId || gtawUser.activeCharacter?.characterId || gtawUser.faction?.id || rawCharId;
+            const charName = gtawUser.faction?.characterName || gtawUser.activeCharacter?.characterName || rawCharName;
+
             if (!charId || !charName) {
                 console.log('[MorgueLookup] Access granted but character data not yet resolved. Deferring audit log...');
                 return;
@@ -243,19 +254,35 @@ const MorgueLookup = () => {
                     }]
                 };
 
-                const webhookUrl = import.meta.env.VITE_DISCORD_WEBHOOK_ADMIN || import.meta.env.VITE_DEV_WEBHOOK;
-                if (webhookUrl) {
-                    fetch(webhookUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
-                    }).catch(err => console.error('Failed to send morgue access notification:', err));
-                }
+                triggerWebhookProxy('admin', payload).catch(err => console.error('Failed to send morgue access notification:', err));
                 
                 sessionStorage.setItem(sessionKey, 'true');
             }
         }
     }, [hasAccess, isAuthenticated, gtawUser]);
+
+    const handleRequestUpdate = useCallback(async () => {
+        const payload = {
+            embeds: [{
+                title: 'Morgue Update Requested',
+                color: 0xe67e22,
+                description: `**${userDisplayInfo?.name || 'Unknown User'}** (${gtawUser?.username || 'Unknown'}) is requesting a manual update of morgue records.`,
+                fields: [
+                    { name: 'Environment', value: isLocalHost ? '🔧 Local Dev' : '🌐 Production', inline: true },
+                    { name: 'Total Records', value: String(morgueRecords?.length || 0), inline: true },
+                    { name: 'Request Time', value: new Date().toLocaleString(), inline: false }
+                ],
+                footer: { text: 'PHMC Morgue Update Request' }
+            }]
+        };
+
+        try {
+            await triggerWebhookProxy('admin', payload);
+            showNotification('Update request sent to the developer.', 'success');
+        } catch {
+            showNotification('Failed to send update request. Try again later.', 'error');
+        }
+    }, [userDisplayInfo, gtawUser, isLocalHost, morgueRecords, showNotification]);
 
     return (
         <div className="morgue-lookup-page">
@@ -390,15 +417,16 @@ const MorgueLookup = () => {
                             </div>
                             <h3 className="fw-bold">Access Restricted</h3>
                             <p className="text-muted mx-auto" style={{ maxWidth: '500px' }}>
-                                The Morgue Intake Database contains sensitive information. Access is restricted to authenticated PHMC Employees and authorized Law Enforcement personnel. <br />  <br />Please click the 'Sign In' button below to authenticate with GTA World OAuth. <br />  <br />Any bugs or issues with access, please report using the button below or contact Fr0styDev (Alyson Frost) in the PHMC Discord.
+                                The Morgue Intake Database contains sensitive information. Access is restricted to authenticated PHMC Employees and authorized Law Enforcement personnel.
                             </p>
-                            <div className="mt-4 d-flex justify-content-center gap-3">
-                                {!isAuthenticated && (
-                                    <button className="morgue-btn-add px-4 py-2" onClick={() => window.location.hash = '/login'}>
-                                        <i className="fas fa-sign-in-alt me-2"></i>Sign In with GTA World
-                                    </button>
-                                )}
-                            </div>
+                            {!isAuthenticated && (
+                                <div className="mt-4 mx-auto" style={{ maxWidth: '400px' }}>
+                                    <EmployeeCredentialsSection
+                                        showNotification={showNotification}
+                                        context="Morgue Lookup"
+                                    />
+                                </div>
+                            )}
                         </div>
                     ) : (
                         <>
@@ -487,21 +515,10 @@ const MorgueLookup = () => {
                         </div>
                     )}
 
-                    {hasAccess && (
-                        <>
-                            {isAuthenticated && (
-                                <button 
-                                    className="btn btn-outline-warning btn-sm ms-2" 
-                                    onClick={handleReportAccessIssue}
-                                    disabled={isReporting}
-                                >
-                                    <i className={`fas ${isReporting ? 'fa-spinner fa-spin' : 'fa-bug'} me-2`}></i>
-                                    Report Access Issue
-                                </button>
-                            )}
-                        </>
-                    )}
-                    {effectiveIsPhmcMember && <button className="morgue-btn-add" onClick={() => window.location.hash = '/admin'}>Admin Panel</button>}
+                    <button className="morgue-btn-request-update" onClick={handleRequestUpdate}>
+                        <i className="fas fa-paper-plane me-1"></i>Request Update
+                    </button>
+
                 </footer>
             </main>
 
@@ -701,6 +718,26 @@ const MorgueLookup = () => {
                     border-radius: 4px;
                     cursor: pointer;
                     font-weight: 600;
+                }
+
+                .morgue-btn-request-update {
+                    background-color: #e67e22;
+                    color: white;
+                    padding: 8px 16px;
+                    border: none;
+                    border-radius: 50px;
+                    cursor: pointer;
+                    font-weight: 700;
+                    font-size: 0.8rem;
+                    transition: all 0.2s;
+                    display: flex;
+                    align-items: center;
+                    white-space: nowrap;
+                }
+
+                .morgue-btn-request-update:hover {
+                    background-color: #d35400;
+                    transform: scale(1.02);
                 }
 
                 .morgue-btn-add {

@@ -4,7 +4,8 @@ import ImageUploader from './ImageUploader'; // Assuming ImageUploader is in the
 import { getUtcFormattedDateTime, getUtcFormattedTime } from '../../utils/dateTimeUtils';
 import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
-import useGtaWorldAuth from '../../hooks/useGtaWorldAuth'; // Import useGtaWorldAuth
+import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
+import { triggerWebhookProxy } from '../../services/firebaseFunctions';
 import DecedentItemRenderer from './DecedentItemRenderer'; // Import the new component
 import AutopsyDiagramModal from '../Modals/AutopsyDiagramModal'; // Import AutopsyDiagramModal
 import CharacterSelector from '../Modals/CharacterSelector';
@@ -30,11 +31,28 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
         .sort((a, b) => a.label.localeCompare(b.label)); // Sort alphabetically
   }, [factionsData]);
 
+  const formatDateOfDeath = (timeOfDeath) => {
+    if (!timeOfDeath) return '';
+    const dateMatch = timeOfDeath.match(/(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/);
+    if (dateMatch) {
+      const d = dateMatch[1].padStart(2, '0');
+      const months = {jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12',
+        january:'01',february:'02',march:'03',april:'04',may:'05',june:'06',july:'07',august:'08',september:'09',october:'10',november:'11',december:'12'};
+      const m = months[dateMatch[2].toLowerCase()] || '??';
+      return `${d}/${m}/${dateMatch[3]}`;
+    }
+    const d = new Date(timeOfDeath);
+    if (!isNaN(d.getTime())) {
+      return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+    }
+    return '';
+  };
+
   const morgueOptions = useMemo(() => {
     if (!morgueRecords) return [];
     return morgueRecords.map(r => ({
       value: r.firebaseKey,
-      label: `CASE #${r.caseId} - ${r.name}${r.adminNote ? ' 📝' : ''}`,
+      label: `CASE #${r.caseId} - ${r.name}${r.timeOfDeath ? ` - ${formatDateOfDeath(r.timeOfDeath)}` : ''}${r.adminNote ? ' 📝' : ''}`,
       record: r
     }));
   }, [morgueRecords]);
@@ -554,200 +572,6 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
           </div>
         </div>
       );
-    case "payment_button": {
-      const [step, setStep] = useState(0);
-      const { user: gtawUser } = useGtaWorldAuth();
-
-      // Effect to listen for localStorage changes from the callback tab
-      useEffect(() => {
-        const handleStorageChange = (event) => {
-          if (event.key === 'phmc-payment-confirmed') {
-            const confirmationData = JSON.parse(event.newValue);
-            // Check if this update is for this specific button instance
-            if (confirmationData && confirmationData.fieldId === field.name) {
-              handleChange(field.name, confirmationData);
-              // Clean up the confirmation key so it doesn't trigger again
-              localStorage.removeItem('phmc-payment-confirmed');
-              localStorage.removeItem('phmc-payment-pending');
-            }
-          }
-        };
-
-        window.addEventListener('storage', handleStorageChange);
-
-        return () => {
-          window.removeEventListener('storage', handleStorageChange);
-        };
-      }, [field.name, handleChange]);
-
-
-      // Effect to set the initial step and handle timeouts
-      useEffect(() => {
-        const value = formValues[field.name];
-        const TEN_MINUTES_IN_MS = 10 * 60 * 1000;
-        const THIRTY_MINUTES_IN_MS = 30 * 60 * 1000;
-
-        if (value && value.status === 'confirmed' && value.confirmedAt) {
-          const confirmationTime = new Date(value.confirmedAt).getTime();
-          const now = new Date().getTime();
-          
-          if (now - confirmationTime < THIRTY_MINUTES_IN_MS) {
-            setStep(3); // Payment is confirmed and not expired
-          } else {
-            showNotification('Your previous payment confirmation has expired.', 'warning');
-            handleChange(field.name, null);
-            setStep(0);
-          }
-        } else if (value === 'pending_confirmation') {
-            const pendingPaymentRaw = localStorage.getItem('phmc-payment-pending');
-            if (pendingPaymentRaw) {
-                const pendingPayment = JSON.parse(pendingPaymentRaw);
-                const pendingTime = pendingPayment.timestamp || 0;
-                const now = new Date().getTime();
-
-                if (now - pendingTime < TEN_MINUTES_IN_MS) {
-                    setStep(2); // Payment is pending and not expired
-                } else {
-                    showNotification('Your payment session has expired. Please restart the payment process.', 'warning');
-                    localStorage.removeItem('phmc-payment-pending');
-                    handleChange(field.name, null);
-                    setStep(0);
-                }
-            } else {
-                 // If state is pending but no localStorage item, reset.
-                handleChange(field.name, null);
-                setStep(0);
-            }
-        } else {
-          setStep(0); // Initial state
-        }
-      }, [formValues, field.name, handleChange, showNotification]);
-
-      const paymentValue = useMemo(() => {
-        if (field.paymentTotal) {
-            return field.paymentTotal;
-        }
-        if (selectedForm && selectedForm.name.includes('Patient File')) {
-          return 2000;
-        }
-        return 0;
-      }, [field.paymentTotal, selectedForm]);
-
-      const handleRestartPayment = () => {
-          handleChange(field.name, null);
-          localStorage.removeItem('phmc-payment-pending');
-          setStep(0);
-          showNotification('Payment process has been reset.', 'info');
-      };
-
-      const handlePayment = () => {
-        if (!gtawUser) {
-          showNotification("Authentication error: You must be logged in to proceed with a payment.", "error");
-          return;
-        }
-
-        const apiKey = "QpDlr9TcWwAWjs07gqq9rpqeygqBYlYMQ4bGPUmx9ILPx6vs6xflO6BIdhncCcAu";
-        const baseURL = "https://banking.gta.world/gateway";
-        const url = `${baseURL}/${apiKey}/0/${paymentValue}`;
-
-        const pendingPayment = {
-          userId: gtawUser.userId,
-          formName: selectedForm.name,
-          fieldId: field.name,
-          timestamp: new Date().getTime(),
-        };
-        localStorage.setItem('phmc-payment-pending', JSON.stringify(pendingPayment));
-        
-        window.open(url, '_blank');
-        handleChange(field.name, 'pending_confirmation');
-        setStep(2);
-      };
-
-      return (
-        <div style={fieldWrapperStyle}>
-          <label style={labelStyle}>{field.label}</label>
-          <div style={{ padding: '1rem', background: '#162032', borderRadius: 8 }}>
-            {step === 0 && (
-              <div>
-                <p style={{ color: "#cbd5e1", margin: "0 0 1rem" }}>Please visit <a href="https://banking.gta.world/login" target="_blank" rel="noopener noreferrer">the banking website</a> to log in before proceeding.</p>
-                <button onClick={() => setStep(1)} style={{ background: "#6366f1", color: "white", border: "none", padding: "0.8rem 1.5rem", borderRadius: 8, width: '100%' }}>I have logged in, proceed to payment</button>
-              </div>
-            )}
-            {step === 1 && (
-              <div>
-                <p style={{ color: "#cbd5e1", margin: "0 0 1rem" }}>Please click the button below to make a payment of <strong>${paymentValue}</strong> to Pillbox Hill Medical Center.</p>
-                <button onClick={handlePayment} style={{ background: "#10b981", color: "white", border: "none", padding: "0.8rem 1.5rem", borderRadius: 8, width: '100%' }}>Pay Now</button>
-              </div>
-            )}
-            {step === 2 && (
-              <div style={{ color: "#f59e0b" }}>
-                <p style={{ margin: 0 }}>Waiting for payment confirmation...</p>
-                <p style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '0.5rem' }}>Once you have paid and the Fleeca Bank has indicated &apos;OK&apos;, come back to this tab and click on &apos;I&apos;ve Paid&apos;. If you encounter an issue, you can restart.</p>
-                <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
-                    <button
-                      onClick={() => {
-                        const confirmationData = {
-                            fieldId: field.name,
-                            confirmedAt: new Date().toISOString(),
-                            status: 'confirmed'
-                        };
-                        localStorage.setItem('phmc-payment-confirmed', JSON.stringify(confirmationData)); // To ensure consistency for other components
-                        handleChange(field.name, confirmationData);
-                      }}
-                      style={{
-                        background: "#007bff",
-                        color: "white",
-                        border: "none",
-                        padding: "0.8rem 1.5rem",
-                        borderRadius: 8,
-                        width: '100%',
-                      }}
-                    >
-                      I&apos;ve Paid 
-                    </button>
-                    <button
-                      onClick={handleRestartPayment}
-                      style={{
-                        background: "#dc3545",
-                        color: "white",
-                        border: "none",
-                        padding: "0.8rem 1.5rem",
-                        borderRadius: 8,
-                        width: '100%',
-                      }}
-                    >
-                      Restart
-                    </button>
-                </div>
-              </div>
-            )}
-            {step === 3 && formValues[field.name] && formValues[field.name].confirmedAt && (
-              <div style={{ color: "#34d399" }}>
-                <p style={{ margin: 0 }}>Payment Confirmed at:</p>
-                <strong>{new Date(formValues[field.name].confirmedAt).toLocaleString()}</strong>
-                <button
-                  onClick={handleRestartPayment}
-                  style={{
-                    background: "#ef4444", // Red color for reset/danger
-                    color: "white",
-                    border: "none",
-                    padding: "0.5rem 1rem",
-                    borderRadius: 8,
-                    fontSize: "0.9rem",
-                    fontWeight: "600",
-                    marginTop: "1rem",
-                    width: "100%",
-                    cursor: "pointer"
-                  }}
-                >
-                  Reset Payment
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      );
-    }
     case "autopsy_import_button": {
       const [step, setStep] = useState(0);
       const [inputText, setInputText] = useState("");
@@ -908,12 +732,6 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
 
       const sendMorgueParseWebhook = async (rawText, parsedData) => {
         try {
-          const webhookUrl = import.meta.env.VITE_DISCORD_WEBHOOK_ADMIN;
-          if (!webhookUrl) {
-            console.warn('VITE_DISCORD_WEBHOOK_ADMIN not configured');
-            return;
-          }
-
           const fieldsExtracted = Object.keys(parsedData).map(key => ({
             name: key,
             value: JSON.stringify(parsedData[key]).substring(0, 1024),
@@ -937,11 +755,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
             embeds: [embed],
           };
 
-          const response = await fetch(webhookUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-          });
+          await triggerWebhookProxy('admin', payload);
 
           if (!response.ok) {
             console.warn(`Webhook returned status ${response.status}`);
@@ -1108,6 +922,36 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
 
       const handleApply = () => {
         if (parsedData) {
+          // Define all fields that should be cleared before importing
+          const fieldsToClear = [
+            'caseNumber',
+            'decedentName',
+            'decedentOOC',
+            'sex',
+            'dnaProfile',
+            'placeOfDeath',
+            'dateTime',
+            'deathCausesListItems',
+            'causeOfDeath',
+            'deathType',
+            'anatomicSummaryListItems',
+            'externalExamination',
+            'decedentPhotography',
+            'photographySectionBBCode',
+            'RadiologyResult',
+            'bacLevel',
+            'narcoticTraces',
+            'casings',
+            'synopsis',
+            'adminNote'
+          ];
+
+          // Clear all fields first
+          fieldsToClear.forEach(key => {
+            handleChange(key, '');
+          });
+
+          // Then apply the parsed data
           Object.keys(parsedData).forEach(key => {
             handleChange(key, parsedData[key]);
           });

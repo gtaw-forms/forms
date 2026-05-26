@@ -8,6 +8,7 @@ import { ref, get, update, remove, set, serverTimestamp, push } from "firebase/d
 import EditBingoPhrasesModal from './EditBingoPhrasesModal';
 import ReviewPhraseRequestsModal from './ReviewPhraseRequestsModal';
 import * as Sentry from "@sentry/react";
+import { triggerWebhookProxy } from '../../services/firebaseFunctions';
 import AdminDashboard from './AdminDashboard';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import { useAuth } from '../../contexts/AuthContext';
@@ -380,42 +381,18 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
 
 
     const handleAdminCustomWebhookSubmit = async (payloadFromModal) => {
-        const webhookURL = import.meta.env.VITE_DISCORD_WEBHOOK_ADMIN || import.meta.env.VITE_DEV_WEBHOOK;
-        const { userAgent, timeZone } = getUserContext(); // Capture user context
-
-        if (!webhookURL) {
-            if (showInAppNotification) showInAppNotification('Admin Webhook URL (PHMC_DISCORD) not configured.', 'error');
-            Sentry.captureMessage("Admin Custom Webhook URL (PHMC_DISCORD) not configured for AdminAuthAndActions", "error");
-            logAdminAction(unifiedCurrentUser?.email || "Unknown User", "Failed to Send Admin Custom Webhook", "Webhook URL not configured.", null, userAgent, timeZone, gtaAuthUsername);
-            return false;
-        }
+        const { userAgent, timeZone } = getUserContext();
         try {
-            const response = await fetch(webhookURL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payloadFromModal),
-            });
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error(`Failed to send admin custom webhook. Status: ${response.status}`, errorText);
-                Sentry.captureMessage(`Admin Custom Discord webhook failed (AdminAuthAndActions): ${response.status}`, {
-                    level: 'error',
-                    extra: { statusText: response.statusText, responseBody: errorText }
-                });
-                if (showInAppNotification) showInAppNotification(`Failed to send admin webhook. Status: ${response.status}`, 'error');
-                logAdminAction(unifiedCurrentUser?.email || "Unknown User", "Failed to Send Admin Custom Webhook", `Status: ${response.status}, Error: ${errorText}`, null, userAgent, timeZone, gtaAuthUsername);
-                return false;
-            } else {
-                if (showInAppNotification) showInAppNotification('Admin webhook message sent successfully!', "check-circle");
-                logAdminAction(unifiedCurrentUser?.email || "Unknown User", "Sent Admin Custom Webhook", "Admin successfully sent a custom webhook to the Admin Action channel.", null, userAgent, timeZone, gtaAuthUsername);
-                logWebhookToFirebase('Admin Custom Webhook Sent', { admin: authEmail, title: payloadFromModal.embeds[0].title });
-                return true;
-            }
+            await triggerWebhookProxy('admin', payloadFromModal);
+            if (showInAppNotification) showInAppNotification('Admin webhook message sent successfully!', "check-circle");
+            logAdminAction(unifiedCurrentUser?.email || "Unknown User", "Sent Admin Custom Webhook", "Admin successfully sent a custom webhook to the Admin Action channel.", null, userAgent, timeZone, gtaAuthUsername);
+            logWebhookToFirebase('Admin Custom Webhook Sent', { admin: authEmail, title: payloadFromModal.embeds[0].title });
+            return true;
         } catch (error) {
             console.error('Error sending admin custom webhook:', error);
-            Sentry.captureException(error, { extra: { context: 'Admin Custom Webhook Submission Fetch (AdminAuthAndActions)' } });
-            if (showInAppNotification) showInAppNotification('A network error occurred sending the admin webhook.', "error");
-            logAdminAction(unifiedCurrentUser?.email || "Unknown User", "Failed to Send Admin Custom Webhook", `Network Error: ${error.message}`, null, userAgent, timeZone, gtaAuthUsername);
+            Sentry.captureException(error, { extra: { context: 'Admin Custom Webhook Submission via Proxy' } });
+            if (showInAppNotification) showInAppNotification('Failed to send admin webhook.', 'error');
+            logAdminAction(unifiedCurrentUser?.email || "Unknown User", "Failed to Send Admin Custom Webhook", `Error: ${error.message}`, null, userAgent, timeZone, gtaAuthUsername);
             return false;
         }
     };
@@ -680,7 +657,7 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
 
     const handleCoronerWebhookSubmit = async (payloadFromModal) => {
          const webhookURL = import.meta.env.VITE_CORONER_DISCORD_UPDATES;
-         const { userAgent, timeZone } = getUserContext(); // Capture user context
+         const { userAgent, timeZone } = getUserContext();
 
         if (!webhookURL) {
             if (showInAppNotification) showInAppNotification('Coroner Webhook URL (CORONER_DISCORD_UPDATES) not configured.', 'error');

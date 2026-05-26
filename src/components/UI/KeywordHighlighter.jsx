@@ -27,10 +27,12 @@ export const KeywordHighlighter = ({ children }) => {
     .filter(kw => kw && kw.keyword && typeof kw.keyword === 'string')
     .sort((a, b) => b.keyword.length - a.keyword.length); // longest first
 
+  const isHTML = /<[a-z][\s\S]*>/i.test(children);
+
   if (keywordList.length === 0) {
     return (
       <div 
-        dangerouslySetInnerHTML={{ __html: renderMarkdown(children) }}
+        dangerouslySetInnerHTML={{ __html: isHTML ? children : renderMarkdown(children) }}
         style={{ wordWrap: 'break-word', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} 
       />
     );
@@ -60,8 +62,10 @@ export const KeywordHighlighter = ({ children }) => {
     }
   });
 
-  // Apply Markdown to the text (which now contains tokens)
-  content = renderMarkdown(content);
+  // Apply Markdown to the text (which now contains tokens), but skip for HTML content
+  if (!isHTML) {
+    content = renderMarkdown(content);
+  }
 
   // After all keywords and Markdown are processed, replace tokens with actual HTML
   finalReplacements.forEach((html, index) => {

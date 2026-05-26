@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { useGtaWorldAuth } from '../../hooks/useGtaWorldAuth'; // Assuming path is correct
+import { useGtaWorldAuth } from '../../hooks/useGtaWorldAuth';
+import { triggerWebhookProxy } from '../../services/firebaseFunctions';
 
-const BugReportModal = ({ show, onClose, webhookUrl, showNotification }) => {
+const BugReportModal = ({ show, onClose, showNotification }) => {
   const [report, setReport] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { user } = useGtaWorldAuth();
@@ -15,11 +16,6 @@ const BugReportModal = ({ show, onClose, webhookUrl, showNotification }) => {
       showNotification('Please enter a description of the bug.', 'warning');
       return;
     }
-    if (!webhookUrl) {
-      console.error('VITE_DEV_WEBHOOK webhook URL is not defined.');
-      showNotification('Cannot submit bug report: Webhook URL is not configured.', 'error');
-      return;
-    }
 
     setIsSubmitting(true);
 
@@ -28,7 +24,7 @@ const BugReportModal = ({ show, onClose, webhookUrl, showNotification }) => {
         {
           title: 'New Bug Report',
           description: report,
-          color: 15158332, // Red
+          color: 15158332,
           fields: [
             {
               name: 'Reporter',
@@ -49,21 +45,10 @@ const BugReportModal = ({ show, onClose, webhookUrl, showNotification }) => {
     };
 
     try {
-      const response = await fetch(webhookUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (response.ok) {
-        showNotification('Bug report submitted successfully!', 'success');
-        setReport('');
-        onClose();
-      } else {
-        throw new Error(`Request failed with status ${response.status}`);
-      }
+      await triggerWebhookProxy('admin', payload);
+      showNotification('Bug report submitted successfully!', 'success');
+      setReport('');
+      onClose();
     } catch (error) {
       console.error('Failed to submit bug report:', error);
       showNotification('Failed to submit bug report. Please try again later.', 'error');

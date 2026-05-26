@@ -1,5 +1,7 @@
-import React, { createContext, useState, useRef, useCallback, useContext } from 'react';
+import React, { createContext, useState, useRef, useCallback, useContext, useEffect } from 'react';
 import Notification from '../components/UI/Notification';
+import { database } from '../firebase';
+import { ref, onValue, off } from 'firebase/database';
 
 const DEFAULT_NOTIFICATION_DURATION = 5000; 
 
@@ -127,6 +129,27 @@ export const NotificationProvider = ({ children }) => {
 
         return newNotificationId;
     }, [removeNotification]);
+
+    useEffect(() => {
+        const maintenanceRef = ref(database, 'appMetadata/maintenanceMode');
+        const handleValue = (snapshot) => {
+            if (snapshot.val()) {
+                showNotification(
+                    'Some parts of the application is unavailable, if you have issues logging in, please notify Alyson Frost (Fr0styDev) on Discord.',
+                    'error',
+                    0,
+                    { key: 'maintenance-banner' }
+                );
+            } else {
+                removeNotification('maintenance-banner');
+            }
+        };
+        onValue(maintenanceRef, handleValue);
+        return () => {
+            off(maintenanceRef, 'value', handleValue);
+            removeNotification('maintenance-banner');
+        };
+    }, [showNotification, removeNotification]);
 
     return (
         <NotificationContext.Provider value={{ showNotification, removeNotification }}>

@@ -31,7 +31,7 @@ export const testClientIdValidation = async () => {
         });
 
         // Test the OAuth function with real client ID but fake code
-        const exchangeFunction = httpsCallable(functions, 'exchangeAuthCodeForToken');
+        const exchangeFunction = httpsCallable(functions, 'processGtaWorldAuth');
         
         try {
             await exchangeFunction({
@@ -122,7 +122,7 @@ export const testFirebaseFunctions = async () => {
         });
 
         // Test the OAuth function specifically
-        const exchangeFunction = httpsCallable(functions, 'exchangeAuthCodeForToken');
+        const exchangeFunction = httpsCallable(functions, 'processGtaWorldAuth');
         console.info('[Firebase Test] Function callable created');
 
         // This should fail with a validation error, but it will confirm connectivity
@@ -171,7 +171,7 @@ export const testFirebaseFunctions = async () => {
                     error: 'Firebase Function not found',
                     details: {
                         code: testError.code,
-                        suggestion: 'Deploy the exchangeAuthCodeForToken function'
+                        suggestion: 'Deploy the processGtaWorldAuth function'
                     }
                 };
             }
@@ -250,15 +250,15 @@ export const testProfileRetrieval = async () => {
         console.info('[Profile Test] Found access token, testing profile API...');
         
         try {
-            // Use the new Firebase Function to get live API data
+            // Use the Firebase Function to validate token and get live API data
             console.info('[Profile Test] Using Firebase Function to get live API data...');
             
             // Import Firebase functions
             const { httpsCallable } = require('firebase/functions');
             const { functions } = require('../firebase');
             
-            const getProfile = httpsCallable(functions, 'getGtaWorldProfile');
-            const result = await getProfile({ accessToken: currentToken });
+            const validateToken = httpsCallable(functions, 'validateGtaWorldToken');
+            const result = await validateToken({ accessToken: currentToken });
             
             console.info('[Profile Test] Firebase Function result:', result.data);
             
@@ -266,21 +266,22 @@ export const testProfileRetrieval = async () => {
                 throw new Error(`Profile retrieval failed: ${result.data.error || 'Unknown error'}`);
             }
             
+            const userData = result.data.user || {};
             const profileData = {
                 message: 'Live API data from GTA World /api/user endpoint',
-                liveApiData: result.data.userData,
+                liveApiData: userData,
                 storedSessionData: currentUser,
                 comparison: {
-                    liveApiKeys: result.data.metadata.dataKeys,
+                    liveApiKeys: Object.keys(userData),
                     storedDataKeys: currentUser ? Object.keys(currentUser) : [],
-                    dataSize: result.data.metadata.dataSize,
-                    timestamp: result.data.metadata.timestamp
+                    dataSize: JSON.stringify(userData).length,
+                    timestamp: result.data.timestamp
                 },
                 analysis: {
-                    hasFactionsData: !!(result.data.userData?.user?.factions || result.data.userData?.factions),
-                    hasRoleData: !!(result.data.userData?.user?.role || result.data.userData?.role),
-                    hasCharacterData: !!(result.data.userData?.user?.character || result.data.userData?.character),
-                    userStructure: result.data.userData?.user ? Object.keys(result.data.userData.user) : 'No user object found'
+                    hasFactionsData: !!(userData?.factions),
+                    hasRoleData: !!(userData?.role),
+                    hasCharacterData: !!(userData?.character || userData?.characters),
+                    userStructure: userData?.user ? Object.keys(userData.user) : 'No user object found'
                 }
             };
             

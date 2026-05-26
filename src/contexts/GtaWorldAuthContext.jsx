@@ -2,10 +2,12 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import * as Sentry from "@sentry/react";
 import { httpsCallable } from 'firebase/functions';
 import { database, functions } from '../firebase';
+import { auth } from '../firebase';
 import { ref, onValue, get } from 'firebase/database';
 import { useAuth } from './AuthContext';
 import { triggerRefreshGtawUser } from '../services/firebaseFunctions';
 import { useInactivityReload } from '../hooks/useInactivityReload';
+import { useNotification } from './NotificationContext.jsx';
 import {
     initiateGtaWorldLogin,
     handleOAuthCallback,
@@ -16,7 +18,8 @@ import {
     makeAuthenticatedRequest,
     isFactionMember as checkIsFactionMember,
     isGtawStaff,
-    checkFactionMembershipInDb
+    checkFactionMembershipInDb,
+    validateStoredSession
 } from '../services/gtaWorldAuth';
 
 const GtaWorldAuthContext = createContext(null);
@@ -37,12 +40,27 @@ const getUrlParams = () => {
 
 export const GtaWorldAuthProvider = ({ children }) => {
     const { getIsInactivityWarningTriggered } = useInactivityReload();
+    const { showNotification, removeNotification } = useNotification();
     const [user, setUser] = useState(() => {
         if (isAuthenticated()) {
-            return getCurrentUser();
+            const currentUser = getCurrentUser();
+            // Validate required fields
+            if (currentUser && currentUser.id && currentUser.username) {
+                return currentUser;
+            }
+            // Corrupted session - clear it
+            if (currentUser) {
+                console.warn('[GtaWorldAuthContext] Clearing corrupted session on init:', {
+                    hasId: !!currentUser.id,
+                    hasUsername: !!currentUser.username
+                });
+                localStorage.removeItem('gta-user-data');
+            }
         }
         return null;
     });
+    
+    const [sessionLostReason, setSessionLostReason] = useState(null);
     
     const [isLoading, setIsLoading] = useState(() => {
         if (isAuthenticated()) return false;
@@ -145,12 +163,16 @@ export const GtaWorldAuthProvider = ({ children }) => {
         }
     }, []);
 
-    const handleLogout = useCallback(() => {
+    const handleLogout = useCallback((reason = null) => {
         logout();
         setUser(null);
         setError(null);
         setActiveCharacter(null);
-    }, []);
+        if (reason) {
+            setSessionLostReason(reason);
+            showNotification(reason, 'exclamation-triangle', 10000);
+        }
+    }, [showNotification]);
 
     const clearError = useCallback(() => setError(null), []);
 
@@ -239,11 +261,20 @@ export const GtaWorldAuthProvider = ({ children }) => {
             
             processCallback(code, state).then(async ({ userData, returnPath }) => {
                 console.log('✅ [GtaWorldAuthContext] Background login successful.');
+
+                const storedData = JSON.parse(storedOAuthData || '{}');
+                const userRole = storedData.role || 'employee';
                 
                 // --- Post-Login Verification Logic (Migrated from UnifiedGtaCallback) ---
-                if (!userData.isFactionMember) {
-                    console.warn('⚠️ [GtaWorldAuthContext] User is NOT a PHMC Faction Member. Attempting sync...');
+                if (userRole === 'employee') {
+                    const loadingNotifId = showNotification('Fetching Employee Credentials...', 'spinner fa-spin', 0);
+                    console.warn('⚠️ [GtaWorldAuthContext] Performing faction sync for employee...');
                     try {
+                        // Wait for Firebase Auth JWT to finish provisioning
+                        for (let i = 0; i < 30; i++) {
+                            if (auth.currentUser) break;
+                            await new Promise(r => setTimeout(r, 200));
+                        }
                         const triggerSync = httpsCallable(functions, 'triggerFactionSync');
                         await triggerSync();
                         
@@ -255,11 +286,14 @@ export const GtaWorldAuthProvider = ({ children }) => {
                             const refreshedResult = await triggerRefreshGtawUser({ accessToken });
                             if (refreshedResult?.success && refreshedResult.user) {
                                 console.log('✅ [GtaWorldAuthContext] Re-check successful after sync.');
-                                setUser(refreshedResult.user);
-                                localStorage.setItem('gta-user-data', JSON.stringify(refreshedResult.user));
+                                const refreshedUser = { ...refreshedResult.user, loginRole: storedData.role || 'employee' };
+                                setUser(refreshedUser);
+                                localStorage.setItem('gta-user-data', JSON.stringify(refreshedUser));
                             }
                         }
+                        removeNotification(loadingNotifId);
                     } catch (syncError) {
+                        removeNotification(loadingNotifId);
                         if (syncError.code === 'permission-denied') {
                             console.warn('[GtaWorldAuthContext] Background sync skipped (Permission Denied). This is expected for non-faction members.');
                         } else {
@@ -284,31 +318,68 @@ export const GtaWorldAuthProvider = ({ children }) => {
             // No callback detected or no matching session state
             setIsLoading(false);
 
-            // validate user's faction membership
+            // validate user's faction membership with grace period for transient failures
             if (user && (!code && !state || getIsInactivityWarningTriggered())) {
-                const activeId = user?.faction?.characterId || user?.activeCharacter?.characterId;
-                const allIds = (user?.allFactionCharacters || [])
-                    .map(c => String(c?.character?.characterId || c?.id))
-                    .filter(Boolean);
-                const charIds = [...new Set([String(activeId), ...allIds].filter(Boolean))];
+                // Skip faction check entirely for non-employee logins
+                const loginRole = user?.loginRole || 'employee';
+                if (loginRole === 'non-employee') {
+                    console.log('[GtaWorldAuthContext] Non-employee login detected, skipping faction check');
+                } else {
+                    // For employee logins, always verify faction characters exist in DB
+                    // Superadmins get isFactionMember=true automatically but may not have actual faction characters
+                    const activeId = user?.faction?.characterId || user?.activeCharacter?.characterId;
+                    const allIds = (user?.allFactionCharacters || [])
+                        .map(c => String(c?.character?.characterId || c?.id))
+                        .filter(id => id && id !== 'undefined' && id !== 'null');
+                    const charIds = [...new Set([activeId ? String(activeId) : null, ...allIds].filter(id => id && id !== 'undefined' && id !== 'null'))];
+                    
+                    console.log('[GtaWorldAuthContext] Faction check evaluation:', {
+                        loginRole,
+                        firebaseIsPhmcMember,
+                        storedIsMember: user?.isFactionMember === true,
+                        hasFactionChar: !!activeId,
+                        hasAllFactionChars: !!(user?.allFactionCharacters?.length),
+                        charIds
+                    });
 
-                if (charIds.length > 0) {
-                    setIsValidatingSession(true);
-                    checkFactionMembershipInDb(charIds)
-                        .then(isMember => {
-                            if (isMember === false) {
-                                console.warn('[GtaWorldAuthContext] No faction character found in faction DB. Clearing session.');
-                                logout();
-                                setUser(null);
-                                setActiveCharacter(null);
+                    if (charIds.length > 0 && !authLoading) {
+                        setIsValidatingSession(true);
+                        let retryCount = 0;
+                        const maxRetries = 2;
+                        
+                        const checkWithRetry = async () => {
+                            try {
+                                const isMember = await checkFactionMembershipInDb(charIds);
+                                console.log('[GtaWorldAuthContext] Faction DB check result:', isMember);
+                                
+                                if (isMember === false) {
+                                    console.warn('[GtaWorldAuthContext] No faction character found in faction DB. User is not a verified faction member but session will continue.');
+                                } else if (isMember === null) {
+                                    if (retryCount < maxRetries) {
+                                        retryCount++;
+                                        console.warn(`[GtaWorldAuthContext] Faction DB check failed, retry ${retryCount}/${maxRetries}...`);
+                                        setTimeout(checkWithRetry, 2000 * retryCount);
+                                    } else {
+                                        console.error('[GtaWorldAuthContext] Faction DB check failed after retries. Allowing session to continue.');
+                                    }
+                                }
+                            } catch (err) {
+                                console.error('[GtaWorldAuthContext] Unexpected error during faction check:', err);
+                                if (retryCount < maxRetries) {
+                                    retryCount++;
+                                    setTimeout(checkWithRetry, 2000 * retryCount);
+                                }
+                            } finally {
+                                setIsValidatingSession(false);
                             }
-                        })
-                        .catch(err => {
-                            console.error('[GtaWorldAuthContext] Faction membership check failed:', err);
-                        })
-                        .finally(() => {
-                            setIsValidatingSession(false);
-                        });
+                        };
+                        
+                        checkWithRetry();
+                    } else if (charIds.length === 0 && !authLoading) {
+                        console.log('[GtaWorldAuthContext] No faction character IDs available to check. User may need faction sync.');
+                    } else {
+                        console.log('[GtaWorldAuthContext] Faction check deferred - Firebase auth still loading');
+                    }
                 }
             }
             
@@ -319,7 +390,34 @@ export const GtaWorldAuthProvider = ({ children }) => {
                 window.history.replaceState({}, document.title, newUrl);
             }
         }
-    }, [processCallback, getIsInactivityWarningTriggered]);
+    }, [processCallback, getIsInactivityWarningTriggered, firebaseIsPhmcMember, authLoading, user]);
+
+    // SESSION VALIDATION ON MOUNT
+    useEffect(() => {
+        if (!user || isGoogleAdmin || isStaff || authLoading) return;
+        
+        // Skip token validation if stored user data confirms membership (token was valid at login)
+        if (user?.isFactionMember === true) {
+            console.log('[GtaWorldAuthContext] Session validation skipped - stored data confirms membership');
+            return;
+        }
+        
+        const validateSession = async () => {
+            try {
+                const result = await validateStoredSession();
+                if (!result.valid) {
+                    console.warn('[GtaWorldAuthContext] Session validation failed:', result.reason);
+                    handleLogout(`Your session has expired. Reason: ${result.reason}`);
+                } else if (result.warning) {
+                    console.warn('[GtaWorldAuthContext] Session validation warning:', result.warning);
+                }
+            } catch (err) {
+                console.error('[GtaWorldAuthContext] Session validation error:', err);
+            }
+        };
+        
+        validateSession();
+    }, [authLoading]);
 
     // REAL-TIME MEMBERSHIP ENFORCEMENT
     useEffect(() => {
@@ -334,12 +432,13 @@ export const GtaWorldAuthProvider = ({ children }) => {
         const unsubscribe = onValue(memberRef, (snapshot) => {
             if (!snapshot.exists()) {
                 console.warn('[GtaWorldAuthContext] Real-time check: Membership revoked or character deleted from DB. Logging out...');
-                handleLogout();
-                // We use a small delay before reload to ensure state settles
+                handleLogout('Your faction membership has been revoked. Please contact an administrator.');
                 setTimeout(() => {
                     window.location.reload();
                 }, 1000);
             }
+        }, (error) => {
+            console.error('[GtaWorldAuthContext] Real-time membership listener error:', error);
         });
 
         return () => {
@@ -355,6 +454,7 @@ export const GtaWorldAuthProvider = ({ children }) => {
         isLoading: isLoading || authLoading,
         error,
         isValidatingSession,
+        sessionLostReason,
         login,
         logout: handleLogout,
         processCallback,
@@ -372,7 +472,7 @@ export const GtaWorldAuthProvider = ({ children }) => {
         updateFactionData,
         triggerFactionSync,
     }), [
-        user, isLoading, authLoading, error, isValidatingSession, login, handleLogout, processCallback, 
+        user, isLoading, authLoading, error, isValidatingSession, sessionLostReason, login, handleLogout, processCallback, 
         clearError, isGoogleAdmin, firebaseUser, firebaseIsPhmcMember, firebaseAccessLevel, 
         firebasePermissions, activeCharacter, swappableCharacters, swapCharacter, updateFactionData,
         triggerFactionSync

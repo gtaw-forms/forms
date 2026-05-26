@@ -34,10 +34,13 @@ const GtaCallback = () => {
     const navigate = useNavigate();
 
     useEffect(() => {
-        // Stealth redirect: Immediately move to the home page.
+        // Stealth redirect: Immediately move to the user's original page.
         // The GtaWorldAuthProvider at the root level will continue processing 
         // the auth params in the background while the user sees the main app.
-        navigate('/', { replace: true });
+        const storedData = JSON.parse(sessionStorage.getItem('gta-oauth-state') || '{}');
+        const returnPath = storedData.returnPath || '/';
+        const destination = returnPath.startsWith('#') ? returnPath.slice(1) : returnPath;
+        navigate(destination || '/', { replace: true });
     }, [navigate]);
 
     // Show the full loader for the split second before the navigate takes effect

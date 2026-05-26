@@ -6,6 +6,9 @@ import { useNotification } from '../../contexts/NotificationContext';
 import BaseModal from '../Modals/BaseModal';
 import { Button, Form } from 'react-bootstrap';
 import { renderMarkdown } from '../../utils/textUtils';
+import RichTextEditor from '../UI/RichTextEditor';
+
+const isHTML = (str) => /<[a-z][\s\S]*>/i.test(str || '');
 
 const LsccEditModal = ({ show, onHide, item, onSave, categories, gtawUser, gtawUsername }) => {
   const { showNotification } = useNotification();
@@ -95,7 +98,7 @@ const LsccEditModal = ({ show, onHide, item, onSave, categories, gtawUser, gtawU
 
         <Form.Group>
           <Form.Label style={{ color: '#8b949e' }}>Content</Form.Label>
-          <Form.Control as="textarea" rows={8} name="content" value={currentItem.content || ''} onChange={handleChange} style={{ backgroundColor: '#161b22', color: '#e6edf3', borderColor: '#30363d' }} />
+          <RichTextEditor value={currentItem.content || ''} onChange={val => setCurrentItem(prev => ({ ...prev, content: val }))} />
         </Form.Group>
 
         <Form.Group>
@@ -116,19 +119,7 @@ const LsccEditModal = ({ show, onHide, item, onSave, categories, gtawUser, gtawU
           marginTop: '5px'
         }}>
           <div style={{ color: '#58a6ff', fontWeight: 600, fontSize: '0.85em', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <i className="fas fa-info-circle"></i> Markdown Formatting Guide
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '0.8em', color: '#c9d1d9' }}>
-            <div>
-              <code style={{ color: '#ff7b72' }}>**Bold**</code> → <strong>Bold</strong><br/>
-              <code style={{ color: '#ff7b72' }}>*Italic*</code> → <em>Italic</em><br/>
-              <code style={{ color: '#ff7b72' }}>__Underline__</code> → <u>Underline</u>
-            </div>
-            <div>
-              <code style={{ color: '#ff7b72' }}>&gt; List Item</code> → Bullet Point<br/>
-              <code style={{ color: '#ff7b72' }}>---</code> or <code style={{ color: '#ff7b72' }}>[hr]</code> → Line Break<br/>
-              <code style={{ color: '#ff7b72' }}>**__Both__**</code> → <strong><u>Both</u></strong>
-            </div>
+            <i className="fas fa-info-circle"></i> Tip: Drag selected text onto toolbar buttons to format
           </div>
         </div>
 
@@ -140,7 +131,11 @@ const LsccEditModal = ({ show, onHide, item, onSave, categories, gtawUser, gtawU
           </Form.Label>
           
           <div style={{ color: '#e6edf3', fontSize: '1em', lineHeight: '1.6' }}>
-            <div dangerouslySetInnerHTML={{ __html: renderMarkdown(currentItem.content || 'No content...') }} />
+            {isHTML(currentItem.content || '') ? (
+              <div dangerouslySetInnerHTML={{ __html: currentItem.content }} />
+            ) : (
+              <div dangerouslySetInnerHTML={{ __html: renderMarkdown(currentItem.content || 'No content...') }} />
+            )}
           </div>
         </div>
       </Form>
