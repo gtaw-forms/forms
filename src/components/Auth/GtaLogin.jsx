@@ -10,9 +10,16 @@ const GtaLogin = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
+    const [loginRole, setLoginRole] = useState('employee');
     const navigate = useNavigate();
-    const { user } = useAuth(); // Firebase authentication
-    const { isAuthenticated: isGtaAuthenticated, user: gtaUser, isLoading: isGtaLoading } = useGtaWorldAuth(); // GTA World authentication
+    const { user } = useAuth();
+    const { isAuthenticated: isGtaAuthenticated, user: gtaUser, isLoading: isGtaLoading, sessionLostReason } = useGtaWorldAuth();
+
+    useEffect(() => {
+        if (sessionLostReason) {
+            setError(sessionLostReason);
+        }
+    }, [sessionLostReason]);
 
     useEffect(() => {
         // Check for both Firebase and GTA World authentication
@@ -81,6 +88,7 @@ const GtaLogin = () => {
                     <button type="submit" style={{ flex: 1, padding: '10px', backgroundColor: 'blue', color: 'white', border: 'none' }}>Login</button>
                     <GtaWorldLoginButton 
                         returnPath="/"
+                        role={loginRole}
                         style={{ flex: 1, padding: '10px', backgroundColor: '#ff8c00', color: 'white', border: 'none' }}
                         onError={(error) => setError(`GTA World Login Error: ${error}`)}
                         onInitiate={() => setError('')}
@@ -91,6 +99,30 @@ const GtaLogin = () => {
                     >
                         Login with GTA World OAuth
                     </GtaWorldLoginButton>
+                </div>
+
+                {/* Role selector for GTA World login */}
+                <div style={{ display: 'flex', gap: 0, marginBottom: '10px', borderRadius: 6, overflow: 'hidden', border: '1px solid #ff8c00' }}>
+                    <button type="button"
+                        onClick={() => setLoginRole('employee')}
+                        style={{
+                            flex: 1, padding: '8px', border: 'none', cursor: 'pointer',
+                            backgroundColor: loginRole === 'employee' ? '#ff8c00' : 'transparent',
+                            color: loginRole === 'employee' ? '#fff' : '#ff8c00',
+                            fontWeight: 600, fontSize: '0.85rem',
+                        }}>
+                        <i className="fas fa-user-md"></i> PHMC Employee
+                    </button>
+                    <button type="button"
+                        onClick={() => setLoginRole('non-employee')}
+                        style={{
+                            flex: 1, padding: '8px', border: 'none', cursor: 'pointer', borderLeft: '1px solid #ff8c00',
+                            backgroundColor: loginRole === 'non-employee' ? '#ff8c00' : 'transparent',
+                            color: loginRole === 'non-employee' ? '#fff' : '#ff8c00',
+                            fontWeight: 600, fontSize: '0.85rem',
+                        }}>
+                        <i className="fas fa-user"></i> Non Employee
+                    </button>
                 </div>
                 <button type="button" onClick={() => navigate('/')} style={{ width: '100%', padding: '10px', backgroundColor: '#6c757d', color: 'white', border: 'none', marginTop: '10px' }}>Home</button>
             </form>

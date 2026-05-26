@@ -88,6 +88,10 @@ const SidebarNav = ({
           <i className="fas fa-microscope"></i> Morgue Intake
         </button>
 
+        <button className={panelStyles.panelButton} onClick={() => handleAction(() => navigate('/pr'))}>
+          <i className="fas fa-paint-brush"></i> PR
+        </button>
+
         <button className={panelStyles.panelButton} onClick={() => handleAction(() => navigate('/'))}>
           <i className="fas fa-file-medical"></i> Form Handler
         </button>
@@ -170,11 +174,6 @@ const SidebarNav = ({
           </button>
         )}
 
-        {onToggleAgencyIncident && (
-          <button className={panelStyles.panelButton} onClick={() => handleAction(onToggleAgencyIncident)}>
-            <i className="fas fa-shield-alt"></i> Agency Incident
-          </button>
-        )}
 
         {/* Custom children buttons */}
         {children}

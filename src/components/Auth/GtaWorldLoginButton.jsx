@@ -16,6 +16,7 @@ const GtaWorldLoginButton = ({
     onInitiate,
     onSuccess,
     disabled = false,
+    role = "employee",
     ...props 
 }) => {
     const { login, isLoading, error, isAuthenticated, user } = useGtaWorldAuth();
@@ -58,6 +59,7 @@ const GtaWorldLoginButton = ({
 
         login({
             returnPath,
+            role,
             onSuccess: (userData, redirectPath) => {
                 console.info('[GTA Login Button] Login successful:', userData);
                 if (onSuccess) {

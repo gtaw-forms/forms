@@ -20,6 +20,7 @@ const OAuthUrlDiagnostic = lazy(() => import('./components/Auth/OAuthUrlDiagnost
 const EmsDashboard = lazy(() => import('./components/ems-dashboard/EmsDashboard.jsx'));
 const ShopDashboard = lazy(() => import('./components/Shop/ShopDashboard.jsx'));
 const MorgueLookup = lazy(() => import('./components/UI/MorgueLookup.jsx'));
+const PRDashboard = lazy(() => import('./components/PR/PRDashboard.jsx'));
 
 function App() {
     const [formData, setFormData] = useState({});
@@ -147,6 +148,7 @@ function App() {
                                     <Route path="/ems-dashboard" element={<EmsDashboard />} />
                                     <Route path="/shop" element={<ShopDashboard />} />
                                     <Route path="/morgue" element={<MorgueLookup />} />
+                                    <Route path="/pr" element={<ProtectedRoute><PRDashboard /></ProtectedRoute>} />
                                     <Route path="/form-handler" element={<ProtectedRoute><FormHandler /></ProtectedRoute>} />
                                     <Route path="*" element={<Navigate to="/" replace />} />
                                 </Routes>

@@ -1,9 +1,6 @@
-export const logAuthErrorToDiscord = async (error, context) => {
-  const webhookUrl = import.meta.env.VITE_DISCORD_WEBHOOK_AUTH || import.meta.env.VITE_DEV_WEBHOOK;
-  if (!webhookUrl) {
-    return; // Don't do anything if webhook is not configured
-  }
+import { triggerWebhookProxy } from '../services/firebaseFunctions';
 
+export const logAuthErrorToDiscord = async (error, context) => {
   try {
     const embed = {
       title: 'Authentication Error',
@@ -38,11 +35,7 @@ ${error.stack || 'No stack trace'}
       embeds: [embed],
     };
 
-    await fetch(webhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+    await triggerWebhookProxy('auth', payload);
   } catch (loggingError) {
     console.error('Failed to log auth error to Discord:', loggingError);
   }

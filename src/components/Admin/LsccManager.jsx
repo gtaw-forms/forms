@@ -44,7 +44,7 @@ const SortableProtocolItem = ({ protocol, category, onEdit, onDelete }) => {
         </div>
       </div>
       <div className="card-body">
-        <p className="content-preview">{protocol.content?.substring(0, 120) || 'No content'}...</p>
+        <p className="content-preview">{protocol.content ? protocol.content.replace(/<[^>]+>/g, '').substring(0, 120) : 'No content'}...</p>
       </div>
       <div className="card-actions">
         <Button size="sm" variant="primary" onClick={() => onEdit(protocol)}>
@@ -70,7 +70,7 @@ const ProtocolCard = ({ protocol, category, onEdit, onDelete }) => (
         </div>
       </div>
       <div className="card-body">
-        <p className="content-preview">{protocol.content?.substring(0, 120) || 'No content'}...</p>
+        <p className="content-preview">{protocol.content ? protocol.content.replace(/<[^>]+>/g, '').substring(0, 120) : 'No content'}...</p>
       </div>
       <div className="card-actions">
         <Button size="sm" variant="primary" onClick={() => onEdit(protocol)}>

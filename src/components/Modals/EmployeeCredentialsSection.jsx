@@ -41,7 +41,8 @@ const EmployeeCredentialsSection = ({
   logout: propLogout
 }) => {
   const authHook = useGtaWorldAuth();
-  const { showNotification: notifyFromContext } = useNotification?.() || {};
+  const { showNotification: notifyFromContext, removeNotification: removeNotifFromContext } = useNotification?.() || {};
+  const [loginRole, setLoginRole] = useState('employee');
 
   const gtaWorldUser = propUser !== undefined ? propUser : authHook.user;
   const isGtaAuthenticated = propIsAuthenticated !== undefined ? propIsAuthenticated : authHook.isAuthenticated;
@@ -56,7 +57,9 @@ const EmployeeCredentialsSection = ({
   const isLoading = authHook.isLoading;
 
   const [useGtawName, setUseGtawName] = useState(false);
-  const [internalPersistEnabled, setInternalPersistEnabled] = useState(true);
+  const [internalPersistEnabled, setInternalPersistEnabled] = useState(() => {
+    return localStorage.getItem('phmc_gtaw_oauth_persist_enabled') !== 'false';
+  });
 
   const persistEnabled = propPersistEnabled !== undefined ? propPersistEnabled : internalPersistEnabled;
   const setSetPersistEnabled = propSetPersistEnabled !== undefined ? propSetPersistEnabled : setInternalPersistEnabled;
@@ -124,7 +127,9 @@ const EmployeeCredentialsSection = ({
 
   const handleRefreshFactionInfo = async () => {
     const notify = showNotification || notifyFromContext;
+    const removeNotif = removeNotifFromContext;
     if (!isGtaAuthenticated) return;
+    const loadingNotifId = notify('Fetching Employee Credentials...', 'spinner fa-spin', 0);
     try {
       setIsRefreshing(true);
       
@@ -143,9 +148,13 @@ const EmployeeCredentialsSection = ({
       const updated = await refreshFactionDataService();
       if (updated && updated.faction) {
         updateFactionData(updated.faction);
+        removeNotif && removeNotif(loadingNotifId);
         notify && notify('Profile refreshed.', 'check-circle', 3000);
+      } else {
+        removeNotif && removeNotif(loadingNotifId);
       }
     } catch (err) {
+      removeNotif && removeNotif(loadingNotifId);
       console.error('Refresh failed:', err);
       notify && notify('Refresh failed.', 'exclamation-triangle', 5000);
     } finally {
@@ -187,7 +196,32 @@ const EmployeeCredentialsSection = ({
         <div style={{ padding: '1.5rem', background: '#162032', borderRadius: '12px', textAlign: 'center', border: '1px solid #334155' }}>
             <i className="fas fa-lock mb-3" style={{ fontSize: '2rem', color: '#60a5fa' }}></i>
             <h5 style={{ color: '#f8fafc' }}>Auth Required</h5>
-            <button onClick={() => login({ returnPath: window.location.hash || '#/' })} className="btn btn-primary mt-3 w-100">
+
+            {/* Role selector */}
+            <div style={{ display: 'flex', gap: 0, marginBottom: '10px', borderRadius: 6, overflow: 'hidden', border: '1px solid #0d6efd' }}>
+              <button type="button"
+                onClick={() => setLoginRole('employee')}
+                style={{
+                  flex: 1, padding: '8px', border: 'none', cursor: 'pointer',
+                  backgroundColor: loginRole === 'employee' ? '#0d6efd' : 'transparent',
+                  color: loginRole === 'employee' ? '#fff' : '#0d6efd',
+                  fontWeight: 600, fontSize: '0.85rem',
+                }}>
+                <i className="fas fa-user-md"></i> Employee
+              </button>
+              <button type="button"
+                onClick={() => setLoginRole('non-employee')}
+                style={{
+                  flex: 1, padding: '8px', border: 'none', cursor: 'pointer', borderLeft: '1px solid #0d6efd',
+                  backgroundColor: loginRole === 'non-employee' ? '#0d6efd' : 'transparent',
+                  color: loginRole === 'non-employee' ? '#fff' : '#0d6efd',
+                  fontWeight: 600, fontSize: '0.85rem',
+                }}>
+                <i className="fas fa-user"></i> Non Employee
+              </button>
+            </div>
+
+            <button onClick={() => login({ returnPath: window.location.hash || '#/', role: loginRole })} className="btn btn-primary mt-3 w-100">
                 Log In
             </button>
         </div>
@@ -254,6 +288,9 @@ const EmployeeCredentialsSection = ({
                     <i className="fas fa-building me-1 text-primary"></i>
                     {(() => {
                         const rank = factionData?.rank?.toLowerCase() || '';
+                        if (!gtaWorldUser?.isFactionMember) {
+                            return 'Non Employee';
+                        }
                         if (rank.includes('medical examiner') || rank.includes('forensic attendant') || rank.includes('coroner investigator')) {
                             return 'Forensic Science';
                         }

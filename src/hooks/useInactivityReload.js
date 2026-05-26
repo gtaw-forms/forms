@@ -1,8 +1,8 @@
 import { useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNotification } from '../contexts/NotificationContext.jsx';
 
-const INACTIVITY_WARNING_TIMEOUT = 6 * 60 * 60 * 1000; // 6 hours
-const INACTIVITY_RELOAD_TIMEOUT = (6 * 60 + 15) * 60 * 1000;  // 6 hours 15 minutes
+const INACTIVITY_WARNING_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+const INACTIVITY_RELOAD_TIMEOUT = (35 * 60 * 1000 + 1000);  // ~35 minutes 1 sec
 
 /**
  * Custom hook to automatically reload the page after a period of user inactivity.

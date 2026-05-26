@@ -4,8 +4,10 @@ import { ref, onValue, remove, update, get } from 'firebase/database';
 import { Spinner, Table, Button, Badge, Modal, Image, Alert } from 'react-bootstrap';
 import { useNotification } from '../../contexts/NotificationContext';
 import { useModal } from '../../contexts/ModalProvider';
+import { useData } from '../../contexts/DataContext';
 
 const UnprocessedCKsViewer = ({ selectedForm, onPreload }) => {
+    const { morgueRecords } = useData();
     const [ckList, setCkList] = useState([]);
     const [loading, setLoading] = useState(true);
     const { showNotification, removeNotification } = useNotification();
@@ -15,8 +17,36 @@ const UnprocessedCKsViewer = ({ selectedForm, onPreload }) => {
     const [showViewModal, setShowViewModal] = useState(false);
     const [viewData, setViewData] = useState(null);
     const [loadingView, setLoadingView] = useState(false);
+    const [viewMode, setViewMode] = useState('report'); // 'report' or 'morgue'
+
+    // --- REUSABLE SMART MATCHING LOGIC ---
+    const findMorgueMatch = (decedentName, dateOfDeath) => {
+        const matches = (morgueRecords || []).filter(r => 
+            (r.name || '').toLowerCase() === decedentName.toLowerCase() ||
+            (r.name || '').toLowerCase().includes(decedentName.toLowerCase())
+        );
+
+        if (matches.length === 0) return null;
+        if (matches.length === 1) return matches[0];
+
+        // 1. Prioritize results with ((CK)) in the Cause of Death
+        const ckTaggedMatches = matches.filter(r => (r.causeOfDeath || '').includes('((CK))'));
+        const candidates = ckTaggedMatches.length > 0 ? ckTaggedMatches : matches;
+
+        // 2. Find the candidate with the closest Time of Death
+        const ckTime = new Date(dateOfDeath).getTime();
+        return candidates.reduce((best, current) => {
+            if (!best) return current;
+            const bestTime = new Date(best.timeOfDeath).getTime() || best.lastUpdated || 0;
+            const currentTime = new Date(current.timeOfDeath).getTime() || current.lastUpdated || 0;
+            const bestDiff = Math.abs(bestTime - ckTime);
+            const currentDiff = Math.abs(currentTime - ckTime);
+            return currentDiff < bestDiff ? current : best;
+        }, null);
+    };
 
     useEffect(() => {
+// ... existing useEffect ...
         // Only active for Death Record form
         // Checking multiple possible keys/names to ensure robustness against legacy/migration inconsistencies
         if (selectedForm?.firebaseKey !== 'death-record' && 
@@ -89,6 +119,7 @@ const UnprocessedCKsViewer = ({ selectedForm, onPreload }) => {
         setLoadingView(true);
         setShowViewModal(true);
         setViewData(null); // Reset previous data
+        setViewMode('report'); // Reset to report view
 
         try {
             if (ckItem.reportPath) {
@@ -96,11 +127,24 @@ const UnprocessedCKsViewer = ({ selectedForm, onPreload }) => {
                 const snapshot = await get(reportRef);
                 if (snapshot.exists()) {
                     const data = snapshot.val();
-                    // Inject context for rendering Mass Fatality decedents
+                    
+                    // --- MORGUE MATCH FOR VIEWING ---
+                    const isMF = ckItem.isMassFatality || (data.formId && data.formId.includes('mass'));
+                    const displayData = isMF && data.data?.decedents
+                        ? data.data.decedents[ckItem.decedentIndex || 0]
+                        : data.data;
+                        
+                    const morgueMatch = findMorgueMatch(
+                        displayData?.decedentName || ckItem.decedentName,
+                        displayData?.pronouncedTimeOfDeath || data.data?.dateTime || ckItem.dateOfDeath
+                    );
+
+                    // Inject context for rendering
                     setViewData({
                         ...data,
                         isMassFatality: ckItem.isMassFatality,
-                        decedentIndex: ckItem.decedentIndex
+                        decedentIndex: ckItem.decedentIndex,
+                        morgueMatch: morgueMatch
                     });
                 } else {
                     showNotification('Report data not found.', 'warning');
@@ -152,24 +196,144 @@ const UnprocessedCKsViewer = ({ selectedForm, onPreload }) => {
                     const decedentName = displayData.decedentName || '';
                     const isUnidentified = !decedentName || /unknown|john doe|jane doe/i.test(decedentName);
 
+                    // --- ENHANCED MORGUE LOOKUP INTEGRATION ---
+                    const matches = (morgueRecords || []).filter(r => 
+                        (r.name || '').toLowerCase() === decedentName.toLowerCase() ||
+                        (r.name || '').toLowerCase().includes(decedentName.toLowerCase())
+                    );
+
+                    let morgueMatch = null;
+                    if (matches.length === 1) {
+                        morgueMatch = matches[0];
+                    } else if (matches.length > 1) {
+                        // 1. Prioritize results with ((CK)) in the Cause of Death
+                        const ckTaggedMatches = matches.filter(r => (r.causeOfDeath || '').includes('((CK))'));
+                        const candidates = ckTaggedMatches.length > 0 ? ckTaggedMatches : matches;
+
+                        // 2. Find the candidate with the closest Time of Death
+                        morgueMatch = candidates.reduce((best, current) => {
+                            if (!best) return current;
+
+                            const ckTime = date.getTime();
+                            const bestTime = new Date(best.timeOfDeath).getTime() || best.lastUpdated || 0;
+                            const currentTime = new Date(current.timeOfDeath).getTime() || current.lastUpdated || 0;
+
+                            const bestDiff = Math.abs(bestTime - ckTime);
+                            const currentDiff = Math.abs(currentTime - ckTime);
+
+                            return currentDiff < bestDiff ? current : best;
+                        }, null);
+                    }
+
+                    if (morgueMatch) {
+                    } else {
+                        console.log(`[CK Preload] Stage 2: Fields AFTER Morgue Lookup (No Match Found)`);
+                    }
+
+                    // --- PLACE OF DEATH FALLBACK ---
+                    let finalPlaceOfDeath = morgueMatch?.location || displayData.location || displayData.placeOfDeath || '';
+                    if (finalPlaceOfDeath.toLowerCase() === 'location unknown') {
+                        finalPlaceOfDeath = displayData.location || displayData.placeOfDeath || '';
+                    }
+
+                    // --- INFERRED ETHNICITY ---
+                    let inferredEthnicity = displayData.ethnicity || '';
+                    if (!inferredEthnicity && morgueMatch?.physicalDescription) {
+                        const desc = morgueMatch.physicalDescription.toLowerCase();
+                        const ethnicityMap = {
+                            'caucasian': 'Caucasian', 'white': 'Caucasian',
+                            'african american': 'African American', 'black': 'African American',
+                            'hispanic': 'Hispanic', 'latino': 'Hispanic', 'latina': 'Hispanic',
+                            'asian': 'Asian', 'japanese': 'Asian', 'chinese': 'Asian', 'korean': 'Asian',
+                            'native american': 'Native American', 'middle eastern': 'Middle Eastern',
+                            'pacific islander': 'Pacific Islander'
+                        };
+
+                        for (const [keyword, value] of Object.entries(ethnicityMap)) {
+                            if (desc.includes(keyword)) {
+                                inferredEthnicity = value;
+                                break;
+                            }
+                        }
+                    }
+
+                    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                    const investigatorDefault = isLocalhost ? 'Alyson Frost' : (reportData.data?.coronerEmployee || '');
+
+                    // --- ROBUST DATE PARSING ---
+                    let morgueFormattedDate = formattedDate;
+                    if (morgueMatch?.timeOfDeath) {
+                        try {
+                            const rawTime = morgueMatch.timeOfDeath;
+                            const dateMatch = rawTime.match(/(\d{1,2})\s+([A-Z][a-z]+)\s+(\d{4})/i);
+                            if (dateMatch) {
+                                const day = dateMatch[1].padStart(2, '0');
+                                const monthName = dateMatch[2].toLowerCase();
+                                const year = dateMatch[3];
+                                const months = {
+                                    jan: 'JAN', feb: 'FEB', mar: 'MAR', apr: 'APR', may: 'MAY', jun: 'JUN',
+                                    jul: 'JUL', aug: 'AUG', sep: 'SEP', oct: 'OCT', nov: 'NOV', dec: 'DEC',
+                                    january: 'JAN', february: 'FEB', march: 'MAR', april: 'APR', june: 'JUN',
+                                    july: 'JUL', august: 'AUG', september: 'SEP', october: 'OCT', november: 'NOV', december: 'DEC'
+                                };
+                                const month = months[monthName] || 'JAN';
+                                morgueFormattedDate = `${day}/${month}/${year}`;
+                            } else {
+                                const mDate = new Date(rawTime);
+                                if (!isNaN(mDate.getTime())) {
+                                    const d = String(mDate.getDate()).padStart(2, '0');
+                                    const monthNames = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+                                    const m = monthNames[mDate.getMonth()];
+                                    const y = mDate.getFullYear();
+                                    morgueFormattedDate = `${d}/${m}/${y}`;
+                                }
+                            }
+                        } catch (e) { console.error("[CK Preload] Error during date parsing:", e); }
+                    }
+
+                    // --- STRICT AGE PARSING ---
+                    let rawAge = morgueMatch?.estimatedAge || displayData.approximateAge || displayData.age || '';
+                    let strictlyParsedAge = rawAge;
+                    if (rawAge && typeof rawAge === 'string') {
+                        const ageMatch = rawAge.replace(/\r/g, '').match(/\d+\s*(?:to|-)\s*\d+|\d+/i);
+                        if (ageMatch) {
+                            strictlyParsedAge = ageMatch[0].replace(/-/g, ' to ');
+                        }
+                    }
+
                     const valuesToPreload = {
                         deathRecordType: isUnidentified ? 'Unidentified' : 'Identified',
                         decedentName: decedentName,
                         decedentOOC: displayData.decedentOOC || '',
-                        formattedDateOfDeath: formattedDate,
-                        age: displayData.approximateAge || displayData.age || '',
-                        sex: displayData.sex || '',
-                        ethnicity: displayData.ethnicity || '',
-                        placeOfDeath: displayData.location || displayData.placeOfDeath || '',
+                        formattedDateOfDeath: morgueFormattedDate,
+                        dateOfDeath: morgueFormattedDate,
+                        age: strictlyParsedAge,
+                        sex: morgueMatch?.sex || displayData.sex || '',
+                        ethnicity: inferredEthnicity,
+                        placeOfDeath: finalPlaceOfDeath,
                         Manner: displayData.mannerOfDeath || '',
-                        causeA: displayData.probableCauseOfDeath || '',
-
-
+                        causeA: morgueMatch?.causeOfDeath || displayData.probableCauseOfDeath || '',
+                        caseNumber: morgueMatch?.caseId || '',
+                        dnaProfile: morgueMatch?.dnaProfile || '',
+                        bacLevel: morgueMatch?.bac || '',
+                        narcoticTraces: morgueMatch?.narcotics || '',
+                        tattoos: morgueMatch?.tattoos || '',
+                        comments: morgueMatch?.physicalDescription || '',
+                        selectEmployee: investigatorDefault,
+                        coronerEmployee: investigatorDefault,
+                        phmcEmployee: investigatorDefault,
+                        investigator: investigatorDefault
                     };
+
     
                     onPreload(valuesToPreload);
                     removeNotification(notificationId);
-                    showNotification('Form preloaded with CK report data!', 'success');
+                    showNotification(
+                        morgueMatch 
+                            ? 'Form preloaded with CK report & Morgue data!' 
+                            : 'Form preloaded with CK report data (No Morgue match).', 
+                        'success'
+                    );
     
                 } else {
                     removeNotification(notificationId);
@@ -376,78 +540,175 @@ const UnprocessedCKsViewer = ({ selectedForm, onPreload }) => {
                                 </div>
                             ) : viewData ? (
                                 <div>
-                                    {/* Unified display logic for both Standard and Mass Fatality reports */}
-                                    {(() => {
-                                        const isMF = viewData.isMassFatality || (viewData.formId && viewData.formId.includes('mass'));
-                                        const displayData = isMF && viewData.data?.decedents
-                                            ? viewData.data.decedents[viewData.decedentIndex || 0]
-                                            : viewData.data;
-                                        
-                                        if (!displayData) return <Alert variant="warning">Decedent data could not be resolved.</Alert>;
+                                    {/* View Toggle Tabs */}
+                                    <div className="d-flex gap-2 mb-4 p-1 rounded" style={{ background: '#0f172a', border: '1px solid #334155' }}>
+                                        <Button 
+                                            variant={viewMode === 'report' ? 'info' : 'outline-secondary'} 
+                                            size="sm" 
+                                            className="flex-grow-1 border-0"
+                                            onClick={() => setViewMode('report')}
+                                        >
+                                            <i className="fas fa-file-alt me-2"></i>Coroner Report
+                                        </Button>
+                                        <Button 
+                                            variant={viewMode === 'morgue' ? 'info' : 'outline-secondary'} 
+                                            size="sm" 
+                                            className="flex-grow-1 border-0"
+                                            disabled={!viewData.morgueMatch}
+                                            onClick={() => setViewMode('morgue')}
+                                        >
+                                            <i className="fas fa-id-card-alt me-2"></i>Morgue Report
+                                            {!viewData.morgueMatch && <small className="ms-1">(No Match)</small>}
+                                        </Button>
+                                    </div>
 
-                                        return (
-                                            <>
-                                                {/* Key Info Header */}
-                                                <div className="d-flex justify-content-between align-items-center mb-4 p-3 rounded" style={{ background: '#0f172a', border: '1px solid #334155' }}>
-                                                    <div>
-                                                        <h5 className="mb-1 text-white">{displayData.decedentName || 'Unknown'}</h5>
-                                                        <div className="mb-1 text-white">(( {displayData.decedentOOC || 'N/A'} ))</div>
-                                                        {isMF && <Badge bg="info" className="mt-1">Part of Mass Fatality Report</Badge>}
-                                                    </div>
-                                                    <div className="text-end">
-                                                        <Badge bg={displayData.typeOfDeath === 'CK' ? 'danger' : 'secondary'}>
-                                                            {displayData.typeOfDeath || 'Unknown Type'}
-                                                        </Badge>
-                                                        <div className="mb-1 text-white ms-2 mt-1">
-                                                            {(() => {
-                                                                const primaryDate = new Date(displayData.pronouncedTimeOfDeath);
-                                                                const fallbackDate = new Date(viewData.data?.dateTime);
+                                    {viewMode === 'report' ? (
+                                        /* EXISTING REPORT VIEW LOGIC */
+                                        (() => {
+                                            const isMF = viewData.isMassFatality || (viewData.formId && viewData.formId.includes('mass'));
+                                            const displayData = isMF && viewData.data?.decedents
+                                                ? viewData.data.decedents[viewData.decedentIndex || 0]
+                                                : viewData.data;
+                                            
+                                            if (!displayData) return <Alert variant="warning">Decedent data could not be resolved.</Alert>;
 
-                                                                if (!isNaN(primaryDate.getTime())) {
-                                                                    return primaryDate.toLocaleString();
-                                                                }
-                                                                if (!isNaN(fallbackDate.getTime())) {
-                                                                    return fallbackDate.toLocaleString();
-                                                                }
-                                                                // Show the original text if it's a non-parsable string like "Afternoon"
-                                                                if (typeof displayData.pronouncedTimeOfDeath === 'string') {
-                                                                    return displayData.pronouncedTimeOfDeath;
-                                                                }
-                                                                return 'N/A';
-                                                            })()}
+                                            return (
+                                                <>
+                                                    {/* Key Info Header */}
+                                                    <div className="d-flex justify-content-between align-items-center mb-4 p-3 rounded" style={{ background: '#0f172a', border: '1px solid #334155' }}>
+                                                        <div>
+                                                            <h5 className="mb-1 text-white">{displayData.decedentName || 'Unknown'}</h5>
+                                                            <div className="mb-1 text-white">(( {displayData.decedentOOC || 'N/A'} ))</div>
+                                                            {isMF && <Badge bg="info" className="mt-1">Part of Mass Fatality Report</Badge>}
                                                         </div>
+                                                        <div className="text-end">
+                                                            <Badge bg={displayData.typeOfDeath === 'CK' ? 'danger' : 'secondary'}>
+                                                                {displayData.typeOfDeath || 'Unknown Type'}
+                                                            </Badge>
+                                                            <div className="mb-1 text-white ms-2 mt-1">
+                                                                {(() => {
+                                                                    const primaryDate = new Date(displayData.pronouncedTimeOfDeath);
+                                                                    const fallbackDate = new Date(viewData.data?.dateTime);
+
+                                                                    if (!isNaN(primaryDate.getTime())) {
+                                                                        return primaryDate.toLocaleString();
+                                                                    }
+                                                                    if (!isNaN(fallbackDate.getTime())) {
+                                                                        return fallbackDate.toLocaleString();
+                                                                    }
+                                                                    // Show the original text if it's a non-parsable string like "Afternoon"
+                                                                    if (typeof displayData.pronouncedTimeOfDeath === 'string') {
+                                                                        return displayData.pronouncedTimeOfDeath;
+                                                                    }
+                                                                    return 'N/A';
+                                                                })()}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="row g-3 mb-4">
+                                                        <div className="col-md-6">
+                                                            <div className="p-3 rounded h-100" style={{ background: '#1e293b', border: '1px solid #475569' }}>
+                                                                <label className="text-info small fw-bold text-uppercase d-block mb-1">Cause of Death</label>
+                                                                <div>{displayData.probableCauseOfDeath || 'Not specified'}</div>
+                                                            </div>
+                                                        </div>
+                                                        <div className="col-md-6">
+                                                            <div className="p-3 rounded h-100" style={{ background: '#1e293b', border: '1px solid #475569' }}>
+                                                                <label className="text-info small fw-bold text-uppercase d-block mb-1">Manner of Death</label>
+                                                                <div>{displayData.mannerOfDeath || 'Not specified'}</div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="mb-4">
+                                                        <h6 style={{color: '#a78bfa', borderBottom: '1px solid #475569', paddingBottom: '0.5rem'}}>Synopsis / Injuries</h6>
+                                                        <div className="p-3 rounded" style={{ background: '#0f172a', border: '1px solid #334155', whiteSpace: 'pre-wrap', color: '#cbd5e1' }}>
+                                                            {displayData.synopsis || 'No synopsis provided.'}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Images Section - Supporting multiple possible field names across versions */}
+                                                    {renderImages(displayData.scenePhotos || displayData.scenePhotosBBCode || displayData.scene_photos_bbcode, "Scene Photos")}
+                                                    {renderImages(displayData.autopsyDiagram || displayData.autopsy_diagram, "Autopsy Diagram")}
+                                                    {renderImages(displayData.additionalImages || displayData.additionalPhotos || displayData.additional_photos, "Additional Photos")}
+                                                </>
+                                            );
+                                        })()
+                                    ) : (
+                                        /* MORGUE REPORT VIEW */
+                                        <div>
+                                            <div className="d-flex justify-content-between align-items-center mb-4 p-3 rounded" style={{ background: '#0f172a', border: '1px solid #334155' }}>
+                                                <div>
+                                                    <h5 className="mb-1 text-white">{viewData.morgueMatch.name}</h5>
+                                                    <div className="text-info small">Case ID: {viewData.morgueMatch.caseId || 'N/A'}</div>
+                                                </div>
+                                                <div className="text-end">
+                                                    <Badge bg={viewData.morgueMatch.identified === 'Yes' ? 'success' : 'warning'}>
+                                                        {viewData.morgueMatch.identified === 'Yes' ? 'Identified' : 'Unidentified'}
+                                                    </Badge>
+                                                    <div className="text-white small mt-1">{viewData.morgueMatch.timeOfDeath || 'Unknown Date'}</div>
+                                                </div>
+                                            </div>
+
+                                            <div className="row g-3 mb-4">
+                                                <div className="col-md-4">
+                                                    <div className="p-3 rounded h-100" style={{ background: '#1e293b', border: '1px solid #475569' }}>
+                                                        <label className="text-info small fw-bold text-uppercase d-block mb-1">Sex / Age</label>
+                                                        <div>{viewData.morgueMatch.sex || 'N/A'} / {viewData.morgueMatch.estimatedAge || 'N/A'}</div>
                                                     </div>
                                                 </div>
-
-                                                <div className="row g-3 mb-4">
-                                                    <div className="col-md-6">
-                                                        <div className="p-3 rounded h-100" style={{ background: '#1e293b', border: '1px solid #475569' }}>
-                                                            <label className="text-info small fw-bold text-uppercase d-block mb-1">Cause of Death</label>
-                                                            <div>{displayData.probableCauseOfDeath || 'Not specified'}</div>
-                                                        </div>
-                                                    </div>
-                                                    <div className="col-md-6">
-                                                        <div className="p-3 rounded h-100" style={{ background: '#1e293b', border: '1px solid #475569' }}>
-                                                            <label className="text-info small fw-bold text-uppercase d-block mb-1">Manner of Death</label>
-                                                            <div>{displayData.mannerOfDeath || 'Not specified'}</div>
-                                                        </div>
+                                                <div className="col-md-8">
+                                                    <div className="p-3 rounded h-100" style={{ background: '#1e293b', border: '1px solid #475569' }}>
+                                                        <label className="text-info small fw-bold text-uppercase d-block mb-1">Cause of Death</label>
+                                                        <div>{viewData.morgueMatch.causeOfDeath || 'N/A'}</div>
                                                     </div>
                                                 </div>
+                                            </div>
 
+                                            <div className="row g-3 mb-4">
+                                                <div className="col-md-6">
+                                                    <div className="p-3 rounded h-100" style={{ background: '#1e293b', border: '1px solid #475569' }}>
+                                                        <label className="text-success small fw-bold text-uppercase d-block mb-1">DNA Profile</label>
+                                                        <div className="font-monospace small" style={{ wordBreak: 'break-all' }}>{viewData.morgueMatch.dnaProfile || 'No profile recorded'}</div>
+                                                    </div>
+                                                </div>
+                                                <div className="col-md-6">
+                                                    <div className="p-3 rounded h-100" style={{ background: '#1e293b', border: '1px solid #475569' }}>
+                                                        <label className="text-warning small fw-bold text-uppercase d-block mb-1">Toxicology (BAC / Narcotics)</label>
+                                                        <div>BAC: {viewData.morgueMatch.bac || 'N/A'}</div>
+                                                        <div className="small text-muted">{viewData.morgueMatch.narcotics || 'None detected'}</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="mb-4">
+                                                <h6 style={{color: '#a78bfa', borderBottom: '1px solid #475569', paddingBottom: '0.5rem'}}>Physical Description</h6>
+                                                <div className="p-3 rounded" style={{ background: '#0f172a', border: '1px solid #334155', whiteSpace: 'pre-wrap', color: '#cbd5e1' }}>
+                                                    {viewData.morgueMatch.physicalDescription || 'No description provided.'}
+                                                </div>
+                                            </div>
+
+                                            {viewData.morgueMatch.tattoos && viewData.morgueMatch.tattoos !== 'None' && (
                                                 <div className="mb-4">
-                                                    <h6 style={{color: '#a78bfa', borderBottom: '1px solid #475569', paddingBottom: '0.5rem'}}>Synopsis / Injuries</h6>
+                                                    <h6 style={{color: '#f472b6', borderBottom: '1px solid #475569', paddingBottom: '0.5rem'}}>Tattoos / Marks</h6>
                                                     <div className="p-3 rounded" style={{ background: '#0f172a', border: '1px solid #334155', whiteSpace: 'pre-wrap', color: '#cbd5e1' }}>
-                                                        {displayData.synopsis || 'No synopsis provided.'}
+                                                        {viewData.morgueMatch.tattoos}
                                                     </div>
                                                 </div>
+                                            )}
 
-                                                {/* Images Section - Supporting multiple possible field names across versions */}
-                                                {renderImages(displayData.scenePhotos || displayData.scenePhotosBBCode || displayData.scene_photos_bbcode, "Scene Photos")}
-                                                {renderImages(displayData.autopsyDiagram || displayData.autopsy_diagram, "Autopsy Diagram")}
-                                                {renderImages(displayData.additionalImages || displayData.additionalPhotos || displayData.additional_photos, "Additional Photos")}
-                                            </>
-                                        );
-                                    })()}
+                                            {viewData.morgueMatch.location && (
+                                                <div className="mb-4">
+                                                    <label className="text-info small fw-bold text-uppercase d-block mb-1">Location Noted</label>
+                                                    <div className="p-2 rounded" style={{ background: '#0f172a', border: '1px solid #334155' }}>
+                                                        <i className="fas fa-map-marker-alt me-2 text-danger"></i>
+                                                        {viewData.morgueMatch.location}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             ) : (
                                 <Alert variant="warning">No data available for this report.</Alert>

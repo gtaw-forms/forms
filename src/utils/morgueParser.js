@@ -37,19 +37,19 @@ export const parseMorgueRecord = (text) => {
     const dnaMatch = sanitizedText.match(/DNA PROFILE\s*\n?\s*([0-9A-F]{10,})/i);
     record.dnaProfile = dnaMatch ? dnaMatch[1].trim() : 'N/A';
 
-    // Estimated Age (Boundary based)
-    const ageMatch = sanitizedText.match(/Estimated age:\s*\n?\s*([\s\S]*?)(?=\s*(?:FORENSIC DETAILS|AUTOPSY FINDINGS|$))/i);
+    // Estimated Age (More restrictive boundary)
+    const ageMatch = sanitizedText.match(/Estimated age:\s*([\s\S]*?)(?=\n[A-Z\s]{3,}:|Tattoos description:|FORENSIC DETAILS|AUTOPSY FINDINGS|Visible injuries:|$)/i);
     record.estimatedAge = ageMatch ? ageMatch[1].trim() : 'Unknown';
 
-    // Tattoos (Resilient extraction)
-    const tattooMatch = sanitizedText.match(/Tattoos description:\s*\n?\s*([\s\S]*?)(?=\s*(?:Estimated age:|FORENSIC DETAILS|AUTOPSY FINDINGS|$))/i);
+    // Tattoos (More restrictive boundary)
+    const tattooMatch = sanitizedText.match(/Tattoos description:\s*([\s\S]*?)(?=\n[A-Z\s]{3,}:|Estimated age:|FORENSIC DETAILS|AUTOPSY FINDINGS|Visible injuries:|$)/i);
     record.tattoos = tattooMatch ? tattooMatch[1].trim() : 'None';
 
     // Forensic Details (Resilient extraction)
-    const bacMatch = sanitizedText.match(/Blood alcohol concentration \(BAC\)\s*\n?\s*([\d.]+%?)/i);
+    const bacMatch = sanitizedText.match(/Blood alcohol concentration \(BAC\)\s*([\d.]+%?)/i);
     record.bac = bacMatch ? bacMatch[1].trim() : '0.00%';
 
-    const narcoticsMatch = sanitizedText.match(/Traces of narcotics\s*\n?\s*([\s\S]*?)(?=\s*(?:Bullet|AUTOPSY FINDINGS|$))/i);
+    const narcoticsMatch = sanitizedText.match(/Traces of narcotics\s*([\s\S]*?)(?=\n[A-Z\s]{3,}:|Bullet|AUTOPSY FINDINGS|FORENSIC DETAILS|$)/i);
     record.narcotics = narcoticsMatch ? narcoticsMatch[1].trim() : 'None';
 
     // Bullets (Multiple)

@@ -1,15 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button, Spinner, Alert, Form } from 'react-bootstrap';
 import {
-    triggerExchangeAuthCodeForToken,
-    triggerGetTokenForSecrets,
-    triggerGetManagedGtaWorldToken,
-    triggerGetProfileWithManagedToken,
     triggerValidateGtaWorldToken,
-    triggerGetCachedGtaWorldProfile,
-    triggerGetGtaWorldProfile,
     triggerUploadFactionData,
-    triggerBatchCheckFactionMembership,
     triggerCheckFactionMembership,
     triggerTestHealthAlert,
     triggerFetchExternalUrl,
@@ -17,13 +10,17 @@ import {
 } from '../../services/firebaseFunctions';
 
 import { database } from '../../firebase';
-import { ref, set } from 'firebase/database';
-import { logAdminAction, getUserContext } from '../../utils/adminLogger'; // Adjust path if needed, assuming it's available in context
+import { ref, set, onValue, off } from 'firebase/database';
+import { logAdminAction, getUserContext } from '../../utils/adminLogger';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
+
+const MAINTENANCE_MODE_PATH = 'appMetadata/maintenanceMode';
 
 const FirebaseFunctionsTester = ({ showInAppNotification }) => {
     const { user: gtawUser, username: gtawUsername } = useGtaWorldAuth();
     const [loading, setLoading] = useState(false);
+    const [maintenanceLoading, setMaintenanceLoading] = useState(false);
+    const [maintenanceEnabled, setMaintenanceEnabled] = useState(false);
     const [result, setResult] = useState(null);
     const [authCode, setAuthCode] = useState('');
     const [redirectUri, setRedirectUri] = useState('');
@@ -71,6 +68,43 @@ const FirebaseFunctionsTester = ({ showInAppNotification }) => {
         }
     };
 
+    useEffect(() => {
+        const maintenanceRef = ref(database, MAINTENANCE_MODE_PATH);
+        const handleValue = (snapshot) => {
+            setMaintenanceEnabled(!!snapshot.val());
+        };
+        onValue(maintenanceRef, handleValue);
+        return () => off(maintenanceRef, 'value', handleValue);
+    }, []);
+
+    const handleToggleMaintenanceMode = async () => {
+        const newState = !maintenanceEnabled;
+        setMaintenanceLoading(true);
+        try {
+            const { userAgent, timeZone } = getUserContext();
+            const maintenanceRef = ref(database, MAINTENANCE_MODE_PATH);
+            await set(maintenanceRef, newState ? Date.now() : null);
+
+            logAdminAction(
+                gtawUsername || 'Unknown Admin',
+                newState ? 'Maintenance Mode Enabled' : 'Maintenance Mode Disabled',
+                `Maintenance mode ${newState ? 'enabled' : 'disabled'} at ${new Date().toISOString()}`,
+                'Developer Tools',
+                userAgent,
+                timeZone,
+                gtawUsername,
+                gtawUser
+            );
+
+            showInAppNotification(`Maintenance mode ${newState ? 'enabled' : 'disabled'}.`, 'success');
+        } catch (err) {
+            console.error('[Maintenance] Toggle failed:', err);
+            showInAppNotification(`Failed to toggle maintenance mode: ${err.message}`, 'error');
+        } finally {
+            setMaintenanceLoading(false);
+        }
+    };
+
     const handleTriggerFunction = async (func, ...args) => {
         setLoading(true);
         setResult(null);
@@ -99,6 +133,21 @@ const FirebaseFunctionsTester = ({ showInAppNotification }) => {
                         {loading ? <Spinner as="span" animation="border" size="sm" /> : 'Trigger Manual Maintenance'}
                     </Button>
                     <p className="text-muted small w-100">Manually runs the daily maintenance task, which includes bingo board resets, report cleanup, and other routine jobs.</p>
+                    <div className="d-flex align-items-center gap-3 w-100 border rounded p-2">
+                        <span className="fw-semibold small">Maintenance Mode</span>
+                        <span className={`badge ${maintenanceEnabled ? 'bg-warning text-dark' : 'bg-secondary'}`}>
+                            {maintenanceEnabled ? 'ENABLED' : 'DISABLED'}
+                        </span>
+                        <Button
+                            variant={maintenanceEnabled ? 'success' : 'warning'}
+                            size="sm"
+                            onClick={handleToggleMaintenanceMode}
+                            disabled={maintenanceLoading}
+                        >
+                            {maintenanceLoading ? <Spinner as="span" animation="border" size="sm" /> : maintenanceEnabled ? 'Disable' : 'Enable'}
+                        </Button>
+                        <p className="text-muted small mb-0 ms-2">Shows a global banner to all users when enabled.</p>
+                    </div>
                 </div>
 
                 <h7 className="mt-3">Developer Debug Tools</h7>

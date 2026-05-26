@@ -4,6 +4,7 @@ import { analytics } from '../firebase';
 import { logEvent } from 'firebase/analytics';
 import { database } from '../firebase';
 import { ref, set, push } from 'firebase/database';
+import { triggerWebhookProxy } from '../services/firebaseFunctions';
 
 export const useWebhooks = (formData, commitInfo, showNotification, getIsInactivityWarningTriggered) => {
     const logWebhookToFirebase = useCallback(async (type, payload) => {
@@ -55,12 +56,6 @@ export const useWebhooks = (formData, commitInfo, showNotification, getIsInactiv
     }, []);
 
     const sendDataRequestLog = useCallback(async (file, cached, source, cachedDataSize, networkTransferSize, loggedIn, user, requestedPortions, missingPortions, segmentSizes = {}, error = null) => {
-        const webhookUrl = import.meta.env.VITE_DISCORD_WEBHOOK_ADMIN || import.meta.env.VITE_DEV_WEBHOOK;
-        if (!webhookUrl) {
-            console.error("Discord webhook URL is not configured.");
-            return;
-        }
-
         const fields = [
             {
                 name: 'URL',
@@ -87,7 +82,7 @@ export const useWebhooks = (formData, commitInfo, showNotification, getIsInactiv
                 value: loggedIn ? 'Yes' : 'No',
                 inline: true,
             },
-            { // NEW: Inactivity Check Field
+            {
                 name: 'Inactivity Check (30min+)',
                 value: getIsInactivityWarningTriggered() ? 'True' : 'False',
                 inline: true,
@@ -130,7 +125,7 @@ export const useWebhooks = (formData, commitInfo, showNotification, getIsInactiv
             });
         }
 
-        if (error) { // NEW: Add error field if present
+        if (error) {
             fields.push({
                 name: 'Error Details',
                 value: String(error),
@@ -150,19 +145,8 @@ export const useWebhooks = (formData, commitInfo, showNotification, getIsInactiv
         };
 
         try {
-            const response = await fetch(webhookUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ embeds: [embed] }),
-            });
-
-            if (!response.ok) {
-                console.error(`Error sending data request log webhook: ${response.status} ${response.statusText}`);
-            } else {
-                console.log(`Data request log sent successfully.`);
-            }
+            await triggerWebhookProxy('admin', { embeds: [embed] });
+            console.log(`Data request log sent successfully.`);
         } catch (error) {
             console.error(`Failed to send data request log webhook:`, error);
             Sentry.captureException(error, { extra: { context: `sendDataRequestLog` } });
@@ -177,9 +161,14 @@ export const useWebhooks = (formData, commitInfo, showNotification, getIsInactiv
 
     const handleWebhookSubmit = useCallback(async (payload) => {
         if (!payload) return;
-        const webhookURL = import.meta.env.VITE_DISCORD_WEBHOOK_ADMIN || import.meta.env.VITE_DEV_WEBHOOK;
-        await sendWebhookPayload(webhookURL, payload, 'Dev webhook embed sent successfully!', 'Dev', showNotification);
-    }, [sendWebhookPayload, showNotification]);
+        try {
+            await triggerWebhookProxy('admin', payload);
+            showNotification('Dev webhook embed sent successfully!', 'check-circle');
+        } catch (error) {
+            showNotification('Failed to send dev webhook.', 'exclamation-triangle');
+            Sentry.captureException(error, { extra: { context: 'Dev Webhook Submit' } });
+        }
+    }, [showNotification]);
 
     return useMemo(() => ({
         logWebhookToFirebase,

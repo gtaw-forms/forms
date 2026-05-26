@@ -102,8 +102,8 @@ const FactionDataUpload = ({ showNotification }) => {
             reader.onload = async (e) => {
                 try {
                     const storageState = JSON.parse(e.target.result);
-                    const updateAuth = httpsCallable(functions, 'updateUcpAuthState');
-                    const result = await updateAuth({ storageState });
+                    const updateAuth = httpsCallable(functions, 'updateAuthState');
+                    const result = await updateAuth({ storageState, path: '/factions/364/ucp_auth_state' });
                     
                     if (result.data.success) {
                         showNotification('UCP Auth State updated successfully!', 'success');

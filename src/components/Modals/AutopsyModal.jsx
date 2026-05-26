@@ -86,6 +86,10 @@ const AutopsyModal = ({ show, onClose, record }) => {
 
                     <div className="autopsy-data-section" style={{ gridColumn: 'span 2' }}>
                         <h4>Forensic Collection & Toxicology</h4>
+                        <div className="ooc-disclaimer">
+                            <i className="fas fa-info-circle me-1"></i>
+                            <strong>Out of Character (OOC) Information:</strong> The data below (slugs, exact injuries, narcotics) is strictly OOC. Any use of this information In Character requires a formal autopsy request via the PHMC Forums. Slugs and Alcohol readings are purely for Medical Examiner's to perform autopsies, if you require the slugs IC'ly, contact a Medical Examiner.
+                        </div>
                         <div className="autopsy-field">
                             <span className="autopsy-label">Alcohol / Narcotics Screen</span> 
                             <span style={{ color: record.bac !== '0.00%' || (record.narcotics && record.narcotics !== 'None') ? '#c0392b' : '#27ae60', fontWeight: 'bold' }}>
@@ -327,6 +331,18 @@ const AutopsyModal = ({ show, onClose, record }) => {
                     color: #34495e;
                     font-style: italic;
                     line-height: 1.5;
+                }
+
+                .ooc-disclaimer {
+                    background-color: #e8f4fd;
+                    border: 1px solid #bee5eb;
+                    border-left: 4px solid #17a2b8;
+                    color: #0c5460;
+                    padding: 10px 14px;
+                    border-radius: 4px;
+                    margin-bottom: 15px;
+                    font-size: 0.85rem;
+                    line-height: 1.4;
                 }
             `}</style>
         </div>

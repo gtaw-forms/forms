@@ -3,6 +3,7 @@ import AdminAuthAndActions from './AdminAuthAndActions.jsx';
 import { useNotification } from '../../contexts/NotificationContext.jsx';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth.js';
 import { useAuth } from '../../contexts/AuthContext.jsx';
+import { triggerWebhookProxy } from '../../services/firebaseFunctions';
 
 const Admin = ({ formData, setFormData, showNotification }) => {
     const [commitInfo, setCommitInfo] = useState({ sha: '', date: null, error: null });
@@ -137,24 +138,16 @@ const Admin = ({ formData, setFormData, showNotification }) => {
             if (hasLoggedUnauthorizedAccess) return;
             
             try {
-                const webhookURL = import.meta.env.VITE_DISCORD_WEBHOOK_ADMIN || import.meta.env.VHOOK;
-                if (webhookURL) {
-                    const embed = {
-                        title: "⚠️ Unauthorized Admin Access Attempt",
-                        color: 0xFF0000,
-                        description: `**User:** ${gtaAuthUsername || 'Unknown'} (${currentUser?.email || 'Unknown'})\n**Reason:** Not a PHMC member`,
-                        timestamp: new Date().toISOString(),
-                        footer: { text: "PHMC Security Alert" }
-                    };
-                    await fetch(webhookURL, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ embeds: [embed] })
-                    });
-                    
-                    // Mark as logged to prevent duplicate calls
-                    setHasLoggedUnauthorizedAccess(true);
-                }
+                const embed = {
+                    title: "⚠️ Unauthorized Admin Access Attempt",
+                    color: 0xFF0000,
+                    description: `**User:** ${gtaAuthUsername || 'Unknown'} (${currentUser?.email || 'Unknown'})\n**Reason:** Not a PHMC member`,
+                    timestamp: new Date().toISOString(),
+                    footer: { text: "PHMC Security Alert" }
+                };
+                await triggerWebhookProxy('admin', { embeds: [embed] });
+
+                setHasLoggedUnauthorizedAccess(true);
             } catch (error) {
                 console.error('Failed to log unauthorized access:', error);
             }

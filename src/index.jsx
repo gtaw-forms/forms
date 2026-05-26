@@ -11,7 +11,7 @@ import { ModalProvider } from './contexts/ModalProvider.jsx';
 import { useNotification } from './contexts/NotificationContext';
 import * as Sentry from "@sentry/react";
 import ErrorBoundary from './components/UI/ErrorBoundary';
-import { sendDiscordErrorWebhook, getLastInputInteraction, getCurrentFormType, initConsoleInterceptor } from './utils/errorUtils';
+import { sendDiscordErrorWebhook, getLastInputInteraction, getCurrentFormType, initConsoleInterceptor, getUserOAuthIdentity } from './utils/errorUtils';
 
 // --- Navigation Tracking ---
 const navigationHistory = [];
@@ -103,6 +103,7 @@ init({
   tracePropagationTargets: ["localhost", "https://forms.phmc.io", /^\//],
   beforeSend(event) {
     if (event.exception) {
+      const userIdentity = getUserOAuthIdentity();
       event.tags = {
         ...event.tags,
         form_type: getCurrentFormType(),
@@ -111,7 +112,8 @@ init({
       event.extra = {
           ...event.extra,
           navigation_history: navigationHistory,
-          time_since_start: `${Math.round((Date.now() - appStartTime) / 1000)}s`
+          time_since_start: `${Math.round((Date.now() - appStartTime) / 1000)}s`,
+          user_identity: userIdentity || 'Not authenticated'
       };
     }
     return event;

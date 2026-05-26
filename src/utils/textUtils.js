@@ -132,10 +132,12 @@ export const sanitizeMorgueText = (text) => {
     if (!text || typeof text !== 'string') return '';
     
     // 1. Replace the common replacement character (\uFFFD) with a hyphen.
-    // This often represents a dash or bullet point that didn't survive encoding.
     let sanitized = text.replace(/\uFFFD/g, '-');
     
-    // 2. Remove other non-printable control characters (excluding common ones like newline/tab)
+    // 2. Normalize line endings: replace \r\n and \r with \n
+    sanitized = sanitized.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    
+    // 3. Remove other non-printable control characters
     // eslint-disable-next-line no-control-regex
     sanitized = sanitized.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, '');
     

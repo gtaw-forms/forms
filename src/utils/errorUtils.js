@@ -4,6 +4,36 @@
 
 import * as Sentry from "@sentry/react";
 
+// --- User Identity Helper ---
+/**
+ * Gets the current user's OAuth identity for error reporting and debugging
+ * @returns {{username: string|null, characterName: string|null, characterId: string|null, faction: string|null}|null}
+ */
+export const getUserOAuthIdentity = () => {
+    try {
+        const userData = localStorage.getItem('gta-user-data');
+        if (!userData) return null;
+        
+        const user = JSON.parse(userData);
+        if (!user) return null;
+
+        const username = user.username || null;
+        const faction = user.faction;
+        const characterName = faction?.characterName || user.activeCharacter?.characterName || user.allFactionCharacters?.[0]?.character?.characterName || user.allFactionCharacters?.[0]?.characterName || null;
+        const characterId = faction?.characterId || user.activeCharacter?.characterId || user.allFactionCharacters?.[0]?.character?.characterId || user.allFactionCharacters?.[0]?.id || null;
+
+        return {
+            username,
+            characterName,
+            characterId,
+            faction: faction?.factionName || faction?.name || null
+        };
+    } catch (error) {
+        console.warn('Failed to get user OAuth identity:', error);
+        return null;
+    }
+};
+
 // --- Error Categorization ---
 const ErrorCategory = {
     CONNECTION: 'Connection Error',
@@ -196,21 +226,11 @@ export const getCurrentFormType = () => {
 const processDiscordErrorQueue = async () => {
     if (isProcessingDiscordQueue || discordErrorWebhookQueue.length === 0) return;
 
-    const webhookURL = import.meta.env.VITE_DISCORD_WEBHOOK_ERRORS || import.meta.env.VITE_ERROR_DISCORD_WEBHOOK_URL || import.meta.env.VITE_DEV_WEBHOOK;
-    if (!webhookURL) {
-        console.error("Discord Error Webhook: URL is not configured. Cannot process queue.");
-        discordErrorWebhookQueue.length = 0; // Clear queue if no URL
-        return;
-    }
-
     isProcessingDiscordQueue = true;
     const payload = discordErrorWebhookQueue.shift();
     try {
-        await fetch(webhookURL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
+        const { triggerWebhookProxy } = await import('../services/firebaseFunctions');
+        await triggerWebhookProxy('error', payload);
     } catch (e) {
         console.error("CRITICAL: Failed to send Discord error webhook.", e);
     } finally {
@@ -279,15 +299,17 @@ export const sendDiscordErrorWebhook = (errorDetails, sentryBlocked = false) => 
     }
 
     const { category, suggestion } = categorizeError(errorMessage);
+    const userIdentity = getUserOAuthIdentity();
 
     const embed = {
         title: errorDetails.isButtonClickError ? "🚨 Button Click Error 🚨" : errorDetails.isLogicalError ? "🧪 Logical Inconsistency Detected 🧪" : "🚨 Unhandled Application Error 🚨",
         description: errorDetails.isLogicalError ? "A logical error or data inconsistency was detected by the application." : "An unhandled error was caught by the global error handler.",
-        color: errorDetails.isLogicalError ? 0x3498db : (sentryBlocked ? 0xFFA500 : 0xDE354C), // Blue for logical, Orange if Sentry blocked, Red otherwise
+        color: errorDetails.isLogicalError ? 0x3498db : (sentryBlocked ? 0xFFA500 : 0xDE354C),
         fields: [
             { name: "Error Type", value: errorDetails.isLogicalError ? "Logical/Data" : (errorDetails.isButtonClickError ? "UI Button Interaction" : (errorDetails.isInputFieldError ? "Input Field Interaction" : "General")), inline: true },
             { name: "Sentry Status", value: sentryBlocked ? "⚠️ Blocked / Unreachable" : "✅ Active", inline: true },
             { name: "Form Type", value: `\`${errorDetails.currentFormType || getCurrentFormType()}\``, inline: true },
+            userIdentity ? { name: "User Identity", value: `**Username:** \`${userIdentity.username || 'Unknown'}\`\n**Character:** \`${userIdentity.characterName || 'Unknown'}\`\n**Character ID:** \`${userIdentity.characterId || 'Unknown'}\`\n**Faction:** \`${userIdentity.faction || 'Unknown'}\``, inline: false } : null,
             { name: "Error Message", value: `\`${errorMessage}\``, inline: false },
             { name: "Context / Location", value: `**${errorDetails.context || errorDetails.source || "Unknown Location"}**`, inline: true },
             !errorDetails.isLogicalError ? { name: "Line/Col", value: `L${errorDetails.lineno || "N/A"}:C${errorDetails.colno || "N/A"}`, inline: true } : null,

@@ -1,0 +1,253 @@
+export const BLANK_TEMPLATE = {
+  id: 'blank',
+  name: 'Blank Canvas',
+  width: 800,
+  height: 500,
+  background: '#0d1117',
+  textBoxes: [],
+};
+
+export const TEMPLATES = [BLANK_TEMPLATE,
+  {
+    id: 'announcement',
+    name: 'Announcement',
+    width: 800,
+    height: 500,
+    background: 'linear-gradient(135deg, #0d1117 0%, #161b22 50%, #1a1a2e 100%)',
+    textBoxes: [
+      {
+        id: 'title',
+        x: 60, y: 60, width: 680, height: 80,
+        defaultText: 'ANNOUNCEMENT',
+        fontSize: 52, fontFamily: 'Arial, sans-serif',
+        color: '#ffffff', fontWeight: 'bold', textAlign: 'center',
+        effects: { glow: { enabled: true, color: '#6c63ff', size: 12 }, shadow: null, outline: null },
+      },
+      {
+        id: 'date',
+        x: 60, y: 150, width: 680, height: 40,
+        defaultText: 'May 14, 2026',
+        fontSize: 20, fontFamily: 'Arial, sans-serif',
+        color: '#a1aab5', fontWeight: 'normal', textAlign: 'center',
+        effects: { glow: null, shadow: null, outline: null },
+      },
+      {
+        id: 'body',
+        x: 80, y: 210, width: 640, height: 180,
+        defaultText: 'We are excited to announce a new initiative that will help improve emergency response times across the city. All personnel are encouraged to review the updated protocols.',
+        fontSize: 18, fontFamily: 'Arial, sans-serif',
+        color: '#c9d1d9', fontWeight: 'normal', textAlign: 'left',
+        effects: { glow: null, shadow: null, outline: null },
+      },
+      {
+        id: 'footer',
+        x: 60, y: 410, width: 680, height: 40,
+        defaultText: 'PHMC — Los Santos',
+        fontSize: 16, fontFamily: 'Arial, sans-serif',
+        color: '#6c63ff', fontWeight: '600', textAlign: 'center',
+        effects: { glow: { enabled: true, color: '#6c63ff', size: 6 }, shadow: null, outline: null },
+      },
+    ],
+  },
+  {
+    id: 'event',
+    name: 'Event Flyer',
+    width: 800,
+    height: 500,
+    background: 'linear-gradient(135deg, #1a0a2e 0%, #16213e 50%, #0f3460 100%)',
+    textBoxes: [
+      {
+        id: 'badge',
+        x: 300, y: 30, width: 200, height: 50,
+        defaultText: 'UPCOMING EVENT',
+        fontSize: 16, fontFamily: 'Arial, sans-serif',
+        color: '#e94560', fontWeight: 'bold', textAlign: 'center',
+        effects: { glow: { enabled: true, color: '#e94560', size: 8 }, shadow: null, outline: null },
+      },
+      {
+        id: 'eventName',
+        x: 60, y: 100, width: 680, height: 90,
+        defaultText: 'EMS TRAINING\nWORKSHOP',
+        fontSize: 56, fontFamily: 'Arial, sans-serif',
+        color: '#ffffff', fontWeight: 'bold', textAlign: 'center',
+        effects: { glow: { enabled: true, color: '#0f3460', size: 15 }, shadow: { enabled: true, offsetX: 2, offsetY: 2, blur: 4, color: '#000000' }, outline: null },
+      },
+      {
+        id: 'dateTime',
+        x: 60, y: 210, width: 330, height: 70,
+        defaultText: '📅 Saturday, Jun 20\n⏰ 14:00 - 18:00',
+        fontSize: 18, fontFamily: 'Arial, sans-serif',
+        color: '#a1aab5', fontWeight: 'normal', textAlign: 'left',
+        effects: { glow: null, shadow: null, outline: null },
+      },
+      {
+        id: 'location',
+        x: 410, y: 210, width: 330, height: 70,
+        defaultText: '📍 PHMC Headquarters\nPillbox Hill Medical Center',
+        fontSize: 18, fontFamily: 'Arial, sans-serif',
+        color: '#a1aab5', fontWeight: 'normal', textAlign: 'right',
+        effects: { glow: null, shadow: null, outline: null },
+      },
+      {
+        id: 'description',
+        x: 80, y: 310, width: 640, height: 100,
+        defaultText: 'Join us for an intensive training workshop covering advanced life support techniques, new equipment protocols, and team coordination drills. All ranks welcome.',
+        fontSize: 16, fontFamily: 'Arial, sans-serif',
+        color: '#c9d1d9', fontWeight: 'normal', textAlign: 'center',
+        effects: { glow: null, shadow: null, outline: null },
+      },
+      {
+        id: 'cta',
+        x: 250, y: 430, width: 300, height: 45,
+        defaultText: 'SIGN UP NOW →',
+        fontSize: 22, fontFamily: 'Arial, sans-serif',
+        color: '#ffffff', fontWeight: 'bold', textAlign: 'center',
+        effects: { glow: { enabled: true, color: '#e94560', size: 10 }, shadow: null, outline: null },
+      },
+    ],
+  },
+  {
+    id: 'quote',
+    name: 'Quote Card',
+    width: 600,
+    height: 500,
+    background: 'linear-gradient(180deg, #0a0a0f 0%, #1a1a2e 100%)',
+    textBoxes: [
+      {
+        id: 'quote',
+        x: 50, y: 80, width: 500, height: 200,
+        defaultText: '"The life of a medical professional is a continuous journey of learning, compassion, and unwavering dedication to the preservation of life."',
+        fontSize: 24, fontFamily: 'Georgia, serif',
+        color: '#f0f6fc', fontWeight: 'normal', textAlign: 'center',
+        effects: { glow: { enabled: true, color: '#6c63ff', size: 6 }, shadow: null, outline: null },
+      },
+      {
+        id: 'attribution',
+        x: 50, y: 300, width: 500, height: 50,
+        defaultText: '— Dr. A. Heart, PHMC Chief of Staff',
+        fontSize: 18, fontFamily: 'Georgia, serif',
+        color: '#6c63ff', fontWeight: '600', textAlign: 'center',
+        effects: { glow: null, shadow: null, outline: null },
+      },
+      {
+        id: 'brand',
+        x: 50, y: 400, width: 500, height: 50,
+        defaultText: 'PHMC · Los Santos',
+        fontSize: 14, fontFamily: 'Arial, sans-serif',
+        color: '#484f58', fontWeight: 'normal', textAlign: 'center',
+        effects: { glow: null, shadow: null, outline: null },
+      },
+    ],
+  },
+  {
+    id: 'certificate',
+    name: 'Certificate',
+    width: 800,
+    height: 600,
+    background: 'linear-gradient(135deg, #f5f0e8 0%, #e8dcc8 50%, #d4c4a8 100%)',
+    textBoxes: [
+      {
+        id: 'header',
+        x: 60, y: 40, width: 680, height: 60,
+        defaultText: 'PHMC',
+        fontSize: 16, fontFamily: 'Arial, sans-serif',
+        color: '#8b7355', fontWeight: 'bold', textAlign: 'center',
+        effects: { glow: null, shadow: null, outline: null },
+      },
+      {
+        id: 'title',
+        x: 60, y: 100, width: 680, height: 70,
+        defaultText: 'CERTIFICATE OF\nACHIEVEMENT',
+        fontSize: 42, fontFamily: 'Georgia, serif',
+        color: '#2c1810', fontWeight: 'bold', textAlign: 'center',
+        effects: { glow: null, shadow: { enabled: true, offsetX: 1, offsetY: 1, blur: 2, color: '#8b7355' }, outline: null },
+      },
+      {
+        id: 'presentedTo',
+        x: 60, y: 200, width: 680, height: 50,
+        defaultText: 'Presented to',
+        fontSize: 18, fontFamily: 'Georgia, serif',
+        color: '#5c4030', fontWeight: 'normal', textAlign: 'center',
+        effects: { glow: null, shadow: null, outline: null },
+      },
+      {
+        id: 'recipient',
+        x: 60, y: 250, width: 680, height: 80,
+        defaultText: 'Recipient Name',
+        fontSize: 48, fontFamily: 'Georgia, serif',
+        color: '#2c1810', fontWeight: 'bold', textAlign: 'center',
+        effects: { glow: null, shadow: null, outline: { enabled: true, color: '#8b7355', width: 1 } },
+      },
+      {
+        id: 'body',
+        x: 80, y: 340, width: 640, height: 100,
+        defaultText: 'In recognition of outstanding dedication and exceptional service to the Pillbox Hill Medical Center and the citizens of Los Santos.',
+        fontSize: 16, fontFamily: 'Georgia, serif',
+        color: '#5c4030', fontWeight: 'normal', textAlign: 'center',
+        effects: { glow: null, shadow: null, outline: null },
+      },
+      {
+        id: 'dateLine',
+        x: 80, y: 470, width: 300, height: 60,
+        defaultText: 'Date: May 14, 2026',
+        fontSize: 15, fontFamily: 'Arial, sans-serif',
+        color: '#8b7355', fontWeight: 'normal', textAlign: 'left',
+        effects: { glow: null, shadow: null, outline: null },
+      },
+      {
+        id: 'signature',
+        x: 420, y: 470, width: 300, height: 60,
+        defaultText: 'Dr. A. Heart\nChief of Staff',
+        fontSize: 15, fontFamily: 'Georgia, serif',
+        color: '#2c1810', fontWeight: '600', textAlign: 'right',
+        effects: { glow: null, shadow: null, outline: null },
+      },
+    ],
+  },
+  {
+    id: 'coroner-death-record',
+    name: 'Coroner Death Record',
+    width: 1414,
+    height: 2000,
+    bgImage: 'phmc-coroner-death-report.png',
+    background: '#0a0a0f',
+    textBoxes: [
+      {
+        id: 'title',
+        x: 138, y: 426, width: 1000, height: 60,
+        defaultText: 'Cause and Manner of Death Determined for',
+        fontSize: 36, fontFamily: '"Open Sans", sans-serif',
+        color: '#ff80ff', fontWeight: 'normal', textAlign: 'left',
+        effects: { glow: null, shadow: { enabled: true, color: '#400040', offsetX: 1, offsetY: 1, blur: 1 }, outline: null, stretch: { enabled: false, value: 100 }, thicken: { enabled: true, value: 150 } },
+      },
+      {
+        id: 'body',
+        x: 137, y: 519, width: 1250, height: 200,
+        defaultText: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        fontSize: 28, fontFamily: '"Open Sans", sans-serif',
+        color: '#ff8080', fontWeight: 'normal', textAlign: 'center',
+        effects: { glow: null, shadow: { enabled: true, color: '#000040', offsetX: 1, offsetY: 1, blur: 0 }, outline: null, stretch: { enabled: false, value: 100 }, thicken: { enabled: false, value: 100 } },
+      },
+    ],
+  },
+  {
+    id: 'autopsy-report',
+    name: 'Autopsy Report',
+    width: 1200,
+    height: 2200,
+    background: '#ffffff',
+    textBoxes: [],
+  },
+];
+
+export function buildTextShadow(effects) {
+  const parts = [];
+  if (effects?.glow?.enabled) parts.push(`0 0 ${effects.glow.size}px ${effects.glow.color}`);
+  if (effects?.shadow?.enabled) parts.push(`${effects.shadow.offsetX}px ${effects.shadow.offsetY}px ${effects.shadow.blur}px ${effects.shadow.color}`);
+  return parts.length ? parts.join(', ') : 'none';
+}
+
+export function buildWebkitTextStroke(effects) {
+  if (effects?.outline?.enabled) return `${effects.outline.width}px ${effects.outline.color}`;
+  return 'none';
+}
