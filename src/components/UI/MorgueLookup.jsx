@@ -31,6 +31,11 @@ const MorgueLookup = () => {
     // Diagnostic state
     const [showDiagnostics, setShowDiagnostics] = useState(false);
 
+    // Welcome banner dismissal
+    const [welcomeDismissed, setWelcomeDismissed] = useState(
+        localStorage.getItem('morgue_welcome_dismissed') === 'true'
+    );
+
     // Display info for the sidebar
     const userDisplayInfo = useMemo(() => {
         if (!isAuthenticated || !gtawUser) {
@@ -354,6 +359,27 @@ const MorgueLookup = () => {
                     </div>
                 </header>
 
+                {hasAccess && !welcomeDismissed && (
+                    <div className="morgue-welcome-banner">
+                        <div className="morgue-welcome-content">
+                            <div className="morgue-welcome-icon"><i className="fas fa-microscope"></i></div>
+                            <div className="morgue-welcome-text">
+                                <strong>Welcome to the Morgue Intake System.</strong> Records are updated daily. If something is missing, use the <strong>Request Update</strong> button to notify staff.
+                            </div>
+                        </div>
+                        <button 
+                            className="morgue-welcome-close" 
+                            onClick={() => {
+                                localStorage.setItem('morgue_welcome_dismissed', 'true');
+                                setWelcomeDismissed(true);
+                            }}
+                            title="Dismiss"
+                        >
+                            <i className="fas fa-times"></i>
+                        </button>
+                    </div>
+                )}
+
                 {showDiagnostics && (
                     <div className="morgue-diagnostics-panel p-3 border-bottom bg-info bg-opacity-10">
                         <div className="d-flex justify-content-between align-items-start mb-2">
@@ -610,16 +636,17 @@ const MorgueLookup = () => {
                 .morgue-table-container {
                     flex-grow: 1;
                     overflow-y: auto;
-                    padding: 20px;
+                    padding: 0 20px 20px;
                 }
 
                 .morgue-table {
                     width: 100%;
-                    border-collapse: collapse;
+                    border-collapse: separate;
+                    border-spacing: 0;
+                    margin-top: 20px;
                     background: white;
                     box-shadow: 0 2px 10px rgba(0,0,0,0.05);
                     border-radius: 8px;
-                    overflow: hidden;
                 }
 
                 .morgue-table th {
@@ -628,11 +655,12 @@ const MorgueLookup = () => {
                     background: #eee;
                     text-align: left;
                     padding: 15px;
-                    z-index: 2;
+                    z-index: 3;
                     text-transform: uppercase;
                     font-size: 0.75rem;
                     letter-spacing: 1px;
                     color: #666;
+                    border-bottom: 2px solid #d0d0d0;
                 }
 
                 .morgue-table td {
@@ -748,6 +776,49 @@ const MorgueLookup = () => {
                     border-radius: 4px;
                     cursor: pointer;
                     font-weight: 600;
+                }
+
+                .morgue-welcome-banner {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    padding: 12px 20px;
+                    margin: 0 20px 10px;
+                    background: linear-gradient(135deg, #2c3e50, #3498db);
+                    color: white;
+                    border-radius: 8px;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+                }
+
+                .morgue-welcome-content {
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                }
+
+                .morgue-welcome-icon {
+                    font-size: 1.4rem;
+                    opacity: 0.8;
+                }
+
+                .morgue-welcome-text {
+                    font-size: 0.9rem;
+                    line-height: 1.4;
+                }
+
+                .morgue-welcome-close {
+                    background: none;
+                    border: none;
+                    color: white;
+                    opacity: 0.6;
+                    cursor: pointer;
+                    padding: 4px 8px;
+                    font-size: 1.1rem;
+                    transition: opacity 0.2s;
+                }
+
+                .morgue-welcome-close:hover {
+                    opacity: 1;
                 }
 
                 .fa-spin-hover:hover {
