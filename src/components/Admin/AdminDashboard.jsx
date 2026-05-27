@@ -22,23 +22,11 @@ import EmployeeManager from './EmployeeManager';
 import LsccManager from './LsccManager';
 import FormsManager from './FormsManager';
 import MetricsDashboard from './MetricsDashboard';
-import AgencyIncidentManager from './AgencyIncidentManager';
 import MorgueManager from './MorgueManager';
 
 const AdminDashboard = ({
 
     currentUser,
-    isUpdatingDb,
-    selectedAdminBingoType,
-    setSelectedAdminBingoType,
-    BINGO_TYPES,
-    handleManualResetAllBingoCards,
-    handleGenerateNewBingoCard,
-    handleClearBingoActivity,
-    handleDisableBingoCard,
-    setShowEditBingoPhrasesModal,
-    selectedTypeForEdit,
-    setShowReviewPhrasesModal,
     Sentry,
     showInAppNotification,
     webhooks,
@@ -213,17 +201,9 @@ const AdminDashboard = ({
 
     // Determine access levels for specific sections
     const hasServiceStatusAccess = isGoogleAdminActive || isSuperAdminAccess || isRank14OrHigher;
-    const hasBingoAccess = isGoogleAdminActive || isSuperAdminAccess || isRank14OrHigher;
     const hasUsersAccess = isGoogleAdminActive || isSuperAdminAccess || isRank14OrHigher;
     const hasRankPermissionsAccess = isGoogleAdminActive || isSuperAdminAccess || isRank15OrHigher;
     const hasEmployeeManagerAccess = isGoogleAdminActive || isSuperAdminAccess || isRank13OrHigher;
-    
-    // Agency Incident Access: Rank 14+ OR Special Coroner Ranks
-    const currentRankName = factionData?.rank || gtaWorldUser?.faction?.rank || '';
-    const isSpecialCoronerRank = currentRankName.includes("Deputy Chief Medical-Examiner Coroner -") || 
-                                currentRankName.includes("Chief Medical-Examiner Coroner -");
-    
-    const hasAgencyIncidentAccess = isGoogleAdminActive || isSuperAdminAccess || isRank14OrHigher || isSpecialCoronerRank;
     
     const canUseGoogleAdminOverride = isEmailSignin; // Only available for email signin
     
@@ -458,19 +438,9 @@ const AdminDashboard = ({
                     </div>
 
                     <nav className="sidebar-nav">
-                        {hasBingoAccess && (
-                            <button className={`nav-item-btn ${selectedSection === 'bingo' ? 'active' : ''}`} onClick={() => setSelectedSection('bingo')}>
-                                <i className="fas fa-dice"></i> <span>Bingo Manager</span>
-                            </button>
-                        )}
                         {hasUsersAccess && (
                             <button className={`nav-item-btn ${selectedSection === 'metrics' ? 'active' : ''}`} onClick={() => setSelectedSection('metrics')}>
                                 <i className="fas fa-chart-line"></i> <span>User Metrics</span>
-                            </button>
-                        )}
-                        {hasAgencyIncidentAccess && (
-                            <button className={`nav-item-btn ${selectedSection === 'agencyIncidents' ? 'active' : ''}`} onClick={() => setSelectedSection('agencyIncidents')}>
-                                <i className="fas fa-shield-alt text-danger"></i> <span>Agency Incidents</span>
                             </button>
                         )}
                         {hasEmployeeManagerAccess && (
@@ -568,80 +538,8 @@ const AdminDashboard = ({
 
                     {/* Section Rendering */}
                     <div className="section-content-wrapper">
-                        {selectedSection === 'bingo' && (
-                            hasBingoAccess ? (
-                                <div className="admin-section">
-                                    <div className="d-flex justify-content-between align-items-center mb-5">
-                                        <h2 className="mb-0 fw-800"><i className="fas fa-dice me-3 text-warning"></i>Bingo Management</h2>
-                                    </div>
-                                    <div className="card border-0 shadow-lg">
-                                        <div className="card-body p-4">
-                                            <div className="row mb-4">
-                                                <div className="col-md-6">
-                                                    <label className="form-label text-muted small uppercase fw-bold mb-2">Select Active Category</label>
-                                                    <select
-                                                        value={selectedAdminBingoType}
-                                                        onChange={(e) => setSelectedAdminBingoType(e.target.value)}
-                                                        disabled={isUpdatingDb}
-                                                        className="form-select bg-dark border-secondary text-white"
-                                                    >
-                                                        {BINGO_TYPES.map(type => (
-                                                            <option key={type.id} value={type.id}>{type.name}</option>
-                                                        ))}
-                                                    </select>
-                                                </div>
-                                                <div className="col-md-6 d-flex align-items-end">
-                                                    <p className="text-info small mb-2 italic">
-                                                        <i className="fas fa-info-circle me-1"></i>
-                                                        Server handles daily resets automatically at 09:00 UTC.
-                                                    </p>
-                                                </div>
-                                            </div>
-
-                                            <div className="d-flex flex-wrap gap-2">
-                                                <Button variant="secondary" onClick={handleManualResetAllBingoCards} disabled={isUpdatingDb} className="admin-btn">
-                                                    {isUpdatingDb ? <Spinner animation="border" size="sm" /> : <><i className="fas fa-bomb me-2"></i>Reset All Cards</>}
-                                                </Button>
-                                                <Button variant="primary" onClick={handleGenerateNewBingoCard} disabled={isUpdatingDb} className="admin-btn">
-                                                    {isUpdatingDb ? <Spinner animation="border" size="sm" /> : <><i className="fas fa-sync-alt me-2"></i>Generate New Card</>}
-                                                </Button>
-                                                <Button variant="danger" onClick={handleClearBingoActivity} disabled={isUpdatingDb} className="admin-btn">
-                                                    {isUpdatingDb ? <Spinner animation="border" size="sm" /> : <><i className="fas fa-trash-alt me-2"></i>Clear Activity Log</>}
-                                                </Button>
-                                                <Button variant="warning" onClick={handleDisableBingoCard} disabled={isUpdatingDb} className="admin-btn">
-                                                    {isUpdatingDb ? <Spinner animation="border" size="sm" /> : <><i className="fas fa-power-off me-2"></i>Disable Card</>}
-                                                </Button>
-                                                <Button variant="info" onClick={() => setShowEditBingoPhrasesModal(true)} disabled={isUpdatingDb || !selectedAdminBingoType} className="admin-btn text-white">
-                                                    <i className="fas fa-edit me-2"></i>Edit {selectedTypeForEdit?.name || 'Master'} Phrases
-                                                </Button>
-                                                <Button variant="outline-warning" onClick={() => setShowReviewPhrasesModal(true)} disabled={isUpdatingDb} className="admin-btn">
-                                                    <i className="fas fa-inbox me-2"></i>Review Requests
-                                                </Button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="admin-section">
-                                    <div className="alert alert-danger border-0 bg-opacity-25 shadow-sm p-4">
-                                        <div className="d-flex gap-3 align-items-center">
-                                            <i className="fas fa-exclamation-triangle fa-2x"></i>
-                                            <div>
-                                                <h5 className="mb-1 fw-bold">Unauthorized Access</h5>
-                                                <p className="mb-0 text-muted">Your current faction rank ({factionData?.scriptRank || 'N/A'}) does not have permission to manage bingo activities. Required: Rank 14+.</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            )
-                        )}
-
                         {selectedSection === 'metrics' && (
                             hasUsersAccess ? <MetricsDashboard /> : <div className="admin-section"><div className="alert alert-danger border-0 bg-opacity-25 shadow-sm p-4">Access Denied</div></div>
-                        )}
-
-                        {selectedSection === 'agencyIncidents' && (
-                            hasAgencyIncidentAccess ? <AgencyIncidentManager /> : <div className="admin-section"><div className="alert alert-danger border-0 bg-opacity-25 shadow-sm p-4">Access Denied</div></div>
                         )}
 
                         {selectedSection === 'employeeManager' && (

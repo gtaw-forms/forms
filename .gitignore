@@ -49,6 +49,5 @@ docs/
 
 # functions (Firebase Cloud Functions API/proxy endpoints)
 functions/
-
 # AI context artifact
 changelog.md

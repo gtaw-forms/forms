@@ -5,8 +5,6 @@ import { signInWithEmailAndPassword, signOut } from "firebase/auth";
 import { ref, get, update, remove, set, serverTimestamp, push } from "firebase/database";
 
 
-import EditBingoPhrasesModal from './EditBingoPhrasesModal';
-import ReviewPhraseRequestsModal from './ReviewPhraseRequestsModal';
 import * as Sentry from "@sentry/react";
 import { triggerWebhookProxy } from '../../services/firebaseFunctions';
 import AdminDashboard from './AdminDashboard';
@@ -14,13 +12,6 @@ import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import { useAuth } from '../../contexts/AuthContext';
 import { isGoogleAuthenticated, logout as gtaLogout } from '../../services/gtaWorldAuth';
 import { getUserContext, logAdminAction } from '../../utils/adminLogger';
-
-const BINGO_TYPES = [
-    { id: 'er', name: 'Emergency Room', path: 'ER' },
-    { id: 'ems', name: 'EMS', path: 'EMS' },
-    { id: 'coroner', name: 'Coroner', path: 'Coroner' }
-];
-
 
 const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAppNotification, commitInfo }) => {
     // --- Custom Webhook Panel State (must be first, before any logic or return) ---
@@ -56,12 +47,6 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
     // GTA World login is now handled by the unified authentication service
 
 
-    const [isUpdatingDb, setIsUpdatingDb] = useState(false);
-    const [selectedAdminBingoType, setSelectedAdminBingoType] = useState(BINGO_TYPES[0].id);
-    const [showEditBingoPhrasesModal, setShowEditBingoPhrasesModal] = useState(false);
-    const [showReviewPhrasesModal, setShowReviewPhrasesModal] = useState(false);
-
-    
     // Webhook Management States
     const [webhooks, setWebhooks] = useState([]);
     const [newWebhook, setNewWebhook] = useState({ name: '', url: '', type: 'all' });
@@ -397,301 +382,21 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
         }
     };
     // Bingo Activity Log Functions
-    const getShuffledPhrases = (phrases) => {
-    if (!phrases || phrases.length === 0) return [];
-    return [...phrases].sort(() => 0.5 - Math.random());
-};
-
-
-    const handleClearBingoActivity = async () => {
-        const selectedType = BINGO_TYPES.find(type => type.id === selectedAdminBingoType);
-        if (!selectedType) return;
-
-        if (!window.confirm(`Are you sure you want to clear ALL ${selectedType.name} Bingo activity logs? This action cannot be undone.`)) {
-            return;
-        }
-
-        setIsUpdatingDb(true);
-        const bingoLogRef = ref(database, `bingo/logs/${selectedType.path}/activityLog`);
-        const { userAgent, timeZone } = getUserContext();
-
-        try {
-            await remove(bingoLogRef);
-            showInAppNotification(`${selectedType.name} Bingo activity log has been cleared.`, "check-circle");
-            logAdminAction(
-                unifiedCurrentUser?.email || "Unknown User",
-                `Cleared ${selectedType.name} Bingo Activity`,
-                `The 'bingo/logs/${selectedType.path}/activityLog' path was deleted from Firebase.`,
-                `${selectedType.name} Bingo`,
-                userAgent,
-                timeZone
-            );
-        } catch (dbError) {
-            console.error("Error clearing bingo activity log:", dbError);
-            showInAppNotification(`Failed to clear ${selectedType.name} bingo activity log.`, "error");
-            logAdminAction(
-                unifiedCurrentUser?.email || "Unknown User",
-                `Failed to Clear ${selectedType.name} Bingo Activity`,
-                `Error: ${dbError.message}`,
-                `${selectedType.name} Bingo`,
-                userAgent,
-                timeZone
-            );
-        } finally {
-            setIsUpdatingDb(false);
-        }
-    };
-
-    // NEW: Handler to generate a new bingo card
-    const handleGenerateNewBingoCard = async () => {
-        const selectedType = BINGO_TYPES.find(type => type.id === selectedAdminBingoType);
-        if (!selectedType) return;
-
-        if (!window.confirm(`Are you sure you want to generate a NEW ${selectedType.name} Bingo card? This will clear the current game and activity log for ALL users.`)) {
-            return;
-        }
-
-        setIsUpdatingDb(true);
-        const masterPhrasesRef = ref(database, `bingo/phrases/${selectedType.path}`);
-        const currentCardRef = ref(database, `bingo/cards/${selectedType.path}/phrases`);
-        const activityLogRef = ref(database, `bingo/logs/${selectedType.path}/activityLog`);
-        const { userAgent, timeZone } = getUserContext();
-
-        try {
-            // 1. Fetch master phrases
-            const snapshot = await get(masterPhrasesRef);
-            if (!snapshot.exists()) {
-                showInAppNotification(`Error: Master phrases for ${selectedType.name} not found. Cannot generate new card.`, "error");
-                logAdminAction(
-                    unifiedCurrentUser?.email,
-                    `Failed to Generate New ${selectedType.name} Bingo Card`,
-                    `Master phrases not found in Firebase at 'bingo/phrases/${selectedType.path}'.`,
-                    `${selectedType.name} Bingo`,
-                    userAgent,
-                    timeZone
-                );
-                setIsUpdatingDb(false);
-                return;
-            }
-            const masterPhrasesData = snapshot.val();
-            const masterPhrases = Array.isArray(masterPhrasesData)
-                ? masterPhrasesData
-                : (typeof masterPhrasesData === 'object' && masterPhrasesData !== null)
-                    ? Object.values(masterPhrasesData).map(p => (typeof p === 'object' ? p.phrase : p)).filter(Boolean)
-                    : [];
-
-            if (masterPhrases.length < 24) {
-                showInAppNotification(`Error: Not enough master phrases for ${selectedType.name} (need at least 24).`, "error");
-                logAdminAction(
-                    unifiedCurrentUser?.email,
-                    `Failed to Generate New ${selectedType.name} Bingo Card`,
-                    `Not enough master phrases (${masterPhrases.length} found, need 24).`,
-                    `${selectedType.name} Bingo`,
-                    userAgent,
-                    timeZone
-                );
-                setIsUpdatingDb(false);
-                return;
-            }
-
-            // 2. Shuffle and save new card
-            const shuffledPhrases = getShuffledPhrases(masterPhrases).slice(0, 24);
-            await set(currentCardRef, shuffledPhrases);
-
-            // 3. Clear activity log for a fresh game
-            await remove(activityLogRef);
-
-            showInAppNotification(`New ${selectedType.name} Bingo card generated and activity log cleared!`, "check-circle");
-            logAdminAction(
-                unifiedCurrentUser?.email || "Unknown User",
-                `Generated New ${selectedType.name} Bingo Card`,
-                `A new card was generated and the activity log cleared for all users.`,
-                `${selectedType.name} Bingo`,
-                userAgent,
-                timeZone
-            );
-        } catch (dbError) {
-            console.error("Error generating new bingo card:", dbError);
-            showInAppNotification("Failed to generate new bingo card.", "error");
-            logAdminAction(
-                unifiedCurrentUser?.email || "Unknown User",
-                `Failed to Generate New ${selectedType.name} Bingo Card`,
-                `Error: ${dbError.message}`,
-                `${selectedType.name} Bingo`,
-                userAgent,
-                timeZone
-            );
-        } finally {
-            setIsUpdatingDb(false);
-        }
-    };
-
-    // NEW: Handler to disable a bingo card
-    const handleDisableBingoCard = async () => {
-        const selectedType = BINGO_TYPES.find(type => type.id === selectedAdminBingoType);
-        if (!selectedType) return;
-
-        if (!window.confirm(`Are you sure you want to DISABLE the ${selectedType.name} Bingo card? This will remove the current card and clear all progress. The game will be unavailable until a new card is generated.`)) {
-            return;
-        }
-
-        setIsUpdatingDb(true);
-        // We will remove the entire node for the card type to ensure a clean slate.
-        const cardNodeRef = ref(database, `bingo/cards/${selectedType.path}`);
-        const logNodeRef = ref(database, `bingo/logs/${selectedType.path}`);
-        const { userAgent, timeZone } = getUserContext();
-
-        try {
-            // Remove both the card and the log data for this bingo type.
-            await remove(cardNodeRef);
-            await remove(logNodeRef);
-
-            showInAppNotification(`${selectedType.name} Bingo has been disabled and all data cleared.`, "check-circle");
-            logAdminAction(
-                unifiedCurrentUser?.email || "Unknown User",
-                `Disabled ${selectedType.name} Bingo Card`,
-                `The card and activity log for '${selectedType.name}' were deleted from Firebase.`,
-                `${selectedType.name} Bingo`,
-                userAgent,
-                timeZone
-            );
-        } catch (dbError) {
-            console.error("Error disabling bingo card:", dbError);
-            showInAppNotification(`Failed to disable ${selectedType.name} bingo card.`, "error");
-            logAdminAction(
-                unifiedCurrentUser?.email || "Unknown User",
-                `Failed to Disable ${selectedType.name} Bingo Card`,
-                `Error: ${dbError.message}`,
-                `${selectedType.name} Bingo`,
-                userAgent,
-                timeZone
-            );
-        } finally {
-            setIsUpdatingDb(false);
-        }
-    };
-
-    const handleManualResetAllBingoCards = async () => {
-        if (!window.confirm("Are you sure you want to manually reset all active Bingo cards? This will clear their current progress.")) {
-            return;
-        }
-
-        const metaRef = ref(database, 'bingo/meta');
-        // We can still update the timestamp to log this manual reset
-        await update(metaRef, { lastManualRegenTimestamp: serverTimestamp() });
-    
-        showInAppNotification('Manual daily bingo reset initiated...', 'sync-alt', 5000);
-    
-        const results = {
-            success: [],
-            noCard: [],
-            notEnoughPhrases: [],
-            errors: [],
-        };
-    
-        // This Promise.all logic is perfect and remains the same
-        await Promise.all(BINGO_TYPES.map(async (bingoType) => {
-            const cardPhrasesRef = ref(database, `bingo/cards/${bingoType.path}/phrases`);
-            
-            const cardSnapshot = await get(cardPhrasesRef);
-            if (!cardSnapshot.exists()) {
-                results.noCard.push(bingoType.name);
-                return;
-            }
-    
-            const masterPhrasesRef = ref(database, `bingo/phrases/${bingoType.path}`);
-            const masterSnapshot = await get(masterPhrasesRef);
-            if (!masterSnapshot.exists()) {
-                results.notEnoughPhrases.push(`${bingoType.name} (no master list)`);
-                return;
-            }
-            
-            const masterPhrasesData = masterSnapshot.val();
-            const masterPhrases = Array.isArray(masterPhrasesData)
-                ? masterPhrasesData.filter(Boolean)
-                : (typeof masterPhrasesData === 'object' && masterPhrasesData !== null)
-                    ? Object.values(masterPhrasesData).map(p => (typeof p === 'object' ? p.phrase : p)).filter(Boolean)
-                    : [];
-    
-            if (masterPhrases.length < 24) {
-                results.notEnoughPhrases.push(`${bingoType.name} (${masterPhrases.length}/24)`);
-                return;
-            }
-    
-            try {
-                const shuffledPhrases = getShuffledPhrases(masterPhrases).slice(0, 24);
-                const activityLogRef = ref(database, `bingo/logs/${bingoType.path}/activityLog`);
-                
-                await set(cardPhrasesRef, shuffledPhrases);
-                await remove(activityLogRef);
-                
-                results.success.push(bingoType.name);
-            } catch (error) {
-                console.error(`Error manually regenerating ${bingoType.name} card:`, error);
-                results.errors.push(`${bingoType.name}: ${error.message}`);
-            }
-        }));
-    
-        // --- MODIFICATION FOR MANUAL ACTION ---
-        const { userAgent, timeZone } = getUserContext();
-        let details = '';
-        if (results.success.length > 0) details += `✅ Regenerated: ${results.success.join(', ')}\n`;
-        if (results.noCard.length > 0) details += `➖ Skipped (Disabled): ${results.noCard.join(', ')}\n`;
-        if (results.notEnoughPhrases.length > 0) details += `⚠️ Skipped (Not Enough Phrases): ${results.notEnoughPhrases.join(', ')}\n`;
-        if (results.errors.length > 0) details += `❌ Errors: ${results.errors.join(', ')}\n`;
-    
-        logAdminAction(
-            unifiedCurrentUser?.email || "Unknown User", // Use the unified user email
-            "Manual Bingo Reset", // Change action text
-            details.trim(),
-            "Bingo Management",
-            userAgent,
-            timeZone
-        );
-    
-        showInAppNotification('Manual bingo reset complete!', 'check-circle');
-    };
-
-
     const [showMarkdownModal, setShowMarkdownModal] = useState(false);
 
     const handleCoronerWebhookSubmit = async (payloadFromModal) => {
-         const webhookURL = import.meta.env.VITE_CORONER_DISCORD_UPDATES;
-         const { userAgent, timeZone } = getUserContext();
-
-        if (!webhookURL) {
-            if (showInAppNotification) showInAppNotification('Coroner Webhook URL (CORONER_DISCORD_UPDATES) not configured.', 'error');
-            Sentry.captureMessage("Coroner Webhook URL (CORONER_DISCORD_UPDATES) not configured", "error");
-            logAdminAction(unifiedCurrentUser?.email || "Unknown User", "Failed to Send Coroner Custom Webhook", "Webhook URL not configured.", null, userAgent, timeZone);
-            return false;
-        }
+        const { userAgent, timeZone } = getUserContext();
         try {
-            const response = await fetch(webhookURL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payloadFromModal),
-            });
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error(`Failed to send Coroner webhook. Status: ${response.status}`, errorText);
-                Sentry.captureMessage(`Coroner Discord webhook failed: ${response.status}`, {
-                    level: 'error',
-                    extra: { statusText: response.statusText, responseBody: errorText }
-                });
-                if (showInAppNotification) showInAppNotification(`Failed to send Coroner webhook. Status: ${response.status}`, 'error');
-                logAdminAction(unifiedCurrentUser?.email || "Unknown User", "Failed to Send Coroner Custom Webhook", `Status: ${response.status}, Error: ${errorText}`, null, userAgent, timeZone);
-                return false;
-            } else {
-                if (showInAppNotification) showInAppNotification('Coroner webhook message sent successfully!', "check-circle");
-                logAdminAction(unifiedCurrentUser?.email || "Unknown User", "Sent Coroner Custom Webhook", "Admin successfully sent a custom webhook to the Coroner Updates channel.", null, userAgent, timeZone);
-                logWebhookToFirebase('Coroner Custom Webhook Sent', { admin: authEmail, title: payloadFromModal.embeds[0].title });
-                return true;
-            }
+            await triggerWebhookProxy('coroner', payloadFromModal);
+            if (showInAppNotification) showInAppNotification('Coroner webhook message sent successfully!', "check-circle");
+            logAdminAction(unifiedCurrentUser?.email || "Unknown User", "Sent Coroner Custom Webhook", "Admin successfully sent a custom webhook to the Coroner Updates channel.", null, userAgent, timeZone);
+            logWebhookToFirebase('Coroner Custom Webhook Sent', { admin: authEmail, title: payloadFromModal.embeds[0].title });
+            return true;
         } catch (error) {
             console.error('Error sending Coroner webhook:', error);
-            Sentry.captureException(error, { extra: { context: 'Coroner Webhook Submission Fetch' } });
-            if (showInAppNotification) showInAppNotification('A network error occurred sending the Coroner webhook.', "error");
-            logAdminAction(unifiedCurrentUser?.email || "Unknown User", "Failed to Send Coroner Custom Webhook", `Network Error: ${error.message}`, null, userAgent, timeZone);
+            Sentry.captureException(error, { extra: { context: 'Coroner Webhook via Proxy' } });
+            if (showInAppNotification) showInAppNotification('Failed to send Coroner webhook.', 'error');
+            logAdminAction(unifiedCurrentUser?.email || "Unknown User", "Failed to Send Coroner Custom Webhook", `Error: ${error.message}`, null, userAgent, timeZone);
             return false;
         }
     };
@@ -763,9 +468,6 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
             </div>
         );
     }
-
-    const selectedTypeForEdit = BINGO_TYPES.find(type => type.id === selectedAdminBingoType);
-
 
     // Helper to build rich Discord embed payload with PHMC branding
     const buildWebhookPayload = (title, message, customUrl = '') => {
@@ -898,19 +600,6 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
                 setAlternativeFormGeneratorStatus={setAlternativeFormGeneratorStatus}
                 localHostStatus={localHostStatus}
                 setLocalHostStatus={setLocalHostStatus}
-                isUpdatingDb={isUpdatingDb}
-
-                selectedAdminBingoType={selectedAdminBingoType}
-                setSelectedAdminBingoType={setSelectedAdminBingoType}
-                BINGO_TYPES={BINGO_TYPES}
-                handleManualResetAllBingoCards={handleManualResetAllBingoCards}
-                handleGenerateNewBingoCard={handleGenerateNewBingoCard}
-                handleClearBingoActivity={handleClearBingoActivity}
-                handleDisableBingoCard={handleDisableBingoCard}
-                setShowEditBingoPhrasesModal={setShowEditBingoPhrasesModal}
-                selectedTypeForEdit={selectedTypeForEdit}
-                setShowReviewPhrasesModal={setShowReviewPhrasesModal}
-
                 setShowMarkdownModal={setShowMarkdownModal}
                 handleLogout={handleLogout}
                 Sentry={Sentry}
@@ -939,23 +628,6 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
 
 
 
-
-            <EditBingoPhrasesModal
-                show={showEditBingoPhrasesModal}
-                onHide={() => setShowEditBingoPhrasesModal(false)}
-                showNotification={showInAppNotification}
-                commitInfo={commitInfo}
-                logAdminAction={logAdminAction}
-                adminUserEmail={authEmail}
-                bingoType={selectedTypeForEdit}
-            />
-            <ReviewPhraseRequestsModal
-                show={showReviewPhrasesModal}
-                onHide={() => setShowReviewPhrasesModal(false)}
-                showNotification={showInAppNotification}
-                logAdminAction={logAdminAction}
-                adminUserEmail={authEmail}
-            />
 
         </>
     );

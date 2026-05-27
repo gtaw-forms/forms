@@ -1,100 +1,12 @@
-import { httpsCallable } from 'firebase/functions';
-import { functions } from '../firebase';
+
 import { validateFirebaseConfig } from './gtaWorldAuth';
 
 /**
  * Utility functions for testing and debugging Firebase Functions connectivity
  */
 
-/**
- * Tests Firebase Functions connectivity with client ID validation
- * @returns {Object} Test result
- */
-export const testClientIdValidation = async () => {
-    console.info('[Client ID Test] Starting validation test...');
-    
-    try {
-        const envClientId = import.meta.env.VITE_GTAWORLD_CLIENT_ID;
-        
-        if (!envClientId) {
-            return {
-                success: false,
-                error: 'VITE_GTAWORLD_CLIENT_ID not configured',
-                details: 'Environment variable is missing'
-            };
-        }
 
-        console.info('[Client ID Test] Environment client ID found:', {
-            hasClientId: true,
-            clientIdPrefix: `${envClientId.substring(0, 8)}...`,
-            length: envClientId.length
-        });
 
-        // Test the OAuth function with real client ID but fake code
-        const exchangeFunction = httpsCallable(functions, 'processGtaWorldAuth');
-        
-        try {
-            await exchangeFunction({
-                code: 'fake_code_for_testing',
-                redirectUri: 'https://gtaw-forms.github.io/forms/#/auth/gta/callback',
-                clientId: envClientId // Use real client ID
-            });
-        } catch (testError) {
-            console.info('[Client ID Test] Response received:', {
-                code: testError.code,
-                message: testError.message?.substring(0, 200) + '...'
-            });
-
-            // Analyze the error to determine if client ID validation passed
-            if (testError.code === 'functions/invalid-argument' && 
-                testError.message?.includes('Invalid client ID')) {
-                return {
-                    success: false,
-                    error: 'Client ID validation failed on server',
-                    details: {
-                        serverRejectsClientId: true,
-                        providedClientId: `${envClientId.substring(0, 8)}...`,
-                        hint: 'Check if GTAWORLD_CLIENT_ID secret matches VITE_GTAWORLD_CLIENT_ID'
-                    }
-                };
-            } else if (testError.code === 'functions/invalid-argument' && 
-                       !testError.message?.includes('Invalid client ID')) {
-                return {
-                    success: true,
-                    message: 'Client ID validation passed',
-                    details: {
-                        clientIdAccepted: true,
-                        nextStepNeeded: 'Real authorization code required',
-                        errorReceived: testError.message
-                    }
-                };
-            } else {
-                return {
-                    success: false,
-                    error: 'Unexpected error during client ID test',
-                    details: {
-                        code: testError.code,
-                        message: testError.message
-                    }
-                };
-            }
-        }
-
-        return {
-            success: false,
-            error: 'Unexpected success - function should have failed with fake code',
-            details: 'This indicates a problem with validation logic'
-        };
-
-    } catch (error) {
-        console.error('[Client ID Test] Test failed:', error);
-        return {
-            success: false,
-            error: 'Client ID test failed',
-            details: error.message
-        };
-    }
-};
 
 /**
  * Tests basic Firebase Functions connectivity
@@ -347,10 +259,6 @@ export const runOAuthDiagnostics = async () => {
     console.info('[OAuth Diagnostics] Testing Firebase Functions...');
     results.tests.firebaseFunctions = await testFirebaseFunctions();
 
-    // Test Client ID validation specifically
-    console.info('[OAuth Diagnostics] Testing Client ID validation...');
-    results.tests.clientIdValidation = await testClientIdValidation();
-
     // Test Profile Retrieval (if authenticated)
     console.info('[OAuth Diagnostics] Testing profile retrieval...');
     results.tests.profileRetrieval = await testProfileRetrieval();
@@ -412,9 +320,7 @@ export const runOAuthDiagnostics = async () => {
 export const logEnvironmentInfo = () => {
     console.group('[OAuth Environment Info]');
     
-    console.info('Environment Variables:', {
-        hasClientId: !!import.meta.env.VITE_GTAWORLD_CLIENT_ID,
-        clientIdPrefix: import.meta.env.VITE_GTAWORLD_CLIENT_ID?.substring(0, 8) + '...',
+    console.info('Environment:', {
         nodeEnv: import.meta.env.NODE_ENV,
         publicUrl: import.meta.env.PUBLIC_URL
     });

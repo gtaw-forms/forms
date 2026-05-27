@@ -7,7 +7,6 @@ import { useData } from '../../contexts/DataContext';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import { triggerWebhookProxy } from '../../services/firebaseFunctions';
 import DecedentItemRenderer from './DecedentItemRenderer'; // Import the new component
-import AutopsyDiagramModal from '../Modals/AutopsyDiagramModal'; // Import AutopsyDiagramModal
 import CharacterSelector from '../Modals/CharacterSelector';
 import { decedentItemSchema } from '../../formSchemas/decedentSchema';
 import { formatCharacterNameForDisplay } from '../../utils/characterUtils'; // Import the new utility
@@ -15,9 +14,7 @@ import { useModal } from '../../contexts/ModalProvider';
 import { evaluateFieldVisibility } from '../../utils/formValidation';
 import { sanitizeMorgueText } from '../../utils/textUtils';
 
-import morgueGif from '../../assets/morgue-copy-tutorial.gif';
-
-const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, finalSelectOptions, currentUtcTime, agencyDataStore, toggleSavedReports, showNotification, isUploading, handleDiagramUpload, setShowMapModal, setMapTargetField, isUploadingMapImage = {}, setShowAutopsyAssistModal, setAutopsyAssistTargetField, setIsAttachModeForModal }) => {
+const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, finalSelectOptions, currentUtcTime, agencyDataStore, toggleSavedReports, showNotification, isUploading, setShowMapModal, setMapTargetField, isUploadingMapImage = {} }) => {
   const { factionsData, morgueRecords, isLoadingData } = useData();
   const { openImagePreview } = useModal();
 
@@ -1413,88 +1410,6 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
           </button>
         </div>
       );
-    }
-    case "autopsy_diagram_button": {
-        const [showModal, setShowModal] = useState(false);
-        const initialMarkers = formValues[`${field.name}_markers`] || [];
-
-        return (
-            <div style={fieldWrapperStyle}>
-                <label style={labelStyle}>{field.label}</label>
-                <button
-                    onClick={() => setShowModal(true)}
-                    style={{
-                        padding: "0.8rem 1.5rem",
-                        background: "#6366f1",
-                        color: "white",
-                        border: "none",
-                        borderRadius: 8,
-                        fontSize: "1rem",
-                        fontWeight: "600",
-                        cursor: "pointer",
-                        width: "100%"
-                    }}
-                >
-                    {field.label}
-                </button>
-                {formValues[field.name] && (
-                    <div style={{ marginTop: '10px', fontSize: '0.9rem', color: '#34d399' }}>
-                        Diagram URL: <span 
-                            onClick={() => openImagePreview(formValues[field.name])}
-                            style={{ color: '#34d399', textDecoration: 'underline', cursor: 'pointer' }}
-                        >View Diagram</span>
-                    </div>
-                )}
-
-
-                <AutopsyDiagramModal
-                    show={showModal}
-                    onHide={() => setShowModal(false)}
-                    onSaveDiagram={(markers, imageUrl, summaries) => {
-                        handleChange(field.name, imageUrl); // Save the image URL
-                        handleChange(`${field.name}_markers`, markers); // Save the markers data
-                        
-                        if (summaries && summaries.length > 0 && selectedForm && selectedForm.fields) {
-                            // Find the anatomic summary field in the form schema
-                            const summaryField = selectedForm.fields.find(f => 
-                                f.name === 'anatomicSummaryListItems' || 
-                                (f.label && f.label.toLowerCase().includes('anatomic summary'))
-                            );
-                            
-                            if (summaryField) {
-                                // If there are existing items, we might want to append, but usually diagram is the source of truth for these.
-                                // Let's check if there are already items.
-                                const existingItems = Array.isArray(formValues[summaryField.name]) ? formValues[summaryField.name] : [];
-                                
-                                // To avoid duplicates and keep manual entries, we could do something more complex, 
-                                // but for now, let's just append the new summaries if they aren't already there.
-                                const newItems = [...existingItems];
-                                summaries.forEach(summary => {
-                                    if (!newItems.includes(summary)) {
-                                        newItems.push(summary);
-                                    }
-                                });
-                                
-                                handleChange(summaryField.name, newItems);
-                            }
-                        }
-                        
-                        setShowModal(false);
-                    }}
-                    initialMarkers={initialMarkers}
-                    initialSummaries={(() => {
-                        const summaryField = selectedForm?.fields?.find(f => 
-                            f.name === 'anatomicSummaryListItems' || 
-                            (f.label && f.label.toLowerCase().includes('anatomic summary'))
-                        );
-                        return Array.isArray(formValues[summaryField?.name]) ? formValues[summaryField.name] : [];
-                    })()}
-                    showNotification={showNotification}
-                    removeNotification={() => { /* Not used by modal, but good to pass */ }}
-                    handleImageUpload={handleDiagramUpload}
-                />
-            </div>
-        );
     }
     case "character_selector":
       return (

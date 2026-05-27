@@ -5,7 +5,7 @@ import { functions, auth, database } from '../firebase';
 import * as Sentry from "@sentry/react";
 import { getCharacterID, getCharacterName } from '../utils/characterUtils';
 import { logAuthErrorToDiscord } from '../utils/authLogger';
-import { triggerValidateGtaWorldToken, triggerCheckFactionMembership, triggerRefreshGtawUser, triggerWebhookProxy } from './firebaseFunctions';
+import { triggerValidateGtaWorldToken, triggerCheckFactionMembership, triggerRefreshGtawUser, triggerWebhookProxy, triggerGetPublicConfig } from './firebaseFunctions';
 
 /**
  * Unified GTA World Authentication Service
@@ -17,8 +17,23 @@ const GTA_WORLD_CONFIG = {
     AUTHORIZE_URL: 'https://ucp.gta.world/oauth/authorize',
     TOKEN_URL: 'https://ucp.gta.world/oauth/token',
     USER_API_URL: 'https://ucp.gta.world/api/user',
-    CLIENT_ID: import.meta.env.VITE_GTAWORLD_CLIENT_ID || '',
     FIREBASE_FUNCTION: 'processGtaWorldAuth'
+};
+
+let cachedClientId = null;
+
+const getClientId = async () => {
+    if (cachedClientId) return cachedClientId;
+    try {
+        const config = await triggerGetPublicConfig();
+        cachedClientId = config.gtaWorldClientId;
+        if (!cachedClientId) throw new Error('Server returned no client ID');
+        return cachedClientId;
+    } catch (error) {
+        console.warn('[GTA Auth] Failed to fetch client config from server, using fallback:', error.message);
+        cachedClientId = '82';
+        return cachedClientId;
+    }
 };
 
 /**
@@ -147,7 +162,7 @@ export const initiateGtaWorldLogin = async (options = {}) => {
         
         lastLoginInitiation = now;
         
-        if (!GTA_WORLD_CONFIG.CLIENT_ID) throw new Error('GTA World Client ID not configured');
+        const clientId = await getClientId();
 
         const state = generateOAuthState();
         const redirectUri = getRedirectUri();
@@ -159,7 +174,7 @@ export const initiateGtaWorldLogin = async (options = {}) => {
             returnPath,
             redirectUri,
             timestamp: Date.now(),
-            clientId: GTA_WORLD_CONFIG.CLIENT_ID,
+            clientId,
             role
         };
 
@@ -167,7 +182,7 @@ export const initiateGtaWorldLogin = async (options = {}) => {
 
         const authUrl = new URL(GTA_WORLD_CONFIG.AUTHORIZE_URL);
         authUrl.searchParams.set('response_type', 'code');
-        authUrl.searchParams.set('client_id', GTA_WORLD_CONFIG.CLIENT_ID);
+        authUrl.searchParams.set('client_id', clientId);
         authUrl.searchParams.set('redirect_uri', redirectUri);
         authUrl.searchParams.set('state', state);
 
@@ -281,9 +296,10 @@ const exchangeAuthCodeForToken = async (code, redirectUri) => {
         const requestPromise = (async () => {
             try {
                 const exchangeFunction = httpsCallable(functions, GTA_WORLD_CONFIG.FIREBASE_FUNCTION);
-                
+                const clientId = await getClientId();
+
                 const result = await Promise.race([
-                    exchangeFunction({ code, redirectUri, clientId: GTA_WORLD_CONFIG.CLIENT_ID }),
+                    exchangeFunction({ code, redirectUri, clientId }),
                     new Promise((_, reject) => setTimeout(() => reject(new Error('Auth timeout')), 20000))
                 ]);
 
@@ -633,9 +649,9 @@ export const validateFirebaseConfig = () => {
 
     const config = {
 
-        hasClientId: !!GTA_WORLD_CONFIG.CLIENT_ID,
+        hasClientId: !!cachedClientId,
 
-        clientId: GTA_WORLD_CONFIG.CLIENT_ID ? `${GTA_WORLD_CONFIG.CLIENT_ID.substring(0, 8)}...` : 'NOT_SET',
+        clientId: cachedClientId ? `${cachedClientId.substring(0, 8)}...` : 'FETCHED_AT_RUNTIME',
 
         functionName: GTA_WORLD_CONFIG.FIREBASE_FUNCTION,
 
@@ -650,12 +666,6 @@ export const validateFirebaseConfig = () => {
 
 
     const issues = [];
-
-    if (!GTA_WORLD_CONFIG.CLIENT_ID) {
-
-        issues.push('VITE_GTAWORLD_CLIENT_ID environment variable not set');
-
-    }
 
 
 

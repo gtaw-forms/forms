@@ -16,17 +16,12 @@ import DiscordNameCheck from './components/Auth/DiscordNameCheck.jsx';
 // Lazy load non-critical components
 const GtaLogin = lazy(() => import('./components/Auth/GtaLogin.jsx'));
 const GtaCallback = lazy(() => import('./components/Auth/GtaCallback.jsx'));
-const OAuthUrlDiagnostic = lazy(() => import('./components/Auth/OAuthUrlDiagnostic.jsx'));
 const EmsDashboard = lazy(() => import('./components/ems-dashboard/EmsDashboard.jsx'));
-const ShopDashboard = lazy(() => import('./components/Shop/ShopDashboard.jsx'));
 const MorgueLookup = lazy(() => import('./components/UI/MorgueLookup.jsx'));
-const PRDashboard = lazy(() => import('./components/PR/PRDashboard.jsx'));
 
 function App() {
     const [formData, setFormData] = useState({});
     const [lastWebhookIdentifier, setLastWebhookIdentifier] = useState(null);
-    const [setShowAdblockNotification] = useState(false);
-
     const { showNotification, removeNotification } = useNotification();
 
     // GLOBAL SECURITY KILL-SWITCH LISTENER
@@ -140,15 +135,12 @@ function App() {
                     <DiscordNameCheck>
                             <Suspense fallback={<LoadingFallback />}>
                                 <Routes>
-                                    <Route path="/" element={<FormHandler formData={formData} setFormData={setFormData} lastWebhookIdentifier={lastWebhookIdentifier} setLastWebhookIdentifier={setLastWebhookIdentifier} showNotification={showNotification} removeNotification={removeNotification} setShowAdblockNotification={setShowAdblockNotification} />} />
+                                    <Route path="/" element={<FormHandler formData={formData} setFormData={setFormData} lastWebhookIdentifier={lastWebhookIdentifier} setLastWebhookIdentifier={setLastWebhookIdentifier} showNotification={showNotification} removeNotification={removeNotification} />} />
                                     <Route path="/login" element={<GtaLogin />} />
                                     <Route path="/auth/gta/callback" element={<GtaCallback />} />
-                                    <Route path="/auth/gta/diagnostic" element={<OAuthUrlDiagnostic />} />
                                     <Route path="/admin" element={<ProtectedRoute><Admin formData={formData} setFormData={setFormData} showNotification={showNotification} /></ProtectedRoute>} />
                                     <Route path="/ems-dashboard" element={<EmsDashboard />} />
-                                    <Route path="/shop" element={<ShopDashboard />} />
                                     <Route path="/morgue" element={<MorgueLookup />} />
-                                    <Route path="/pr" element={<ProtectedRoute><PRDashboard /></ProtectedRoute>} />
                                     <Route path="/form-handler" element={<ProtectedRoute><FormHandler /></ProtectedRoute>} />
                                     <Route path="*" element={<Navigate to="/" replace />} />
                                 </Routes>
