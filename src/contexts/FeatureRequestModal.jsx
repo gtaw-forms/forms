@@ -3,6 +3,7 @@ import { Form, Button } from 'react-bootstrap';
 import './FeatureRequestModal.css';
 import * as Sentry from "@sentry/react";
 import { useNotification } from './NotificationContext.jsx';
+import { triggerWebhookProxy } from '../services/firebaseFunctions';
 
 const FeatureRequestModal = ({
     show,
@@ -24,15 +25,6 @@ const FeatureRequestModal = ({
     const { showNotification } = useNotification();
 
     const handleFeatureRequestSubmit = async () => {
-        const webhookURL = import.meta.env.VITE_DEV_WEBHOOK;
-
-        if (!webhookURL) {
-            console.error('Discord webhook URL not configured for feature requests.');
-            Sentry.captureMessage('Discord webhook URL is missing for feature request submission.', 'error');
-            showNotification('Configuration error: Unable to submit request. Please contact the administrator.', 'exclamation-triangle');
-            return;
-        }
-
         // Validations
         if (!featureRequest.trim() && (!isBbcodeRequest || !bbcodeRequestText.trim())) {
             showNotification('Please enter your bug report/feature request or the BBCode details.', 'warning');
@@ -46,7 +38,6 @@ const FeatureRequestModal = ({
             showNotification('Please enter a title for your BBCode format request.', 'warning');
             return;
         }
-        // If it's a BBCode request, the BBCode text itself is now also required for file attachment
         if (isBbcodeRequest && !bbcodeRequestText.trim()) {
             showNotification('Please enter the BBCode for your new format request.', 'warning');
             return;
@@ -58,159 +49,113 @@ const FeatureRequestModal = ({
         };
 
         const MAX_FIELD_LENGTH = 1000;
-        const requestChunks = [];
-        let currentChunk = "";
-        const mainRequestDetails = featureRequest || (isBbcodeRequest ? "See BBCode file for details." : "No details provided.");
+        const chunkText = (text) => {
+            const chunks = [];
+            let current = "";
+            text.split('\n').forEach(line => {
+                if (current.length + line.length + 1 > MAX_FIELD_LENGTH) {
+                    chunks.push(current);
+                    current = line;
+                } else {
+                    current += (current ? '\n' : '') + line;
+                }
+            });
+            if (current) chunks.push(current);
+            return chunks;
+        };
 
-        mainRequestDetails.split('\n').forEach(line => {
-            if (currentChunk.length + line.length + 1 > MAX_FIELD_LENGTH) {
-                requestChunks.push(currentChunk);
-                currentChunk = line;
-            } else {
-                currentChunk += (currentChunk ? '\n' : '') + line;
-            }
-        });
-        if (currentChunk) {
-            requestChunks.push(currentChunk);
-        }
+        const requestChunks = chunkText(featureRequest || "No details provided.");
 
-        // Base fields for the embed
-        const baseEmbedFields = [
-            { name: "Submitted By", value: discordName || "N/A", inline: true },
-            { name: "Request Type", value: isBbcodeRequest ? "New BBCode Format" : "Bug/Feature", inline: true },
-        ];
-
-        if (isBbcodeRequest) {
-            baseEmbedFields.push({ name: "Proposed BBCode Title", value: bbcodeTitleRequest || "N/A", inline: false });
-        }
-
-        let firstMessageBody;
-        let firstMessageHeaders = { 'Content-Type': 'application/json' }; // Default for JSON payload
-
-        // --- MODIFICATION START ---
-        const requestDetailsFieldName = `Request Details${requestChunks.length > 1 ? ` (Part 1 of ${requestChunks.length})` : ''}`;
-        // --- MODIFICATION END ---
-
-        if (isBbcodeRequest && bbcodeRequestText.trim()) {
-            const bbcodeFile = new File([new Blob([bbcodeRequestText], { type: 'text/plain;charset=utf-8' })], 'requested_bbcode.txt');
-            const formDataForFile = new FormData();
-
-            const fieldsForFileEmbed = [
-                ...baseEmbedFields,
-                { name: "Requested BBCode", value: "See attached 'requested_bbcode.txt'", inline: false },
-                { name: requestDetailsFieldName, value: requestChunks[0] || "No details provided.", inline: false },
-                { name: "Debug Info", value: `\n${JSON.stringify(debugInfo, null, 2)}\n`, inline: false }
+        // Build first-embed fields
+        const buildFields = (partIndex) => {
+            const fields = [
+                { name: "Submitted By", value: discordName || "N/A", inline: true },
+                { name: "Request Type", value: isBbcodeRequest ? "New BBCode Format" : "Bug/Feature", inline: true },
             ];
 
-            const embedPayloadForFile = {
-                title: "📝 Bug Report / Feature Request",
-                color: 0x3498DB,
-                fields: fieldsForFileEmbed,
-                timestamp: new Date().toISOString(),
-                footer: { text: `Submitted via PHMC Tools Tool - v${commitInfo.sha || 'N/A'}` }
-            };
-
-            formDataForFile.append('payload_json', JSON.stringify({
-                content: `Feedback / Bug Report (Part 1${requestChunks.length > 1 ? ` of ${requestChunks.length}` : ''})`,
-                embeds: [embedPayloadForFile]
-            }));
-            formDataForFile.append('file1', bbcodeFile); // 'file1' is a common key for Discord attachments
-
-            firstMessageBody = formDataForFile;
-            firstMessageHeaders = {}; // Browser sets Content-Type for FormData, so remove explicit header
-        } else {
-            // Standard JSON payload (not a BBCode request, or BBCode text is empty)
-            const fieldsForJsonEmbed = [
-                ...baseEmbedFields,
-                { name: requestDetailsFieldName, value: requestChunks[0] || "No details provided.", inline: false },
-                { name: "Debug Info", value: `\n${JSON.stringify(debugInfo, null, 2)}\n`, inline: false }
-            ];
-
-            const firstEmbedData = {
-                title: "📝 Bug Report / Feature Request",
-                color: 0x3498DB,
-                fields: fieldsForJsonEmbed,
-                timestamp: new Date().toISOString(),
-                footer: { text: `Submitted via PHMC Tools Tool - v${commitInfo.sha || 'N/A'}` }
-            };
-            firstMessageBody = JSON.stringify({
-                content: `Feedback / Bug Report (Part 1${requestChunks.length > 1 ? ` of ${requestChunks.length}` : ''})`,
-                embeds: [firstEmbedData]
-            });
-        }
-
-        let allWebhooksSentSuccessfully = true;
-
-        try {
-            // Send the first message (either FormData with file or JSON)
-            const firstResponse = await fetch(webhookURL, {
-                method: 'POST',
-                headers: firstMessageHeaders,
-                body: firstMessageBody,
-            });
-
-            if (!firstResponse.ok) {
-                allWebhooksSentSuccessfully = false;
-                const errorText = await firstResponse.text();
-                console.error(`Failed to send message (Part 1) to Discord webhook. Status: ${firstResponse.status} ${firstResponse.statusText}`, errorText);
-                Sentry.captureMessage(`Discord webhook failed for feature request (Part 1): ${firstResponse.status}`, {
-                    level: 'error',
-                    extra: { statusText: firstResponse.statusText, responseBody: errorText }
-                });
+            if (isBbcodeRequest) {
+                fields.push({ name: "Proposed BBCode Title", value: bbcodeTitleRequest || "N/A", inline: false });
             }
 
-            // Send subsequent chunks for long "Request Details" (always JSON)
-            if (allWebhooksSentSuccessfully && requestChunks.length > 1) {
-                for (let i = 1; i < requestChunks.length; i++) {
-                    await new Promise(resolve => setTimeout(resolve, 1200)); // Delay
-
-                    const subsequentEmbedData = {
-                        title: `📝 Bug/Feature Request Details (Part ${i + 1} of ${requestChunks.length})`,
-                        description: requestChunks[i],
-                        color: 0x3498DB,
-                        timestamp: new Date().toISOString(),
-                        footer: {
-                            text: `Submitted by: ${discordName || "N/A"} | PHMC Tools Tool - v${commitInfo.sha || 'N/A'}`
-                        }
-                    };
-                    const subsequentResponse = await fetch(webhookURL, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' }, // Subsequent parts are always JSON
-                        body: JSON.stringify({
-                            content: `Feedback / Bug Report (Part ${i + 1} of ${requestChunks.length})`,
-                            embeds: [subsequentEmbedData]
-                        }),
-                    });
-
-                    if (!subsequentResponse.ok) {
-                        allWebhooksSentSuccessfully = false;
-                        const errorText = await subsequentResponse.text();
-                        console.error(`Failed to send message (Part ${i + 1}) to Discord webhook. Status: ${subsequentResponse.status} ${subsequentResponse.statusText}`, errorText);
-                        Sentry.captureMessage(`Discord webhook failed for feature request (Part ${i + 1}): ${subsequentResponse.status}`, {
-                            level: 'error',
-                            extra: { statusText: subsequentResponse.statusText, responseBody: errorText }
-                        });
-                        break;
-                    }
+            // BBCode text as a code block (inlined instead of file attachment)
+            if (isBbcodeRequest && bbcodeRequestText.trim()) {
+                const bbcodeChunks = chunkText(bbcodeRequestText);
+                const bbCodeParts = partIndex < bbcodeChunks.length
+                    ? bbcodeChunks.slice(partIndex, partIndex + 1)
+                    : [];
+                if (bbCodeParts.length > 0) {
+                    const label = bbcodeChunks.length > 1
+                        ? `BBCode (Part ${partIndex + 1} of ${bbcodeChunks.length})`
+                        : "BBCode";
+                    fields.push({ name: label, value: "```\n" + bbCodeParts[0] + "\n```", inline: false });
                 }
             }
 
-            if (allWebhooksSentSuccessfully) {
-                showNotification('Thanks for your feedback! I will work on it soon', 'check-circle');
-                setShowFeatureRequestModal(false);
-                setFeatureRequest('');
-                setDiscordName('');
-                setIsBbcodeRequest(false);
-                setBbcodeTitleRequest('');
-                setBbcodeRequestText('');
-            } else {
-                showNotification(`Partially submitted or failed. Please check console or try again.`, 'exclamation-triangle');
+            // Request details chunk
+            const detailIndex = isBbcodeRequest && bbcodeRequestText.trim()
+                ? Math.max(0, partIndex - Math.ceil(bbcodeRequestText.length / MAX_FIELD_LENGTH))
+                : partIndex;
+            if (detailIndex < requestChunks.length) {
+                const label = requestChunks.length > 1
+                    ? `Request Details (Part ${detailIndex + 1} of ${requestChunks.length})`
+                    : "Request Details";
+                fields.push({ name: label, value: requestChunks[detailIndex] || "No details provided.", inline: false });
             }
 
-        } catch (error) {
-            console.error('Error submitting feature request:', error);
-            Sentry.captureException(error, { extra: { context: 'Feature Request Submission Fetch' } });
-            showNotification('A network error occurred. Please try again.', 'exclamation-triangle');
+            // Debug info only on the first message
+            if (partIndex === 0) {
+                fields.push({ name: "Debug Info", value: "```\n" + JSON.stringify(debugInfo, null, 2) + "\n```", inline: false });
+            }
+
+            return fields;
+        };
+
+        // Calculate total parts needed
+        const bbcodeChunks = isBbcodeRequest && bbcodeRequestText.trim()
+            ? chunkText(bbcodeRequestText)
+            : [];
+        const totalParts = Math.max(requestChunks.length, bbcodeChunks.length);
+
+        let allWebhooksSentSuccessfully = true;
+
+        for (let i = 0; i < totalParts; i++) {
+            const partLabel = totalParts > 1 ? ` (Part ${i + 1} of ${totalParts})` : "";
+            const embed = {
+                title: `📝 Bug Report / Feature Request${partLabel}`,
+                color: 0x3498DB,
+                fields: buildFields(i),
+                timestamp: new Date().toISOString(),
+                footer: { text: `Submitted via PHMC Tools Tool - v${commitInfo.sha || 'N/A'}` }
+            };
+
+            try {
+                await triggerWebhookProxy('dev', {
+                    content: `Feedback / Bug Report${partLabel}`,
+                    embeds: [embed]
+                });
+            } catch (error) {
+                allWebhooksSentSuccessfully = false;
+                console.error(`Failed to send feature request part ${i + 1}:`, error);
+                Sentry.captureException(error, { extra: { context: `Feature Request Part ${i + 1}` } });
+                break;
+            }
+
+            // Rate-limit between parts to avoid Discord throttling
+            if (i < totalParts - 1) {
+                await new Promise(resolve => setTimeout(resolve, 1200));
+            }
+        }
+
+        if (allWebhooksSentSuccessfully) {
+            showNotification('Thanks for your feedback! I will work on it soon', 'check-circle');
+            setShowFeatureRequestModal(false);
+            setFeatureRequest('');
+            setDiscordName('');
+            setIsBbcodeRequest(false);
+            setBbcodeTitleRequest('');
+            setBbcodeRequestText('');
+        } else {
+            showNotification('Partially submitted or failed. Please check console or try again.', 'exclamation-triangle');
         }
     };
 

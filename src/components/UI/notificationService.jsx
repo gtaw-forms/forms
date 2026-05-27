@@ -1,12 +1,11 @@
 import * as Sentry from "@sentry/react";
 import { ref, set, push } from 'firebase/database';
 import { database } from '../../firebase';
-import { sendDiscordWebhook } from '../../utils/webhookUtils';
+import { triggerWebhookProxy } from '../../services/firebaseFunctions';
 
 /**
  * Modernized Notification Service
  * Handles clipboard operations, Discord notifications, and Firebase logging.
- * Removed legacy Form Interaction and Recruitment logic.
  */
 
 const FORM_GENERATOR_URL = "https://phmc-tools.gta.world/";
@@ -68,77 +67,64 @@ export const copyToClipboard = async (text, showNotification, successMessage = "
 };
 
 /**
- * Internal helper to send formatted Discord embeds.
- */
-const sendDiscordEmbed = async (webhookUrl, embedData, contentMessage = "") => {
-    if (!webhookUrl) return false;
-
-    const embed = {
-        color: 0x7289DA, // Default Blurple
-        timestamp: new Date().toISOString(),
-        ...embedData,
-        fields: [
-            ...(embedData.fields || []),
-            { name: "Source", value: getGeneratorName(), inline: true }
-        ],
-        footer: {
-            text: embedData.footer?.text || "PHMC Tools Notification"
-        }
-    };
-
-    try {
-        await sendDiscordWebhook(webhookUrl, {
-            ...(contentMessage && { content: contentMessage }),
-            embeds: [embed]
-        });
-        await logWebhookToFirebase(embed.title, { embeds: [embed] });
-        return true;
-    } catch (error) {
-        console.error('Error sending Discord embed:', error);
-        return false;
-    }
-};
-
-/**
  * Sends a notification for Bingo events.
  */
 export const sendBingoNotification = async ({ scorer, bingoType, phrase, lineName, marked }) => {
-    const webhookUrl = import.meta.env.VITE_BINGO_DISCORD_WEBHOOK_URL || import.meta.env.VITE_DEV_WEBHOOK;
-    
-    const embedData = marked ? {
-        title: `📌 Marker Placed: ${scorer || 'A player'}`,
-        description: `A marker was placed on the ${bingoType || 'Unknown'} board.`,
-        color: 0x3498db, // Blue
-        fields: [{ name: "Phrase", value: phrase || 'Unknown', inline: true }]
-    } : {
-        title: "🎉 BINGO SCORED! 🎉",
-        description: `**${scorer || 'A player'}** has completed a line!`,
-        color: 0xffd700, // Gold
+    const embed = {
+        title: marked
+            ? `📌 Marker Placed: ${scorer || 'A player'}`
+            : "🎉 BINGO SCORED! 🎉",
+        description: marked
+            ? `A marker was placed on the ${bingoType || 'Unknown'} board.`
+            : `**${scorer || 'A player'}** has completed a line!`,
+        color: marked ? 0x3498db : 0xffd700,
+        timestamp: new Date().toISOString(),
         fields: [
-            { name: "Game", value: bingoType || 'Unknown', inline: true },
-            { name: "Line", value: lineName || 'Unknown', inline: true }
-        ]
+            ...(marked
+                ? [{ name: "Phrase", value: phrase || 'Unknown', inline: true }]
+                : [
+                    { name: "Game", value: bingoType || 'Unknown', inline: true },
+                    { name: "Line", value: lineName || 'Unknown', inline: true }
+                  ]),
+            { name: "Source", value: getGeneratorName(), inline: true }
+        ],
+        footer: { text: "PHMC Tools Notification" }
     };
 
-    return sendDiscordEmbed(webhookUrl, embedData);
+    try {
+        await triggerWebhookProxy('bingo', { embeds: [embed] });
+        await logWebhookToFirebase(embed.title, { embeds: [embed] });
+        return true;
+    } catch (error) {
+        console.error('Error sending Bingo notification:', error);
+        return false;
+    }
 };
 
 /**
  * Sends a request for a new Bingo phrase.
  */
 export const sendPhraseRequestNotification = async ({ requester, phrase, bingoType }) => {
-    const webhookUrl = import.meta.env.VITE_DISCORD_WEBHOOK_ADMIN || import.meta.env.VITE_DEV_WEBHOOK;
-    
-    const embedData = {
+    const embed = {
         title: "📈 New Bingo Phrase Request",
         description: "A new phrase has been requested for review.",
-        color: 0x9b59b6, // Purple
+        color: 0x9b59b6,
+        timestamp: new Date().toISOString(),
         fields: [
             { name: "Requested Phrase", value: phrase || 'N/A', inline: false },
             { name: "Game Type", value: bingoType || 'Unknown', inline: true },
-            { name: "Requester", value: requester || 'Anonymous', inline: true }
-        ]
+            { name: "Requester", value: requester || 'Anonymous', inline: true },
+            { name: "Source", value: getGeneratorName(), inline: true }
+        ],
+        footer: { text: "PHMC Tools Notification" }
     };
 
-    return sendDiscordEmbed(webhookUrl, embedData);
+    try {
+        await triggerWebhookProxy('admin', { embeds: [embed] });
+        await logWebhookToFirebase(embed.title, { embeds: [embed] });
+        return true;
+    } catch (error) {
+        console.error('Error sending phrase request notification:', error);
+        return false;
+    }
 };

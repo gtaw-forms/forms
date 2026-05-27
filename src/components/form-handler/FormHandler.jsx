@@ -7,7 +7,7 @@ import FormFieldRenderer from './FormFieldRenderer';
 import FormHandlerNavButtons from './FormHandlerNavButtons';
 import LeftSidebarNav from '../UI/LeftSidebarNav';
 import useBbcodeGenerator from '../../hooks/useBbcodeGenerator';
-import { uploadImageToImgBB, uploadDataUrlToImgBB } from '../../utils/imageUploadUtils'; 
+import { uploadImageToImgBB } from '../../utils/imageUploadUtils'; 
 import { useNotification } from '../../contexts/NotificationContext';
 import { getUtcFormattedDateTime } from '../../utils/dateTimeUtils';
 import { useReportLoader } from '../../hooks/useReportLoader';
@@ -17,16 +17,13 @@ import { useFormSaver } from '../../hooks/useFormSaver';
 import FormQuickLinks from './FormQuickLinks';
 import { validateForm, evaluateFieldVisibility } from '../../utils/formValidation';
 import { triggerWebhookProxy } from '../../services/firebaseFunctions';
-import { sendBingoNotification, sendPhraseRequestNotification } from '../UI/notificationService';
 import { useInactivityReload } from '../../hooks/useInactivityReload';
-import { useUserMetrics } from '../../hooks/useUserMetrics';
 import { cleanRankText } from '../../utils/textUtils';
 import { STORAGE_KEYS } from '../../services/gtaWorldAuth';
 import phmcLogo from '../../assets/phmc.png';
 import { decedentItemSchema } from '../../formSchemas/decedentSchema';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import '@fortawesome/fontawesome-free/css/all.min.css';
-import 'react-bootstrap-typeahead/css/Typeahead.css';
 import '../../App.css';
 import '../../buttons.css';
 import styles from "../ems-dashboard/EmsDashboard.module.css";
@@ -34,26 +31,16 @@ import formStyles from './FormHandler.module.css';
 import { Spinner } from 'react-bootstrap';
 
 // Lazy load modals and heavy components
-const EmsBingoModal = lazy(() => import('../Modals/EmsBingoModal'));
 const EmployeeCredentialsSection = lazy(() => import('../Modals/EmployeeCredentialsSection'));
 const SavedReportsModal = lazy(() => import('../Modals/SavedReportsModal'));
 const BugReportModal = lazy(() => import('../Modals/BugReportModal'));
 const MapModal = lazy(() => import("../Modals/MapModal"));
-const AgencyIncidentModal = lazy(() => import('../Modals/AgencyIncidentModal'));
-const SurveyModal = lazy(() => import('../Modals/SurveyModal'));
 import UnprocessedCKsViewer from './UnprocessedCKsViewer';
-import FormTour, { sectionExplanations } from '../UI/FormTour';
 import ImagePreviewModal from '../Modals/ImagePreviewModal';
 
 export const FormHandler = () => {
   const isDevelopment = process.env.NODE_ENV === 'development' || window.location.hostname === 'localhost';
   useInactivityReload(); 
-  const { trackMetric } = useUserMetrics();
-  
-  // Track visited forms for debug traces
-  const visitedFormsRef = React.useRef([]);
-  const transitionHistoryRef = React.useRef([]);
-
   const [selectedForm, setSelectedForm] = useState(null);
   const [formValues, setFormValues] = useState({});
   const [searchTerm, setSearchTerm] = useState(() => localStorage.getItem("formSearchTerm") || "");
@@ -73,21 +60,13 @@ export const FormHandler = () => {
     return localStorage.getItem('phmc_gtaw_oauth_persist_enabled') !== 'false';
   });
   const [showBugReportModal, setShowBugReportModal] = useState(false);
-  const [showAgencyIncidentModal, setShowAgencyIncidentModal] = useState(false);
   const [showMapModal, setShowMapModal] = useState(false);
   const [mapTargetField, setMapTargetField] = useState(null);
   const [isUploadingMapImage, setIsUploadingMapImage] = useState({});
   
 
 
-    // Survey State
-    const [showSurveyModal, setShowSurveyModal] = useState(false);
-  
-      // Tour State
-      const [showTour, setShowTour] = useState(false);
-      const [tourType, setTourType] = useState(null); // 'general' or 'form-specific'
-
-      // Left Sidebar State
+          // Left Sidebar State
       const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(() => !localStorage.getItem('lastSelectedFormName'));
 
       // Helper for consistent name comparison
@@ -139,103 +118,8 @@ export const FormHandler = () => {
         }
       }, [isAuthenticated, accessLevel, user, characterName, showNotification]);
     
-      // General Tour Prompt on Visit
-/*       useEffect(() => {
-        // We use localStorage so it only prompts once ever (until cleared)
-        const hasSeenGeneralTour = localStorage.getItem('hasSeenGeneralTourPrompt') === 'true';
-        
-        if (!hasSeenGeneralTour || isDevelopment) {
-          // Add a slight delay so it doesn't pop up instantly with auth notices
-          const timer = setTimeout(() => {
-            showNotification(
-              "Welcome to PHMC Forms! Would you like a quick 1-minute tour of the interface?",
-              "info",
-              0, // Persistent until acted upon
-              { actions: [
-                {
-                  label: 'Start Tour',
-                  handler: (id) => {
-                    setTourType('general');
-                    setShowTour(true);
-                    localStorage.setItem('hasSeenGeneralTourPrompt', 'true');
-                    removeNotification(id);
-                  },
-                },
-                {
-                  label: 'Later',
-                  handler: (id) => {
-                    removeNotification(id);
-                  },
-                },
-                {
-                  label: "Don't show again",
-                  handler: (id) => {
-                    localStorage.setItem('hasSeenGeneralTourPrompt', 'true');
-                    removeNotification(id);
-                  },
-                },
-              ]}
-            );
-          }, 2000);
-          return () => clearTimeout(timer);
-        }
-      }, [showNotification, removeNotification]);
+    
 
-      // Form-specific tour trigger
-      useEffect(() => {
-        const isTourableForm = selectedForm?.id && sectionExplanations[selectedForm.id];
-    
-        if (isTourableForm) {
-          const hasBeenOfferedTour = sessionStorage.getItem(`hasBeenOfferedTour_${selectedForm.id}`) === 'true';
-    
-          if (!hasBeenOfferedTour) {
-            sessionStorage.setItem(`hasBeenOfferedTour_${selectedForm.id}`, 'true');
-    
-            showNotification(
-              `New to the ${selectedForm.name}? We can guide you through it.`,
-              "info",
-              15000,
-              { actions: [
-                {
-                  label: 'Start Section Guide',
-                  handler: (id) => {
-                    setTourType('form-specific');
-                    setShowTour(true);
-                    removeNotification(id);
-                  },
-                },
-                {
-                  label: 'No Thanks',
-                  handler: (id) => {
-                    removeNotification(id);
-                  },
-                },
-              ]}
-            );
-          }
-        }
-      }, [selectedForm, showNotification, removeNotification]);
- */    
-    
-      useEffect(() => {
-        const hasSeenIncidentNotice = localStorage.getItem('seenAgencyIncidentNotice') === 'true';
-        if (isAuthenticated && !hasSeenIncidentNotice) {
-          showNotification(
-            <span>You can report Agency Incidents in the <i className="fas fa-cog"></i> More Panel, this can be pushed up to Faction Leadership.</span>,
-            'info',
-            0,
-            { actions: [
-              {
-                label: 'Dismiss',
-                handler: (id) => {
-                  localStorage.setItem('seenAgencyIncidentNotice', 'true');
-                  removeNotification(id);
-                },
-              },
-            ]}
-          );
-        }
-      }, [isAuthenticated, showNotification, removeNotification]);  
 
   useEffect(() => {
     if (isPhmcMember && !localStorage.getItem('seenKeepCredentialsPrompt')) {
@@ -249,10 +133,6 @@ export const FormHandler = () => {
     }
   }, [isPhmcMember, setKeepCredentials]);
 
-  // NEW: Track form handler visit
-  useEffect(() => {
-    trackMetric('form_handler', 'main_page');
-  }, [trackMetric]);
 
   const { 
     agencyDataStore, 
@@ -261,8 +141,6 @@ export const FormHandler = () => {
     selectOptions: dataContextSelectOptions,
     formsData,
     hasFirebaseError,
-    surveyData,
-    submitSurveyResponse,
     factionsData,
   } = useData();
 
@@ -285,7 +163,6 @@ export const FormHandler = () => {
     }
   }, [formsData]); // Run once when formsData is available
 
-  const { showEmsBingoModal, setShowEmsBingoModal } = useModal();
   const { saveReport: saveNewReport, validateMembership } = useFormSaver(user, isAuthenticated);
   const modalCloseTimer = React.useRef(null);
 
@@ -399,10 +276,7 @@ export const FormHandler = () => {
   };
 
 
-  const getCurrentReportAuthor = useCallback(() => {
-    return characterName;
-  }, [characterName]);
-  
+
   const handleChange = useCallback((fieldName, valueOrUpdater) => {
     setFormValues(prevValues => {
       const newValue = typeof valueOrUpdater === 'function' 
@@ -452,14 +326,6 @@ export const FormHandler = () => {
     setShowMapModal(false);
   }, [mapTargetField, handleChange, setFormValues]);
 
-
-  const sendBingoWebhook = useCallback(async (payload) => {
-    await sendBingoNotification(payload);
-  }, []);
-
-  const sendPhraseRequestWebhook = useCallback(async (payload) => {
-    await sendPhraseRequestNotification(payload);
-  }, []);
 
   const validateReportQuality = useCallback(() => {
     if (!selectedForm) return { success: true };
@@ -706,19 +572,7 @@ export const FormHandler = () => {
     setFormValues(prev => ({...prev, ...credentialUpdates}));
   }, [employeeType, updateEmployeeCredentials, setFormValues]);
 
-  const handleDiagramUpload = useCallback(async (dataUrl) => {
-    try {
-        const result = await uploadDataUrlToImgBB(dataUrl);
-        return [result.url];
-    } catch (error) {
-        showNotification('Failed to upload diagram image.', 'error');
-        console.error("Autopsy Diagram upload failed:", error);
-        Sentry.captureException(error, { extra: { context: 'FormHandler - handleDiagramUpload' } });
-        return [];
-    }
-  }, [showNotification]);
-
-  const handleClearForm = useCallback(() => {
+const handleClearForm = useCallback(() => {
     console.log("[FormHandler] 🗑️ handleClearForm triggered.");
     
     // Always preserve all credential fields regardless of the current form type
@@ -766,7 +620,6 @@ export const FormHandler = () => {
       const bbcodeToSave = Array.isArray(generatedBBCode) ? generatedBBCode.join('\n\n[PART_BREAK]\n\n') : generatedBBCode;
       
       const saveResult = await saveNewReport(selectedForm, formValues, generatedTitle, bbcodeToSave, { silent: true });
-      trackMetric('form_handler', `save_report_${selectedForm.name}`);
 
       let finalNotificationMessage = '';
       let finalNotificationOptions = [];
@@ -817,7 +670,7 @@ export const FormHandler = () => {
       
       showNotification(finalNotificationMessage, finalNotificationType, notificationDuration, { actions: finalNotificationOptions });
     }
-  }, [generatedBBCode, selectedForm, formValues, generatedTitle, saveNewReport, showNotification, handleClearForm, removeNotification, trackMetric]);
+  }, [generatedBBCode, selectedForm, formValues, generatedTitle, saveNewReport, showNotification, handleClearForm, removeNotification]);
 
 
 
@@ -826,7 +679,6 @@ export const FormHandler = () => {
       savedReports,
       isLoadingUserReports,
       loadUserSavedReports,
-      loadUserRecoveryReports,
       loadReportForUser
   } = useReportLoader();
 
@@ -878,19 +730,6 @@ export const FormHandler = () => {
   useEffect(() => {
     if (selectedForm?.name) {
       localStorage.setItem('lastSelectedFormName', selectedForm.name);
-
-      // Update navigation history
-      const entry = {
-        name: selectedForm.name,
-        id: selectedForm.id || selectedForm.firebaseKey,
-        timestamp: new Date().toISOString()
-      };
-      
-      // Avoid duplicate consecutive entries
-      const lastEntry = visitedFormsRef.current[0];
-      if (!lastEntry || lastEntry.id !== entry.id) {
-         visitedFormsRef.current = [entry, ...visitedFormsRef.current].slice(0, 10); // Keep last 10
-      }
     }
   }, [selectedForm]);
 
@@ -1102,37 +941,7 @@ export const FormHandler = () => {
 
   }, [user, isAuthenticated, selectedForm, setFormValues, updateEmployeeCredentials, characterName]);
 
-  useEffect(() => {
-    const monitoringFields = ['coronerEmployee', 'phmcEmployee', 'coronerBadge', 'phmcBadge', 'coronerRank', 'phmcRank'];
-    const currentValues = monitoringFields.reduce((acc, field) => {
-        acc[field] = formValues[field] || '';
-        return acc;
-    }, {});
 
-    // Only log if one of these fields actually changed
-    if (window.prevMonitoredValues) {
-        const changes = {};
-        let hasChanges = false;
-        monitoringFields.forEach(f => {
-            if (window.prevMonitoredValues[f] !== currentValues[f]) {
-                changes[f] = { from: window.prevMonitoredValues[f], to: currentValues[f] };
-                hasChanges = true;
-            }
-        });
-
-        if (hasChanges) {
-            console.log(`%c[DEBUG] Credential State Transition:`, "color: #8e44ad; font-weight: bold;", changes);
-            
-            // Push to local history ref for Discord Webhook (Keep last 15)
-            const historyEntry = {
-                timestamp: new Date().toISOString(),
-                changes: changes
-            };
-            transitionHistoryRef.current = [historyEntry, ...transitionHistoryRef.current].slice(0, 15);
-        }
-    }
-    window.prevMonitoredValues = currentValues;
-  }, [formValues.coronerEmployee, formValues.phmcEmployee, formValues.coronerBadge, formValues.phmcBadge, formValues.coronerRank, formValues.phmcRank]);
 
   useEffect(() => {
     if (!selectedForm || !generatedTitle) return;
@@ -1321,35 +1130,6 @@ export const FormHandler = () => {
 
   return (
     <div className={styles.container}>
-      {showTour && (
-        <FormTour
-          tourType={tourType}
-          selectedForm={selectedForm}
-          showNotification={showNotification}
-          onComplete={() => {
-            setShowTour(false);
-            setTourType(null);
-          }}
-          onSkip={() => {
-            setShowTour(false);
-            setTourType(null);
-          }}
-        />
-      )}
-      <Suspense fallback={null}>
-              <EmsBingoModal
-                show={showEmsBingoModal}
-                onHide={() => setShowEmsBingoModal(false)}
-                allEmployeeGroupedOptions={employeeOptions}
-                currentPhmcEmployee={mainEmployeeName}
-                showNotification={showNotification}
-                setShowEmployeeModal={setShowEmployeeModal}
-                isAdmin={isPhmcMember} // Assuming PHMC members are admins for bingo
-                sendBingoWebhook={sendBingoWebhook}
-                sendPhraseRequestWebhook={sendPhraseRequestWebhook}
-                persistEnabled={keepCredentials}
-                setPersistEnabled={setKeepCredentials}
-              />
         <SavedReportsModal
           show={showSavedReports}
           onHide={() => setShowSavedReports(false)}
@@ -1357,7 +1137,6 @@ export const FormHandler = () => {
           showNotification={showNotification}
           reportsForSelectedUser={savedReports}
           onEmployeeSelect={loadUserSavedReports}
-          loadUserRecoveryReports={loadUserRecoveryReports}
           employeeOptions={employeeOptions}
           isLoadingReports={isLoadingUserReports}
           loadReport={handleLoadReport}
@@ -1383,44 +1162,8 @@ export const FormHandler = () => {
           mapTargetField={mapTargetField}
           selectedForm={selectedForm}
         />
-        <AgencyIncidentModal
-          show={showAgencyIncidentModal}
-          onHide={() => setShowAgencyIncidentModal(false)}
-          showNotification={showNotification}
-        />
-        <SurveyModal
-          show={showSurveyModal}
-          onClose={() => setShowSurveyModal(false)}
-          survey={surveyData}
-          onSubmit={(surveyId, response) => {
-            console.log("--- Survey Response ---");
-            console.log("Survey ID:", surveyId);
-            console.log("Response:", response);
-            console.log("-----------------------");
-            showNotification('Thank you for your feedback!', 'success');
-            // Prevent survey from showing again this session
-            if (surveyData?.id) {
-              sessionStorage.setItem('dismissedSurveyId', surveyData.id);
-            }
-          }}
-        />
-      </Suspense>
       <FormHandlerNavButtons 
         onToggleSavedReports={handleNavToggleSavedReports} 
-        onToggleAgencyIncident={() => setShowAgencyIncidentModal(true)}
-        onStartTour={() => {
-          // Reset all tour-related flags
-          localStorage.removeItem('hasSeenGeneralTourPrompt');
-          // We also clear any session storage flags that start with our tour prefix
-          Object.keys(sessionStorage).forEach(key => {
-            if (key.startsWith('hasBeenOfferedTour')) {
-              sessionStorage.removeItem(key);
-            }
-          });
-          
-          setTourType('general');
-          setShowTour(true);
-        }}
         phmcLogoSrc={phmcLogo}
       />
 
@@ -1451,7 +1194,6 @@ export const FormHandler = () => {
             setSelectedForm(form);
             setFormValues({ ...baseValues, ...savedValues });
             setShowBBCode(false);
-            trackMetric('form_handler', `view_form_${form.name}`);
         }}
         selectedForm={selectedForm}
         searchTerm={searchTerm}
@@ -1466,8 +1208,7 @@ export const FormHandler = () => {
 
       <div className={styles.mainLayout} style={{ display: 'flex', gap: '1.5rem', width: '100%', overflow: 'hidden' }}>
         <div 
-            className={styles.mainContent} 
-            data-tour="main-content" 
+            className={styles.mainContent}
             style={{ 
                 flex: 5, 
                 minWidth: 0, 
@@ -1509,19 +1250,6 @@ export const FormHandler = () => {
             <>
               <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: "2rem" }}>
                 <h2 style={{ color: "#60a5fa", margin: 0 }}>{selectedForm.name}</h2>
-                {selectedForm.id && sectionExplanations[selectedForm.id] && (
-                  <button 
-                    onClick={() => {
-                      setTourType('form-specific');
-                      setShowTour(true);
-                    }}
-                    className="btn btn-outline-info btn-sm"
-                    style={{ padding: '2px 8px', fontSize: '0.75rem' }}
-                  >
-                    <i className="fas fa-route" style={{ marginRight: '5px' }}></i>
-                    Start Guide
-                  </button>
-                )}
               </div>
               {selectedForm.formDescription && (
                   <div className="alert alert-info" style={{ marginBottom: '1rem' }}>
@@ -1552,7 +1280,6 @@ export const FormHandler = () => {
                       toggleSavedReports={toggleSavedReports}
                       showNotification={showNotification}
                       isUploading={isUploading}
-                      handleDiagramUpload={handleDiagramUpload}
                       setShowMapModal={setShowMapModal}
                       setMapTargetField={setMapTargetField}
                       isUploadingMapImage={isUploadingMapImage}
@@ -1597,7 +1324,6 @@ export const FormHandler = () => {
                     }
 
                     generateBBCode();
-                    trackMetric('form_handler', `generate_bbcode_${selectedForm.name}`);
                   }} 
                   className={formStyles.generateButton}
                 >                  Generate BBCode
@@ -1608,7 +1334,7 @@ export const FormHandler = () => {
         </div>
 
         <div className={styles.rightPanel} style={{ flex: '0 0 400px', minWidth: '350px', maxWidth: '450px' }}>
-          <div style={{ background: "#1e1b4b", padding: "1.5rem", borderRadius: 12, marginBottom: "1.5rem", border: '1px solid #312e81' }} data-tour="right-panel-top">
+          <div style={{ background: "#1e1b4b", padding: "1.5rem", borderRadius: 12, marginBottom: "1.5rem", border: '1px solid #312e81' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
               <h3 style={{ color: "#a78bfa", margin: 0, fontSize: '1.25rem', fontWeight: '700' }}>
                 <i className="fas fa-user-circle me-2"></i>User Profile
@@ -1643,7 +1369,7 @@ export const FormHandler = () => {
             }
           </div>
 
-          <div data-tour="right-panel-bottom">
+          <div>
 {generatedBBCode ? (
   <button
     onClick={() => setShowBBCode(!showBBCode)}

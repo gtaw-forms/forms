@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import * as Sentry from "@sentry/react";
+import { uploadImageToImgBB, uploadDataUrlToImgBB } from '../utils/imageUploadUtils';
 
 export const useImageUpload = (showNotification, setFormData) => {
     const [isUploading, setIsUploading] = useState(false);
@@ -9,13 +10,6 @@ export const useImageUpload = (showNotification, setFormData) => {
         let imageUrls = [];
 
         try {
-            const imgbbApiKey = import.meta.env.VITE_IMGBB_API_KEY;
-            if (!imgbbApiKey) {
-                showNotification('ImgBB API Key is not configured.', 'error');
-                setIsUploading(false);
-                return;
-            }
-
             let filesToUpload = [];
             if (!imageSource) {
                 setIsUploading(false);
@@ -30,43 +24,11 @@ export const useImageUpload = (showNotification, setFormData) => {
             }
 
             for (const file of filesToUpload) {
-                const formData = new FormData();
-                let base64Image;
+                const result = typeof file === 'string'
+                    ? await uploadDataUrlToImgBB(file)
+                    : await uploadImageToImgBB(file);
 
-                if (typeof file === 'string') {
-                    base64Image = file.split(',')[1];
-                } else {
-                    base64Image = await new Promise((resolve, reject) => {
-                        const reader = new FileReader();
-                        reader.onload = () => resolve(reader.result.split(',')[1]);
-                        reader.onerror = reject;
-                        reader.readAsDataURL(file);
-                    });
-                }
-                
-                formData.append('image', base64Image);
-
-                const response = await fetch(`https://api.imgbb.com/1/upload?key=${imgbbApiKey}`, {
-                    method: 'POST',
-                    body: formData,
-                });
-
-                if (!response.ok) { // Check for HTTP errors
-                    const errorText = await response.text();
-                    throw new Error(`ImgBB API returned status ${response.status}: ${errorText}`);
-                }
-
-                const data = await response.json();
-
-                if (data.success) {
-                    imageUrls.push({ 
-                        url: data.data.url, 
-                        thumb: data.data.thumb?.url || data.data.url 
-                    });
-                } else {
-                    console.error('ImgBB upload failed:', data.error.message);
-                    showNotification(`ImgBB upload failed for one of the images: ${data.error.message}`, 'exclamation-circle');
-                }
+                imageUrls.push(result);
             }
 
             if (imageUrls.length > 0) {

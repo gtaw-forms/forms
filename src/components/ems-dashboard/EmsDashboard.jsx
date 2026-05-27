@@ -2,13 +2,10 @@
 import React, { useState, useEffect, useMemo } from "react";
 import styles from "./EmsDashboard.module.css";
 import { KeywordHighlighter } from "../UI/KeywordHighlighter";
-import PatientHelper from "../Modals/PatientHelper";
 import { useNotification } from '../../contexts/NotificationContext.jsx';
 import { useImageUpload } from '../../hooks/useImageUpload';
-import EmsAmaModal from '../Modals/EmsAmaModal';
 import { useData } from '../../contexts/DataContext.jsx';
 import { useModal } from '../../contexts/ModalProvider.jsx';
-import { useUserMetrics } from '../../hooks/useUserMetrics';
 import { Button, Spinner } from 'react-bootstrap';
 import { useInactivityReload } from '../../hooks/useInactivityReload';
 import BaseModal from '../Modals/BaseModal';
@@ -16,7 +13,6 @@ import SidebarNav from '../UI/SidebarNav';
 
 const EmsDashboard = () => {
   useInactivityReload();
-  const { trackMetric } = useUserMetrics();
   const { phmcListData, coronerListData: originalCoronerListData, lsccData, loading: dataContextLoading } = useData();
   const { showEmployeeModal, setShowEmployeeModal } = useModal();
 
@@ -30,14 +26,9 @@ const EmsDashboard = () => {
   const [collapsedCategories, setCollapsedCategories] = useState({});
   const [patientNotes, setPatientNotes] = useState("");
 
-  const [showEmsAmaModal, setShowEmsAmaModal] = useState(false);
-
   const { showNotification } = useNotification();
   const { handleImageUpload } = useImageUpload(showNotification, () => {});
 
-  useEffect(() => {
-    trackMetric('ems_dashboard', 'main_page');
-  }, [trackMetric]);
 
   useEffect(() => {
     if (lsccData) {
@@ -115,10 +106,7 @@ const EmsDashboard = () => {
 
   return (
     <div className={styles.container}>
-      <SidebarNav 
-        showEmsAma={true} 
-        onShowEmsAma={() => setShowEmsAmaModal(true)} 
-      />
+      <SidebarNav />
 
       <div className={styles.header}><h1>LS County EMS Protocols</h1></div>
 
@@ -161,12 +149,6 @@ const EmsDashboard = () => {
             <div className={styles.emptyState}>Select a protocol to begin.</div>
           )}
         </div>
-
-        <div className={styles.rightPanel}>
-          <h2>EMS Tools</h2>
-          <textarea className={styles.notesTextarea} value={patientNotes} onChange={e => setPatientNotes(e.target.value)} placeholder="Patient notes..." />
-          <PatientHelper />
-        </div>
       </div>
 
       {/* MODALS */}
@@ -187,7 +169,6 @@ const EmsDashboard = () => {
         </div>
       </BaseModal>
 
-      <EmsAmaModal show={showEmsAmaModal} onHide={() => setShowEmsAmaModal(false)} showNotification={showNotification} handleImageUpload={handleImageUpload} />
     </div>
   );
 };

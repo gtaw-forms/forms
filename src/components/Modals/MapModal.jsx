@@ -8,7 +8,7 @@ import 'leaflet/dist/leaflet.css';
 import { ref, set, get, onValue } from 'firebase/database';
 import { useGtaWorldAuth } from '../../hooks/useGtaWorldAuth';
 import { isGoogleAuthenticated, getGoogleUser } from '../../services/gtaWorldAuth';
-import { sendDiscordWebhook } from '../../utils/webhookUtils';
+
 import { useAuth } from '../../contexts/AuthContext';
 import { database } from '../../firebase';
 import { useNotification } from '../../contexts/NotificationContext';

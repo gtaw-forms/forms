@@ -10,10 +10,10 @@ export default defineConfig({
   }), ],
   build: {
     outDir: 'build',
-    sourcemap: true,
+    sourcemap: 'hidden',
   },
   optimizeDeps: {
-    include: ['react-markdown', 'remark-gfm'],
+    include: [],
   },
   server: {
     port: 3000,

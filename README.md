@@ -1,65 +1,75 @@
-# Welcome to the Form Generator (PHMC)!
+# PHMC Forms
 
-This project is a modernized React application built with Vite for high performance and fast builds. It integrates with Google Firebase for data storage, authentication, and backend functions.
+A BBCode form generation utility for EMS personnel on GTA World (GTA V RP). Built with React + Vite and Firebase.
 
-The goal is to provide a reliable, maintainable form management and generation system ready for production deployment.
+## Features
 
-# Breaking Changes
-The `.env` file has been changed, build a fresh `.env` to properly deploy this project!
+- **Form Handler** — Renders dynamic forms from Firebase-hosted BBCode templates; generates formatted BBCode output
+- **EMS Dashboard** — Medical protocols and EMS reference
+- **Morgue Lookup** — Search and view morgue records
+- **Map Modal** — Location-aware map overlay for reports
+- **Admin Panel** — Manage morgue records, LSCC data, faction data, CKs, and Discord webhooks
+- **GTA World OAuth** — Sign in via GTA World, with role-based access control
+- **Webhook Integration** — Report saves and admin actions broadcast to Discord
 
 ## Project Structure
 
-Here's an overview of the main directories and their purpose:
 ```
-project-root/
-├── public/                       # Static assets served directly, copied to /build during build
-├── src/                          # Main React application source
-│   ├── assets/                   # (Legacy) Static media files — now handled via Firebase
-│   ├── components/               # Shared reusable components (UI elements, modals, etc.)
-│   ├── components/admin/         # Admin panel components and debugging utilities
-│   ├── contexts/                 # Global state providers (React Context API)
-│   ├── phmc-bbcode-generators/   # BBCode generators for PHMC forms
-│   ├── phmc-field-data/          # Core form data and input field components
-│
-├── functions/                    # Firebase Functions — scheduled jobs, API key rotation, etc.
-├── migration-script-rtdb/        # Scripts for Firebase Realtime Database migrations
-└── ...
+src/
+├── components/
+│   ├── Admin/           # Admin tools (morgue, LSCC, faction data, CKs, webhooks)
+│   ├── Auth/            # GTA World OAuth & email sign-in
+│   ├── ems-dashboard/   # EMS medical protocols
+│   ├── form-handler/    # BBCode form rendering (core)
+│   ├── Modals/          # Map, bug report, feature request modals
+│   └── UI/              # Sidebar nav, morgue lookup, notifications
+├── contexts/            # React Context providers (auth, data, modals, notifications)
+├── hooks/               # Custom hooks (form saving, BBCode generation, report loading, etc.)
+├── services/            # Firebase functions proxy, GTA World auth, debug utilities
+└── firebase.js          # Firebase app initialization
 ```
 
 ## Getting Started
 
-These instructions assume you’re setting up the project locally and deploying to a production-ready environment (e.g., Firebase Hosting, Vercel, or your own server).
+### Prerequisites
+- Node.js v18+
+- Firebase project with Realtime Database, Functions, and Auth enabled
 
-### 1. Clone the Repository
+### 1. Clone
 ```
-git clone https://github.com/Ancad-Studios/phmc-tools.git
-cd forms
+git clone https://github.com/cross/phmc-forms.git
+cd phmc-forms
 ```
-### 2. Install Dependencies
-Make sure you have Node.js (v18 or later) and npm installed.
+
+### 2. Install
 ```
 npm install
 ```
 
-## Development
+### 3. Environment Variables
+Copy `.env.example` to `.env` and fill in your Firebase config and Discord webhook URLs. All vars must be prefixed with `VITE_`.
 
-To start the development server with hot module replacement:
+### 4. Run Dev Server
 ```
 npm run dev
 ```
-Configure the vite.config.js to change the server port, by default it's 3000
+Default port: 3000 (configure in `vite.config.js`).
 
-### Building for Production
-
-Build the optimized production bundle with:
+### 5. Build for Production
 ```
 npm run build
 ```
-The compiled output will be available in the /build directory.
-You can deploy this folder to any production web server or hosting service.
+Output goes to `build/`.
 
-## Custom Server Deployments
-Copy the build/ folder to your production web server and configure it to serve static files (for example, using Nginx or Apache).
+## Firebase Database Rules
 
-# Important Changes
-!!! Rotate the API keys from `REACT_APP` to `VITE_` as it will not build and break!!!!!!
+```
+".read": true,
+".write": "auth != null"
+```
+
+All client-side writes require Firebase Auth (GTA World OAuth). Server-side Cloud Functions use the Admin SDK and bypass these rules.
+
+## Deployment
+
+Deploy the `build/` folder to any static hosting (Firebase Hosting, Vercel, Netlify, etc.). Deploy Firebase Functions separately via `firebase deploy --only functions`.

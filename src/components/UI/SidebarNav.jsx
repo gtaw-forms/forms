@@ -1,13 +1,9 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import panelStyles from './SidebarNav.module.css';
-import { useModal } from '../../contexts/ModalProvider';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
-import { useNotification } from '../../contexts/NotificationContext';
 import phmcLogoSrc from '../../assets/phmc.png';
-import BusinessCardModal from '../Modals/BusinessCardModal';
 import MapModal from '../Modals/MapModal';
-import { uploadDataUrlToImgBB } from '../../utils/imageUploadUtils';
 
 /**
  * Reusable Sidebar Navigation component for Form Handler and EMS Dashboard
@@ -15,10 +11,7 @@ import { uploadDataUrlToImgBB } from '../../utils/imageUploadUtils';
 const SidebarNav = ({ 
   children, 
   onToggleSavedReports, 
-  onToggleAgencyIncident, 
   onStartTour,
-  showEmsAma = false,
-  onShowEmsAma,
   groupedForms,
   collapsedCategories,
   toggleCategory,
@@ -29,11 +22,7 @@ const SidebarNav = ({
 }) => {
   const navigate = useNavigate();
   const { isPhmcMember } = useGtaWorldAuth();
-  const { setShowEmsBingoModal } = useModal();
 
-
-  const { showNotification } = useNotification();
-  const [showBusinessCardModal, setShowBusinessCardModal] = useState(false);
   const [showMapModal, setShowMapModal] = useState(false);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
 
@@ -80,16 +69,8 @@ const SidebarNav = ({
           <i className="fas fa-tachometer-alt"></i> EMS Dashboard
         </button>
 
-        <button className={panelStyles.panelButton} onClick={() => handleAction(() => navigate('/shop'))}>
-          <i className="fas fa-shopping-cart"></i> Shop
-        </button>
-
         <button className={panelStyles.panelButton} onClick={() => handleAction(() => navigate('/morgue'))}>
           <i className="fas fa-microscope"></i> Morgue Intake
-        </button>
-
-        <button className={panelStyles.panelButton} onClick={() => handleAction(() => navigate('/pr'))}>
-          <i className="fas fa-paint-brush"></i> PR
         </button>
 
         <button className={panelStyles.panelButton} onClick={() => handleAction(() => navigate('/'))}>
@@ -156,24 +137,9 @@ const SidebarNav = ({
             </button>
         )}
 
-        <button className={panelStyles.panelButton} onClick={() => handleAction(() => setShowEmsBingoModal(true))}>
-          <i className="fas fa-trophy"></i> Bingo Night!
-        </button>
-
         <button className={panelStyles.panelButton} onClick={() => handleAction(() => setShowMapModal(true))}>
           <i className="fas fa-map-marked-alt"></i> GTA Map (Beta)
         </button>
-
-        <button className={panelStyles.panelButton} onClick={() => handleAction(() => setShowBusinessCardModal(true))}>
-          <i className="fas fa-id-card"></i> Business Card
-        </button>
-
-        {showEmsAma && (
-          <button className={panelStyles.panelButton} onClick={() => handleAction(onShowEmsAma)}>
-            <i className="fa-solid fa-truck-medical"></i> EMS AMA
-          </button>
-        )}
-
 
         {/* Custom children buttons */}
         {children}
@@ -205,16 +171,6 @@ const SidebarNav = ({
       >
         <img src={phmcLogoSrc} alt="PHMC Logo" style={{ height: '65px' }} />
       </div>
-
-      {showBusinessCardModal && (
-        <BusinessCardModal
-          show={showBusinessCardModal}
-          onHide={() => setShowBusinessCardModal(false)}
-          showNotification={showNotification}
-          commitInfo={{}}
-          handleImageUpload={uploadDataUrlToImgBB}
-        />
-      )}
 
       <MapModal
         show={showMapModal}

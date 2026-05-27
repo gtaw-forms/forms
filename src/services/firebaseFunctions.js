@@ -22,3 +22,4 @@ export const triggerFetchExternalUrl = (data) => triggerFunction('fetchExternalU
 export const triggerManualMaintenance = () => triggerFunction('triggerManualMaintenance');
 export const triggerRefreshGtawUser = (data) => triggerFunction('refreshGtawUser', data);
 export const triggerWebhookProxy = (webhookType, payload) => triggerFunction('sendWebhookProxy', { webhookType, payload });
+export const triggerGetPublicConfig = () => triggerFunction('getPublicConfig');
