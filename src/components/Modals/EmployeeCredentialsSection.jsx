@@ -3,7 +3,7 @@ import { Form, Button, Badge } from 'react-bootstrap';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import { refreshFactionData as refreshFactionDataService, STORAGE_KEYS } from '../../services/gtaWorldAuth';
 import { cleanRankText } from '../../utils/textUtils';
-import { getCharacterName, getCharacterID } from '../../utils/characterUtils';
+import { getCharacterName, getCharacterID } from '../../utils/identityUtils';
 import { useNotification } from '../../contexts/NotificationContext.jsx';
 import { GtaAuthLoading } from '../Auth/GtaCallback';
 
@@ -65,6 +65,7 @@ const EmployeeCredentialsSection = ({
   const setSetPersistEnabled = propSetPersistEnabled !== undefined ? propSetPersistEnabled : setInternalPersistEnabled;
 
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [loginLoading, setLoginLoading] = useState(false);
   const [imgError, setImgError] = useState(false);
   const [imageCacheBuster] = useState(Date.now());
 
@@ -72,6 +73,14 @@ const EmployeeCredentialsSection = ({
   const isDevelopmentEnvironment = window.location.hostname === 'localhost';
 
   const gtawCharacterName = factionData?.characterName || getCharacterName(gtaWorldUser);
+
+  // Reset login loading when auth state resolves
+  useEffect(() => {
+    if (!loginLoading) return;
+    if (isGtaAuthenticated || (!isLoading && !authHook.isLoading)) {
+      setLoginLoading(false);
+    }
+  }, [isGtaAuthenticated, isLoading, authHook.isLoading, loginLoading]);
 
   // Sync OAuth character to selectedEmployee if not set
   useEffect(() => {
@@ -221,8 +230,8 @@ const EmployeeCredentialsSection = ({
               </button>
             </div>
 
-            <button onClick={() => login({ returnPath: window.location.hash || '#/', role: loginRole })} className="btn btn-primary mt-3 w-100">
-                Log In
+            <button onClick={() => { setLoginLoading(true); login({ returnPath: window.location.hash || '#/', role: loginRole }); }} disabled={loginLoading} className="btn btn-primary mt-3 w-100">
+                {loginLoading ? <><i className="fas fa-spinner fa-spin me-2"></i>Logging in...</> : 'Log In'}
             </button>
         </div>
       );

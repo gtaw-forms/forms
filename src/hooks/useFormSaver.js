@@ -2,10 +2,24 @@ import { useCallback } from 'react';
 import { database } from '../firebase';
 import { ref, set, runTransaction } from 'firebase/database';
 import * as Sentry from "@sentry/react";
-import { getCharacterName, getCharacterID } from '../utils/characterUtils';
+import { getCharacterName, getCharacterID } from '../utils/identityUtils';
 import { comprehensiveSanitize } from '../utils/textUtils';
 import { useNotification } from '../contexts/NotificationContext';
-import { reportLogicalError } from '../utils/errorUtils';
+import { reportLogicalError } from '../utils/logging';
+
+const isLocalHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
+const deployTrackedForms = ['coroner-report', 'coroner_email', 'death-record', 'autopsy'];
+
+export function getReportBasePath(formFirebaseKey) {
+  if (isLocalHost && deployTrackedForms.includes(formFirebaseKey)) return 'testingSavedReports';
+  return 'newSavedReports';
+}
+
+export function getBBCodeBasePath(formFirebaseKey) {
+  if (isLocalHost && deployTrackedForms.includes(formFirebaseKey)) return 'testingSavedReportBBCode';
+  return 'newSavedReportBBCode';
+}
 
 const parseCaseNumber = (url) => {
     if (!url) return '';
@@ -126,25 +140,27 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated) => {
             return { success: false, error: 'Membership validation failed.' };
         }
 
-        if (!selectedForm || !formValues || !title || !bbCode) {
+        if (!selectedForm || !formValues || !bbCode) {
             const missingFields = [];
             if (!selectedForm) missingFields.push('selectedForm');
             if (!formValues) missingFields.push('formValues');
-            if (!title) missingFields.push('title');
             if (!bbCode) missingFields.push('bbCode');
-            console.error('[DEBUG useFormSaver] Save failed due to missing required data:', missingFields.join(', '));
-            if (!options.silent) {
-                showNotification('Missing data required to save the report.', 'error');
+            if (!title && selectedForm?.category !== 'PHMC Staff') missingFields.push('title');
+            if (missingFields.length > 0) {
+                console.error('[DEBUG useFormSaver] Save failed due to missing required data:', missingFields.join(', '));
+                if (!options.silent) {
+                    showNotification('Missing data required to save the report.', 'error');
+                }
+                return { success: false, error: 'Missing data.' };
             }
-            return { success: false, error: 'Missing data.' };
         }
 
         let finalTitle = title;
-        // For Coroner Reports, enforce the standardized title format.
         if (selectedForm.firebaseKey === 'coroner-report') {
             if (formValues.decedentName && formValues.decedentOOC && formValues.dateTime) {
                 const formattedDate = formatToNorthAmericanDate(formValues.dateTime);
-                finalTitle = `[DEATH-REPORT] ${formValues.decedentName} ((${formValues.decedentOOC})) ${formattedDate}`;
+                const deathType = (formValues.typeOfDeath || 'PK').toUpperCase();
+                finalTitle = `[${deathType}] ${formValues.decedentName} ((${formValues.decedentOOC})) ${formattedDate}`;
             } else {
                 console.warn("Could not generate standardized Coroner Report title due to missing decedentName, decedentOOC or dateTime. Using default title.");
             }
@@ -161,6 +177,11 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated) => {
         }
 
         let currentAuthor = getCharacterName(gtaWorldUser);
+
+        // Localhost override — use dev identity so OAuth names don't leak into prod data or Discord webhooks
+        if (isLocalHost) {
+            currentAuthor = 'GTAW Dev';
+        }
         
         // --- EMERGENCY FALLBACK FOR authorName ---
         // Catch cases where OAuth is active but name sync is incomplete ('GTAW User')
@@ -233,7 +254,8 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated) => {
             timestamp: Date.now(),
             originalKey: finalTitle,
             authorName: currentAuthor,
-            legacy: false, // As requested
+            legacy: false,
+            ...(deployTrackedForms.includes(selectedForm.firebaseKey) && { hasdeployed: false }),
         };
 
         // Add GTAW Auth data if available
@@ -250,8 +272,10 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated) => {
             reportDataToSave.processed = !!formValues.processed;
         }
 
-        const reportPath = `newSavedReports/${sanitizedAuthorId}/${sanitizedKey}`;
-        const bbCodePath = `newSavedReportBBCode/${sanitizedAuthorId}/${sanitizedKey}`;
+        const reportBasePath = getReportBasePath(selectedForm.firebaseKey);
+        const bbCodeBasePath = getBBCodeBasePath(selectedForm.firebaseKey);
+        const reportPath = `${reportBasePath}/${sanitizedAuthorId}/${sanitizedKey}`;
+        const bbCodePath = `${bbCodeBasePath}/${sanitizedAuthorId}/${sanitizedKey}`;
 
         try {
             const reportRef = ref(database, reportPath);
@@ -334,6 +358,25 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated) => {
                     
                     const deptVal = formValues.department;
                     webhookPayload.department = (typeof deptVal === 'object' && deptVal !== null) ? (deptVal.label || deptVal.value) : deptVal;
+                }
+
+                // Notify user to run deploy script if this is a tracked form
+                const isDeployable = deployTrackedForms.includes(selectedForm.firebaseKey);
+                if (isDeployable) {
+                    const scriptName = selectedForm.firebaseKey === 'coroner_email' ? 'deployPMs' : 'deployReports';
+                    triggerWebhookProxy('forms', {
+                        content: '<@228306972204597248>',
+                        embeds: [{
+                            title: '🔄 Report Ready for Deployment',
+                            description: `\`${webhookPayload.originalKey}\`\n\nRun \`node tools/${scriptName}.js\` to deploy this report to the forum.`,
+                            color: 0x9b59b6,
+                            fields: [
+                                { name: 'Form', value: webhookPayload.formName, inline: true },
+                                { name: 'Script', value: `\`${scriptName}.js\``, inline: true },
+                            ],
+                            footer: { text: `ReportKey: ${webhookPayload.reportKey}` }
+                        }]
+                    }).catch(() => {});
                 }
 
                 const isDeathRecord = selectedForm.firebaseKey === 'death-record';

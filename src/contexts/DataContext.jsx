@@ -1,10 +1,14 @@
 import React, { createContext, useState, useEffect, useContext, useCallback, useRef, useMemo } from 'react';
 import { database } from '../firebase';
-import { ref, get, onChildChanged, onValue, set } from 'firebase/database';
+import { ref, get, onValue } from 'firebase/database';
 import { useNotification } from './NotificationContext.jsx';
 import { useWebhooks } from '../hooks/useWebhooks';
 import { useInactivityReload } from '../hooks/useInactivityReload';
 import useGtaWorldAuth from '../hooks/useGtaWorldAuth';
+
+// Cache versions below this threshold are considered dead/broken and force a fresh fetch.
+// Bump this after fixing cache-corruption bugs to invalidate all stale client caches.
+const MINIMUM_VALID_VERSION = 134;
 
 // Define cache segments
 const CACHE_SEGMENTS = {
@@ -15,7 +19,6 @@ const CACHE_SEGMENTS = {
     LSCC: 'lscc',
     VERIFIED_ADMINS: 'verified_admins',
     MORGUE_RECORDS: 'morgue-records',
-    MORGUE_WHITELIST: 'morgue-whitelisted-users',
 };
 
 // Define segments that should not be cached in localStorage
@@ -35,15 +38,19 @@ export const DataProvider = ({ children }) => {
     const [agencyDataStore, setAgencyDataStore] = useState({});
     const [selectOptions, setSelectOptions] = useState({});
     const [morgueRecords, setMorgueRecords] = useState([]);
-    const [morgueWhitelist, setMorgueWhitelist] = useState({});
     const [isLoadingData, setIsLoadingData] = useState(true);
-    const [loading, setLoading] = useState(true);
+    const [pendingRefreshInfo, setPendingRefreshInfo] = useState(null);
+
+    const debounceTimers = useRef({});
 
 const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarningTriggered);
     const CORONER_KEYWORDS = ['Coroner', 'Examiner', 'Attendant'];
     const updateCacheSegment = useCallback(async (segment, data) => {
         // Update memory cache
         dataCache.current[segment] = data;
+
+        // Skip localStorage for undefined/null segments
+        if (!segment) return;
 
         // Don't cache excluded segments in localStorage
         if (!EXCLUDED_FROM_CACHE.includes(segment)) {
@@ -61,14 +68,14 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                     const firebaseDataVersion = localStorage.getItem('formsDataVersion') || 'N/A';
                     logMessage = `💾 Updated cache segment: forms (${cachedDataSize.toFixed(2)} KB) | InternalDataContext v${version} | Firebase Data: v${firebaseDataVersion}`;
                 }
-                console.log(logMessage);
+                console.debug(logMessage);
 
             } catch (error) {
                 console.warn(`Failed to update cache for ${segment}:`, error);
                 // If we hit quota, clear all cache segments to make space
                 console.log(`Clearing all cache segments due to storage error on segment: ${segment}`);
                 Object.values(CACHE_SEGMENTS).forEach(s => {
-                    if (!EXCLUDED_FROM_CACHE.includes(s)) {
+                    if (s && !EXCLUDED_FROM_CACHE.includes(s)) {
                         try {
                             localStorage.removeItem(getCacheKey(s));
                             localStorage.removeItem(getTimestampKey(s));
@@ -78,6 +85,15 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                         }
                     }
                 });
+                // Retry the write after clearing space
+                try {
+                    const version = getSegmentVersion(segment);
+                    localStorage.setItem(getCacheKey(segment), JSON.stringify(data));
+                    localStorage.setItem(getTimestampKey(segment), Date.now().toString());
+                    localStorage.setItem(getVersionKey(segment), version);
+                } catch (retryError) {
+                    console.warn(`Retry failed for ${segment}: localStorage still full.`);
+                }
             }
         }
         else {
@@ -112,9 +128,6 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                 setMorgueRecords(morgueAsList);
                 break;
             }
-            case CACHE_SEGMENTS.MORGUE_WHITELIST:
-                setMorgueWhitelist(data || {});
-                break;
             default:
                 console.warn(`Unknown cache segment: ${segment}`);
         }
@@ -133,7 +146,6 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
     const [formsData, setFormsData] = useState([]);
     const [lsccData, setLsccData] = useState({}); // New state for LSCC data
     const [verifiedAdmins, setVerifiedAdmins] = useState({}); // New state for verified admins
-    const [isDevMode, setIsDevMode] = useState(false); // Add isDevMode state
     const [hasFirebaseError, setHasFirebaseError] = useState(false);
 
     // Segmented cache for fetched data
@@ -177,12 +189,20 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
         const cachedVersion = localStorage.getItem(getVersionKey(segment));
         const currentVersion = getSegmentVersion(segment);
 
-        const isVersionValid = cachedVersion === currentVersion;
+        // Only enforce the version graveyard for forms — other segments use different versioning (v1.0, v1.1, etc.)
+        const isGraveyard = segment === CACHE_SEGMENTS.FORMS && (() => {
+            const cachedNum = parseInt(cachedVersion, 10);
+            return !isNaN(cachedNum) && cachedNum > 0 && cachedNum < MINIMUM_VALID_VERSION;
+        })();
+
+        const isVersionValid = !isGraveyard && cachedVersion === currentVersion;
         const isTimeValid = timestamp && (Date.now() - parseInt(timestamp)) < CACHE_EXPIRY;
 
-        if (!isVersionValid && cachedVersion) { // Only log if there was an old version
+        if (isGraveyard) {
+            console.log(`💀 Cache for ${segment} (v${cachedVersion}) is below minimum version ${MINIMUM_VALID_VERSION}. Treating as dead.`);
+        } else if (!isVersionValid && cachedVersion) {
             console.log(`🔄 Cache version mismatch for ${segment}: Stored ${cachedVersion} vs Required ${currentVersion}. Replacing.`);
-        } else if (!isTimeValid && timestamp) { // It's not a version issue, but it's expired
+        } else if (!isTimeValid && timestamp) {
             console.log(`⏰ Cache for ${segment} has expired. Replacing.`);
         }
 
@@ -191,6 +211,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
 
     const refreshSegments = useCallback(async (segments = []) => {
         const segmentsToRefresh = segments.length > 0 ? segments : Object.values(CACHE_SEGMENTS);
+        console.log(`[refreshSegments] Refreshing: ${segmentsToRefresh.join(', ')}`);
         
         for (const segment of segmentsToRefresh) {
             if (!Object.values(CACHE_SEGMENTS).includes(segment)) {
@@ -200,11 +221,44 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
 
             const segmentRef = ref(database, segment);
             try {
+                // For forms, compare cached vs server data to detect staleness
+                let cachedOptionsKey = null;
+                if (segment === CACHE_SEGMENTS.FORMS) {
+                    const cached = localStorage.getItem(getCacheKey(segment));
+                    if (cached) {
+                        try {
+                            const parsed = JSON.parse(cached);
+                            const coroner = parsed?.['coroner-report'];
+                            const mannerField = coroner?.fields?.find(f => f.name === 'mannerOfDeath');
+                            cachedOptionsKey = mannerField?.optionsKey;
+                            console.log(`[refreshSegments] CACHED Coroner Report mannerOfDeath optionsKey: "${cachedOptionsKey}"`);
+                        } catch { /* ignore parse errors */ }
+                    } else {
+                        console.log(`[refreshSegments] No cached FORMS data in localStorage`);
+                    }
+                }
+
+                console.log(`[refreshSegments] Fetching ${segment} from Firebase...`);
+                const t0 = performance.now();
                 const snapshot = await get(segmentRef);
+                const elapsed = (performance.now() - t0).toFixed(1);
+                console.log(`[refreshSegments] ${segment} snapshot exists: ${snapshot.exists()}, key count: ${snapshot.exists() ? Object.keys(snapshot.val()).length : 0} (${elapsed}ms)`);
+                
                 if (snapshot.exists()) {
                     let data = snapshot.val();
                     if (segment === CACHE_SEGMENTS.FORMS && data) {
                         data = Object.keys(data).map(key => ({ ...data[key], firebaseKey: key }));
+                        const coroner = data.find(f => f.firebaseKey === 'coroner-report');
+                        if (coroner) {
+                            const mannerField = coroner.fields?.find(f => f.name === 'mannerOfDeath');
+                            const serverOptionsKey = mannerField?.optionsKey;
+                            console.log(`[refreshSegments] SERVER Coroner Report mannerOfDeath optionsKey: "${serverOptionsKey}"`);
+                            if (cachedOptionsKey !== null && cachedOptionsKey !== serverOptionsKey) {
+                                console.log(`[refreshSegments] ✅ SERVER DATA IS DIFFERENT FROM CACHE — refresh will update.`);
+                            } else if (cachedOptionsKey !== null && cachedOptionsKey === serverOptionsKey) {
+                                console.log(`[refreshSegments] ⚠️ SERVER DATA MATCHES CACHE — get() may have returned cached data.`);
+                            }
+                        }
                     }
                     await updateCacheSegment(segment, data);
                 }
@@ -213,7 +267,37 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                 showNotification(`Failed to refresh ${segment} data`, 'error');
             }
         }
+        console.log(`[refreshSegments] Done`);
     }, [updateCacheSegment, showNotification]);
+
+    const DEBOUNCE_DELAY_MS = 5 * 60 * 1000;
+
+    const debouncedRefresh = useCallback(async (segments) => {
+        const key = segments.sort().join(',');
+        const expiresAt = Date.now() + DEBOUNCE_DELAY_MS;
+
+        if (debounceTimers.current[key]) clearTimeout(debounceTimers.current[key]);
+
+        debounceTimers.current[key] = setTimeout(async () => {
+            delete debounceTimers.current[key];
+            setPendingRefreshInfo((prev) => prev?.segment === key ? null : prev);
+            await refreshSegments(segments);
+        }, DEBOUNCE_DELAY_MS);
+
+        setPendingRefreshInfo({ segment: key, expiresAt });
+    }, [refreshSegments]);
+
+    const updateNow = useCallback(async () => {
+        const info = pendingRefreshInfo;
+        if (!info) return;
+        const segments = info.segment.split(',');
+        if (debounceTimers.current[info.segment]) {
+            clearTimeout(debounceTimers.current[info.segment]);
+            delete debounceTimers.current[info.segment];
+        }
+        setPendingRefreshInfo(null);
+        await refreshSegments(segments);
+    }, [pendingRefreshInfo, refreshSegments]);
 
     // Setup Firebase listeners for real-time updates
     const setupFirebaseListeners = useCallback(() => {
@@ -279,20 +363,6 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
             }
         });
 
-        // --- Listener for morgue whitelist changes ---
-        const whitelistRef = ref(database, CACHE_SEGMENTS.MORGUE_WHITELIST);
-        firebaseListeners.current.whitelist = onValue(whitelistRef, (snapshot) => {
-            if (!dataInitializedRef.current) return;
-            if (snapshot.exists()) {
-                const whitelistData = snapshot.val();
-                if (JSON.stringify(whitelistData) !== JSON.stringify(dataCache.current[CACHE_SEGMENTS.MORGUE_WHITELIST])) {
-                    updateCacheSegment(CACHE_SEGMENTS.MORGUE_WHITELIST, whitelistData);
-                }
-            } else {
-                updateCacheSegment(CACHE_SEGMENTS.MORGUE_WHITELIST, {});
-            }
-        });
-
         // --- Listener for Global Forms Version ---
         // Use an async IIFE to perform a get() before attaching the onValue listener
         // This forces Firebase to update its local cache's understanding of this node.
@@ -300,11 +370,14 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
             const formsVersionRef = ref(database, 'appMetadata/formsDataVersion');
             let initialServerVersion = null;
 
+            // Save the old version BEFORE the get() overwrites it — needed to detect real changes
+            const oldLocalVersion = localStorage.getItem('formsDataVersion');
+
             try {
                 const snapshot = await get(formsVersionRef);
                 if (snapshot.exists()) {
                     initialServerVersion = String(snapshot.val());
-                    console.log(`[DataContext] Initial formsDataVersion fetched from server: v${initialServerVersion}`);
+                    console.debug(`[DataContext] Initial formsDataVersion fetched from server: v${initialServerVersion}`);
                     localStorage.setItem('formsDataVersion', initialServerVersion);
                 } else {
                     console.log('[DataContext] formsDataVersion does not exist on server initially. Clearing local version.');
@@ -313,11 +386,21 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
 
             } catch (error) {
                 console.error('[DataContext] Failed to get initial formsDataVersion from server:', error);
-                // In case of error during initial get, ensure local storage has a default to prevent further errors
                 localStorage.removeItem('formsDataVersion');
             }
 
+            // If the version changed while the user was away, refresh now (before onValue fires)
+            if (oldLocalVersion !== null && initialServerVersion !== null && oldLocalVersion !== initialServerVersion) {
+                console.log(`🔄 Forms version changed offline (v${oldLocalVersion} → v${initialServerVersion}). Refreshing forms data.`);
+                localStorage.removeItem(getCacheKey(CACHE_SEGMENTS.FORMS));
+                localStorage.removeItem(getTimestampKey(CACHE_SEGMENTS.FORMS));
+                localStorage.removeItem(getVersionKey(CACHE_SEGMENTS.FORMS));
+                // Don't await — let UI render with cached data while refresh happens
+                refreshSegments([CACHE_SEGMENTS.FORMS]);
+            }
+
             // Now, attach the onValue listener. It should now get an un-poisoned snapshot.
+            let formsFirstFire = true;
             firebaseListeners.current.formsVersion = onValue(formsVersionRef, async (snapshot) => {
                 // Guards for listener invocation
                 if (!dataInitializedRef.current) {
@@ -326,37 +409,34 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                 }
                 // serverVersion can be null if the node is deleted or doesn't exist
                 const serverVersion = snapshot.exists() ? String(snapshot.val()) : null;
-                const localVersion = localStorage.getItem('formsDataVersion'); // Get freshest local version
+                const localVersion = localStorage.getItem('formsDataVersion');
 
-                // Always log the current state for tracking
-                console.log(`Global Forms Version - Local: ${localVersion || 'N/A'}, Server: ${serverVersion || 'N/A'}`);
+                console.debug(`Global Forms Version - Local: ${localVersion || 'N/A'}, Server: ${serverVersion || 'N/A'}`);
 
-                // Proceed only if server version exists AND it differs from the local one.
                 if (serverVersion !== null && localVersion !== serverVersion) { 
-                    console.log(`🔄 Global forms version mismatch (v${localVersion} → v${serverVersion}). Clearing and refreshing forms cache...`);
+                    console.log(`🔄 Global forms version mismatch (v${localVersion} → v${serverVersion}).${formsFirstFire ? ' Refreshing immediately (first load).' : ' Refresh queued (5 min debounce).'}`);
 
-                    // Clear only forms cache
                     localStorage.removeItem(getCacheKey(CACHE_SEGMENTS.FORMS));
                     localStorage.removeItem(getTimestampKey(CACHE_SEGMENTS.FORMS));
                     localStorage.removeItem(getVersionKey(CACHE_SEGMENTS.FORMS));
-
-                    // Update local version
                     localStorage.setItem('formsDataVersion', serverVersion);
 
-                    showNotification("Application forms have been updated.", "success", 4000);
-
-                    // Force reload of the forms segment
-                    await refreshSegments([CACHE_SEGMENTS.FORMS]);
+                    if (formsFirstFire) {
+                        await refreshSegments([CACHE_SEGMENTS.FORMS]);
+                    } else {
+                        await debouncedRefresh([CACHE_SEGMENTS.FORMS]);
+                    }
+                    formsFirstFire = false;
                 } else if (serverVersion === null && localVersion !== null) {
-                    // Scenario: formsDataVersion was deleted from Firebase. Clear local and notify.
-                    console.log(`🗑️ Global forms version deleted from server. Clearing local cache.`);
+                    console.log(`🗑️ Global forms version deleted from server.`);
                     localStorage.removeItem(getCacheKey(CACHE_SEGMENTS.FORMS));
                     localStorage.removeItem(getTimestampKey(CACHE_SEGMENTS.FORMS));
                     localStorage.removeItem(getVersionKey(CACHE_SEGMENTS.FORMS));
-                    localStorage.removeItem('formsDataVersion'); // Remove local tracker too
-                    showNotification("Application forms data cleared due to server-side deletion.", "info", 4000);
-                    await refreshSegments([CACHE_SEGMENTS.FORMS]); // Refresh to show empty state
+                    localStorage.removeItem('formsDataVersion');
+                    await debouncedRefresh([CACHE_SEGMENTS.FORMS]);
+                    formsFirstFire = false;
                 }
+                formsFirstFire = false;
             });
         })(); // Immediately Invoked Async Function Expression
 
@@ -364,12 +444,13 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
         (async () => {
             const factionsVersionRef = ref(database, 'appMetadata/factionsDataVersion');
             let initialServerVersion = null;
+            const oldLocalVersion = localStorage.getItem('factionsDataVersion');
 
             try {
                 const snapshot = await get(factionsVersionRef);
                 if (snapshot.exists()) {
                     initialServerVersion = String(snapshot.val());
-                    console.log(`[DataContext] Initial factionsDataVersion fetched from server: v${initialServerVersion}`);
+                    console.debug(`[DataContext] Initial factionsDataVersion fetched from server: v${initialServerVersion}`);
                     localStorage.setItem('factionsDataVersion', initialServerVersion);
                 } else {
                     console.log('[DataContext] factionsDataVersion does not exist on server initially. Clearing local version.');
@@ -380,6 +461,15 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                 localStorage.removeItem('factionsDataVersion');
             }
 
+            if (oldLocalVersion !== null && initialServerVersion !== null && oldLocalVersion !== initialServerVersion) {
+                console.log(`🔄 Factions version changed offline (v${oldLocalVersion} → v${initialServerVersion}). Refreshing factions data.`);
+                localStorage.removeItem(getCacheKey(CACHE_SEGMENTS.FACTIONS));
+                localStorage.removeItem(getTimestampKey(CACHE_SEGMENTS.FACTIONS));
+                localStorage.removeItem(getVersionKey(CACHE_SEGMENTS.FACTIONS));
+                refreshSegments([CACHE_SEGMENTS.FACTIONS]);
+            }
+
+            let factionsFirstFire = true;
             firebaseListeners.current.factionsVersion = onValue(factionsVersionRef, async (snapshot) => {
                 if (!dataInitializedRef.current) {
                     console.log('[DataContext] Global factions version listener triggered, but DataContext not initialized. Skipping.');
@@ -388,29 +478,31 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                 const serverVersion = snapshot.exists() ? String(snapshot.val()) : null;
                 const localVersion = localStorage.getItem('factionsDataVersion');
 
-                console.log(`Global Factions Version - Local: ${localVersion || 'N/A'}, Server: ${serverVersion || 'N/A'}`);
+                console.debug(`Global Factions Version - Local: ${localVersion || 'N/A'}, Server: ${serverVersion || 'N/A'}`);
 
                 if (serverVersion !== null && localVersion !== serverVersion) { 
-                    console.log(`🔄 Global factions version mismatch (v${localVersion} → v${serverVersion}). Clearing and refreshing factions cache...`);
+                    console.log(`🔄 Global factions version mismatch (v${localVersion} → v${serverVersion}).${factionsFirstFire ? ' Refreshing immediately (first load).' : ' Refresh queued (5 min debounce).'}`);
 
                     localStorage.removeItem(getCacheKey(CACHE_SEGMENTS.FACTIONS));
                     localStorage.removeItem(getTimestampKey(CACHE_SEGMENTS.FACTIONS));
                     localStorage.removeItem(getVersionKey(CACHE_SEGMENTS.FACTIONS));
-
                     localStorage.setItem('factionsDataVersion', serverVersion);
 
-                    showNotification("Employee data has been updated.", "success", 4000);
-
-                    await refreshSegments([CACHE_SEGMENTS.FACTIONS]);
+                    if (factionsFirstFire) {
+                        await refreshSegments([CACHE_SEGMENTS.FACTIONS]);
+                    } else {
+                        await debouncedRefresh([CACHE_SEGMENTS.FACTIONS]);
+                    }
+                    factionsFirstFire = false;
                 } else if (serverVersion === null && localVersion !== null) {
-                    console.log(`🗑️ Global factions version deleted from server. Clearing local cache.`);
+                    console.log(`🗑️ Global factions version deleted from server.`);
                     localStorage.removeItem(getCacheKey(CACHE_SEGMENTS.FACTIONS));
                     localStorage.removeItem(getTimestampKey(CACHE_SEGMENTS.FACTIONS));
                     localStorage.removeItem(getVersionKey(CACHE_SEGMENTS.FACTIONS));
                     localStorage.removeItem('factionsDataVersion');
-                    showNotification("Employee data cleared due to server-side deletion.", "info", 4000);
-                    await refreshSegments([CACHE_SEGMENTS.FACTIONS]);
+                    await debouncedRefresh([CACHE_SEGMENTS.FACTIONS]);
                 }
+                factionsFirstFire = false;
             });
         })();
 
@@ -418,12 +510,13 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
         (async () => {
             const optionsVersionRef = ref(database, 'appMetadata/selectOptionsDataVersion');
             let initialServerVersion = null;
+            const oldLocalVersion = localStorage.getItem('selectOptionsDataVersion');
 
             try {
                 const snapshot = await get(optionsVersionRef);
                 if (snapshot.exists()) {
                     initialServerVersion = String(snapshot.val());
-                    console.log(`[DataContext] Initial selectOptionsDataVersion fetched from server: v${initialServerVersion}`);
+                    console.debug(`[DataContext] Initial selectOptionsDataVersion fetched from server: v${initialServerVersion}`);
                     localStorage.setItem('selectOptionsDataVersion', initialServerVersion);
                 } else {
                     console.log('[DataContext] selectOptionsDataVersion does not exist on server initially. Clearing local version.');
@@ -434,6 +527,15 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                 localStorage.removeItem('selectOptionsDataVersion');
             }
 
+            if (oldLocalVersion !== null && initialServerVersion !== null && oldLocalVersion !== initialServerVersion) {
+                console.log(`🔄 SelectOptions version changed offline (v${oldLocalVersion} → v${initialServerVersion}). Refreshing selectOptions data.`);
+                localStorage.removeItem(getCacheKey(CACHE_SEGMENTS.SELECT_OPTIONS));
+                localStorage.removeItem(getTimestampKey(CACHE_SEGMENTS.SELECT_OPTIONS));
+                localStorage.removeItem(getVersionKey(CACHE_SEGMENTS.SELECT_OPTIONS));
+                refreshSegments([CACHE_SEGMENTS.SELECT_OPTIONS]);
+            }
+
+            let optionsFirstFire = true;
             firebaseListeners.current.optionsVersion = onValue(optionsVersionRef, async (snapshot) => {
                 if (!dataInitializedRef.current) {
                     console.log('[DataContext] Global options version listener triggered, but DataContext not initialized. Skipping.');
@@ -442,29 +544,31 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                 const serverVersion = snapshot.exists() ? String(snapshot.val()) : null;
                 const localVersion = localStorage.getItem('selectOptionsDataVersion');
 
-                console.log(`Global Select Options Version - Local: ${localVersion || 'N/A'}, Server: ${serverVersion || 'N/A'}`);
+                console.debug(`Global Select Options Version - Local: ${localVersion || 'N/A'}, Server: ${serverVersion || 'N/A'}`);
 
                 if (serverVersion !== null && localVersion !== serverVersion) { 
-                    console.log(`🔄 Global select options version mismatch (v${localVersion} → v${serverVersion}). Clearing and refreshing options cache...`);
+                    console.log(`🔄 Global select options version mismatch (v${localVersion} → v${serverVersion}).${optionsFirstFire ? ' Refreshing immediately (first load).' : ' Refresh queued (5 min debounce).'}`);
 
                     localStorage.removeItem(getCacheKey(CACHE_SEGMENTS.SELECT_OPTIONS));
                     localStorage.removeItem(getTimestampKey(CACHE_SEGMENTS.SELECT_OPTIONS));
                     localStorage.removeItem(getVersionKey(CACHE_SEGMENTS.SELECT_OPTIONS));
-
                     localStorage.setItem('selectOptionsDataVersion', serverVersion);
 
-                    showNotification("Select options have been updated.", "success", 4000);
-
-                    await refreshSegments([CACHE_SEGMENTS.SELECT_OPTIONS]);
+                    if (optionsFirstFire) {
+                        await refreshSegments([CACHE_SEGMENTS.SELECT_OPTIONS]);
+                    } else {
+                        await debouncedRefresh([CACHE_SEGMENTS.SELECT_OPTIONS]);
+                    }
+                    optionsFirstFire = false;
                 } else if (serverVersion === null && localVersion !== null) {
-                    console.log(`🗑️ Global select options version deleted from server. Clearing local cache.`);
+                    console.log(`🗑️ Global select options version deleted from server.`);
                     localStorage.removeItem(getCacheKey(CACHE_SEGMENTS.SELECT_OPTIONS));
                     localStorage.removeItem(getTimestampKey(CACHE_SEGMENTS.SELECT_OPTIONS));
                     localStorage.removeItem(getVersionKey(CACHE_SEGMENTS.SELECT_OPTIONS));
                     localStorage.removeItem('selectOptionsDataVersion');
-                    showNotification("Select options data cleared due to server-side deletion.", "info", 4000);
-                    await refreshSegments([CACHE_SEGMENTS.SELECT_OPTIONS]);
+                    await debouncedRefresh([CACHE_SEGMENTS.SELECT_OPTIONS]);
                 }
+                optionsFirstFire = false;
             });
         })();
 
@@ -472,12 +576,13 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
         (async () => {
             const lsccVersionRef = ref(database, 'appMetadata/lsccDataVersion');
             let initialServerVersion = null;
+            const oldLocalVersion = localStorage.getItem('lsccDataVersion');
 
             try {
                 const snapshot = await get(lsccVersionRef);
                 if (snapshot.exists()) {
                     initialServerVersion = String(snapshot.val());
-                    console.log(`[DataContext] Initial lsccDataVersion fetched from server: v${initialServerVersion}`);
+                    console.debug(`[DataContext] Initial lsccDataVersion fetched from server: v${initialServerVersion}`);
                     localStorage.setItem('lsccDataVersion', initialServerVersion);
                 } else {
                     console.log('[DataContext] lsccDataVersion does not exist on server initially. Clearing local version.');
@@ -488,6 +593,15 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                 localStorage.removeItem('lsccDataVersion');
             }
 
+            if (oldLocalVersion !== null && initialServerVersion !== null && oldLocalVersion !== initialServerVersion) {
+                console.log(`🔄 LSCC version changed offline (v${oldLocalVersion} → v${initialServerVersion}). Refreshing LSCC data.`);
+                localStorage.removeItem(getCacheKey(CACHE_SEGMENTS.LSCC));
+                localStorage.removeItem(getTimestampKey(CACHE_SEGMENTS.LSCC));
+                localStorage.removeItem(getVersionKey(CACHE_SEGMENTS.LSCC));
+                refreshSegments([CACHE_SEGMENTS.LSCC]);
+            }
+
+            let lsccFirstFire = true;
             firebaseListeners.current.lsccVersion = onValue(lsccVersionRef, async (snapshot) => {
                 if (!dataInitializedRef.current) {
                     console.log('[DataContext] Global LSCC version listener triggered, but DataContext not initialized. Skipping.');
@@ -496,29 +610,31 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                 const serverVersion = snapshot.exists() ? String(snapshot.val()) : null;
                 const localVersion = localStorage.getItem('lsccDataVersion');
 
-                console.log(`Global LSCC Version - Local: ${localVersion || 'N/A'}, Server: ${serverVersion || 'N/A'}`);
+                console.debug(`Global LSCC Version - Local: ${localVersion || 'N/A'}, Server: ${serverVersion || 'N/A'}`);
 
                 if (serverVersion !== null && localVersion !== serverVersion) { 
-                    console.log(`🔄 Global LSCC version mismatch (v${localVersion} → v${serverVersion}). Clearing and refreshing LSCC cache...`);
+                    console.log(`🔄 Global LSCC version mismatch (v${localVersion} → v${serverVersion}).${lsccFirstFire ? ' Refreshing immediately (first load).' : ' Refresh queued (5 min debounce).'}`);
 
                     localStorage.removeItem(getCacheKey(CACHE_SEGMENTS.LSCC));
                     localStorage.removeItem(getTimestampKey(CACHE_SEGMENTS.LSCC));
                     localStorage.removeItem(getVersionKey(CACHE_SEGMENTS.LSCC));
-
                     localStorage.setItem('lsccDataVersion', serverVersion);
 
-                    showNotification("LSCC protocols/keywords have been updated.", "success", 4000);
-
-                    await refreshSegments([CACHE_SEGMENTS.LSCC]);
+                    if (lsccFirstFire) {
+                        await refreshSegments([CACHE_SEGMENTS.LSCC]);
+                    } else {
+                        await debouncedRefresh([CACHE_SEGMENTS.LSCC]);
+                    }
+                    lsccFirstFire = false;
                 } else if (serverVersion === null && localVersion !== null) {
-                    console.log(`🗑️ Global LSCC version deleted from server. Clearing local cache.`);
+                    console.log(`🗑️ Global LSCC version deleted from server.`);
                     localStorage.removeItem(getCacheKey(CACHE_SEGMENTS.LSCC));
                     localStorage.removeItem(getTimestampKey(CACHE_SEGMENTS.LSCC));
                     localStorage.removeItem(getVersionKey(CACHE_SEGMENTS.LSCC));
                     localStorage.removeItem('lsccDataVersion');
-                    showNotification("LSCC data cleared due to server-side deletion.", "info", 4000);
-                    await refreshSegments([CACHE_SEGMENTS.LSCC]);
+                    await debouncedRefresh([CACHE_SEGMENTS.LSCC]);
                 }
+                lsccFirstFire = false;
             });
         })();
     }, [updateCacheSegment, showNotification, refreshSegments]);
@@ -563,7 +679,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
             });
     
             if (Object.keys(cachedSegments).length > 0) {
-                console.log('📦 Using partially or fully cached data from localStorage for segments:', Object.keys(cachedSegments));
+                console.debug('📦 Using partially or fully cached data from localStorage for segments:', Object.keys(cachedSegments));
                 updateStateWithData(cachedSegments);
                 dataCache.current = { ...dataCache.current, ...cachedSegments };
                 didLoadFromCache.current = true;
@@ -579,7 +695,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
             }
             setDataLoaded(true);
             setIsLoadingData(false);
-            setLoading(false);
+            setIsLoadingData(false);
             return;
         }
     
@@ -634,7 +750,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
             setHasFirebaseError(true);
         } finally {
             setIsLoadingData(false);
-            setLoading(false);
+            setIsLoadingData(false);
             if (loadingNotificationId) {
                 removeNotification(loadingNotificationId);
             }
@@ -642,53 +758,17 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
     }, [
         showNotification, removeNotification, updateCacheSegment, // Added updateCacheSegment
         setFactionsData, setAgencyDataStore, setSelectOptions,
-        setIsLoadingData, setLoading, setFormsData,
+        setIsLoadingData, setFormsData,
         isAuthenticated, user, webhooks // Replaced sendDataRequestLog with webhooks
     ]);
 
-    const refreshData = useCallback(async () => {
-        setDataLoaded(false); // Invalidate cache
-        Object.values(CACHE_SEGMENTS).forEach(segment => {
-            localStorage.removeItem(getCacheKey(segment));
-            localStorage.removeItem(getTimestampKey(segment));
-        });
-        await loadData(true); // Force a refresh
-    }, [loadData]);
-
-    // Function to notify of direct Firebase updates
-    const notifyDataUpdate = useCallback(async (path, type = 'update') => {
-        console.log(`🔔 Received direct update notification for path: ${path}`);
-        
-        // Determine which segment(s) need to be refreshed based on the path
-        const segmentsToRefresh = [];
-        
-        if (path.startsWith('savedReports/')) {
-            // Reports don't need localStorage refresh, but we might want to invalidate related data
-            return;
-        }
-        
-        // Check if the path matches any of our cache segments
-        Object.entries(CACHE_SEGMENTS).forEach(([key, segment]) => {
-            if (path.startsWith(segment)) {
-                segmentsToRefresh.push(segment);
-            }
-        });
-        
-        if (segmentsToRefresh.length > 0) {
-            console.log(`🔄 Refreshing segments due to direct update: ${segmentsToRefresh.join(', ')}`);
-            await refreshSegments(segmentsToRefresh);
-        }
-    }, [refreshSegments]);
-
-
-
 
     const cleanupCache = useCallback(() => {
-        // Remove remnants of both versioning systems to be safe
-        localStorage.removeItem('formsDataVersion');
-        localStorage.removeItem('factionsDataVersion');
-        localStorage.removeItem('selectOptionsDataVersion');
-        localStorage.removeItem('lsccDataVersion');
+        // Remove old static versioned cache keys only (v1.x, v1.x, etc.)
+        // Note: We do NOT remove the version trackers (formsDataVersion, etc.)
+        // because they are needed by loadData to find the correct cache key.
+        // Removing them causes the next page load to fall back to version "0",
+        // which doesn't match any cache, causing a wasted full re-fetch.
         localStorage.removeItem('formVersions');
 
         // Explicitly remove old forms cache versions
@@ -793,13 +873,30 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                     console.log('[DataContext] Starting DataContext initialization (first useEffect invocation)...');
         
                     try {
+                        // Clear stale localStorage BEFORE loading data or attaching listeners
+                        // This prevents quota errors from Firebase persistence filling up the cache
+                        cleanupCache();
+                        // Also clear stale Firebase persistence keys that accumulate over time
+                        try {
+                            const staleKeys = [];
+                            for (let i = 0; i < localStorage.length; i++) {
+                                const key = localStorage.key(i);
+                                if (key && (key.startsWith('firebase:') || key.startsWith('cache_data_undefined'))) {
+                                    staleKeys.push(key);
+                                }
+                            }
+                            staleKeys.forEach(key => {
+                                localStorage.removeItem(key);
+                                console.log(`🧹 Removed stale key: ${key.substring(0, 60)}`);
+                            });
+                        } catch { /* best effort */ }
+
                         // loadData handles internal caching logic (memory/localStorage/Firebase fetch)
                         await loadData(); 
                         if (isMounted) {
                             console.log('[DataContext] Data load complete. Setting up Firebase listeners.');
                             sessionStorage.setItem('dataContextInitialized', 'true'); // Mark session as initialized
                             setupFirebaseListeners();
-                            cleanupCache(); // <--- ADD THIS LINE
                         }
                     } catch (error) {
                         console.error('[DataContext] Error during DataContext initialization:', error);
@@ -821,7 +918,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
         const phmcListData = useMemo(() => {
             // PHMC FACTION = 364, filtered by excluding CORONER categories
             if (!factionsData['364'] || typeof factionsData['364'].members !== 'object' || !factionsData['364'].members) {
-                console.log('[DataContext] phmcListData: Faction data empty or malformed');
+                    console.debug('[DataContext] phmcListData: Faction data empty or malformed');
                 return [];
             }
     
@@ -856,7 +953,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
         const coronerListData = useMemo(() => {
         // PHMC FACTION = 364, filtered by CORONER categories
         if (!factionsData['364'] || typeof factionsData['364'].members !== 'object' || !factionsData['364'].members) {
-            console.log('[DataContext] coronerListData: Faction data empty or malformed');
+            console.debug('[DataContext] coronerListData: Faction data empty or malformed');
             return [];
         }
 
@@ -891,7 +988,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                 const category = member.rank || 'Coroner';
                 return { ...member, category };
             });
-            console.log('[DataContext] coronerListData using FACTION data:', dataSource.length, 'members');
+            console.debug('[DataContext] coronerListData using FACTION data:', dataSource.length, 'members');
         }
         return dataSource;
     }, [factionsData, verifiedAdmins]);
@@ -905,17 +1002,13 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
         agencyDataStore,
         selectOptions,
         isLoadingData,
-        loading,
-        refreshData,
         refreshSegments,
-        notifyDataUpdate, // Expose the notification function
-        sendDataRequestLog: webhooks.sendDataRequestLog, // Expose the logging function
-        isDevMode,
-        setIsDevMode,
-        lsccData, // Add lsccData to the context value
-        morgueRecords, // Add morgueRecords to the context value
-        morgueWhitelist, // Add morgueWhitelist to the context value
-        hasFirebaseError, // Expose firebase error status
+        updateNow,
+        pendingRefreshInfo,
+        sendDataRequestLog: webhooks.sendDataRequestLog,
+        lsccData,
+        morgueRecords,
+        hasFirebaseError,
     };
             
                 return (

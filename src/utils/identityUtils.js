@@ -1,8 +1,13 @@
-// Helper function to get character data from GTA World OAuth user
+import { ref, get, update } from 'firebase/database';
+import { database } from '../firebase';
+
+// ---------------------------------------------------------------------------
+// Character Data Extraction (from GTA World OAuth)
+// ---------------------------------------------------------------------------
+
 export const getCharacterData = (gtaWorldUser) => {
     if (!gtaWorldUser) return null;
 
-    // Debug: Log faction member data and OAuth details (only once per session)
     if (gtaWorldUser && !window.gtawDebugLogged) {
         console.log('[GTAW Debug] OAuth User Data:', {
             username: gtaWorldUser.username,
@@ -16,7 +21,6 @@ export const getCharacterData = (gtaWorldUser) => {
         window.gtawDebugLogged = true;
     }
 
-    // Priority 1: Try faction data with character info (this is the character they're logged in with for the faction)
     if (gtaWorldUser.faction) {
         const factionChar = gtaWorldUser.faction;
         return {
@@ -28,18 +32,14 @@ export const getCharacterData = (gtaWorldUser) => {
         };
     }
 
-    // Priority 2: Try to get character data from the proper location (characters array)
     const apiChars = gtaWorldUser?.userData?.character || gtaWorldUser?.userData?.characters || gtaWorldUser?.character || gtaWorldUser?.characters || [];
     const factionChars = gtaWorldUser?.allFactionCharacters || [];
-    
-    // Combine them to ensure we don't miss anything, base on API chars if available
+
     const characterArray = apiChars.length > 0 ? apiChars : factionChars;
-    
+
     if (Array.isArray(characterArray) && characterArray.length > 0) {
-        // Find the "best" character to show
         let character = characterArray[0].character || characterArray[0];
-        
-        // If we have a specific active character name in the parent user object, try to match it
+
         const activeName = gtaWorldUser.characterName || gtaWorldUser.character_name;
         if (activeName) {
             const match = characterArray.find(c => {
@@ -49,9 +49,7 @@ export const getCharacterData = (gtaWorldUser) => {
             });
             if (match) character = match.character || match;
         }
-        
-        // Look for faction enrichment for the selected character
-        // Normalize character ID to string for strict comparison
+
         const charId = String(character.characterId || character.id);
         const factionMatch = factionChars.find(fc => {
             const fcData = fc.character || fc;
@@ -69,7 +67,6 @@ export const getCharacterData = (gtaWorldUser) => {
         };
     }
 
-    // Final fallback
     return {
         id: gtaWorldUser.id,
         firstname: '',
@@ -79,19 +76,16 @@ export const getCharacterData = (gtaWorldUser) => {
     };
 };
 
-// Helper function to get character name with proper fallbacks
 export const getCharacterName = (gtaWorldUser) => {
     const characterData = getCharacterData(gtaWorldUser);
     return characterData ? characterData.fullName : 'GTAW User';
 };
 
-// Helper function to get character ID (for badge numbers)
 export const getCharacterID = (gtaWorldUser) => {
     const characterData = getCharacterData(gtaWorldUser);
     return characterData ? characterData.id : gtaWorldUser?.id;
 };
 
-// Helper function to clean rank by removing dash characters
 export const cleanRank = (rank) => {
     if (!rank) return 'GTAW User';
     return rank.replace(/-/g, ' ').trim();
@@ -100,10 +94,10 @@ export const cleanRank = (rank) => {
 export const formatCharacterNameForDisplay = (characterName) => {
     if (!characterName) return '';
     return characterName
-        .replace(/_/g, ' ') // Replace underscores with spaces
-        .split(' ')         // Split by spaces
-        .map(word => word.charAt(0).toUpperCase() + word.slice(1)) // Capitalize first letter of each word
-        .join(' ');         // Join back with spaces
+        .replace(/_/g, ' ')
+        .split(' ')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
 };
 
 export const getDatabaseRank = (gtaWorldUser, factionsData) => {
@@ -116,7 +110,7 @@ export const getDatabaseRank = (gtaWorldUser, factionsData) => {
         const faction = factionsData[factionId];
         if (faction.members) {
             const members = Object.values(faction.members);
-            const employee = members.find(member => 
+            const employee = members.find(member =>
                 member.characterName && member.characterName.toLowerCase() === characterName.toLowerCase()
             );
             if (employee) {
@@ -124,19 +118,41 @@ export const getDatabaseRank = (gtaWorldUser, factionsData) => {
             }
         }
     }
-    
+
     return null;
 };
 
 export const getDisplayRank = (gtaWorldUser, factionsData) => {
-    // Try to get database rank first
     const dbRank = getDatabaseRank(gtaWorldUser, factionsData);
     if (dbRank) return cleanRank(dbRank);
-    
-    // Fallback to cleaned faction rank
+
     if (gtaWorldUser?.faction?.rank) {
         return cleanRank(gtaWorldUser.faction.rank);
     }
-    
+
     return 'GTAW User';
+};
+
+// ---------------------------------------------------------------------------
+// Faction Member Updates
+// ---------------------------------------------------------------------------
+
+export const updateDiscordName = async (characterId, discordName) => {
+    if (!characterId) {
+        throw new Error('Character ID is required to update Discord name.');
+    }
+
+    const userRef = ref(database, `factions/364/members/${characterId}`);
+
+    try {
+        await update(userRef, {
+            discordName: discordName,
+            discord: discordName
+        });
+        console.log(`Successfully updated Discord name for character ${characterId}`);
+        return { success: true };
+    } catch (error) {
+        console.error(`Failed to update Discord name for character ${characterId}:`, error);
+        throw new Error('Failed to save Discord name to the database.');
+    }
 };

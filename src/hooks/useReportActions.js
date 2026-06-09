@@ -4,9 +4,13 @@ import { ref, set, get, remove } from 'firebase/database';
 import * as Sentry from "@sentry/react";
 import { useNotification } from '../contexts/NotificationContext';
 import { useData } from '../contexts/DataContext';
-import { getCharacterName } from '../utils/characterUtils';
+import { getCharacterName } from '../utils/identityUtils';
 import { comprehensiveSanitize } from '../utils/textUtils';
 import useGtaWorldAuth from './useGtaWorldAuth';
+
+const isLocalHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const REPORTS_PATH = isLocalHost ? 'testingSavedReports' : 'newSavedReports';
+const BBCODE_PATH = isLocalHost ? 'testingSavedReportBBCode' : 'newSavedReportBBCode';
 
 export const useReportActions = () => {
     const { showNotification } = useNotification();
@@ -32,11 +36,11 @@ export const useReportActions = () => {
         } else {
             reportPath = isLegacyReport
                 ? `savedReports/${sanitizedUserId}/${reportFirebaseKey}`
-                : `newSavedReports/${sanitizedUserId}/${reportFirebaseKey}`;
-            
+: `${REPORTS_PATH}/${sanitizedUserId}/${reportFirebaseKey}`;
+
             bbCodePath = isLegacyReport
                 ? `savedReportBBCode/${sanitizedUserId}/${reportFirebaseKey}`
-                : `newSavedReportBBCode/${sanitizedUserId}/${reportFirebaseKey}`;
+                : `${BBCODE_PATH}/${sanitizedUserId}/${reportFirebaseKey}`;
         }
 
         const reportRef = ref(database, reportPath);
@@ -92,9 +96,9 @@ export const useReportActions = () => {
 
         try {
             const legacyReportsRef = ref(database, `savedReports/${sanitizedUserId}`);
-            const newReportsRef = ref(database, `newSavedReports/${sanitizedUserId}`);
+            const newReportsRef = ref(database, `${REPORTS_PATH}/${sanitizedUserId}`);
             const legacyBBCodeRef = ref(database, `savedReportBBCode/${sanitizedUserId}`);
-            const newBBCodeRef = ref(database, `newSavedReportBBCode/${sanitizedUserId}`);
+            const newBBCodeRef = ref(database, `${BBCODE_PATH}/${sanitizedUserId}`);
 
             const [
                 legacyReportSnapshot,

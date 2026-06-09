@@ -3,7 +3,7 @@ import { HashRouter as Router, Route, Routes, Navigate } from 'react-router-dom'
 import { useNotification } from './contexts/NotificationContext.jsx';
 import { FormProvider } from './contexts/FormContext.jsx';
 import * as Sentry from "@sentry/react";
-import { sendDiscordErrorWebhook } from './utils/errorUtils';
+import { sendDiscordErrorWebhook } from './utils/logging';
 import { Spinner } from 'react-bootstrap';
 import { database } from './firebase';
 import { ref, onValue } from 'firebase/database';

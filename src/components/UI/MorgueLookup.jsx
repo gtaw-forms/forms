@@ -9,7 +9,7 @@ import AutopsyModal from '../Modals/AutopsyModal';
 import EmployeeCredentialsSection from '../Modals/EmployeeCredentialsSection';
 import SidebarNav from '../UI/SidebarNav';
 import * as Sentry from "@sentry/react";
-import { reportLogicalError } from '../../utils/errorUtils';
+import { reportLogicalError } from '../../utils/logging';
 import { triggerWebhookProxy } from '../../services/firebaseFunctions';
 
 const MorgueLookup = () => {
@@ -18,6 +18,7 @@ const MorgueLookup = () => {
     const { user: gtawUser, isAuthenticated } = useGtaWorldAuth();
     const { showNotification } = useNotification();
     const [searchTerm, setSearchTerm] = useState('');
+    const [searchQuery, setSearchQuery] = useState('');
     const [selectedRecord, setSelectedRecord] = useState(null);
     const [showModal, setShowModal] = useState(false);
     const [isReporting, setIsReporting] = useState(false);
@@ -35,6 +36,12 @@ const MorgueLookup = () => {
     const [welcomeDismissed, setWelcomeDismissed] = useState(
         localStorage.getItem('morgue_welcome_dismissed') === 'true'
     );
+
+    // Dark mode state (default dark)
+    const [darkMode, setDarkMode] = useState(() => {
+        const saved = localStorage.getItem('morgue_dark_mode');
+        return saved !== null ? saved === 'true' : true;
+    });
 
     // Display info for the sidebar
     const userDisplayInfo = useMemo(() => {
@@ -100,11 +107,11 @@ const MorgueLookup = () => {
         });
 
         return sorted.filter(record => 
-            (record.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-            String(record.caseId || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (record.location || '').toLowerCase().includes(searchTerm.toLowerCase())
+            (record.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+            String(record.caseId || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+            (record.location || '').toLowerCase().includes(searchQuery.toLowerCase())
         );
-    }, [morgueRecords, searchTerm, hasAccess]);
+    }, [morgueRecords, searchQuery, hasAccess]);
 
     // Pagination logic
     const indexOfLastRecord = currentPage * recordsPerPage;
@@ -270,6 +277,7 @@ const MorgueLookup = () => {
         const payload = {
             embeds: [{
                 title: 'Morgue Update Requested',
+                content: `<@228306972204597248> user: ${gtawUser?.username || 'Unknown'}, character: ${userDisplayInfo?.name || 'Unknown User'} is requesting a morgue update. Total records: ${morgueRecords?.length || 0}`,
                 color: 0xe67e22,
                 description: `**${userDisplayInfo?.name || 'Unknown User'}** (${gtawUser?.username || 'Unknown'}) is requesting a manual update of morgue records.`,
                 fields: [
@@ -283,14 +291,22 @@ const MorgueLookup = () => {
 
         try {
             await triggerWebhookProxy('admin', payload);
-            showNotification('Update request sent to the developer.', 'success');
+            showNotification('Request sent - You may be contacted via Discord to keep you updated. If you require a specific entry please contact Fr0styDev on Discord, or PHMC Lobby', 'success');
         } catch {
             showNotification('Failed to send update request. Try again later.', 'error');
         }
     }, [userDisplayInfo, gtawUser, isLocalHost, morgueRecords, showNotification]);
 
+    const toggleDarkMode = () => {
+        setDarkMode(prev => {
+            const next = !prev;
+            localStorage.setItem('morgue_dark_mode', String(next));
+            return next;
+        });
+    };
+
     return (
-        <div className="morgue-lookup-page">
+        <div className={`morgue-lookup-page ${darkMode ? 'dark-theme' : 'light-theme'}`}>
             <SidebarNav />
             
             <aside className="morgue-sidebar">
@@ -312,11 +328,44 @@ const MorgueLookup = () => {
                         placeholder="Enter name, case #..." 
                         value={searchTerm}
                         disabled={!hasAccess}
-                        onChange={(e) => {
-                            setSearchTerm(e.target.value);
-                            setCurrentPage(1); // Reset to first page on search
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                                const query = e.target.value.trim();
+                                const count = query
+                                    ? (morgueRecords || []).filter(r =>
+                                        (r.name || '').toLowerCase().includes(query.toLowerCase()) ||
+                                        String(r.caseId || '').toLowerCase().includes(query.toLowerCase()) ||
+                                        (r.location || '').toLowerCase().includes(query.toLowerCase())
+                                    ).length
+                                    : (morgueRecords || []).length;
+                                setSearchQuery(query);
+                                setCurrentPage(1);
+                                triggerWebhookProxy('admin', {
+                                    embeds: [{
+                                        title: 'Morgue Search',
+                                        color: 0x3498db,
+                                        description: `**${userDisplayInfo?.name || 'Unknown'}** searched the Morgue database.`,
+                                        fields: [
+                                            { name: 'Search Term', value: `\`${query || '(none - showing all)'}\``, inline: true },
+                                            { name: 'Results', value: String(count), inline: true },
+                                            { name: 'Username', value: gtawUser?.username || 'Unknown', inline: true },
+                                        ],
+                                        timestamp: new Date().toISOString(),
+                                        footer: { text: 'PHMC Morgue Usage Analytics' }
+                                    }]
+                                }).catch(() => {});
+                            }
                         }}
                     />
+                    <div className="morgue-search-hint">
+                        Press Enter to search. You can search by name, case number, or location.
+                        {searchQuery && (
+                            <button className="morgue-search-reset" onClick={() => { setSearchQuery(''); setSearchTerm(''); setCurrentPage(1); }}>
+                                <i className="fas fa-times me-1"></i>Clear
+                            </button>
+                        )}
+                    </div>
                 </div>
                 {hasAccess && (
                     <div className="morgue-sidebar-info mt-4">
@@ -326,7 +375,7 @@ const MorgueLookup = () => {
                 )}
 
                 {isLocalHost && (
-                    <div className="morgue-sidebar-dev mt-auto p-3 border border-warning rounded bg-dark bg-opacity-25">
+                    <div className="morgue-sidebar-dev p-3 border border-warning rounded bg-dark bg-opacity-25">
                         <div className="small text-warning mb-2 text-uppercase fw-bold"><i className="fas fa-tools me-2"></i>Dev Access Override</div>
                         <div className="d-flex flex-column gap-2">
                             <button 
@@ -349,13 +398,20 @@ const MorgueLookup = () => {
                         )}
                     </div>
                 )}
+
+                <div className="morgue-sidebar-theme-toggle mt-auto">
+                    <button className="morgue-theme-btn" onClick={toggleDarkMode} title={darkMode ? 'Switch to light theme' : 'Switch to dark theme'}>
+                        <i className={`fas ${darkMode ? 'fa-sun' : 'fa-moon'} me-2`}></i>
+                        {darkMode ? 'Light Mode' : 'Dark Mode'}
+                    </button>
+                </div>
             </aside>
 
             <main className="morgue-main">
                 <header className="morgue-header d-flex justify-content-between align-items-center">
                     <div>
                         <h2 style={{ margin: 0, fontWeight: 700 }}>Active Intake Records</h2>
-                        <div className="morgue-breadcrumb small text-muted">Tools &gt; Morgue Intake</div>
+                        
                     </div>
                 </header>
 
@@ -488,9 +544,25 @@ const MorgueLookup = () => {
                                         ))
                                     ) : (
                                         <tr>
-                                            <td colSpan="5" className="text-center p-5 text-muted">
-                                                <i className="fas fa-search fa-2x mb-3 opacity-25"></i>
-                                                <p>No records found matching your search.</p>
+                                            <td colSpan="5">
+                                                <div className="text-center p-5 morgue-text-muted">
+                                                    <i className="fas fa-search fa-2x mb-3 opacity-25"></i>
+                                                    <p className="mb-1">No records found matching your search.</p>
+                                                    <p className="small mb-3 opacity-75">
+                                                        Records are synced once daily. If the decedent or case you're looking for is recent, it may not have been imported yet.
+                                                    </p>
+                                                    <button className="morgue-btn-request-update mx-auto d-inline-flex" onClick={handleRequestUpdate}>
+                                                        <i className="fas fa-paper-plane me-1"></i>Request Update
+                                                    </button>
+                                                </div>
+                                                <div className="mx-auto mb-4 p-3 rounded bg-warning bg-opacity-10 border border-warning border-opacity-25" style={{ maxWidth: '500px' }}>
+                                                    <div className="d-flex align-items-start gap-2">
+                                                        <i className="fas fa-lightbulb text-warning mt-1"></i>
+                                                        <div className="small morgue-text-muted">
+                                                            <strong className="text-warning">Tip:</strong> Try searching by the decedent's full name, case number, or location. If you're sure the record exists in the Morgue Database, use the <strong>Request Update</strong> button above to notify staff or ask Fr0styDev on Discord for a specific entry.
+                                                        </div>
+                                                    </div>
+                                                </div>
                                             </td>
                                         </tr>
                                     )}
@@ -525,7 +597,7 @@ const MorgueLookup = () => {
                 </div>
 
                 <footer className="morgue-footer">
-                    <div className="me-auto small text-muted opacity-75 d-flex align-items-center">
+                    <div className="me-auto small  opacity-75 d-flex align-items-center">
                         <i className="fas fa-info-circle me-2"></i>
                         Any issues with accessing, please contact Fr0styDev (Alyson Frost) in the PHMC Discord.
                     </div>
@@ -541,36 +613,111 @@ const MorgueLookup = () => {
                         </div>
                     )}
 
-                    <button className="morgue-btn-request-update" onClick={handleRequestUpdate}>
-                        <i className="fas fa-paper-plane me-1"></i>Request Update
-                    </button>
-
                 </footer>
             </main>
 
             <AutopsyModal 
                 show={showModal} 
                 onClose={() => setShowModal(false)} 
-                record={selectedRecord} 
+                record={selectedRecord}
+                darkMode={darkMode}
             />
 
             <style>{`
+                .morgue-lookup-page.dark-theme {
+                    --page-bg: #1a1d21;
+                    --surface-bg: #2c2f33;
+                    --surface-hover: #36393f;
+                    --border-color: #40444b;
+                    --text-primary: #dcddde;
+                    --text-secondary: #b9bbbe;
+                    --text-muted: #8e9297;
+                    --text-muted-light: #72767d;
+                    --input-bg: #40444b;
+                    --input-text: #dcddde;
+                    --sidebar-bg: #15171a;
+                    --sidebar-border: #40444b;
+                    --sidebar-text: #dcddde;
+                    --sidebar-text-muted: #b9bbbe;
+                    --header-border: #40444b;
+                    --table-header-bg: #23262a;
+                    --table-header-text: #b9bbbe;
+                    --table-header-border: #40444b;
+                    --table-row-border: #33363b;
+                    --shadow: rgba(0,0,0,0.4);
+                    --shadow-sm: rgba(0,0,0,0.3);
+                    --shadow-md: rgba(0,0,0,0.5);
+                    --accent: #3498db;
+                    --accent-hover: #5dade2;
+                    --success: #2ea043;
+                    --success-hover: #3fb950;
+                    --danger: #f14a4a;
+                    --danger-hover-bg: rgba(241, 74, 74, 0.15);
+                    --warning: #f0a832;
+                    --warning-hover: #f5b642;
+                    --welcome-bg: linear-gradient(135deg, #1e3250, #2c2f33);
+                    --welcome-text: #ffffff;
+                    --page-btn-bg: #40444b;
+                    --page-btn-hover: #3498db;
+                    --page-btn-text: #dcddde;
+                    --filtered-results-text: #dcddde;
+                }
+
+                .morgue-lookup-page.light-theme {
+                    --page-bg: #f4f7f6;
+                    --surface-bg: #ffffff;
+                    --surface-hover: #f9f9f9;
+                    --border-color: #ddd;
+                    --text-primary: #333;
+                    --text-secondary: #666;
+                    --text-muted: #95a5a6;
+                    --text-muted-light: #bdc3c7;
+                    --input-bg: #ecf0f1;
+                    --input-text: #333;
+                    --sidebar-bg: #2c3e50;
+                    --sidebar-border: #555;
+                    --sidebar-text: #ffffff;
+                    --sidebar-text-muted: #bdc3c7;
+                    --header-border: #ddd;
+                    --table-header-bg: #eee;
+                    --table-header-text: #666;
+                    --table-header-border: #d0d0d0;
+                    --table-row-border: #eee;
+                    --shadow: rgba(0,0,0,0.2);
+                    --shadow-sm: rgba(0,0,0,0.05);
+                    --shadow-md: rgba(0,0,0,0.15);
+                    --accent: #3498db;
+                    --accent-hover: #2980b9;
+                    --success: #27ae60;
+                    --success-hover: #219150;
+                    --danger: #e74c3c;
+                    --danger-hover-bg: rgba(231, 76, 60, 0.15);
+                    --warning: #e67e22;
+                    --warning-hover: #d35400;
+                    --welcome-bg: linear-gradient(135deg, #2c3e50, #3498db);
+                    --welcome-text: #ffffff;
+                    --page-btn-bg: #eee;
+                    --page-btn-hover: #3498db;
+                    --page-btn-text: #ffffff;
+                    --filtered-results-text: inherit;
+                }
+
                 .morgue-lookup-page {
                     display: flex;
                     height: 100vh;
-                    background-color: #f4f7f6;
-                    color: #333;
+                    background-color: var(--page-bg);
+                    color: var(--text-primary);
                     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
                 }
 
                 .morgue-sidebar {
                     width: 300px;
-                    background-color: #2c3e50;
-                    color: white;
-                    padding: 20px;
+                    background-color: var(--sidebar-bg);
+                    color: var(--sidebar-text);
+                    padding: 20px 20px 80px;
                     display: flex;
                     flex-direction: column;
-                    box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+                    box-shadow: 2px 0 5px var(--shadow);
                     z-index: 5;
                 }
 
@@ -578,7 +725,7 @@ const MorgueLookup = () => {
                     font-size: 1.2rem;
                     font-weight: bold;
                     margin-bottom: 30px;
-                    border-bottom: 1px solid #555;
+                    border-bottom: 1px solid var(--sidebar-border);
                     padding-bottom: 10px;
                 }
 
@@ -586,7 +733,7 @@ const MorgueLookup = () => {
                     display: block;
                     font-size: 0.8rem;
                     margin-bottom: 8px;
-                    color: #bdc3c7;
+                    color: var(--sidebar-text-muted);
                 }
 
                 .morgue-search-box input {
@@ -594,8 +741,44 @@ const MorgueLookup = () => {
                     padding: 10px;
                     border-radius: 4px;
                     border: none;
-                    background: #ecf0f1;
-                    color: #333;
+                    background: var(--input-bg);
+                    color: var(--input-text);
+                }
+
+                .morgue-breadcrumb {
+                    color: var(--text-muted);
+                }
+
+                .morgue-sidebar-info .text-muted {
+                    color: var(--sidebar-text-muted) !important;
+                }
+
+                .morgue-text-muted {
+                    color: var(--text-muted);
+                }
+
+                .morgue-search-hint {
+                    display: flex;
+                    align-items: center;
+                    justify-content: flex-start;
+                    margin-top: 6px;
+                    font-size: 0.7rem;
+                    color: var(--text-muted);
+                }
+
+                .morgue-search-reset {
+                    background: none;
+                    border: none;
+                    color: var(--danger);
+                    font-size: 0.7rem;
+                    cursor: pointer;
+                    padding: 2px 6px;
+                    border-radius: 3px;
+                    transition: background 0.2s;
+                }
+
+                .morgue-search-reset:hover {
+                    background: var(--danger-hover-bg);
                 }
 
                 .morgue-main {
@@ -607,23 +790,52 @@ const MorgueLookup = () => {
 
                 .morgue-header {
                     padding: 20px;
-                    background: white;
-                    border-bottom: 1px solid #ddd;
+                    background: var(--surface-bg);
+                    border-bottom: 1px solid var(--border-color);
+                }
+
+                .morgue-sidebar-info .display-6 {
+                    color: var(--filtered-results-text);
+                }
+
+                .morgue-sidebar-theme-toggle {
+                    margin-top: auto;
+                }
+
+                .morgue-theme-btn {
+                    width: 100%;
+                    background: rgba(255,255,255,0.08);
+                    color: var(--sidebar-text);
+                    border: 1px solid var(--sidebar-border);
+                    border-radius: 6px;
+                    padding: 8px 12px;
+                    font-size: 0.8rem;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    transition: all 0.2s;
+                    opacity: 0.7;
+                }
+
+                .morgue-theme-btn:hover {
+                    opacity: 1;
+                    background: rgba(255,255,255,0.15);
                 }
 
                 .morgue-status-badge {
-                    background: #2c3e50;
-                    color: white;
+                    background: var(--sidebar-bg);
+                    color: var(--sidebar-text);
                     padding: 8px 15px;
                     border-radius: 50px;
                     font-size: 0.85rem;
                     display: flex;
                     align-items: center;
-                    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+                    box-shadow: 0 2px 5px var(--shadow);
                 }
 
                 .morgue-status-badge .label {
-                    color: #3498db;
+                    color: var(--accent);
                     font-weight: 800;
                     margin-right: 8px;
                     font-size: 0.7rem;
@@ -644,36 +856,36 @@ const MorgueLookup = () => {
                     border-collapse: separate;
                     border-spacing: 0;
                     margin-top: 20px;
-                    background: white;
-                    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+                    background: var(--surface-bg);
+                    box-shadow: 0 2px 10px var(--shadow-sm);
                     border-radius: 8px;
                 }
 
                 .morgue-table th {
                     position: sticky;
                     top: 0;
-                    background: #eee;
+                    background: var(--table-header-bg);
                     text-align: left;
                     padding: 15px;
                     z-index: 3;
                     text-transform: uppercase;
                     font-size: 0.75rem;
                     letter-spacing: 1px;
-                    color: #666;
-                    border-bottom: 2px solid #d0d0d0;
+                    color: var(--table-header-text);
+                    border-bottom: 2px solid var(--table-header-border);
                 }
 
                 .morgue-table td {
                     padding: 15px;
-                    border-bottom: 1px solid #eee;
+                    border-bottom: 1px solid var(--table-row-border);
                 }
 
                 .morgue-table tr:hover {
-                    background-color: #f9f9f9;
+                    background-color: var(--surface-hover);
                 }
 
                 .morgue-btn-view {
-                    background: #27ae60;
+                    background: var(--success);
                     color: white;
                     border: none;
                     border-radius: 4px;
@@ -685,12 +897,12 @@ const MorgueLookup = () => {
                 }
 
                 .morgue-btn-view:hover {
-                    background: #219150;
+                    background: var(--success-hover);
                     transform: scale(1.02);
                 }
 
                 .morgue-btn-summary {
-                    background: #3498db;
+                    background: var(--accent);
                     color: white;
                     border: none;
                     border-radius: 4px;
@@ -702,12 +914,12 @@ const MorgueLookup = () => {
                 }
 
                 .morgue-btn-summary:hover {
-                    background: #2980b9;
+                    background: var(--accent-hover);
                     transform: scale(1.02);
                 }
 
                 .morgue-page-btn {
-                    background: #eee;
+                    background: var(--page-btn-bg);
                     border: none;
                     width: 40px;
                     height: 40px;
@@ -717,11 +929,12 @@ const MorgueLookup = () => {
                     justify-content: center;
                     cursor: pointer;
                     transition: all 0.2s;
+                    color: var(--text-primary);
                 }
 
                 .morgue-page-btn:hover:not(:disabled) {
-                    background: #3498db;
-                    color: white;
+                    background: var(--page-btn-hover);
+                    color: var(--page-btn-text);
                 }
 
                 .morgue-page-btn:disabled {
@@ -731,15 +944,15 @@ const MorgueLookup = () => {
 
                 .morgue-footer {
                     padding: 15px 20px;
-                    background: white;
-                    border-top: 1px solid #ddd;
+                    background: var(--surface-bg);
+                    border-top: 1px solid var(--border-color);
                     display: flex;
                     gap: 15px;
                     justify-content: flex-end;
                 }
 
                 .morgue-btn-request {
-                    background-color: #95a5a6;
+                    background-color: var(--text-muted);
                     color: white;
                     padding: 10px 20px;
                     border: none;
@@ -749,7 +962,7 @@ const MorgueLookup = () => {
                 }
 
                 .morgue-btn-request-update {
-                    background-color: #e67e22;
+                    background-color: var(--warning);
                     color: white;
                     padding: 8px 16px;
                     border: none;
@@ -764,12 +977,12 @@ const MorgueLookup = () => {
                 }
 
                 .morgue-btn-request-update:hover {
-                    background-color: #d35400;
+                    background-color: var(--warning-hover);
                     transform: scale(1.02);
                 }
 
                 .morgue-btn-add {
-                    background-color: #2c3e50;
+                    background-color: var(--sidebar-bg);
                     color: white;
                     padding: 10px 20px;
                     border: none;
@@ -784,16 +997,17 @@ const MorgueLookup = () => {
                     justify-content: space-between;
                     padding: 12px 20px;
                     margin: 0 20px 10px;
-                    background: linear-gradient(135deg, #2c3e50, #3498db);
-                    color: white;
+                    background: var(--welcome-bg);
+                    color: var(--welcome-text);
                     border-radius: 8px;
-                    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+                    box-shadow: 0 2px 8px var(--shadow-md);
                 }
 
                 .morgue-welcome-content {
                     display: flex;
                     align-items: center;
                     gap: 12px;
+                    padding: 10px 0;
                 }
 
                 .morgue-welcome-icon {
@@ -809,7 +1023,7 @@ const MorgueLookup = () => {
                 .morgue-welcome-close {
                     background: none;
                     border: none;
-                    color: white;
+                    color: var(--welcome-text);
                     opacity: 0.6;
                     cursor: pointer;
                     padding: 4px 8px;
@@ -826,11 +1040,11 @@ const MorgueLookup = () => {
                 }
 
                 .morgue-status-badge.overdue {
-                    border: 1px solid #e74c3c;
+                    border: 1px solid var(--danger);
                 }
 
                 .morgue-status-badge.overdue .label:last-of-type {
-                    color: #e74c3c;
+                    color: var(--danger);
                 }
 
                 @media (max-width: 768px) {
