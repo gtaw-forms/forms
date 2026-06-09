@@ -28,7 +28,7 @@ export const testFirebaseFunctions = async () => {
 
         console.info('[Firebase Test] Functions instance created:', {
             app: !!functions.app,
-            region: 'us-central1 (configured)',
+            region: 'europe-west2 (configured)',
             customDomain: functions._delegate?._url?.includes('cloudfunctions.net'),
             functionsUrl: functions._delegate?._url || 'unknown'
         });

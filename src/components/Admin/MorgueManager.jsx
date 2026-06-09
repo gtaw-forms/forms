@@ -1,13 +1,11 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Form, Button, Table, Alert, Card, Tabs, Tab, Spinner, InputGroup, Modal } from 'react-bootstrap';
-import { ref, update, onValue, remove, push, set } from 'firebase/database';
+import { Form, Button, Table, Card, Tabs, Tab, Spinner, InputGroup, Modal } from 'react-bootstrap';
+import { ref, update, onValue, remove, set } from 'firebase/database';
 import { database } from '../../firebase';
-import { parseBulkMorgueRecords } from '../../utils/morgueParser';
-import { useData } from '../../contexts/DataContext';
+import { parseBulkMorgueRecords } from '../../utils/morgue';
 import { useDropzone } from 'react-dropzone';
 
 const MorgueManager = ({ showNotification }) => {
-    const { morgueWhitelist } = useData();
     const [rawLogs, setRawLogs] = useState('');
     const [parsedRecords, setParsedRecords] = useState([]);
     const [existingRecords, setExistingRecords] = useState([]);
@@ -25,11 +23,6 @@ const MorgueManager = ({ showNotification }) => {
     const [noteValue, setNoteValue] = useState('');
     const [isSavingNote, setIsSavingNote] = useState(false);
     
-    // Whitelist state
-    const [newWhitelistEntry, setNewWhitelistEntry] = useState('');
-    const [newWhitelistName, setNewWhitelistName] = useState('');
-    const [whitelistType, setWhitelistType] = useState('characterId');
-
     useEffect(() => {
         const morgueRef = ref(database, 'morgue-records');
         const unsubscribe = onValue(morgueRef, (snapshot) => {
@@ -202,42 +195,6 @@ const MorgueManager = ({ showNotification }) => {
         document.querySelector('.table-responsive')?.scrollTo(0, 0);
     };
 
-    const handleAddWhitelist = async (e) => {
-        e.preventDefault();
-        if (!newWhitelistEntry.trim()) return;
-
-        setIsProcessing(true);
-        try {
-            const whitelistRef = ref(database, 'morgue-whitelisted-users');
-            const newEntryRef = push(whitelistRef);
-            await set(newEntryRef, {
-                [whitelistType === 'characterId' ? 'id' : 'username']: newWhitelistEntry.trim().toLowerCase(),
-                characterName: newWhitelistName.trim() || 'Manual Entry',
-                grantedAt: Date.now(),
-                type: whitelistType
-            });
-            showNotification('User added to whitelist.', 'success');
-            setNewWhitelistEntry('');
-            setNewWhitelistName('');
-        } catch (error) {
-            console.error('Error adding to whitelist:', error);
-            showNotification('Failed to add to whitelist.', 'error');
-        } finally {
-            setIsProcessing(false);
-        }
-    };
-
-    const handleRemoveWhitelist = async (key) => {
-        if (!window.confirm('Are you sure you want to remove this user from the whitelist?')) return;
-
-        try {
-            await remove(ref(database, `morgue-whitelisted-users/${key}`));
-            showNotification('User removed from whitelist.', 'success');
-        } catch (error) {
-            console.error('Error removing from whitelist:', error);
-            showNotification('Failed to remove from whitelist.', 'error');
-        }
-    };
 
     const handleSaveNote = async () => {
         if (!editingNoteRecord) return;
@@ -473,111 +430,6 @@ const MorgueManager = ({ showNotification }) => {
                                     )}
                                 </>
                             )}
-                        </Card.Body>
-                    </Card>
-                </Tab>
-
-                <Tab eventKey="whitelist" title={<span><i className="fas fa-user-shield me-2"></i>Access Whitelist</span>}>
-                    <Card className="mb-4 bg-dark text-light border-secondary">
-                        <Card.Header className="border-secondary">
-                            <h4 className="mb-0"><i className="fas fa-plus-circle me-2"></i>Authorize New User</h4>
-                        </Card.Header>
-                        <Card.Body>
-                            <Form onSubmit={handleAddWhitelist}>
-                                <div className="row g-3">
-                                    <Form.Group className="col-md-3">
-                                        <Form.Label>Auth Type</Form.Label>
-                                        <Form.Select 
-                                            className="bg-dark text-light border-secondary"
-                                            value={whitelistType}
-                                            onChange={(e) => setWhitelistType(e.target.value)}
-                                        >
-                                            <option value="characterId">Character ID</option>
-                                            <option value="username">Username</option>
-                                        </Form.Select>
-                                    </Form.Group>
-                                    
-                                    <Form.Group className="col-md-4">
-                                        <Form.Label>{whitelistType === 'characterId' ? 'Character ID' : 'Username'}</Form.Label>
-                                        <Form.Control
-                                            placeholder={`e.g. ${whitelistType === 'characterId' ? '1234' : 'JohnDoe'}`}
-                                            value={newWhitelistEntry}
-                                            onChange={(e) => setNewWhitelistEntry(e.target.value)}
-                                            className="bg-dark text-light border-secondary"
-                                        />
-                                    </Form.Group>
-
-                                    <Form.Group className="col-md-5">
-                                        <Form.Label>Character Name (Optional)</Form.Label>
-                                        <InputGroup>
-                                            <Form.Control
-                                                placeholder="e.g. Dwayne Burke"
-                                                value={newWhitelistName}
-                                                onChange={(e) => setNewWhitelistName(e.target.value)}
-                                                className="bg-dark text-light border-secondary"
-                                            />
-                                            <Button variant="success" type="submit" disabled={isProcessing || !newWhitelistEntry}>
-                                                <i className="fas fa-user-plus me-2"></i>Add
-                                            </Button>
-                                        </InputGroup>
-                                    </Form.Group>
-                                </div>
-                                <Form.Text className="opacity-75 mt-2 d-block">
-                                    Whitelisted users gain READ access to the Morgue Intake Database even if they are not PHMC employees.
-                                </Form.Text>
-                            </Form>
-                        </Card.Body>
-                    </Card>
-
-                    <Card className="bg-dark text-light border-secondary shadow">
-                        <Card.Header className="border-secondary">
-                            <h4 className="mb-0">Currently Whitelisted</h4>
-                        </Card.Header>
-                        <Card.Body className="p-0">
-                            <Table striped bordered hover variant="dark" className="mb-0">
-                                <thead>
-                                    <tr>
-                                        <th>Identity</th>
-                                        <th>Auth Info</th>
-                                        <th>Date Added</th>
-                                        <th className="text-center">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {morgueWhitelist && Object.keys(morgueWhitelist).length > 0 ? (
-                                        Object.entries(morgueWhitelist).map(([key, entry]) => (
-                                            <tr key={key}>
-                                                <td>
-                                                    <strong>{entry.characterName || 'Unknown Name'}</strong>
-                                                    {entry.faction && <div className="extra-small opacity-50">{entry.faction}</div>}
-                                                </td>
-                                                <td>
-                                                    <span className={`badge bg-${entry.type === 'username' ? 'info' : 'primary'} me-2`}>
-                                                        {entry.type === 'username' ? 'U' : 'ID'}
-                                                    </span>
-                                                    <code className="text-light">{entry.id || entry.username}</code>
-                                                </td>
-                                                <td className="small opacity-75">
-                                                    {entry.grantedAt || entry.addedAt ? new Date(entry.grantedAt || entry.addedAt).toLocaleString() : 'Legacy Entry'}
-                                                </td>
-                                                <td className="text-center">
-                                                    <Button 
-                                                        variant="outline-danger" 
-                                                        size="sm"
-                                                        onClick={() => handleRemoveWhitelist(key)}
-                                                    >
-                                                        <i className="fas fa-user-minus me-2"></i>Remove
-                                                    </Button>
-                                                </td>
-                                            </tr>
-                                        ))
-                                    ) : (
-                                        <tr>
-                                            <td colSpan="4" className="text-center p-4">No users are currently whitelisted.</td>
-                                        </tr>
-                                    )}
-                                </tbody>
-                            </Table>
                         </Card.Body>
                     </Card>
                 </Tab>

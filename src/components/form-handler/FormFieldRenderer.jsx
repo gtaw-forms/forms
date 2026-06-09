@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import Select from 'react-select';
 import ImageUploader from './ImageUploader'; // Assuming ImageUploader is in the same directory or adjust path
 import { getUtcFormattedDateTime, getUtcFormattedTime } from '../../utils/dateTimeUtils';
@@ -9,7 +9,7 @@ import { triggerWebhookProxy } from '../../services/firebaseFunctions';
 import DecedentItemRenderer from './DecedentItemRenderer'; // Import the new component
 import CharacterSelector from '../Modals/CharacterSelector';
 import { decedentItemSchema } from '../../formSchemas/decedentSchema';
-import { formatCharacterNameForDisplay } from '../../utils/characterUtils'; // Import the new utility
+import { formatCharacterNameForDisplay } from '../../utils/identityUtils';
 import { useModal } from '../../contexts/ModalProvider';
 import { evaluateFieldVisibility } from '../../utils/formValidation';
 import { sanitizeMorgueText } from '../../utils/textUtils';
@@ -131,7 +131,16 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
   };
 
   const inputStyle = { width: "100%", padding: "0.8rem", background: "#1e293b", border: "1px solid #334155", color: "#e2e8f0", borderRadius: 8 };
+  const inputDisabledStyle = { width: "100%", padding: "0.8rem", background: "#0f172a", border: "1px solid #1e293b", color: "#475569", borderRadius: 8, cursor: "not-allowed" };
   const labelStyle = { display: "block", marginBottom: "0.5rem", fontWeight: "600", color: "#94a3b8" };
+
+  const prevTypeOfDeath = useRef(formValues.typeOfDeath);
+  useEffect(() => {
+    if (formValues.typeOfDeath === 'PK' && prevTypeOfDeath.current !== 'PK' && formValues.decedentName !== 'John Doe' && formValues.decedentName !== 'Jane Doe') {
+      handleChange('decedentName', 'John Doe');
+    }
+    prevTypeOfDeath.current = formValues.typeOfDeath;
+  }, [formValues.typeOfDeath]);
 
   switch (field.type) {
     case "hr":
@@ -298,7 +307,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
       }
 
       if (warningMessage) {
-        console.warn(`FormFieldRenderer: ${warningMessage} For field "${field.name}".`);
+        console.debug(`FormFieldRenderer: ${warningMessage} For field "${field.name}".`);
       }
 
       return (
@@ -344,7 +353,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
       }
 
       if (multiSelectWarningMessage) {
-        console.warn(`FormFieldRenderer: ${multiSelectWarningMessage} For field "${field.name}".`);
+        console.debug(`FormFieldRenderer: ${multiSelectWarningMessage} For field "${field.name}".`);
       }
 
       return (
@@ -718,9 +727,12 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
         }
 
         // Bullets
-        if (record.bullets && Array.isArray(record.bullets)) {
-            data.casings = record.bullets.map(b => `Bullet found with striation marks (${sanitizeMorgueText(b.type)}) #${b.id}`);
-            data.RadiologyResult = `${record.bullets.length} projectiles/slugs were identified via fluoroscopy and recovered during the autopsy.`;
+        const bulletsArr = record.bullets
+            ? (Array.isArray(record.bullets) ? record.bullets : [record.bullets])
+            : [];
+        if (bulletsArr.length > 0) {
+            data.casings = bulletsArr.map(b => `Bullet found with striation marks (${sanitizeMorgueText(b.type)}) #${b.id}`);
+            data.RadiologyResult = `${bulletsArr.length} projectiles/slugs were identified via fluoroscopy and recovered during the autopsy.`;
         }
 
         return data;
@@ -1247,7 +1259,11 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
       const handleDecedentItemChange = useCallback((indexToUpdate, subFieldName, subFieldValue) => {
         const updatedList = decedentList.map((item, idx) => {
           if (idx === indexToUpdate) {
-            return { ...item, [subFieldName]: subFieldValue };
+            const updated = { ...item, [subFieldName]: subFieldValue };
+            if (subFieldName === 'typeOfDeath' && subFieldValue === 'PK') {
+              updated.decedentName = 'John Doe';
+            }
+            return updated;
           }
           return item;
         });
@@ -1470,13 +1486,27 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
               USING MAP MARKER
             </div>
           )}
-          <input
-            type="text"
-            value={formValues[`${field.name}_display`] || formValues[field.name] || ""}
-            onChange={e => handleChange(field.name, e.target.value)} // Keep original field.name for BBCode generation
-            placeholder={field.placeholder || ""}
-            style={inputStyle}
-          />
+          {field.name === 'decedentName' && formValues.typeOfDeath === 'PK' ? (
+            <div>
+              <input type="text" value={formValues.decedentName || 'John Doe'} disabled style={inputDisabledStyle} />
+              <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                <button type="button" onClick={() => handleChange('decedentName', 'John Doe')} style={{ flex: 1, padding: '0.6rem', background: formValues.decedentName === 'John Doe' ? '#3b82f6' : '#1e293b', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 6, cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                  ♂ Male
+                </button>
+                <button type="button" onClick={() => handleChange('decedentName', 'Jane Doe')} style={{ flex: 1, padding: '0.6rem', background: formValues.decedentName === 'Jane Doe' ? '#3b82f6' : '#1e293b', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 6, cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                  ♀ Female
+                </button>
+              </div>
+            </div>
+          ) : (
+            <input
+              type="text"
+              value={formValues[`${field.name}_display`] || formValues[field.name] || ""}
+              onChange={e => handleChange(field.name, e.target.value)}
+              placeholder={field.placeholder || ""}
+              style={inputStyle}
+            />
+          )}
           <div style={{ display: 'flex', gap: '5px', marginTop: '5px' }}>
             {field.name === 'placeOfDeath' && !isUploadingMapImage[field.name] && !formValues[`${field.name}_isFromMap`] && (
               <button

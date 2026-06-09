@@ -1,4 +1,4 @@
-import { logAdminAction, getUserContext } from '../../utils/adminLogger';
+import { logAdminAction, getUserContext } from '../../utils/logging';
 import React, { useState, useEffect } from 'react';
 import { database } from '../../firebase';
 import { ref, get, set, runTransaction } from 'firebase/database';

@@ -1,7 +1,11 @@
 import * as Sentry from "@sentry/react";
-import { functions } from '../firebase';
-import { httpsCallable } from 'firebase/functions';
+import { httpsCallableFromURL, getFunctions } from 'firebase/functions';
 import { triggerWebhookProxy } from '../services/firebaseFunctions';
+
+const uploadImageProxyCallable = () => {
+  const url = 'https://europe-west4-gtaw-forms.cloudfunctions.net/uploadImageProxy';
+  return httpsCallableFromURL(getFunctions(), url);
+};
 
 const logUploadFailureToDiscord = async (error, service, context) => {
   const payload = {
@@ -25,6 +29,12 @@ const logUploadFailureToDiscord = async (error, service, context) => {
   }
 };
 
+const callUploadImageProxy = async (image, service, title) => {
+  const uploadProxy = uploadImageProxyCallable();
+  const result = await uploadProxy({ image, service, title });
+  return result.data;
+};
+
 export const uploadImageToImgBB = async (file) => {
   try {
     const base64Image = await new Promise((resolve, reject) => {
@@ -34,13 +44,7 @@ export const uploadImageToImgBB = async (file) => {
         reader.readAsDataURL(file);
     });
 
-    const uploadProxy = httpsCallable(functions, 'uploadImageProxy');
-    const result = await uploadProxy({
-        image: base64Image,
-        service: 'imgbb'
-    });
-
-    const data = result.data;
+    const data = await callUploadImageProxy(base64Image, 'imgbb');
 
     if (data.success) {
       return { url: data.url, thumb: data.thumb || data.url };
@@ -65,13 +69,7 @@ export const uploadImageToImgur = async (file) => {
         reader.readAsDataURL(file);
     });
 
-    const uploadProxy = httpsCallable(functions, 'uploadImageProxy');
-    const result = await uploadProxy({
-        image: base64Image,
-        service: 'imgur'
-      });
-
-    const data = result.data;
+    const data = await callUploadImageProxy(base64Image, 'imgur');
 
     if (data.success) {
       return { url: data.url, thumb: data.url };
@@ -139,13 +137,7 @@ export const uploadDataUrlToImgBB = async (dataUrl) => {
   try {
     const base64Image = dataUrl.split(',')[1];
 
-    const uploadProxy = httpsCallable(functions, 'uploadImageProxy');
-    const result = await uploadProxy({
-        image: base64Image,
-        service: 'imgbb'
-    });
-
-    const data = result.data;
+    const data = await callUploadImageProxy(base64Image, 'imgbb');
 
     if (data.success) {
       return { url: data.url, thumb: data.thumb || data.url };

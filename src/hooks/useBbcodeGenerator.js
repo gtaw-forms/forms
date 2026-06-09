@@ -2,7 +2,7 @@
 import { useState, useCallback } from 'react';
 import { getDepartmentFullName } from '../utils/bbcodeHelpers';
 import generateDecedentBBCode from '../phmc-bbcode-generators/generateMassFatality';
-import { formatCharacterNameForDisplay } from '../utils/characterUtils';
+import { formatCharacterNameForDisplay } from '../utils/identityUtils';
 
 const useBbcodeGenerator = (selectedForm, formValues, finalSelectOptions, agencyDataStore, gtaWorldUser, factionsData) => {
   const [generatedBBCode, setGeneratedBBCode] = useState("");

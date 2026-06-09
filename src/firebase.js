@@ -21,7 +21,7 @@ const database = getDatabase(app);
 const auth = getAuth(app);
 const analytics = getAnalytics(app);
 // Configure functions with the correct region (must match server-side)
-const functions = getFunctions(app, 'us-central1');
+const functions = getFunctions(app, 'europe-west2');
 
 // Function to delete a form
 const deleteForm = async (formId) => {

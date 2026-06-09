@@ -9,7 +9,7 @@ import DiscordNamePrompt from '../Modals/DiscordNamePrompt';
  */
 const DiscordNameCheck = ({ children }) => {
     const { user, isAuthenticated, isLoading: authLoading } = useGtaWorldAuth();
-    const { factionsData, loading: dataLoading } = useData();
+    const { factionsData, isLoadingData: dataLoading } = useData();
     const [showPrompt, setShowPrompt] = useState(false);
     const [characterId, setCharacterId] = useState(null);
     const [existingDiscord, setExistingDiscord] = useState('');

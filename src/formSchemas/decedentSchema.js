@@ -49,7 +49,7 @@ export const decedentItemSchema = [
     name: 'mannerOfDeath',
     label: 'Manner of Death',
     type: 'select',
-    optionsKey: 'mannerOfDeathOptions',
+    optionsKey: 'mannerOfDeath',
     ...compact50,
   },
   {
@@ -63,6 +63,6 @@ export const decedentItemSchema = [
   sectionHeader('Scene Evidence'),
   imageInput('scenePhotos', 'Scene Photos & Evidence', 6),
   
-  sectionHeader('Morgue and Damages'),
+  sectionHeader('Morgue Screenshot'),
   imageInput('additionalImages', 'Post URLs / Images', 6),
 ];

@@ -1,19 +1,26 @@
-/**
- * Error handling utilities for Discord webhooks and global error reporting
- */
-
 import * as Sentry from "@sentry/react";
+import { triggerWebhookProxy } from '../services/firebaseFunctions';
 
-// --- User Identity Helper ---
-/**
- * Gets the current user's OAuth identity for error reporting and debugging
- * @returns {{username: string|null, characterName: string|null, characterId: string|null, faction: string|null}|null}
- */
+// ---------------------------------------------------------------------------
+// User Context Helpers
+// ---------------------------------------------------------------------------
+
+export const getUserContext = () => {
+    const userAgent = navigator.userAgent || "N/A";
+    let timeZone = "N/A";
+    try {
+        timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    } catch (e) {
+        console.warn("Could not determine user timezone:", e);
+    }
+    return { userAgent, timeZone };
+};
+
 export const getUserOAuthIdentity = () => {
     try {
         const userData = localStorage.getItem('gta-user-data');
         if (!userData) return null;
-        
+
         const user = JSON.parse(userData);
         if (!user) return null;
 
@@ -34,71 +41,144 @@ export const getUserOAuthIdentity = () => {
     }
 };
 
-// --- Error Categorization ---
-const ErrorCategory = {
-    CONNECTION: 'Connection Error',
-    DATA_PROCESSING: 'Data Processing / Render Error',
-    SENTRY_API: 'Sentry API Error',
-    WEBHOOK: 'Webhook Error',
-    UNKNOWN: 'Unknown Error',
+export const getCurrentFormType = () => {
+    try {
+        const lastSelectedFormName = localStorage.getItem('lastSelectedFormName');
+        if (lastSelectedFormName) {
+            return lastSelectedFormName;
+        }
+        return 'Unknown';
+    } catch (error) {
+        console.warn('Error determining form type:', error);
+        return 'Unknown';
+    }
 };
 
-/**
- * Analyzes an error message to categorize it and provide a debugging suggestion.
- * @param {string} message - The error message string.
- * @returns {{category: string, suggestion: string}}
- */
-const categorizeError = (message) => {
-    const lowerMessage = (message || '').toLowerCase();
+// ---------------------------------------------------------------------------
+// Admin Action Logger
+// ---------------------------------------------------------------------------
 
-    if (lowerMessage === 'script error.') {
-        return {
-            category: 'Cross-Origin / Masked Error',
-            suggestion: "The browser suppressed the details of this error because it occurred in a script from a different origin (CORS). Possible causes: 1. A script from a CDN failing. 2. A browser extension injecting code. 3. A script loaded without 'crossorigin=\"anonymous\"'. Since this is an iPhone user, it could also be a failure in a WebKit-injected script."
-        };
-    }
+export const logAdminAction = async (adminEmail, action, details, context = null, userAgent = null, timeZone = null, gtaAuthUsername = null, characterData = null) => {
+    const userIdentifier = gtaAuthUsername ? `${gtaAuthUsername} (${adminEmail})` : (adminEmail || "Unknown");
 
-    if (/\.map is not a function|\.find is not a function|\.filter is not a function|cannot read properties of undefined/.test(lowerMessage)) {
-        return {
-            category: ErrorCategory.DATA_PROCESSING,
-            suggestion: "A component likely tried to render a list (e.g., using `.map`) but the data was `undefined` or not an array. Check context providers and data fetching logic to ensure defaults are always arrays (e.g., `myList || []`)."
-        };
-    }
-    if (/failed to fetch|networkerror/.test(lowerMessage)) {
-        return {
-            category: ErrorCategory.CONNECTION,
-            suggestion: "A network request failed. This could be a user's connection issue, a CORS problem, or the downstream service (e.g., Firebase, Discord webhook) being unavailable."
-        };
-    }
-    if (/sentry.*error/.test(lowerMessage)) {
-        return {
-            category: ErrorCategory.SENTRY_API,
-            suggestion: "The Sentry SDK itself threw an error. This might be a configuration issue or a problem with the Sentry service."
-        };
+    let description = context
+        ? `**Action:** ${action || "Unknown Action"}\n**Admin:** ${userIdentifier}\n**Category:** ${context}`
+        : `**Action:** ${action || "Unknown Action"}\n**Admin:** ${userIdentifier}`;
+
+    if (characterData && characterData.debugInfo) {
+        const { debugInfo } = characterData;
+        if (debugInfo.foundMember && debugInfo.charactersChecked?.length > 0) {
+            const primaryCharacter = characterData.faction;
+            description += `\n**Primary Character:** ${primaryCharacter?.characterName || 'Unknown'} (ID: ${primaryCharacter?.characterId || 'N/A'}) - Rank ${primaryCharacter?.scriptRank || 'N/A'}`;
+
+            if (debugInfo.charactersChecked.length > 1) {
+                description += `\n**All Characters:** ${debugInfo.charactersChecked.length} total`;
+            }
+        }
     }
 
-    return {
-        category: ErrorCategory.UNKNOWN,
-        suggestion: "The error type is not automatically recognized. Manual investigation of the stack trace and error message is required."
+    const fields = [
+        { name: "Details", value: `\`\`\`${details ? String(details).substring(0, 1000) : 'N/A'}\`\`\``, inline: false }
+    ];
+
+    if (characterData && characterData.debugInfo?.charactersChecked?.length > 0) {
+        const characterDetails = characterData.debugInfo.charactersChecked.map((char, index) => {
+            return `${index + 1}. ${char.name || 'Unknown'} (ID: ${char.id || 'N/A'})`;
+        }).join('\n');
+
+        const factionMembers = characterData.debugInfo.charactersChecked.filter(char =>
+            characterData.faction && char.id === characterData.faction.characterId
+        );
+
+        let characterField = `**All Characters (${characterData.debugInfo.charactersChecked.length}):**\n${characterDetails}`;
+
+        if (characterData.debugInfo.foundMember) {
+            characterField += `\n\n**PHMC Member:** ${characterData.faction?.characterName || 'Unknown'} (Rank ${characterData.faction?.scriptRank || 'N/A'})`;
+            characterField += `\n**Access Level:** ${characterData.accessLevel || 'none'}`;
+        } else {
+            characterField += `\n\n**PHMC Status:** Not a faction member`;
+        }
+
+        fields.push({
+            name: "Character Information",
+            value: characterField.substring(0, 1024),
+            inline: false
+        });
+    }
+
+    const embed = {
+        title: "Admin Action Logged",
+        color: 0xFFA500,
+        description: description,
+        fields: fields,
+        timestamp: new Date().toISOString(),
+        footer: { text: `PHMC Tools | ${timeZone}` }
     };
+
+    try {
+        await triggerWebhookProxy('admin', { embeds: [embed] });
+        console.log(`Admin action logged to Discord: ${action}`);
+    } catch (error) {
+        console.error('Error sending admin action webhook:', error);
+        Sentry.captureException(error, {
+            extra: {
+                context: 'Admin Action Webhook via Proxy',
+            }
+        });
+    }
 };
 
+// ---------------------------------------------------------------------------
+// Auth Logger
+// ---------------------------------------------------------------------------
 
-// --- Global Error Handling Setup ---
-let lastDiscordErrorMessage = '';
-let lastDiscordErrorTimestamp = 0;
-let lastInputInteraction = null; // Tracks recent input field interactions
-let isProcessingDiscordQueue = false;
-let discordErrorWebhookQueue = [];
-let errorTimestamps = []; // Stores timestamps of recent errors for rate limiting (module-level)
+export const logAuthErrorToDiscord = async (error, context) => {
+  try {
+    const embed = {
+      title: 'Authentication Error',
+      description: `An error occurred during: **${context}**`,
+      color: 15158332,
+      fields: [
+        {
+          name: 'Error Message',
+          value: `
 
-/**
- * Records input field interaction for error context
- * Usage: Call this in input change handlers to track recent interactions
- * Example: const handleChange = (e) => { recordInputInteraction('text', e.target.name); ... };
- * @param {string} inputType - Type of input interaction (e.g., 'text', 'select', 'checkbox')
- * @param {string} fieldName - Name of the input field
- */
+${error.message || 'No message'}
+
+`,
+        },
+        {
+          name: 'Stack Trace',
+          value: `
+
+${error.stack || 'No stack trace'}
+
+`,
+        },
+      ],
+      timestamp: new Date().toISOString(),
+      footer: {
+        text: 'PHMC Forms - Auth Error Logger',
+      },
+    };
+
+    const payload = {
+      username: 'Auth Error Bot',
+      embeds: [embed],
+    };
+
+    await triggerWebhookProxy('auth', payload);
+  } catch (loggingError) {
+    console.error('Failed to log auth error to Discord:', loggingError);
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Global Error Handling — Input Interaction Tracking
+// ---------------------------------------------------------------------------
+
+let lastInputInteraction = null;
+
 export const recordInputInteraction = (inputType, fieldName) => {
     const timestamp = Date.now();
     lastInputInteraction = {
@@ -106,7 +186,6 @@ export const recordInputInteraction = (inputType, fieldName) => {
         fieldName: fieldName,
         timestamp: timestamp
     };
-    // Clear after 30 seconds
     setTimeout(() => {
         if (lastInputInteraction && lastInputInteraction.timestamp === timestamp) {
             lastInputInteraction = null;
@@ -114,45 +193,36 @@ export const recordInputInteraction = (inputType, fieldName) => {
     }, 30000);
 };
 
-/**
- * Returns the last recorded input interaction
- * @returns {Object|null}
- */
 export const getLastInputInteraction = () => lastInputInteraction;
 
-// --- Console Interceptor ---
+// ---------------------------------------------------------------------------
+// Global Error Handling — Console Interceptor
+// ---------------------------------------------------------------------------
+
 let isConsoleIntercepted = false;
 const originalConsoleError = console.error;
 const originalConsoleWarn = console.warn;
 
-/**
- * Initializes interceptors for console.error and console.warn to redirect them to Discord
- * when Sentry is blocked or unreachable.
- */
 export const initConsoleInterceptor = (isSentryBlockedProvider) => {
     if (isConsoleIntercepted) return;
     isConsoleIntercepted = true;
 
-    // Add a custom 'critical' level to the console object
     console.critical = (...args) => {
-        // Prepend [CRITICAL] to ensure it bypasses the Discord filter logic
         console.error('[CRITICAL]', ...args);
     };
 
     console.error = (...args) => {
         originalConsoleError.apply(console, args);
-        
-        const isSentryBlocked = typeof isSentryBlockedProvider === 'function' 
-            ? isSentryBlockedProvider() 
+
+        const isSentryBlocked = typeof isSentryBlockedProvider === 'function'
+            ? isSentryBlockedProvider()
             : isSentryBlockedProvider;
 
-        // Only redirect to Discord if Sentry is blocked or if it's a critical PHMC error
-        const message = args.map(arg => 
+        const message = args.map(arg =>
             typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
         ).join(' ');
 
         if (isSentryBlocked || message.includes('PHMC') || message.includes('CRITICAL')) {
-            // Avoid infinite loops if sendDiscordErrorWebhook calls console.error
             if (message.includes('[Discord Error Webhook]')) return;
 
             const errorDetails = {
@@ -174,15 +244,14 @@ export const initConsoleInterceptor = (isSentryBlockedProvider) => {
     console.warn = (...args) => {
         originalConsoleWarn.apply(console, args);
 
-        const isSentryBlocked = typeof isSentryBlockedProvider === 'function' 
-            ? isSentryBlockedProvider() 
+        const isSentryBlocked = typeof isSentryBlockedProvider === 'function'
+            ? isSentryBlockedProvider()
             : isSentryBlockedProvider;
 
-        const message = args.map(arg => 
+        const message = args.map(arg =>
             typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
         ).join(' ');
 
-        // Only redirect warnings to Discord if they seem critical and Sentry is blocked
         if (isSentryBlocked && (message.includes('PHMC') || message.includes('CRITICAL') || message.includes('Security'))) {
             if (message.includes('[Discord Error Webhook]')) return;
 
@@ -202,63 +271,43 @@ export const initConsoleInterceptor = (isSentryBlockedProvider) => {
     };
 };
 
-/**
- * Automatically determines the current form type from localStorage.
- * @returns {string} The form name or 'Unknown' if not found
- */
-export const getCurrentFormType = () => {
-    try {
-        const lastSelectedFormName = localStorage.getItem('lastSelectedFormName');
-        if (lastSelectedFormName) {
-            return lastSelectedFormName;
-        }
-        return 'Unknown';
-    } catch (error) {
-        console.warn('Error determining form type:', error);
-        return 'Unknown';
-    }
-};
+// ---------------------------------------------------------------------------
+// Global Error Handling — Discord Webhook Queue
+// ---------------------------------------------------------------------------
 
-/**
- * Processes the queue of Discord error messages one by one with a delay.
- * This acts as a rate-limiter to prevent spamming the webhook.
- */
+let lastDiscordErrorMessage = '';
+let lastDiscordErrorTimestamp = 0;
+let lastDiscordErrorStack = '';
+let isProcessingDiscordQueue = false;
+let discordErrorWebhookQueue = [];
+let errorTimestamps = [];
+
 const processDiscordErrorQueue = async () => {
     if (isProcessingDiscordQueue || discordErrorWebhookQueue.length === 0) return;
 
     isProcessingDiscordQueue = true;
     const payload = discordErrorWebhookQueue.shift();
     try {
-        const { triggerWebhookProxy } = await import('../services/firebaseFunctions');
         await triggerWebhookProxy('error', payload);
     } catch (e) {
         console.error("CRITICAL: Failed to send Discord error webhook.", e);
     } finally {
-        // Rate limit: wait 2 seconds before processing the next item.
         setTimeout(() => {
             isProcessingDiscordQueue = false;
-            processDiscordErrorQueue(); // Process next item
+            processDiscordErrorQueue();
         }, 2000);
     }
 };
 
-/**
- * Creates and queues a Discord embed for an unhandled error.
- * @param {object} errorDetails - Details about the caught error.
- */
 export const sendDiscordErrorWebhook = (errorDetails, sentryBlocked = false) => {
-    // --- Enhanced Rate Limiting for Discord Error Webhook ---
-    const ERROR_RATE_LIMIT_WINDOW = 5 * 60 * 1000; // 5 minutes for duplicate check
-    const MAX_ERRORS_PER_WINDOW = 10; // Max errors in the rolling window
-    const RATE_LIMIT_DURATION = 60 * 1000; // 1 minute rolling window
-    let lastDiscordErrorStack = '';
+    const ERROR_RATE_LIMIT_WINDOW = 5 * 60 * 1000;
+    const MAX_ERRORS_PER_WINDOW = 10;
+    const RATE_LIMIT_DURATION = 60 * 1000;
 
     const now = Date.now();
 
-    // Filter timestamps to the current window
     errorTimestamps = errorTimestamps.filter(timestamp => (now - timestamp) < RATE_LIMIT_DURATION);
 
-    // Check if the rate limit is exceeded
     if (errorTimestamps.length >= MAX_ERRORS_PER_WINDOW) {
         console.warn(`[Discord Error Webhook] Rate limit exceeded. Suppressing error:`, errorDetails.message);
         return;
@@ -267,30 +316,25 @@ export const sendDiscordErrorWebhook = (errorDetails, sentryBlocked = false) => 
     const errorMessage = String(errorDetails.message || '').substring(0, 1000);
     const errorStack = String(errorDetails.stack || '').substring(0, 1000);
 
-    // Normalize error message by removing common prefixes like "TypeError:", "ReferenceError:", etc.
     const normalizeErrorMessage = (msg) => {
         return msg.replace(/^(TypeError|ReferenceError|SyntaxError|RangeError|URIError|EvalError|InternalError):\s*/i, '');
     };
     const normalizedErrorMessage = normalizeErrorMessage(errorMessage);
 
-    // If the normalized error message is identical to the last sent, and within the window, skip sending
     if (
         normalizedErrorMessage === normalizeErrorMessage(lastDiscordErrorMessage) &&
         (now - lastDiscordErrorTimestamp) < ERROR_RATE_LIMIT_WINDOW
     ) {
-        // Optionally, log to console for debugging
         console.warn('[Discord Error Webhook] Duplicate error suppressed:', errorMessage);
         return;
     }
 
-    // Add new error timestamp
     errorTimestamps.push(now);
 
     lastDiscordErrorMessage = errorMessage;
     lastDiscordErrorStack = errorStack;
     lastDiscordErrorTimestamp = now;
 
-    // Try to get the Sentry event ID if available
     let sentryEventId = null;
     if (window.Sentry && window.Sentry.lastEventId) {
         sentryEventId = window.Sentry.lastEventId();
@@ -298,28 +342,24 @@ export const sendDiscordErrorWebhook = (errorDetails, sentryBlocked = false) => 
         sentryEventId = Sentry.lastEventId();
     }
 
-    const { category, suggestion } = categorizeError(errorMessage);
     const userIdentity = getUserOAuthIdentity();
 
     const embed = {
-        title: errorDetails.isButtonClickError ? "🚨 Button Click Error 🚨" : errorDetails.isLogicalError ? "🧪 Logical Inconsistency Detected 🧪" : "🚨 Unhandled Application Error 🚨",
+        title: errorDetails.isButtonClickError ? "Button Click Error" : errorDetails.isLogicalError ? "Logical Inconsistency Detected" : "Unhandled Application Error",
         description: errorDetails.isLogicalError ? "A logical error or data inconsistency was detected by the application." : "An unhandled error was caught by the global error handler.",
         color: errorDetails.isLogicalError ? 0x3498db : (sentryBlocked ? 0xFFA500 : 0xDE354C),
         fields: [
             { name: "Error Type", value: errorDetails.isLogicalError ? "Logical/Data" : (errorDetails.isButtonClickError ? "UI Button Interaction" : (errorDetails.isInputFieldError ? "Input Field Interaction" : "General")), inline: true },
-            { name: "Sentry Status", value: sentryBlocked ? "⚠️ Blocked / Unreachable" : "✅ Active", inline: true },
-            { name: "Form Type", value: `\`${errorDetails.currentFormType || getCurrentFormType()}\``, inline: true },
             userIdentity ? { name: "User Identity", value: `**Username:** \`${userIdentity.username || 'Unknown'}\`\n**Character:** \`${userIdentity.characterName || 'Unknown'}\`\n**Character ID:** \`${userIdentity.characterId || 'Unknown'}\`\n**Faction:** \`${userIdentity.faction || 'Unknown'}\``, inline: false } : null,
             { name: "Error Message", value: `\`${errorMessage}\``, inline: false },
             { name: "Context / Location", value: `**${errorDetails.context || errorDetails.source || "Unknown Location"}**`, inline: true },
             !errorDetails.isLogicalError ? { name: "Line/Col", value: `L${errorDetails.lineno || "N/A"}:C${errorDetails.colno || "N/A"}`, inline: true } : null,
-            { name: "Debugging Suggestion", value: suggestion || "Check the provided context and logs.", inline: false },
             { name: "User Agent", value: `\`${navigator.userAgent}\``, inline: false },
             sentryEventId ? { name: "Sentry Trace/Event ID", value: `\`${sentryEventId}\``, inline: false } : null,
-            errorDetails.navigationHistory && errorDetails.navigationHistory.length > 0 ? { 
-                name: "Navigation History (Last 15)", 
-                value: `\`\`\`\n${errorDetails.navigationHistory.map(h => `[${h.timestamp}] (${h.type}) ${h.path}`).join('\n')}\n\`\`\``, 
-                inline: false 
+            errorDetails.navigationHistory && errorDetails.navigationHistory.length > 0 ? {
+                name: "Navigation History (Last 15)",
+                value: `\`\`\`\n${errorDetails.navigationHistory.map(h => `[${h.timestamp}] (${h.type}) ${h.path}`).join('\n')}\n\`\`\``,
+                inline: false
             } : null,
             errorDetails.clientInfo ? { name: "Client Info", value: `\`\`\`json\n${JSON.stringify(errorDetails.clientInfo, null, 2)}\n\`\`\``, inline: false } : null,
         ].filter(Boolean),
@@ -327,20 +367,12 @@ export const sendDiscordErrorWebhook = (errorDetails, sentryBlocked = false) => 
         footer: { text: `PHMC Tools - Global Error Handler | ` }
     };
     discordErrorWebhookQueue.push({ content: '<@228306972204597248>', embeds: [embed] });
-    processDiscordErrorQueue(); // Start processing the queue if it's not already running
+    processDiscordErrorQueue();
 };
 
-/**
- * Reports a logical error or data inconsistency that doesn't cause a crash but needs attention.
- * This is useful for catching rare bugs like the 'GTAW User' author name issue.
- * @param {string} title - Brief title of the issue
- * @param {string} message - Detailed description
- * @param {Object} context - Relevant data context for debugging
- */
 export const reportLogicalError = (title, message, context = {}) => {
     const timestamp = new Date().toISOString();
-    
-    // 1. Log to Sentry
+
     Sentry.captureMessage(`[Logical Error] ${title}`, {
         level: "warning",
         tags: {
@@ -355,7 +387,6 @@ export const reportLogicalError = (title, message, context = {}) => {
         }
     });
 
-    // 2. Queue for Discord
     const errorDetails = {
         message: `${title}: ${message}`,
         context: "Logical Error Handler",
@@ -367,7 +398,6 @@ export const reportLogicalError = (title, message, context = {}) => {
             ...context
         }
     };
-    
-    // We reuse the existing Discord error webhook logic
+
     sendDiscordErrorWebhook(errorDetails);
 };

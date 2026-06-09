@@ -69,9 +69,6 @@ export const FormHandler = () => {
           // Left Sidebar State
       const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(() => !localStorage.getItem('lastSelectedFormName'));
 
-      // Helper for consistent name comparison
-      const normalizeName = useCallback((name) => String(name || '').trim().toLowerCase(), []);
-
       // Hooks
       const { showNotification, removeNotification } = useNotification();
       const { 
@@ -142,6 +139,9 @@ export const FormHandler = () => {
     formsData,
     hasFirebaseError,
     factionsData,
+    pendingRefreshInfo,
+    updateNow,
+    isLoadingData,
   } = useData();
 
   useEffect(() => {
@@ -260,6 +260,44 @@ export const FormHandler = () => {
     const employeeNameField = `${employeeType}Employee`;
     return formValues[employeeNameField];
   }, [formValues, employeeType]);
+
+  const formProgress = useMemo(() => {
+    if (!selectedForm?.fields) return { pct: 0, label: '', decedentName: '' };
+    const fillableTypes = ['input','textarea','select','multi_select','checkbox','radio','timer','dynamic_text_list','image','employee_select','multi_employee_select','character_selector','medicine_block','decedent_list'];
+    const fillable = selectedForm.fields.filter(f => fillableTypes.includes(f.type));
+    const total = fillable.length;
+    const filled = fillable.filter(f => {
+      const val = formValues[f.name];
+      if (f.type === 'checkbox') return !!val;
+      if (f.type === 'image' || f.type === 'multi_select' || f.type === 'dynamic_text_list') return Array.isArray(val) && val.length > 0;
+      if (f.type === 'decedent_list') return Array.isArray(val) && val.length > 0 && val.some(d => d.decedentName);
+      return val !== '' && val !== null && val !== undefined;
+    }).length;
+    const isMassFat = selectedForm.firebaseKey === 'mass-ftality-test';
+    let decedentName = '';
+    if (isMassFat && Array.isArray(formValues.decedents)) {
+      const named = formValues.decedents.find(d => d.decedentName && d.decedentOOC);
+      decedentName = named ? `${named.decedentName} - ${named.decedentOOC}` : (formValues.decedents.length > 0 ? `Decedent (${formValues.decedents.length})` : '');
+    } else {
+      decedentName = formValues.decedentName || '';
+    }
+    return { pct: total > 0 ? Math.round((filled / total) * 100) : 0, total, filled, decedentName };
+  }, [selectedForm, formValues]);
+
+  const [countdownStr, setCountdownStr] = useState('');
+  useEffect(() => {
+    if (!pendingRefreshInfo) { setCountdownStr(''); return; }
+    const tick = () => {
+      const remaining = Math.max(0, pendingRefreshInfo.expiresAt - Date.now());
+      if (remaining <= 0) { setCountdownStr(''); return; }
+      const mins = Math.floor(remaining / 60000);
+      const secs = Math.floor((remaining % 60000) / 1000);
+      setCountdownStr(`${mins}:${String(secs).padStart(2, '0')}`);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [pendingRefreshInfo]);
 
   const { generatedBBCode, generatedTitle, showBBCode, setShowBBCode, generateBBCode /*, limitWarning */ } = useBbcodeGenerator(
     selectedForm,
@@ -480,97 +518,24 @@ export const FormHandler = () => {
   }, [selectedForm, formValues]);
 
 
-  const updateEmployeeCredentials = useCallback((employeeName, empType) => {
-    const updates = {};
-    const targetNameNormalized = normalizeName(employeeName);
-    
-    updates[`${empType}Employee`] = employeeName || ''; 
-
-    if (employeeName) {
-      const currentUserCharName = user?.faction?.characterName || user?.activeCharacter?.characterName;
-      const isCurrentUser = normalizeName(currentUserCharName) === targetNameNormalized;
-
-      if (isCurrentUser) {
-          console.log(`%c[DEBUG] Credential Sync Origin: LIVE OAUTH (${employeeName})`, "color: #2ecc71; font-weight: bold;");
-          const factionData = user?.faction || user?.activeCharacter || {};
-          
-          // Try to find the user in the database list to get their persistent Discord name
-          const dbMatch = [...phmcListData, ...coronerListData].find(e => 
-              normalizeName(e.characterName) === targetNameNormalized || 
-              String(e.characterId) === String(factionData.characterId)
-          );
-
-          let rawRank = factionData.rank || factionData.scriptRank || '';
-          updates[`${empType}Rank`] = rawRank ? cleanRankText(String(rawRank)) : '';
-          updates[`${empType}Badge`] = factionData.characterId || factionData.badge || '';
-          
-          // Prioritize Database Discord Name > User Profile Username
-          const resolvedDiscord = dbMatch?.discordName || dbMatch?.discord || user.username || '';
-          updates[`${empType}Discord`] = resolvedDiscord;
-          updates[`${empType}PHNumber`] = dbMatch?.phNumber || '50056';
-
-          console.log(`[DEBUG] Resolved Discord for ${employeeName}: ${resolvedDiscord} (Source: ${dbMatch?.discordName || dbMatch?.discord ? 'Firebase' : 'UCP Fallback'})`);
-
-          if (factionData.firstname && factionData.lastname) {
-              updates[`${empType}FirstName`] = factionData.firstname;
-              updates[`${empType}LastName`] = factionData.lastname;
-          } else {
-               const parts = employeeName.split(' ');
-               updates[`${empType}FirstName`] = parts[0] || '';
-               updates[`${empType}LastName`] = parts.slice(1).join(' ') || '';
-          }
-          return updates;
-      }
-
-      const selectedOption = employeeOptions.flatMap(group => group.options).find(opt => opt.value === employeeName);
-      const fullEmployeeData = [...phmcListData, ...coronerListData].find(e => e.name === employeeName);
-
-      if (selectedOption && fullEmployeeData) {
-          console.log(`%c[DEBUG] Credential Sync Origin: STATIC LIST (${employeeName})`, "color: #3498db; font-weight: bold;");
-          updates[`${empType}Rank`] = fullEmployeeData.rank ? cleanRankText(fullEmployeeData.rank) : '';
-          updates[`${empType}Badge`] = fullEmployeeData.badge || '';
-          
-          const staticDiscord = fullEmployeeData.discordName || fullEmployeeData.discord || '';
-          updates[`${empType}Discord`] = staticDiscord;
-          updates[`${empType}PHNumber`] = fullEmployeeData.phNumber || '';
-          updates[`${empType}FirstName`] = selectedOption.firstname || '';
-          updates[`${empType}LastName`] = selectedOption.lastname || '';
-
-          console.log(`[DEBUG] Resolved Discord for ${employeeName}: ${staticDiscord} (Source: STATIC_LIST_FIREBASE)`);
-      } else {
-          console.warn(`%c[DEBUG] Credential Sync Origin: UNKNOWN/CLEAR (${employeeName})`, "color: #e67e22; font-weight: bold;");
-          if (!employeeName) {
-            console.trace("[DEBUG] Credentials wiped due to empty employee name. Trace:");
-          }
-          updates[`${empType}Rank`] = '';
-          updates[`${empType}Badge`] = '';
-          updates[`${empType}FirstName`] = '';
-          updates[`${empType}LastName`] = '';
-          updates[`${empType}Discord`] = '';
-          updates[`${empType}PHNumber`] = '';
-      }
-    } else {
-      console.log(`%c[DEBUG] Credential Sync Origin: EMPTY/RESET`, "color: #95a5a6;");
-      console.trace("[DEBUG] Credentials reset trace:");
-      updates[`${empType}Rank`] = '';
-      updates[`${empType}Badge`] = '';
-      updates[`${empType}FirstName`] = '';
-      updates[`${empType}LastName`] = '';
-      updates[`${empType}Discord`] = '';
-      updates[`${empType}PHNumber`] = '';
-    }
-    return updates;
-  }, [employeeOptions, phmcListData, coronerListData, user]); // Dependencies for useCallback
-
   const handleSelectChange = useCallback((selectedOption, actionMeta) => {
     const name = selectedOption ? selectedOption.value : '';
-    // fieldName is implicitly 'coronerEmployee' or 'phmcEmployee' based on where the select is rendered
-    
-    // Use the helper to get all relevant credential updates
-    const credentialUpdates = updateEmployeeCredentials(name, employeeType);
-    
-    setFormValues(prev => ({...prev, ...credentialUpdates}));
-  }, [employeeType, updateEmployeeCredentials, setFormValues]);
+    const updates = { [`${employeeType}Employee`]: name || '' };
+
+    if (name) {
+      const fullData = [...phmcListData, ...coronerListData].find(e => e.name === name);
+      if (fullData) {
+        updates[`${employeeType}Rank`] = fullData.rank ? cleanRankText(fullData.rank) : '';
+        updates[`${employeeType}Badge`] = fullData.badge || '';
+        updates[`${employeeType}Discord`] = fullData.discordName || fullData.discord || '';
+        updates[`${employeeType}PHNumber`] = fullData.phNumber || '';
+        updates[`${employeeType}FirstName`] = selectedOption?.firstname || '';
+        updates[`${employeeType}LastName`] = selectedOption?.lastname || '';
+      }
+    }
+
+    setFormValues(prev => ({ ...prev, ...updates }));
+  }, [employeeType, phmcListData, coronerListData, cleanRankText, setFormValues]);
 
 const handleClearForm = useCallback(() => {
     console.log("[FormHandler] 🗑️ handleClearForm triggered.");
@@ -590,14 +555,24 @@ const handleClearForm = useCallback(() => {
         });
         
         // Safety: If the form was partially broken/cleared and we are authenticated, 
-        // try to re-derive the current user's credentials to ensure they aren't lost in the clear.
+        // re-populate the current user's credentials from OAuth data.
         if (isAuthenticated && user) {
             const currentRole = selectedForm?.accessType === 'Coroner' ? 'coroner' : 'phmc';
-            const oauthName = user?.faction?.characterName || user?.activeCharacter?.characterName;
+            const factionData = user?.faction || user?.activeCharacter;
+            const oauthName = factionData?.characterName;
             
-            if (oauthName) {
-                const liveUpdates = updateEmployeeCredentials(oauthName, currentRole);
-                Object.assign(preservedValues, liveUpdates);
+            if (oauthName && factionData) {
+                const dbMatch = [...phmcListData, ...coronerListData].find(e =>
+                    String(e.characterId) === String(factionData.characterId)
+                );
+
+                preservedValues[`${currentRole}Employee`] = oauthName;
+                preservedValues[`${currentRole}Rank`] = factionData.rank ? cleanRankText(String(factionData.rank)) : (factionData.scriptRank || '');
+                preservedValues[`${currentRole}Badge`] = factionData.characterId || factionData.badge || '';
+                preservedValues[`${currentRole}Discord`] = dbMatch?.discordName || dbMatch?.discord || user.username || '';
+                preservedValues[`${currentRole}PHNumber`] = dbMatch?.phNumber || '50056';
+                preservedValues[`${currentRole}FirstName`] = factionData.firstname || (oauthName.split(' ')[0] || '');
+                preservedValues[`${currentRole}LastName`] = factionData.lastname || (oauthName.split(' ').slice(1).join(' ') || '');
             }
         }
     }
@@ -610,7 +585,7 @@ const handleClearForm = useCallback(() => {
     }
     setShowBBCode(false);
     showNotification('Form cleared!', 'info');
-  }, [formValues, setFormValues, selectedForm, showNotification, keepCredentials, isAuthenticated, user, updateEmployeeCredentials]);
+  }, [formValues, setFormValues, selectedForm, showNotification, keepCredentials, isAuthenticated, user, phmcListData, coronerListData, cleanRankText]);
 
   const copyAndSaveReport = useCallback(async () => {
     if (generatedBBCode) {
@@ -867,66 +842,25 @@ const handleClearForm = useCallback(() => {
         const currentFormRank = currentFormValues[`${currentEmployeeType}Rank`];
         const currentFormBadge = currentFormValues[`${currentEmployeeType}Badge`];
 
-        // --- DEBUG LOG START ---
-        // Always log the current state for debugging, even if valid
-        const dName = currentFormEmployeeName || "N/A";
-        const dRank = currentFormRank || "N/A";
-        const dBadge = currentFormBadge || "N/A";
-        const dIsCoroner = currentEmployeeType === 'coroner' ? "TRUE" : "FALSE";
-        console.log(`[DEBUG] FOUND PHMC EMPLOYEE: ${dName} | ${dRank} | ${dBadge} | (Coroner: ${dIsCoroner}) |`);
-        // --- DEBUG LOG END ---
+        if (
+          currentFormEmployeeName !== oauthEmployeeName ||
+          !currentFormRank ||
+          !currentFormBadge
+        ) {
+          const factionData = user?.faction || user?.activeCharacter;
+          const dbMatch = [...phmcListData, ...coronerListData].find(e =>
+            String(e.characterId) === String(factionData?.characterId)
+          );
 
-        // This is a heuristic: if the name is different, or if *any* of the key derived fields are missing,
-        // we should re-derive to ensure consistency.
-        const shouldUpdateCredentials = (
-            currentFormEmployeeName !== oauthEmployeeName ||
-            !currentFormRank || 
-            !currentFormBadge 
-        );
-
-        if (shouldUpdateCredentials) {
-            console.log(`[FormHandler] Syncing credentials for ${currentEmployeeType}. OAuth: ${oauthEmployeeName}, Form: ${currentFormEmployeeName || 'N/A'}`);
-            let credentialUpdates = updateEmployeeCredentials(oauthEmployeeName, currentEmployeeType);
-
-            // --- REDUNDANCY/FALLBACK CHECK ---
-            // If the standard sync returned incomplete data (missing rank/badge) but we have a valid OAuth user,
-            // forcefully inject the data from the user object to prevent clearing credentials.
-            if (!credentialUpdates[`${currentEmployeeType}Rank`] || !credentialUpdates[`${currentEmployeeType}Badge`]) {
-                console.warn(`[FormHandler] ⚠️ Credential Sync returned empty values despite valid OAuth user. Engaging Emergency Fallback.`);
-                
-                const fData = user?.faction || user?.activeCharacter || {};
-                
-                // Also attempt to resolve persistent Discord info in fallback
-                const dbMatch = [...phmcListData, ...coronerListData].find(e => 
-                    normalizeName(e.characterName) === normalizeName(oauthEmployeeName) || 
-                    String(e.characterId) === String(fData.characterId)
-                );
-
-                credentialUpdates[`${currentEmployeeType}Employee`] = oauthEmployeeName;
-                credentialUpdates[`${currentEmployeeType}Rank`] = fData.rank ? cleanRankText(String(fData.rank)) : (fData.scriptRank || '');
-                credentialUpdates[`${currentEmployeeType}Badge`] = fData.characterId || fData.badge || '';
-                
-                // Fallback also respects Database Discord Name
-                credentialUpdates[`${currentEmployeeType}Discord`] = dbMatch?.discordName || dbMatch?.discord || user.username || '';
-                credentialUpdates[`${currentEmployeeType}PHNumber`] = dbMatch?.phNumber || '50056';
-                
-                if (fData.firstname && fData.lastname) {
-                    credentialUpdates[`${currentEmployeeType}FirstName`] = fData.firstname;
-                    credentialUpdates[`${currentEmployeeType}LastName`] = fData.lastname;
-                } else {
-                     const parts = oauthEmployeeName.split(' ');
-                     credentialUpdates[`${currentEmployeeType}FirstName`] = parts[0] || '';
-                     credentialUpdates[`${currentEmployeeType}LastName`] = parts.slice(1).join(' ') || '';
-                }
-            }
-            // --- END REDUNDANCY CHECK ---
-
-            Object.assign(updates, credentialUpdates); // Merge credential updates
+          updates[`${currentEmployeeType}Employee`] = oauthEmployeeName;
+          updates[`${currentEmployeeType}Rank`] = factionData?.rank ? cleanRankText(String(factionData.rank)) : (factionData?.scriptRank || '');
+          updates[`${currentEmployeeType}Badge`] = factionData?.characterId || factionData?.badge || '';
+          updates[`${currentEmployeeType}Discord`] = dbMatch?.discordName || dbMatch?.discord || user.username || '';
+          updates[`${currentEmployeeType}PHNumber`] = dbMatch?.phNumber || '50056';
+          updates[`${currentEmployeeType}FirstName`] = factionData?.firstname || (oauthEmployeeName.split(' ')[0] || '');
+          updates[`${currentEmployeeType}LastName`] = factionData?.lastname || (oauthEmployeeName.split(' ').slice(1).join(' ') || '');
         }
       } else {
-        // If OAuth name becomes unavailable (e.g., user logs out), we DO NOT automatically clear the form credentials.
-        // This prevents flickering 'isAuthenticated' states from wiping work in progress.
-        // If the user effectively logs out, the UI usually redirects or covers the form anyway.
         if (isDevelopment) {
              console.log(`[FormHandler] User auth lost/changed, but preserving credentials for ${currentEmployeeType} to prevent data loss.`);
         }
@@ -939,7 +873,7 @@ const handleClearForm = useCallback(() => {
       }
     });
 
-  }, [user, isAuthenticated, selectedForm, setFormValues, updateEmployeeCredentials, characterName]);
+  }, [user, isAuthenticated, selectedForm, setFormValues, characterName, phmcListData, coronerListData, cleanRankText]);
 
 
 
@@ -1083,7 +1017,8 @@ const handleClearForm = useCallback(() => {
   }, []);
 
   useEffect(() => {
-    if (selectedForm && finalSelectOptions && isDevelopment) { // Only run in dev for now to be safe
+    // Wait for data to fully load before validating — selectOptions may be empty during init
+    if (selectedForm && finalSelectOptions && isDevelopment && !isLoadingData && Object.keys(finalSelectOptions).length > 0) {
       const validationErrors = validateForm(selectedForm, finalSelectOptions);
 
       if (validationErrors.length > 0) {
@@ -1125,7 +1060,7 @@ const handleClearForm = useCallback(() => {
         showNotification(`The form "${formName}" has validation errors. Maintainers have been notified.`, 'warning', 10000);
       }
     }
-  }, [selectedForm, finalSelectOptions, isDevelopment, showNotification]);
+  }, [selectedForm, finalSelectOptions, isDevelopment, showNotification, isLoadingData]);
 
 
   return (
@@ -1308,7 +1243,7 @@ const handleClearForm = useCallback(() => {
                     }
 
                     // --- Quality Check ---
-                    const qualityResult = validateReportQuality();
+/*                     const qualityResult = validateReportQuality();
                     if (!qualityResult.success) {
                       showNotification(
                         <div>
@@ -1322,7 +1257,7 @@ const handleClearForm = useCallback(() => {
                       );
                       return; // STOP execution here - do not generate BBCode if check fails
                     }
-
+ */
                     generateBBCode();
                   }} 
                   className={formStyles.generateButton}
@@ -1544,6 +1479,32 @@ const handleClearForm = useCallback(() => {
         currentIndex={currentPreviewIndex}
         onIndexChange={setCurrentPreviewIndex}
       />
+
+      {selectedForm && formProgress.total > 0 && (
+        <div style={{ position: 'fixed', bottom: 20, right: 20, zIndex: 9999, display: 'flex', alignItems: 'center', gap: 12, background: '#0f172a', border: '1px solid #334155', borderRadius: 16, padding: '12px 18px', boxShadow: '0 8px 32px rgba(0,0,0,0.5)', fontWeight: 600, fontSize: '0.85rem', color: '#e2e8f0' }}>
+          <div style={{ position: 'relative', width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <svg viewBox="0 0 36 36" style={{ width: 48, height: 48, position: 'absolute' }}>
+              <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#1e293b" strokeWidth="3" />
+              <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke={formProgress.pct === 100 ? '#22c55e' : '#3b82f6'} strokeWidth="3" strokeDasharray={`${formProgress.pct}, 100`} style={{ transition: 'stroke-dasharray 0.4s ease' }} />
+            </svg>
+            <span style={{ fontSize: '0.75rem', fontWeight: 800, color: formProgress.pct === 100 ? '#22c55e' : '#e2e8f0' }}>{formProgress.pct}%</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+            <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{formProgress.filled}/{formProgress.total} fields</div>
+            {formProgress.decedentName && (
+              <div style={{ fontSize: '0.82rem', color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 180 }}>{formProgress.decedentName}</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {pendingRefreshInfo && countdownStr && (
+        <div style={{ position: 'fixed', bottom: 90, right: 20, zIndex: 9999, display: 'flex', alignItems: 'center', gap: 10, background: '#1a1a2e', border: '1px solid #60a5fa', borderRadius: 12, padding: '10px 16px', boxShadow: '0 8px 32px rgba(0,0,0,0.5)', fontSize: '0.8rem', color: '#e2e8f0' }}>
+          <i className="fas fa-sync-alt fa-spin" style={{ color: '#60a5fa', fontSize: '0.9rem' }}></i>
+          <span>Update in <strong>{countdownStr}</strong></span>
+          <button onClick={updateNow} style={{ background: '#3b82f6', border: 'none', color: '#fff', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', fontWeight: 600, fontSize: '0.75rem', whiteSpace: 'nowrap' }}>Update Now</button>
+        </div>
+      )}
 
     </div>
   );

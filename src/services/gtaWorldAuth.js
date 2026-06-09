@@ -3,8 +3,8 @@ import { signInWithCustomToken, signOut } from 'firebase/auth';
 import { ref, get } from 'firebase/database';
 import { functions, auth, database } from '../firebase';
 import * as Sentry from "@sentry/react";
-import { getCharacterID, getCharacterName } from '../utils/characterUtils';
-import { logAuthErrorToDiscord } from '../utils/authLogger';
+import { getCharacterID, getCharacterName } from '../utils/identityUtils';
+import { logAuthErrorToDiscord } from '../utils/logging';
 import { triggerValidateGtaWorldToken, triggerCheckFactionMembership, triggerRefreshGtawUser, triggerWebhookProxy, triggerGetPublicConfig } from './firebaseFunctions';
 
 /**
@@ -282,47 +282,77 @@ export const handleOAuthCallback = async (code, state, onSuccess, onError, onPro
 };
 
 /**
- * Exchanges authorization code for access token using Firebase function
+ * Checks if a FirebaseError is a transient infrastructure error that warrants a retry.
+ * `functions/internal` is the common code for infrastructure-level failures
+ * (cold-start routing, transient CORS issues, etc.) that may succeed on retry.
  */
-const exchangeAuthCodeForToken = async (code, redirectUri) => {
-    try {
-        const requestKey = `${code}-${redirectUri}`;
-        const activeReq = requestManager.get();
-        
-        if (activeReq && activeReq.key === requestKey) {
-            return await activeReq.promise;
-        }
+const isTransientFirebaseError = (error) => {
+    return error?.code === 'functions/internal';
+};
 
-        const requestPromise = (async () => {
-            try {
-                const exchangeFunction = httpsCallable(functions, GTA_WORLD_CONFIG.FIREBASE_FUNCTION);
-                const clientId = await getClientId();
+/**
+ * Exchanges authorization code for access token using Firebase function
+ * Retries on transient Firebase infrastructure errors (functions/internal)
+ * which can occur during cold starts or routing hiccups even when the function succeeds.
+ */
+const exchangeAuthCodeForToken = async (code, redirectUri, retries = 2) => {
+    const requestKey = `${code}-${redirectUri}`;
+    const activeReq = requestManager.get();
+    
+    if (activeReq && activeReq.key === requestKey) {
+        return await activeReq.promise;
+    }
 
-                const result = await Promise.race([
-                    exchangeFunction({ code, redirectUri, clientId }),
-                    new Promise((_, reject) => setTimeout(() => reject(new Error('Auth timeout')), 20000))
-                ]);
+    const attemptExchange = async (attempt = 0) => {
+        try {
+            const exchangeFunction = httpsCallable(functions, GTA_WORLD_CONFIG.FIREBASE_FUNCTION);
+            const clientId = await getClientId();
 
-                if (result.data?.success && result.data?.token && result.data?.user) {
-                    return {
-                        success: true,
-                        accessToken: result.data.token.access_token,
-                        userData: result.data.user,
-                        firebaseCustomToken: result.data.firebaseCustomToken
-                    };
-                }
-                throw new Error('Invalid response from auth server');
-            } finally {
-                // Ensure request is cleared from memory as soon as it completes
-                requestManager.clear(requestKey);
+            const result = await Promise.race([
+                exchangeFunction({ code, redirectUri, clientId }),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Auth timeout')), 20000))
+            ]);
+
+            if (result.data?.success && result.data?.token && result.data?.user) {
+                return {
+                    success: true,
+                    accessToken: result.data.token.access_token,
+                    userData: result.data.user,
+                    firebaseCustomToken: result.data.firebaseCustomToken
+                };
             }
-        })();
+            throw new Error('Invalid response from auth server');
+        } catch (error) {
+            // Retry on transient Firebase infrastructure errors
+            if (isTransientFirebaseError(error) && attempt < retries) {
+                const delay = Math.min(1000 * Math.pow(2, attempt), 4000); // 1s, 2s, cap at 4s
+                console.warn(`[GTA Auth] Transient Firebase error, retrying (attempt ${attempt + 1}/${retries}):`, error.code);
+                await new Promise(resolve => setTimeout(resolve, delay));
+                return attemptExchange(attempt + 1);
+            }
+            // Re-throw non-transient and exhausted-retry errors
+            throw error;
+        }
+    };
 
-        requestManager.set({ key: requestKey, promise: requestPromise });
+    const requestPromise = (async () => {
+        try {
+            return await attemptExchange(0);
+        } finally {
+            requestManager.clear(requestKey);
+        }
+    })();
+
+    requestManager.set({ key: requestKey, promise: requestPromise });
+
+    try {
         return await requestPromise;
-
     } catch (error) {
-        console.error('[GTA Auth] Token exchange failed:', error);
+        // Use console.warn instead of console.error to prevent the console interceptor
+        // from treating this handled error as an unhandled global error.
+        // This is a caught/handled error — the calling code handles it gracefully.
+        console.warn('[GTA Auth] Token exchange failed after retries:', 
+            error.code ? { code: error.code, name: error.name, message: error.message } : error.message);
         return { success: false, error: error.message };
     }
 };

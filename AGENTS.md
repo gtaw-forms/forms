@@ -41,6 +41,10 @@ src/components/
 - `useFactionPermissions` - Faction-based permission checks
 - `useInactivityReload` - Auto-reload on inactivity
 
+## Code Conventions
+
+- **Do not use `text-muted`** (Bootstrap's muted utility class) unless explicitly asked. It has poor contrast on dark backgrounds and doesn't play well with custom theming. Use CSS variables (`var(--text-muted)`) on a custom class instead.
+
 ## Firebase Context
 
 - **Forms are stored in Firebase** as BBCode templates (JSON schema). Consult user in event of form-specific errors for triage / debugging; ask them to upload to `/forms` directory and remove from `.gitignore`.

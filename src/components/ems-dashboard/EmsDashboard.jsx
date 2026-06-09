@@ -13,7 +13,7 @@ import SidebarNav from '../UI/SidebarNav';
 
 const EmsDashboard = () => {
   useInactivityReload();
-  const { phmcListData, coronerListData: originalCoronerListData, lsccData, loading: dataContextLoading } = useData();
+  const { phmcListData, coronerListData: originalCoronerListData, lsccData, isLoadingData: dataContextLoading } = useData();
   const { showEmployeeModal, setShowEmployeeModal } = useModal();
 
   const [protocols, setProtocols] = useState([]);

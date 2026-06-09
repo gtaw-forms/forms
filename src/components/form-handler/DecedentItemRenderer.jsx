@@ -3,6 +3,7 @@ import ImageUploader from './ImageUploader'; // Assuming ImageUploader is in the
 import { getUtcFormattedDateTime, getUtcFormattedTime } from '../../utils/dateTimeUtils';
 
 const inputStyle = { width: "100%", padding: "0.8rem", background: "#1e293b", border: "1px solid #334155", color: "#e2e8f0", borderRadius: 8 };
+const inputDisabledStyle = { width: "100%", padding: "0.8rem", background: "#0f172a", border: "1px solid #1e293b", color: "#475569", borderRadius: 8, cursor: "not-allowed" };
 const labelStyle = { display: "block", marginBottom: "0.5rem", fontWeight: "600", color: "#94a3b8" };
 
 const DecedentItemRenderer = ({
@@ -90,6 +91,24 @@ const DecedentItemRenderer = ({
                     </div>
                 )}
                 {(() => {
+                    const isPK = itemValues.typeOfDeath === 'PK';
+                    if (subField.name === 'decedentName' && isPK) {
+                        const isMale = itemValues.decedentName === 'John Doe';
+                        const isFemale = itemValues.decedentName === 'Jane Doe';
+                        return (
+                            <div>
+                                <input type="text" {...commonProps} value={itemValues.decedentName || 'John Doe'} disabled style={inputDisabledStyle} />
+                                <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                                    <button type="button" onClick={() => onItemChange('decedentName', 'John Doe')} style={{ flex: 1, padding: '0.6rem', background: isMale ? '#3b82f6' : '#1e293b', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 6, cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                                        ♂ Male
+                                    </button>
+                                    <button type="button" onClick={() => onItemChange('decedentName', 'Jane Doe')} style={{ flex: 1, padding: '0.6rem', background: isFemale ? '#3b82f6' : '#1e293b', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 6, cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                                        ♀ Female
+                                    </button>
+                                </div>
+                            </div>
+                        );
+                    }
                     switch (subField.type) {
                         case 'text':
                             return <input type="text" {...commonProps} />;
@@ -175,6 +194,11 @@ const DecedentItemRenderer = ({
         >
             <i className="fas fa-trash-alt"></i> Remove Decedent
         </button>
+      </div>
+
+      <div style={{ padding: '10px 14px', background: '#1e1a0e', border: '1px solid #a3843b', borderRadius: 8, marginBottom: '1rem', fontSize: '0.82rem', color: '#e2d5a0', display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+        <i className="fas fa-info-circle" style={{ color: '#e8c84a', marginTop: '2px', flexShrink: 0 }}></i>
+        <span>PK decedents are considered <strong>John / Jane Doe</strong>. Selecting <strong>PK</strong> will lock the name field and let you choose between John and Jane.</span>
       </div>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "0.8rem" }}>

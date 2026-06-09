@@ -4,9 +4,13 @@ import { ref, get } from 'firebase/database';
 import * as Sentry from "@sentry/react";
 import { useNotification } from '../contexts/NotificationContext';
 import { useData } from '../contexts/DataContext';
-import { getCharacterName } from '../utils/characterUtils';
+import { getCharacterName } from '../utils/identityUtils';
 import { comprehensiveSanitize } from '../utils/textUtils';
 import useGtaWorldAuth from './useGtaWorldAuth';
+
+const isLocalHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const REPORTS_PATH = isLocalHost ? 'testingSavedReports' : 'newSavedReports';
+const BBCODE_PATH = isLocalHost ? 'testingSavedReportBBCode' : 'newSavedReportBBCode';
 
 export const useReportLoader = () => {
     const { showNotification, removeNotification } = useNotification();
@@ -48,7 +52,7 @@ export const useReportLoader = () => {
         
         const sanitizedUserId = comprehensiveSanitize(userId);
         const legacyReportsRef = ref(database, `savedReports/${sanitizedUserId}`);
-        const newReportsRef = ref(database, `newSavedReports/${sanitizedUserId}`);
+        const newReportsRef = ref(database, `${REPORTS_PATH}/${sanitizedUserId}`);
 
         try {
             const [legacySnapshot, newSnapshot] = await Promise.all([
@@ -120,11 +124,11 @@ export const useReportLoader = () => {
 
         let reportPath = isLegacyReport
             ? `savedReports/${sanitizedUserId}/${reportFirebaseKey}`
-            : `newSavedReports/${sanitizedUserId}/${reportFirebaseKey}`;
+            : `${REPORTS_PATH}/${sanitizedUserId}/${reportFirebaseKey}`;
 
         const bbCodePath = isLegacyReport
             ? `savedReportBBCode/${sanitizedUserId}/${reportFirebaseKey}`
-            : `newSavedReportBBCode/${sanitizedUserId}/${reportFirebaseKey}`;
+            : `${BBCODE_PATH}/${sanitizedUserId}/${reportFirebaseKey}`;
         
         const reportRef = ref(database, reportPath);
         const bbCodeRef = ref(database, bbCodePath);
@@ -353,7 +357,7 @@ export const useReportLoader = () => {
         if (!userId) return 0;
         const sanitizedUserId = comprehensiveSanitize(userId);
         const legacyReportsRef = ref(database, `savedReports/${sanitizedUserId}`);
-        const newReportsRef = ref(database, `newSavedReports/${sanitizedUserId}`);
+        const newReportsRef = ref(database, `${REPORTS_PATH}/${sanitizedUserId}`);
 
         try {
             const [legacySnapshot, newSnapshot] = await Promise.all([
@@ -373,7 +377,7 @@ export const useReportLoader = () => {
     const checkIfMigratedReportExists = useCallback(async (userId, originalKey) => {
         if (!userId || !originalKey) return { exists: false };
         const sanitizedUserId = comprehensiveSanitize(userId);
-        const newReportsRef = ref(database, `newSavedReports/${sanitizedUserId}`);
+        const newReportsRef = ref(database, `${REPORTS_PATH}/${sanitizedUserId}`);
         try {
             const snapshot = await get(newReportsRef);
             if (snapshot.exists()) {

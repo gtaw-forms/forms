@@ -431,6 +431,10 @@ export const GtaWorldAuthProvider = ({ children }) => {
 
         const unsubscribe = onValue(memberRef, (snapshot) => {
             if (!snapshot.exists()) {
+                if (firebaseIsPhmcMember) {
+                    console.warn('[GtaWorldAuthContext] Real-time check: Character not in faction members path but firebaseIsPhmcMember is true — skipping logout (likely Non Faction Member rank).');
+                    return;
+                }
                 console.warn('[GtaWorldAuthContext] Real-time check: Membership revoked or character deleted from DB. Logging out...');
                 handleLogout('Your faction membership has been revoked. Please contact an administrator.');
                 setTimeout(() => {

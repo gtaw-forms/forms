@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import BaseModal from './BaseModal';
-import { updateDiscordName } from '../../utils/factionUtils';
+import { updateDiscordName } from '../../utils/identityUtils';
 import { useNotification } from '../../contexts/NotificationContext';
 
 /**

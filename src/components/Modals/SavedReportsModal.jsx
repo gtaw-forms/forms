@@ -46,25 +46,21 @@ const SavedReportsModal = ({
     // Check if we're in a localhost environment
     const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
-    // Build employee options, with fallback for localhost
+    // Build employee options — always include GTAW Dev on localhost regardless of OAuth data
     const effectiveEmployeeOptions = useMemo(() => {
-        if (employeeOptions && employeeOptions.length > 0) {
-            return employeeOptions;
-        }
+        const base = (employeeOptions && employeeOptions.length > 0) ? [...employeeOptions] : [];
         
-        // Fallback for localhost/development: provide a "Localhost" option
         if (isLocalhost) {
-            return [
-                {
-                    label: 'Local Development',
-                    options: [
-                        { value: 'localhost', label: '🔧 Localhost / Local Testing' }
-                    ]
-                }
-            ];
+            // Prepend GTAW Dev group so it's always available (reports save under this name)
+            base.unshift({
+                label: 'Local Development',
+                options: [
+                    { value: 'GTAW Dev', label: '🔧 GTAW Dev (testing)' }
+                ]
+            });
         }
         
-        return employeeOptions || [];
+        return base;
     }, [employeeOptions, isLocalhost]);
 
     // Initialize selected employee when modal opens
@@ -84,7 +80,9 @@ const SavedReportsModal = ({
             }
 
             let initialEmployeeValue = null;
-            if (preselectedEmployeeType === 'PHMC' && currentPhmcEmployee) {
+            if (isLocalhost) {
+                initialEmployeeValue = 'GTAW Dev';
+            } else if (preselectedEmployeeType === 'PHMC' && currentPhmcEmployee) {
                 initialEmployeeValue = currentPhmcEmployee;
             } else if (preselectedEmployeeType === 'Coroner' && currentCoronerEmployee) {
                 initialEmployeeValue = currentCoronerEmployee;
@@ -92,9 +90,6 @@ const SavedReportsModal = ({
                 initialEmployeeValue = currentPhmcEmployee;
             } else if (currentCoronerEmployee) {
                 initialEmployeeValue = currentCoronerEmployee;
-            } else if (isLocalhost) {
-                // Auto-select localhost option
-                initialEmployeeValue = 'localhost';
             }
 
             if (initialEmployeeValue) {
@@ -320,7 +315,7 @@ const SavedReportsModal = ({
                     ) : !selectedEmployee ? (
                         <div style={{ padding: '40px', textAlign: 'center', color: '#8b949e' }}>
                             <i className="fas fa-user-circle fa-3x mb-3" style={{ opacity: 0.5 }}></i>
-                            <p>{isLocalhost ? 'Select "Localhost / Local Testing" to browse available reports.' : 'Please select an employee to view their saved reports.'}</p>
+                            <p>{isLocalhost ? 'Select "GTAW Dev" to browse available reports.' : 'Please select an employee to view their saved reports.'}</p>
                         </div>
                     ) : filteredReports.length === 0 ? (
                         <div style={{ padding: '40px', textAlign: 'center', color: '#8b949e' }}>

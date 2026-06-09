@@ -11,7 +11,7 @@ import { ModalProvider } from './contexts/ModalProvider.jsx';
 import { useNotification } from './contexts/NotificationContext';
 import * as Sentry from "@sentry/react";
 import ErrorBoundary from './components/UI/ErrorBoundary';
-import { sendDiscordErrorWebhook, getLastInputInteraction, getCurrentFormType, initConsoleInterceptor, getUserOAuthIdentity } from './utils/errorUtils';
+import { sendDiscordErrorWebhook, getLastInputInteraction, getCurrentFormType, initConsoleInterceptor, getUserOAuthIdentity } from './utils/logging';
 
 // --- Navigation Tracking ---
 const navigationHistory = [];
