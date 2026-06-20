@@ -607,26 +607,7 @@ input[type="checkbox"]:checked::after {
 .draggable {
     cursor: grab;
 }
-@font-face {
-    font-family: 'LufgaMedium';
-    src: url('./assets/fonts/LufgaMedium.ttf') format('truetype'); /* Adjust path and format */
-    font-weight: normal;
-    font-style: normal;
-}
-@font-face {
-    font-family: 'Poppins-Medium';
-    src: url('./assets/fonts/Poppins-Medium.ttf') format('truetype');
-    /* Add other formats if you have them */
-    font-weight: normal; /* Or 500 */
-    font-style: normal;
-}
 
-.business-card-modal .name-overlay,
-.business-card-modal .rank-overlay,
-.business-card-modal .department-overlay,
-.business-card-modal .phone-number-overlay {
-    font-family: 'LufgaMedium', sans-serif;
-}
 
 .image-link-container {
     margin-bottom: 10px;

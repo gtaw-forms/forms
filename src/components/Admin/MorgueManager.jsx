@@ -22,6 +22,28 @@ const MorgueManager = ({ showNotification }) => {
     const [editingNoteRecord, setEditingNoteRecord] = useState(null);
     const [noteValue, setNoteValue] = useState('');
     const [isSavingNote, setIsSavingNote] = useState(false);
+
+    // Manual entry state
+    const emptyManualRecord = {
+        caseId: '',
+        name: '',
+        sex: '',
+        identified: '',
+        location: '',
+        timeOfDeath: '',
+        causeOfDeath: '',
+        dnaProfile: '',
+        physicalDescription: '',
+        estimatedAge: '',
+        tattoos: '',
+        bac: '',
+        narcotics: '',
+        bullets: [],
+        findings: [],
+        adminNote: ''
+    };
+    const [manualRecord, setManualRecord] = useState({ ...emptyManualRecord });
+    const [isSavingManual, setIsSavingManual] = useState(false);
     
     useEffect(() => {
         const morgueRef = ref(database, 'morgue-records');
@@ -214,6 +236,80 @@ const MorgueManager = ({ showNotification }) => {
         }
     };
 
+    const handleManualFieldChange = (field, value) => {
+        setManualRecord(prev => ({ ...prev, [field]: value }));
+    };
+
+    const handleBulletChange = (index, field, value) => {
+        setManualRecord(prev => {
+            const bullets = [...prev.bullets];
+            bullets[index] = { ...bullets[index], [field]: value };
+            return { ...prev, bullets };
+        });
+    };
+
+    const addBullet = () => {
+        setManualRecord(prev => ({
+            ...prev,
+            bullets: [...prev.bullets, { type: '', id: '' }]
+        }));
+    };
+
+    const removeBullet = (index) => {
+        setManualRecord(prev => ({
+            ...prev,
+            bullets: prev.bullets.filter((_, i) => i !== index)
+        }));
+    };
+
+    const handleFindingChange = (index, field, value) => {
+        setManualRecord(prev => {
+            const findings = [...prev.findings];
+            findings[index] = { ...findings[index], [field]: value };
+            return { ...prev, findings };
+        });
+    };
+
+    const addFinding = () => {
+        setManualRecord(prev => ({
+            ...prev,
+            findings: [...prev.findings, { time: '', type: '', part: '', dist: '' }]
+        }));
+    };
+
+    const removeFinding = (index) => {
+        setManualRecord(prev => ({
+            ...prev,
+            findings: prev.findings.filter((_, i) => i !== index)
+        }));
+    };
+
+    const handleSaveManual = async () => {
+        if (!manualRecord.name.trim() || !manualRecord.caseId.trim()) {
+            showNotification('Name and Case # are required.', 'warning');
+            return;
+        }
+
+        setIsSavingManual(true);
+        try {
+            const key = manualRecord.caseId.replace(/[^a-zA-Z0-9]/g, '_');
+            const record = {
+                ...manualRecord,
+                caseId: String(manualRecord.caseId),
+                lastUpdated: Date.now()
+            };
+            await set(ref(database, `morgue-records/${key}`), record);
+            showNotification(`Manual entry saved for ${record.name}.`, 'success');
+            setManualRecord({ ...emptyManualRecord });
+            setActiveTab('manage');
+        } catch (error) {
+            console.error('Error saving manual entry:', error);
+            showNotification('Failed to save manual entry.', 'error');
+        } finally {
+            setIsSavingManual(false);
+        }
+    };
+
     return (
         <div className="morgue-manager">
             <h2 className="mb-4 text-light"><i className="fas fa-microscope me-3 text-primary"></i>Morgue Record Management</h2>
@@ -307,6 +403,309 @@ const MorgueManager = ({ showNotification }) => {
                             </Card.Body>
                         </Card>
                     )}
+                </Tab>
+
+                <Tab eventKey="manual" title={<span><i className="fas fa-pen me-2"></i>Manual Entry</span>}>
+                    <Card className="bg-dark text-light border-secondary shadow mb-4">
+                        <Card.Header className="border-secondary">
+                            <h4 className="mb-0"><i className="fas fa-pen me-2"></i>Manual Morgue Entry</h4>
+                        </Card.Header>
+                        <Card.Body>
+                            <div className="row g-3">
+                                <div className="col-md-4">
+                                    <Form.Group>
+                                        <Form.Label>Case # <span className="text-danger">*</span></Form.Label>
+                                        <Form.Control
+                                            type="text"
+                                            placeholder="e.g. 12345"
+                                            value={manualRecord.caseId}
+                                            onChange={(e) => handleManualFieldChange('caseId', e.target.value)}
+                                            className="bg-dark text-light border-secondary"
+                                        />
+                                    </Form.Group>
+                                </div>
+                                <div className="col-md-4">
+                                    <Form.Group>
+                                        <Form.Label>Name <span className="text-danger">*</span></Form.Label>
+                                        <Form.Control
+                                            type="text"
+                                            placeholder="Full name of deceased"
+                                            value={manualRecord.name}
+                                            onChange={(e) => handleManualFieldChange('name', e.target.value)}
+                                            className="bg-dark text-light border-secondary"
+                                        />
+                                    </Form.Group>
+                                </div>
+                                <div className="col-md-2">
+                                    <Form.Group>
+                                        <Form.Label>Sex</Form.Label>
+                                        <Form.Select
+                                            value={manualRecord.sex}
+                                            onChange={(e) => handleManualFieldChange('sex', e.target.value)}
+                                            className="bg-dark text-light border-secondary"
+                                        >
+                                            <option value="">-- Select --</option>
+                                            <option value="Male">Male</option>
+                                            <option value="Female">Female</option>
+                                            <option value="Other">Other</option>
+                                        </Form.Select>
+                                    </Form.Group>
+                                </div>
+                                <div className="col-md-2">
+                                    <Form.Group>
+                                        <Form.Label>Identified</Form.Label>
+                                        <Form.Select
+                                            value={manualRecord.identified}
+                                            onChange={(e) => handleManualFieldChange('identified', e.target.value)}
+                                            className="bg-dark text-light border-secondary"
+                                        >
+                                            <option value="">-- Select --</option>
+                                            <option value="Yes">Yes</option>
+                                            <option value="No">No</option>
+                                            <option value="Unknown">Unknown</option>
+                                        </Form.Select>
+                                    </Form.Group>
+                                </div>
+                                <div className="col-md-6">
+                                    <Form.Group>
+                                        <Form.Label>Location</Form.Label>
+                                        <Form.Control
+                                            type="text"
+                                            placeholder="Location where body was found"
+                                            value={manualRecord.location}
+                                            onChange={(e) => handleManualFieldChange('location', e.target.value)}
+                                            className="bg-dark text-light border-secondary"
+                                        />
+                                    </Form.Group>
+                                </div>
+                                <div className="col-md-6">
+                                    <Form.Group>
+                                        <Form.Label>Time of Death</Form.Label>
+                                        <Form.Control
+                                            type="text"
+                                            placeholder="e.g. 14/JUN/2026 22:45"
+                                            value={manualRecord.timeOfDeath}
+                                            onChange={(e) => handleManualFieldChange('timeOfDeath', e.target.value)}
+                                            className="bg-dark text-light border-secondary"
+                                        />
+                                    </Form.Group>
+                                </div>
+                                <div className="col-12">
+                                    <Form.Group>
+                                        <Form.Label>Cause of Death</Form.Label>
+                                        <Form.Control
+                                            type="text"
+                                            placeholder="e.g. Gunshot wound to the chest"
+                                            value={manualRecord.causeOfDeath}
+                                            onChange={(e) => handleManualFieldChange('causeOfDeath', e.target.value)}
+                                            className="bg-dark text-light border-secondary"
+                                        />
+                                    </Form.Group>
+                                </div>
+                            </div>
+
+                            <hr className="border-secondary my-4" />
+
+                            <h5><i className="fas fa-dna me-2 text-info"></i>DNA & Physical Description</h5>
+                            <div className="row g-3 mt-2">
+                                <div className="col-12">
+                                    <Form.Group>
+                                        <Form.Label>DNA Profile</Form.Label>
+                                        <Form.Control
+                                            type="text"
+                                            placeholder="DNA profile string"
+                                            value={manualRecord.dnaProfile}
+                                            onChange={(e) => handleManualFieldChange('dnaProfile', e.target.value)}
+                                            className="bg-dark text-light border-secondary"
+                                        />
+                                    </Form.Group>
+                                </div>
+                                <div className="col-12">
+                                    <Form.Group>
+                                        <Form.Label>Physical Description</Form.Label>
+                                        <Form.Control
+                                            as="textarea"
+                                            rows={3}
+                                            placeholder="Height, build, hair color, eye color, distinguishing features..."
+                                            value={manualRecord.physicalDescription}
+                                            onChange={(e) => handleManualFieldChange('physicalDescription', e.target.value)}
+                                            className="bg-dark text-light border-secondary"
+                                        />
+                                    </Form.Group>
+                                </div>
+                                <div className="col-md-6">
+                                    <Form.Group>
+                                        <Form.Label>Estimated Age</Form.Label>
+                                        <Form.Control
+                                            type="text"
+                                            placeholder="e.g. 30-40 years"
+                                            value={manualRecord.estimatedAge}
+                                            onChange={(e) => handleManualFieldChange('estimatedAge', e.target.value)}
+                                            className="bg-dark text-light border-secondary"
+                                        />
+                                    </Form.Group>
+                                </div>
+                                <div className="col-md-6">
+                                    <Form.Group>
+                                        <Form.Label>Tattoos Description</Form.Label>
+                                        <Form.Control
+                                            type="text"
+                                            placeholder="Notable tattoos"
+                                            value={manualRecord.tattoos}
+                                            onChange={(e) => handleManualFieldChange('tattoos', e.target.value)}
+                                            className="bg-dark text-light border-secondary"
+                                        />
+                                    </Form.Group>
+                                </div>
+                            </div>
+
+                            <hr className="border-secondary my-4" />
+
+                            <h5><i className="fas fa-flask me-2 text-warning"></i>Forensic Details</h5>
+                            <div className="row g-3 mt-2">
+                                <div className="col-md-6">
+                                    <Form.Group>
+                                        <Form.Label>Blood Alcohol Concentration (BAC)</Form.Label>
+                                        <Form.Control
+                                            type="text"
+                                            placeholder="e.g. 0.08%"
+                                            value={manualRecord.bac}
+                                            onChange={(e) => handleManualFieldChange('bac', e.target.value)}
+                                            className="bg-dark text-light border-secondary"
+                                        />
+                                    </Form.Group>
+                                </div>
+                                <div className="col-md-6">
+                                    <Form.Group>
+                                        <Form.Label>Traces of Narcotics</Form.Label>
+                                        <Form.Control
+                                            type="text"
+                                            placeholder="e.g. Cocaine, Methamphetamine"
+                                            value={manualRecord.narcotics}
+                                            onChange={(e) => handleManualFieldChange('narcotics', e.target.value)}
+                                            className="bg-dark text-light border-secondary"
+                                        />
+                                    </Form.Group>
+                                </div>
+                            </div>
+
+                            <div className="mt-3">
+                                <div className="d-flex justify-content-between align-items-center mb-2">
+                                    <Form.Label className="mb-0">Recovered Bullets</Form.Label>
+                                    <Button variant="outline-info" size="sm" onClick={addBullet}>
+                                        <i className="fas fa-plus me-1"></i>Add Bullet
+                                    </Button>
+                                </div>
+                                {manualRecord.bullets.map((bullet, index) => (
+                                    <div key={index} className="row g-2 mb-2 align-items-center">
+                                        <div className="col-md-5">
+                                            <Form.Control
+                                                type="text"
+                                                placeholder="Bullet type"
+                                                value={bullet.type}
+                                                onChange={(e) => handleBulletChange(index, 'type', e.target.value)}
+                                                className="bg-dark text-light border-secondary"
+                                            />
+                                        </div>
+                                        <div className="col-md-5">
+                                            <Form.Control
+                                                type="text"
+                                                placeholder="Striation ID"
+                                                value={bullet.id}
+                                                onChange={(e) => handleBulletChange(index, 'id', e.target.value)}
+                                                className="bg-dark text-light border-secondary"
+                                            />
+                                        </div>
+                                        <div className="col-md-2">
+                                            <Button variant="outline-danger" size="sm" onClick={() => removeBullet(index)}>
+                                                <i className="fas fa-times"></i>
+                                            </Button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <hr className="border-secondary my-4" />
+
+                            <h5><i className="fas fa-notes-medical me-2 text-danger"></i>Autopsy Findings</h5>
+                            <div className="mt-2">
+                                <div className="d-flex justify-content-between align-items-center mb-2">
+                                    <Form.Label className="mb-0">Wound/Trauma Records</Form.Label>
+                                    <Button variant="outline-info" size="sm" onClick={addFinding}>
+                                        <i className="fas fa-plus me-1"></i>Add Finding
+                                    </Button>
+                                </div>
+                                {manualRecord.findings.map((finding, index) => (
+                                    <div key={index} className="row g-2 mb-2 align-items-center">
+                                        <div className="col-md-3">
+                                            <Form.Control
+                                                type="text"
+                                                placeholder="Time (HH:MM:SS)"
+                                                value={finding.time}
+                                                onChange={(e) => handleFindingChange(index, 'time', e.target.value)}
+                                                className="bg-dark text-light border-secondary"
+                                            />
+                                        </div>
+                                        <div className="col-md-3">
+                                            <Form.Control
+                                                type="text"
+                                                placeholder="Wound type"
+                                                value={finding.type}
+                                                onChange={(e) => handleFindingChange(index, 'type', e.target.value)}
+                                                className="bg-dark text-light border-secondary"
+                                            />
+                                        </div>
+                                        <div className="col-md-3">
+                                            <Form.Control
+                                                type="text"
+                                                placeholder="Body part"
+                                                value={finding.part}
+                                                onChange={(e) => handleFindingChange(index, 'part', e.target.value)}
+                                                className="bg-dark text-light border-secondary"
+                                            />
+                                        </div>
+                                        <div className="col-md-2">
+                                            <Form.Control
+                                                type="text"
+                                                placeholder="Dist."
+                                                value={finding.dist}
+                                                onChange={(e) => handleFindingChange(index, 'dist', e.target.value)}
+                                                className="bg-dark text-light border-secondary"
+                                            />
+                                        </div>
+                                        <div className="col-md-1">
+                                            <Button variant="outline-danger" size="sm" onClick={() => removeFinding(index)}>
+                                                <i className="fas fa-times"></i>
+                                            </Button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <hr className="border-secondary my-4" />
+
+                            <Form.Group>
+                                <Form.Label><i className="fas fa-sticky-note me-2 text-info"></i>Admin Note</Form.Label>
+                                <Form.Control
+                                    as="textarea"
+                                    rows={2}
+                                    placeholder="Internal admin notes..."
+                                    value={manualRecord.adminNote}
+                                    onChange={(e) => handleManualFieldChange('adminNote', e.target.value)}
+                                    className="bg-dark text-light border-secondary"
+                                />
+                            </Form.Group>
+
+                            <div className="d-flex gap-2 mt-4">
+                                <Button variant="success" onClick={handleSaveManual} disabled={isSavingManual}>
+                                    {isSavingManual ? <Spinner animation="border" size="sm" /> : <><i className="fas fa-save me-2"></i>Save Entry</>}
+                                </Button>
+                                <Button variant="outline-secondary" onClick={() => setManualRecord({ ...emptyManualRecord })} disabled={isSavingManual}>
+                                    <i className="fas fa-undo me-2"></i>Reset
+                                </Button>
+                            </div>
+                        </Card.Body>
+                    </Card>
                 </Tab>
 
                 <Tab eventKey="manage" title={<span><i className="fas fa-list me-2"></i>Manage Existing ({existingRecords.length})</span>}>

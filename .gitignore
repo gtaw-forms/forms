@@ -43,10 +43,10 @@ firebase-admin-key.json
 .env.sentry-build-plugin
 
 # tools
-tools/service-account.json
 tools/
+tools/service-account.json
 docs/
-
+discord-bot/
 # functions (Firebase Cloud Functions API/proxy endpoints)
 functions/
 # AI context artifact

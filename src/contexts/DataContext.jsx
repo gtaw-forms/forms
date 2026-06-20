@@ -299,57 +299,13 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
         await refreshSegments(segments);
     }, [pendingRefreshInfo, refreshSegments]);
 
-    // Setup Firebase listeners for real-time updates
+    // Setup Firebase listeners for real-time version checks
+    // Data is loaded via get() in refreshSegments(); version listeners trigger re-fetches.
+    // Morgue-records uses a direct onValue() listener (no version node exists for it).
     const setupFirebaseListeners = useCallback(() => {
         // Cleanup existing listeners
         Object.values(firebaseListeners.current).forEach(unsubscribe => unsubscribe());
         firebaseListeners.current = {};
-
-        // --- Listener for factions changes ---
-        const factionsRef = ref(database, CACHE_SEGMENTS.FACTIONS);
-        firebaseListeners.current.factions = onValue(factionsRef, (snapshot) => {
-            if (!dataInitializedRef.current) return;
-            if (snapshot.exists()) {
-                const factionsData = snapshot.val();
-                if (JSON.stringify(factionsData) !== JSON.stringify(dataCache.current[CACHE_SEGMENTS.FACTIONS])) {
-                    updateCacheSegment(CACHE_SEGMENTS.FACTIONS, factionsData);
-                }
-            }
-        });
-
-        // --- Listener for agency changes ---
-        const agenciesRef = ref(database, CACHE_SEGMENTS.AGENCIES);
-        firebaseListeners.current.agencies = onValue(agenciesRef, (snapshot) => {
-            if (!dataInitializedRef.current) return;
-            if (snapshot.exists()) {
-                const agencyData = snapshot.val();
-                if (JSON.stringify(agencyData) !== JSON.stringify(dataCache.current[CACHE_SEGMENTS.AGENCIES])) {
-                    updateCacheSegment(CACHE_SEGMENTS.AGENCIES, agencyData);
-                }
-            }
-        });
-
-        // --- Listener for select options changes ---
-        const optionsRef = ref(database, CACHE_SEGMENTS.SELECT_OPTIONS);
-        firebaseListeners.current.options = onValue(optionsRef, (snapshot) => {
-            if (!dataInitializedRef.current) return;
-            if (snapshot.exists()) {
-                const optionsData = snapshot.val();
-                if (JSON.stringify(optionsData) !== JSON.stringify(dataCache.current[CACHE_SEGMENTS.SELECT_OPTIONS])) {
-                    updateCacheSegment(CACHE_SEGMENTS.SELECT_OPTIONS, optionsData);
-                }
-            }
-        });
-
-        // --- Listener for verified admins changes ---
-        const adminsRef = ref(database, CACHE_SEGMENTS.VERIFIED_ADMINS);
-        firebaseListeners.current.admins = onValue(adminsRef, (snapshot) => {
-            if (!dataInitializedRef.current) return;
-            if (snapshot.exists()) {
-                const adminsData = snapshot.val();
-                updateCacheSegment(CACHE_SEGMENTS.VERIFIED_ADMINS, adminsData);
-            }
-        });
 
         // --- Listener for morgue records changes ---
         const morgueRef = ref(database, CACHE_SEGMENTS.MORGUE_RECORDS);

@@ -12,6 +12,7 @@ import { isGoogleAuthenticated, getGoogleUser } from '../../services/gtaWorldAut
 import { runOAuthDiagnostics, testFirebaseFunctions, testProfileRetrieval, logEnvironmentInfo } from '../../services/firebaseDebug';
 import { triggerFetchExternalUrl } from '../../services/firebaseFunctions';
 import { WebhookProvider } from '../../contexts/WebhookProvider';
+import { logAdminAction, getUserContext } from '../../utils/logging';
 
 // Static imports for managers (removed lazy loading)
 import DatabaseEditor from './DatabaseEditor';
@@ -404,6 +405,21 @@ const AdminDashboard = ({
     };
 
 
+    const handleSectionChange = (sectionName, sectionLabel) => {
+        setSelectedSection(sectionName);
+        const { userAgent, timeZone } = getUserContext();
+        logAdminAction(
+            currentUser?.email || 'Unknown Admin',
+            `Navigated to ${sectionLabel}`,
+            `Section: ${sectionName}`,
+            'Navigation',
+            userAgent,
+            timeZone,
+            gtaWorldUser?.username,
+            gtaWorldUser ? { faction: gtaWorldUser.faction || null } : null
+        ).catch(() => {});
+    };
+
     return (
         <div className="admin-dashboard-container">
             <div className="admin-dashboard-layout">
@@ -439,38 +455,38 @@ const AdminDashboard = ({
 
                     <nav className="sidebar-nav">
                         {hasUsersAccess && (
-                            <button className={`nav-item-btn ${selectedSection === 'metrics' ? 'active' : ''}`} onClick={() => setSelectedSection('metrics')}>
+                            <button className={`nav-item-btn ${selectedSection === 'metrics' ? 'active' : ''}`} onClick={() => handleSectionChange('metrics', 'User Metrics')}>
                                 <i className="fas fa-chart-line"></i> <span>User Metrics</span>
                             </button>
                         )}
                         {hasEmployeeManagerAccess && (
-                            <button className={`nav-item-btn ${selectedSection === 'employeeManager' ? 'active' : ''}`} onClick={() => setSelectedSection('employeeManager')}>
+                            <button className={`nav-item-btn ${selectedSection === 'employeeManager' ? 'active' : ''}`} onClick={() => handleSectionChange('employeeManager', 'Employee Metrics')}>
                                 <i className="fas fa-users-cog"></i> <span>Employee Metrics</span>
                             </button>
                         )}
                         {hasLsccManagerAccess && (
-                            <button className={`nav-item-btn ${selectedSection === 'lscc' ? 'active' : ''}`} onClick={() => setSelectedSection('lscc')}>
+                            <button className={`nav-item-btn ${selectedSection === 'lscc' ? 'active' : ''}`} onClick={() => handleSectionChange('lscc', 'LSCC Protocols')}>
                                 <i className="fas fa-hospital-alt"></i> <span>LSCC Protocols</span>
                             </button>
                         )}
                         {hasFormsManagerAccess && (
-                            <button className={`nav-item-btn ${selectedSection === 'forms' ? 'active' : ''}`} onClick={() => setSelectedSection('forms')}>
+                            <button className={`nav-item-btn ${selectedSection === 'forms' ? 'active' : ''}`} onClick={() => handleSectionChange('forms', 'Form Manager')}>
                                 <i className="fas fa-file-signature"></i> <span>Form Manager</span>
                             </button>
                         )}
-                        <button className={`nav-item-btn ${selectedSection === 'webhooks' ? 'active' : ''}`} onClick={() => setSelectedSection('webhooks')}>
+                        <button className={`nav-item-btn ${selectedSection === 'webhooks' ? 'active' : ''}`} onClick={() => handleSectionChange('webhooks', 'Webhooks')}>
                             <i className="fas fa-bullhorn"></i> <span>Webhooks</span>
                         </button>
-                        <button className={`nav-item-btn ${selectedSection === 'factions' ? 'active' : ''}`} onClick={() => setSelectedSection('factions')}>
+                        <button className={`nav-item-btn ${selectedSection === 'factions' ? 'active' : ''}`} onClick={() => handleSectionChange('factions', 'Faction Data')}>
                             <i className="fas fa-users"></i> <span>Faction Data</span>
                         </button>
-                        <button className={`nav-item-btn ${selectedSection === 'database' ? 'active' : ''}`} onClick={() => setSelectedSection('database')}>
+                        <button className={`nav-item-btn ${selectedSection === 'database' ? 'active' : ''}`} onClick={() => handleSectionChange('database', 'Database Editor')}>
                             <i className="fas fa-database"></i> <span>Database Editor</span>
                         </button>
-                        <button className={`nav-item-btn ${selectedSection === 'morgue' ? 'active' : ''}`} onClick={() => setSelectedSection('morgue')}>
+                        <button className={`nav-item-btn ${selectedSection === 'morgue' ? 'active' : ''}`} onClick={() => handleSectionChange('morgue', 'Morgue Records')}>
                             <i className="fas fa-microscope"></i> <span>Morgue Records</span>
                         </button>
-                        <button className={`nav-item-btn ${selectedSection === 'dev' ? 'active' : ''}`} onClick={() => setSelectedSection('dev')}>
+                        <button className={`nav-item-btn ${selectedSection === 'dev' ? 'active' : ''}`} onClick={() => handleSectionChange('dev', 'Developer Console')}>
                             <i className="fas fa-terminal"></i> <span>Developer Console</span>
                         </button>
                     </nav>

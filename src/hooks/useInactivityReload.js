@@ -14,7 +14,8 @@ export const useInactivityReload = () => {
     const warningTimer = useRef(null);
     const reloadTimer = useRef(null);
     const notificationId = useRef(null);
-    const inactivityWarningTriggered = useRef(false); // NEW REF to track if warning was triggered
+    const inactivityWarningTriggered = useRef(false);
+    const lastActivityTime = useRef(Date.now());
     
     // Check if the page was reloaded due to inactivity
     const wasReloadedDueToInactivity = useRef(sessionStorage.getItem('inactivityReloadTriggered') === 'true');
@@ -52,20 +53,17 @@ export const useInactivityReload = () => {
     };
 
     const resetTimers = useCallback(() => {
-        // Clear existing timers
         if (warningTimer.current) clearTimeout(warningTimer.current);
         if (reloadTimer.current) clearTimeout(reloadTimer.current);
 
-        // Reset inactivity state - crucial!
-        inactivityWarningTriggered.current = false; 
+        inactivityWarningTriggered.current = false;
+        lastActivityTime.current = Date.now();
 
-        // Dismiss notification if it's showing
         if (notificationId.current) {
             removeNotification(notificationId.current);
             notificationId.current = null;
         }
 
-        // Set new timers
         warningTimer.current = setTimeout(showWarning, INACTIVITY_WARNING_TIMEOUT);
         reloadTimer.current = setTimeout(reloadPage, INACTIVITY_RELOAD_TIMEOUT);
     }, [removeNotification, showNotification]);
@@ -76,12 +74,19 @@ export const useInactivityReload = () => {
         console.log("[Inactivity] Initializing inactivity reload timer.");
         resetTimers();
 
-        // Add event listeners
         activityEvents.forEach(event => {
             window.addEventListener(event, resetTimers, { passive: true });
         });
 
-        // Cleanup function
+        const handleVisibilityChange = () => {
+            const elapsed = Date.now() - lastActivityTime.current;
+            if (elapsed >= INACTIVITY_RELOAD_TIMEOUT) {
+                reloadPage();
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
         return () => {
             console.log("[Inactivity] Cleaning up inactivity timers and listeners.");
             if (warningTimer.current) clearTimeout(warningTimer.current);
@@ -89,6 +94,7 @@ export const useInactivityReload = () => {
             activityEvents.forEach(event => {
                 window.removeEventListener(event, resetTimers);
             });
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
     }, [resetTimers]);
 
