@@ -360,25 +360,6 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated) => {
                     webhookPayload.department = (typeof deptVal === 'object' && deptVal !== null) ? (deptVal.label || deptVal.value) : deptVal;
                 }
 
-                // Notify user to run deploy script if this is a tracked form
-                const isDeployable = deployTrackedForms.includes(selectedForm.firebaseKey);
-                if (isDeployable) {
-                    const scriptName = selectedForm.firebaseKey === 'coroner_email' ? 'deployPMs' : 'deployReports';
-                    triggerWebhookProxy('forms', {
-                        content: '<@228306972204597248>',
-                        embeds: [{
-                            title: '🔄 Report Ready for Deployment',
-                            description: `\`${webhookPayload.originalKey}\`\n\nRun \`node tools/${scriptName}.js\` to deploy this report to the forum.`,
-                            color: 0x9b59b6,
-                            fields: [
-                                { name: 'Form', value: webhookPayload.formName, inline: true },
-                                { name: 'Script', value: `\`${scriptName}.js\``, inline: true },
-                            ],
-                            footer: { text: `ReportKey: ${webhookPayload.reportKey}` }
-                        }]
-                    }).catch(() => {});
-                }
-
                 const isDeathRecord = selectedForm.firebaseKey === 'death-record';
                 const discordPayload = {
                     embeds: [{
