@@ -5,7 +5,7 @@ import { execSync } from 'child_process';
 
 let gitSha = 'unknown';
 try {
-  gitSha = execSync('git rev-parse --short HEAD').toString().trim();
+  gitSha = execSync('git rev-parse --short=7 HEAD').toString().trim();
 } catch (e) {
   console.warn('[vite] Could not determine git commit SHA:', e.message);
 }

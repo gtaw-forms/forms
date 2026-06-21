@@ -59,36 +59,34 @@
 .modal-header {
     position: relative;
     display: flex !important;
-    justify-content: center !important;
     align-items: center !important;
-    padding: 2.5rem !important;
+    justify-content: center !important;
+    padding: 1rem 2.5rem !important;
     border-bottom: 1px solid var(--modal-border) !important;
     background-color: var(--modal-bg) !important;
     flex-shrink: 0;
-    min-height: 90px;
     width: 100% !important;
 }
 
 .modal-title {
-    margin: 0 auto !important;
-    font-size: 1.75rem !important;
-    font-weight: 800 !important;
+    font-size: 1.35rem !important;
+    font-weight: 700 !important;
     color: var(--modal-accent-primary) !important;
     letter-spacing: -0.03em !important;
     text-align: center !important;
+    line-height: 1.3 !important;
+    margin: 0 !important;
     max-width: 75% !important;
-    line-height: 1.2 !important;
-    flex: 0 1 auto !important;
 }
 
 .modal-close-button {
     position: absolute !important;
-    right: 2rem !important;
+    right: 2.5rem !important;
     top: 50% !important;
     transform: translateY(-50%) !important;
     background: rgba(255, 255, 255, 0.03) !important;
     border: 1px solid var(--modal-border) !important;
-    font-size: 1.1rem !important;
+    font-size: 1rem !important;
     cursor: pointer !important;
     color: var(--modal-text-secondary) !important;
     transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
@@ -96,9 +94,9 @@
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
-    border-radius: 10px !important;
-    width: 42px !important;
-    height: 42px !important;
+    border-radius: 8px !important;
+    width: 34px !important;
+    height: 34px !important;
     z-index: 10;
 }
 
@@ -168,6 +166,7 @@
         .modal-overlay { padding: 1rem; align-items: center; }
         .modal-container { border-radius: var(--modal-border-radius); max-height: 90vh; height: auto; }
     }
-    .modal-header, .modal-content, .modal-footer { padding: 1.5rem 2rem !important; }
-    .modal-title { font-size: 1.4rem !important; }
+    .modal-header { padding: 0.75rem 1.5rem !important; }
+    .modal-content, .modal-footer { padding: 1.5rem 2rem !important; }
+    .modal-title { font-size: 1.15rem !important; }
 }
