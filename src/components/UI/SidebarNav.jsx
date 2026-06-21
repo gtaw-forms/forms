@@ -2,8 +2,11 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import panelStyles from './SidebarNav.module.css';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
+import { useNotification } from '../../contexts/NotificationContext';
+import { useImageUpload } from '../../hooks/useImageUpload';
 import phmcLogoSrc from '../../assets/phmc.png';
 import MapModal from '../Modals/MapModal';
+import BusinessCardModal from '../Modals/BusinessCardModal';
 
 /**
  * Reusable Sidebar Navigation component for Form Handler and EMS Dashboard
@@ -23,7 +26,11 @@ const SidebarNav = ({
   const navigate = useNavigate();
   const { isPhmcMember } = useGtaWorldAuth();
 
+  const { showNotification } = useNotification();
+  const { handleImageUpload } = useImageUpload(showNotification, () => {});
+
   const [showMapModal, setShowMapModal] = useState(false);
+  const [showBusinessCardModal, setShowBusinessCardModal] = useState(false);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
 
   const togglePanel = () => {
@@ -141,6 +148,10 @@ const SidebarNav = ({
           <i className="fas fa-map-marked-alt"></i> GTA Map (Beta)
         </button>
 
+        <button className={panelStyles.panelButton} onClick={() => handleAction(() => setShowBusinessCardModal(true))}>
+          <i className="fas fa-id-card"></i> Business Card
+        </button>
+
         {/* Custom children buttons */}
         {children}
 
@@ -175,6 +186,13 @@ const SidebarNav = ({
       <MapModal
         show={showMapModal}
         onHide={() => setShowMapModal(false)}
+      />
+
+      <BusinessCardModal
+        show={showBusinessCardModal}
+        onHide={() => setShowBusinessCardModal(false)}
+        showNotification={showNotification}
+        handleImageUpload={handleImageUpload}
       />
     </React.Fragment>
   );

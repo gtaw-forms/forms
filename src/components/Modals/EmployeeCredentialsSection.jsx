@@ -303,7 +303,7 @@ const EmployeeCredentialsSection = ({
                         if (rank.includes('medical examiner') || rank.includes('forensic attendant') || rank.includes('coroner investigator')) {
                             return 'Forensic Science';
                         }
-                        return 'PHMC Staff';
+                        return 'PHMC Employee';
                     })()}
                 </div>
             </div>
