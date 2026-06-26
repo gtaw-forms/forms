@@ -1,6 +1,6 @@
 {
   "name": "phmc-tools",
-  "version": "2.6.0",
+  "version": "3.8.6e",
   "type": "module",
   "private": true,
   "dependencies": {

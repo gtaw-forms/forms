@@ -700,6 +700,7 @@ const AddFormModal = ({ show, onClose: onHide, editingForm = null, isDuplicate =
         onClose={() => setShowDeleteConfirmModal(false)}
         title="Confirm Field Deletion"
         variant="danger"
+        zIndex={2100}
         footer={
           <>
             <Button variant="secondary" onClick={() => setShowDeleteConfirmModal(false)}>Cancel</Button>

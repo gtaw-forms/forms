@@ -1,0 +1,46 @@
+{
+  "rules": {
+    ".read": "auth != null",
+    ".write": "auth != null",
+    "appMetadata": {
+      ".read": true
+    },
+    "forms": {
+      ".read": true
+    },
+    "verified_locations": {
+      ".read": true
+    },
+    "lscc": {
+      "keywords": {
+        ".read": true
+      },
+      "injuries": {
+        ".read": true
+      }
+    },
+    "newSavedReports": {
+      "$user_id": {
+        ".read": "$user_id === auth.uid",
+        ".indexOn": "timestamp"
+      }
+    },
+    "savedReports": {
+      "$user_id": {
+        ".read": "$user_id === auth.uid",
+        ".indexOn": "timestamp"
+      }
+    },
+    "factions": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    "webhooks": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    "morgue-records": {
+      ".indexOn": "lastUpdated"
+    }
+  }
+}

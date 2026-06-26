@@ -158,11 +158,13 @@
       "type": "select"
     },
     {
+      "content": "Manner of Death Variable",
       "id": "field-dec-manner",
       "label": "Manner of Death",
       "layout": "compact-50",
       "name": "mannerOfDeath",
-      "optionsKey": "mannerOfDeathOptions",
+      "optionsKey": "mannerOfDeath",
+      "placeholder": "Manner of Death Variable",
       "type": "select"
     },
     {
@@ -208,10 +210,12 @@
         "placeholder": "EL#REF-CODE",
         "type": "input"
       },
+      "content": "Was the locker used? ",
       "id": "field-evid-locker",
       "label": "Evidence Locker Used?",
       "layout": "full",
       "name": "evidenceLocker",
+      "placeholder": "Was the locker used? ",
       "type": "checkbox"
     },
     {
@@ -246,12 +250,12 @@
       "type": "image"
     }
   ],
-  "formDescription": "",
+  "formDescription": "test",
   "id": "coroner-report",
   "isHidden": false,
   "lastUpdated": 1772402413789,
   "name": "Coroner Report",
   "template": "[divbox=transparent][center][img]https://i.ibb.co/0pgw9hHm/phmc.png[/img][/center][/divbox]\n\n[divbox=transparent][br][/br][center]DEATH INVESTIGATION REPORT[/center]\n[hr][/hr]\n\n[center][bold]A.   WRITTEN REPORT[/bold][/center]\n\nThe PHMC Department of Forensic Medicine and Pathology has been called regarding the decease that occurred at the location of [bold]{{placeOfDeath}}[/bold]. Upon receiving the call from [bold]{{department}}[/bold], Coroner's Office dispatched a Staff Member to the crime scene to conduct an investigation on the [bold]{{dateTime}}[/bold].\n\nThe [bold]{{coronerEmployee}}[/bold], arrived at the scene and identified the individual as [bold]{{decedentName}}[/bold], who is estimated to have died at [bold]{{pronouncedTimeOfDeath}}[/bold]. Following an initial investigation, the following [bold]synopsis[/bold] was recorded: {{synopsis}}\n\n[conditional field=\"ReportRequested\" value=\"true\"]\nA Coroner's Report was requested by the {{department}}, {{requestingOfficer}}.\n[/conditional]\n[conditional field=\"additionalstaff\" value=\"true\"]\nI was assisted at this scene by {{additionalstaff}}.\n[/conditional]\nBased on the information gathered from the scene investigation and the decedent's medical history (if available), the probable cause of death was determined to be [bold]{{probableCauseOfDeath}}[/bold]. The manner of death was classified as [bold]{{mannerOfDeath}}[/bold].\n\n[conditional field=\"evidenceLocker\" value=\"true\"]\n{{coronerEmployee}} has placed {{evidenceLockerItems}} in the Evidence Locker.\n[/conditional]\n[/divbox]\n[divbox=transparent][center][bold]B. PHOTOGRAPHIC DOCUMENTARY RECORD[/center]\n[hr][/hr]\n[center][size=85][bold][u]SCENE PHOTOGRAPHY[/u][/bold][/size][/center]\n{{scenePhotosBBCode}}\n[/divbox]\n\n[divbox=transparent]\n[center][bold]C. STATEMENT[/bold][/center]\n[hr][/hr]\n[size=85]As a [bold]{{coronerRank}}[/bold], I have made detailed notes of my findings and conclusions, and these notes are available for review if necessary. However, I must note that these notes do not contain any personal opinions and are solely based on the evidence and facts available to me.\n\nIn conclusion, I hope that this report provides the necessary information required for the agency to move forward with any necessary actions. Please let me know if you require any additional information or if I can be of further assistance.\n\nI certify that the information contained in this report is true and accurate to the best of my knowledge and belief. I have reviewed the report and ensured that all information included is complete and accurate. [/size][/divbox]\n[divbox=transparent][center][bold]D. PRIVACY AND CONFIDENTIALITY[/bold][/center]\n[hr][/hr]\n[center][size=85]This document from the Forensic Medicine and Pathology Department of Pillbox Hill Medical Center certifies the authenticity of the information contained within. Any unauthorized distribution or use of this information is in violation of the Health Insurance Portability and Accountability Act (HIPAA), as well as state and federal privacy laws, including but not limited to the San Andreas Confidentiality of Medical Information Act (CMIA) and the San Andreas Information Practices Act (IPA).\n\nIt is imperative that all parties handling this document respect the privacy and confidentiality of the decedent and their family. Any violation of these laws may result in legal action being taken against the responsible parties.\n\nThis document is provided for official purposes only and is not to be construed as legal advice or medical diagnosis. If additional information or clarification is needed, please contact the Forensic Medicine and Pathology Department of Pillbox Hill Medical Center.[/size][/divbox]\n[divbox=transparent][center][bold][u](( OUT OF CHARACTER IMAGES ))[/u][/bold][/center][hr][/hr]\n\nThis section clarifies whether or not if the player was character killed or player killed.\nIn this case the player was: {{typeOfDeath}}\nPlayer OOC Name: {{decedentOOC}}\nMorgue screen, cinjuries, cdna links: \n[size=85][u] THESE IMAGES ARE [bold]OUT OF CHARACTER[/bold] FOR INTERNAL RECORDS, DO NOT USE THESE AS EVIDENCE. [/u][/size]\n{{additionalPhotos}}\n{{additionalPhotos_narrative}}\n[/divbox]\n\n",
-  "titleGeneratorCode": "[{{typeOfDeath}}] {{decedentName}} (({{decedentOOC}})) - {{date}}",W
-  "updatedAt": 1780752692205
+  "titleGeneratorCode": "[{{typeOfDeath}}] {{decedentName}} (({{decedentOOC}})) - {{date}}",
+  "updatedAt": 1781018854652
 }

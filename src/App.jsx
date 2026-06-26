@@ -6,10 +6,11 @@ import * as Sentry from "@sentry/react";
 import { sendDiscordErrorWebhook } from './utils/logging';
 import { Spinner } from 'react-bootstrap';
 import { database } from './firebase';
-import { ref, onValue } from 'firebase/database';
+import { ref, onValue, onDisconnect, set, serverTimestamp } from 'firebase/database';
 
 import { FormHandler } from './components/form-handler/FormHandler.jsx';
 import ProtectedRoute from './components/Auth/ProtectedRoute.jsx';
+import RequireAuth from './components/Auth/RequireAuth.jsx';
 import Admin from './components/Admin/Admin.jsx';
 import DiscordNameCheck from './components/Auth/DiscordNameCheck.jsx';
 import { useUpdateAvailable } from './hooks/useUpdateAvailable.js';
@@ -66,6 +67,57 @@ function App() {
         });
 
         return () => unsubscribe();
+    }, []);
+
+    // SERVICE WORKER KILL-SWITCH MESSAGE LISTENER
+    useEffect(() => {
+        if (!('serviceWorker' in navigator)) return;
+
+        const handler = (event) => {
+            if (event.data && event.data.type === 'KILL_SWITCH_ACTIVE') {
+                console.warn('!!! [App] KILL-SWITCH DETECTED VIA SERVICE WORKER !!! PURGING...');
+                localStorage.clear();
+                sessionStorage.clear();
+                Sentry.addBreadcrumb({
+                    category: 'security',
+                    message: 'Global Kill-Switch Triggered (via SW)',
+                    level: 'fatal'
+                });
+                setTimeout(() => {
+                    window.location.href = window.location.origin + window.location.pathname;
+                }, 1500);
+            }
+        };
+
+        navigator.serviceWorker.addEventListener('message', handler);
+        return () => navigator.serviceWorker.removeEventListener('message', handler);
+    }, []);
+
+    // PRESENCE TRACKING — active user count via onDisconnect
+    useEffect(() => {
+        const sessionId = crypto.randomUUID();
+        const connectedRef = ref(database, '.info/connected');
+        const presenceRef = ref(database, `presence/${sessionId}`);
+
+        const unsub = onValue(connectedRef, (snap) => {
+            if (snap.val() === true) {
+                onDisconnect(presenceRef).remove();
+                set(presenceRef, {
+                    active: true,
+                    timestamp: serverTimestamp()
+                });
+            }
+        });
+
+        return () => unsub();
+    }, []);
+
+    // DAILY VISITOR TRACKING — persists after tab close for admin counts
+    useEffect(() => {
+        const today = new Date().toISOString().split('T')[0];
+        const sessionId = crypto.randomUUID();
+        const visitorRef = ref(database, `analytics/visitors/${today}/${sessionId}`);
+        set(visitorRef, serverTimestamp());
     }, []);
 
     const LoadingFallback = () => (
@@ -137,12 +189,12 @@ function App() {
                     <DiscordNameCheck>
                             <Suspense fallback={<LoadingFallback />}>
                                 <Routes>
-                                    <Route path="/" element={<FormHandler formData={formData} setFormData={setFormData} lastWebhookIdentifier={lastWebhookIdentifier} setLastWebhookIdentifier={setLastWebhookIdentifier} showNotification={showNotification} removeNotification={removeNotification} />} />
+                                    <Route path="/" element={<RequireAuth><FormHandler formData={formData} setFormData={setFormData} lastWebhookIdentifier={lastWebhookIdentifier} setLastWebhookIdentifier={setLastWebhookIdentifier} showNotification={showNotification} removeNotification={removeNotification} /></RequireAuth>} />
                                     <Route path="/login" element={<GtaLogin />} />
                                     <Route path="/auth/gta/callback" element={<GtaCallback />} />
                                     <Route path="/admin" element={<ProtectedRoute><Admin formData={formData} setFormData={setFormData} showNotification={showNotification} /></ProtectedRoute>} />
                                     <Route path="/ems-dashboard" element={<EmsDashboard />} />
-                                    <Route path="/morgue" element={<MorgueLookup />} />
+                                    <Route path="/morgue" element={<RequireAuth><MorgueLookup /></RequireAuth>} />
                                     <Route path="/form-handler" element={<ProtectedRoute><FormHandler /></ProtectedRoute>} />
                                     <Route path="*" element={<Navigate to="/" replace />} />
                                 </Routes>

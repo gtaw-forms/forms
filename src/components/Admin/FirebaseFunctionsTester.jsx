@@ -32,6 +32,8 @@ const FirebaseFunctionsTester = ({ showInAppNotification }) => {
     const [characterIds, setCharacterIds] = useState('');
     const [externalUrl, setExternalUrl] = useState('https://phmc.gta.world/viewforum.php?f=265');
     const [cookie, setCookie] = useState('');
+    const [activeCount, setActiveCount] = useState(0);
+    const [todayVisitors, setTodayVisitors] = useState(0);
 
     const handleTriggerGlobalKillSwitch = async () => {
         const confirmFirst = window.confirm("EXTREMELY DANGEROUS: Are you sure you want to trigger a GLOBAL STORAGE CLEARANCE?\n\nThis will FORCE EVERY USER to log out and clear their local/session storage instantly \n\n Only use this for critical security fixes.");
@@ -75,6 +77,29 @@ const FirebaseFunctionsTester = ({ showInAppNotification }) => {
         };
         onValue(maintenanceRef, handleValue);
         return () => off(maintenanceRef, 'value', handleValue);
+    }, []);
+
+    // Live user presence tracking
+    useEffect(() => {
+        const presenceRef = ref(database, 'presence');
+        const handlePresence = (snapshot) => {
+            const val = snapshot.val();
+            setActiveCount(val ? Object.keys(val).length : 0);
+        };
+        onValue(presenceRef, handlePresence);
+        return () => off(presenceRef, 'value', handlePresence);
+    }, []);
+
+    // Today's unique visitor tracking
+    useEffect(() => {
+        const today = new Date().toISOString().split('T')[0];
+        const visitorRef = ref(database, `analytics/visitors/${today}`);
+        const handleVisitors = (snapshot) => {
+            const val = snapshot.val();
+            setTodayVisitors(val ? Object.keys(val).length : 0);
+        };
+        onValue(visitorRef, handleVisitors);
+        return () => off(visitorRef, 'value', handleVisitors);
     }, []);
 
     const handleToggleMaintenanceMode = async () => {
@@ -175,6 +200,20 @@ const FirebaseFunctionsTester = ({ showInAppNotification }) => {
                     }}>
                         Trigger Unhandled Exception
                     </Button>
+                </div>
+
+                <h7 className="mt-3">Live Platform Stats</h7>
+                <div className="d-flex flex-wrap gap-3 mb-3 border rounded p-3 bg-dark bg-opacity-10">
+                    <div className="d-flex flex-column align-items-center" style={{ minWidth: 120 }}>
+                        <span className="h3 mb-0 fw-bold">{activeCount}</span>
+                        <span className="small">Active Users</span>
+                        <span className="text-muted" style={{ fontSize: '0.7rem' }}>tabs open now</span>
+                    </div>
+                    <div className="d-flex flex-column align-items-center" style={{ minWidth: 120 }}>
+                        <span className="h3 mb-0 fw-bold">{todayVisitors}</span>
+                        <span className="small">Today's Visitors</span>
+                        <span className="text-muted" style={{ fontSize: '0.7rem' }}>incl. closed tabs</span>
+                    </div>
                 </div>
 
                 <h7 className="mt-3 text-danger">EXTREMELY DANGEROUS - SECURITY & DEVELOPER TOOLS</h7>

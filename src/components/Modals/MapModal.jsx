@@ -546,11 +546,31 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
                         )}
 
                         {/* Permanent Markers */}
-                        {liveMapData.hospitals.filter(h => h.x !== undefined).map((h, i) => (
-                            <Marker key={`h-${i}`} position={gameToMap(h.x, h.y)} icon={HospitalIcon}>
-                                <Popup><div className="text-dark"><strong>{h.name}</strong></div></Popup>
-                            </Marker>
-                        ))}
+                        {liveMapData.hospitals.filter(h => h.x !== undefined).map((h, i) => {
+                            const hospitalMarker = {
+                                id: `hospital-${i}`,
+                                gameX: Number(h.x).toFixed(2),
+                                gameY: Number(h.y).toFixed(2),
+                                nearest: h.name,
+                                crossStreet: null,
+                                type: 'Hospital'
+                            };
+                            return (
+                                <Marker key={`h-${i}`} position={gameToMap(h.x, h.y)} icon={HospitalIcon}>
+                                    <Popup>
+                                        <div className="text-dark p-2" style={{ minWidth: '180px' }}>
+                                            <strong><i className="fas fa-hospital me-1"></i>{h.name}</strong><br/>
+                                            <small className="text-muted">(X:{Number(h.x).toFixed(2)} Y:{Number(h.y).toFixed(2)})</small>
+                                            <div className="d-flex gap-2 mt-2">
+                                                <Button variant="primary" size="sm" className="flex-grow-1" onClick={() => handleReportLocation(hospitalMarker)} disabled={isSnapshotting}>
+                                                    {isSnapshotting ? <Spinner size="sm" /> : "Confirm Deceased Location"}
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    </Popup>
+                                </Marker>
+                            );
+                        })}
 
                         {/* User Placed Markers */}
                         {markers.map((m) => (

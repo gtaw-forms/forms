@@ -10,9 +10,10 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getDatabase, ref, get, set } from 'firebase/database';
 import { isGoogleAuthenticated, getGoogleUser } from '../../services/gtaWorldAuth';
 import { runOAuthDiagnostics, testFirebaseFunctions, testProfileRetrieval, logEnvironmentInfo } from '../../services/firebaseDebug';
-import { triggerFetchExternalUrl } from '../../services/firebaseFunctions';
+import { triggerFetchExternalUrl, triggerWebhookProxy } from '../../services/firebaseFunctions';
 import { WebhookProvider } from '../../contexts/WebhookProvider';
 import { logAdminAction, getUserContext } from '../../utils/logging';
+import LoginSplash from '../Auth/LoginSplash';
 
 // Static imports for managers (removed lazy loading)
 import DatabaseEditor from './DatabaseEditor';
@@ -213,6 +214,40 @@ const AdminDashboard = ({
     const hasFactionUpload = isGoogleAdminActive || isSuperAdminAccess || canUploadFactionData || (scriptRank >= 10); // Direct rank check for faction upload
     const hasDatabaseAccess = isGoogleAdminActive || isSuperAdminAccess || canAccessDatabase || (scriptRank >= 12); // Direct rank check for database
     const hasWebhookAccess = isGoogleAdminActive || isSuperAdminAccess || canManageWebhooks || isRank11OrHigher; // Direct rank check for webhook management
+    const hasDevAccess = isGoogleAdminActive || isSuperAdminAccess || isRank11OrHigher;
+
+    // -----------------------------------------------------------------------
+    // Rank check helpers for admin action logging
+    // -----------------------------------------------------------------------
+    const getAccessForSection = (section) => {
+        switch (section) {
+            case 'metrics': return hasUsersAccess;
+            case 'employeeManager': return hasEmployeeManagerAccess;
+            case 'lscc': return hasLsccManagerAccess;
+            case 'forms': return hasFormsManagerAccess;
+            case 'webhooks': return hasWebhookAccess;
+            case 'factions': return hasFactionUpload;
+            case 'database': return hasDatabaseAccess;
+            case 'morgue': return hasDatabaseAccess;
+            case 'dev': return hasDevAccess;
+            default: return true;
+        }
+    };
+
+    const getRequiredRank = (section) => {
+        switch (section) {
+            case 'metrics': return 14;
+            case 'employeeManager': return 13;
+            case 'lscc': return 10;
+            case 'forms': return 10;
+            case 'webhooks': return 11;
+            case 'factions': return 10;
+            case 'database': return 12;
+            case 'morgue': return 12;
+            case 'dev': return 11;
+            default: return null;
+        }
+    };
 
     const handleRunDiagnostics = async () => {
         setIsRunningDiagnostics(true);
@@ -266,8 +301,6 @@ const AdminDashboard = ({
     const handleTestWebhook = async (webhook) => {
         try {
             const payload = {
-                username: "PHMC Test",
-                avatar_url: 'https://i.ibb.co/0pgw9hHm/phmc.png',
                 embeds: [{
                     title: "🧪 Webhook Test",
                     description: `This is a test message for the webhook: **${webhook.name}**\n\nWebhook Type: ${webhook.type}\nTest Time: ${new Date().toLocaleString()}`,
@@ -279,17 +312,8 @@ const AdminDashboard = ({
                 }]
             };
 
-            const response = await fetch(webhook.url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-
-            if (response.ok) {
-                showInAppNotification && showInAppNotification(`Test webhook sent successfully to ${webhook.name}!`, 'success');
-            } else {
-                showInAppNotification && showInAppNotification(`Failed to send test webhook: ${response.status}`, 'error');
-            }
+            await triggerWebhookProxy('test', payload, webhook.id);
+            showInAppNotification && showInAppNotification(`Test webhook sent successfully to ${webhook.name}!`, 'success');
         } catch (error) {
             console.error('Error sending test webhook:', error);
             showInAppNotification && showInAppNotification('Error sending test webhook', 'error');
@@ -408,10 +432,17 @@ const AdminDashboard = ({
     const handleSectionChange = (sectionName, sectionLabel) => {
         setSelectedSection(sectionName);
         const { userAgent, timeZone } = getUserContext();
+
+        const requiredRank = getRequiredRank(sectionName);
+        const granted = getAccessForSection(sectionName);
+        const rankCheckStr = requiredRank != null
+            ? `\nRank Check: ${scriptRank ?? 'N/A'} - Required: ${requiredRank} - ${granted ? 'GRANTED' : 'DENIED'}`
+            : '';
+
         logAdminAction(
             currentUser?.email || 'Unknown Admin',
             `Navigated to ${sectionLabel}`,
-            `Section: ${sectionName}`,
+            `Section: ${sectionName}${rankCheckStr}`,
             'Navigation',
             userAgent,
             timeZone,
@@ -419,6 +450,11 @@ const AdminDashboard = ({
             gtaWorldUser ? { faction: gtaWorldUser.faction || null } : null
         ).catch(() => {});
     };
+
+    const isLocalhost = window.location.hostname === 'localhost';
+    if (!currentUser && !isLocalhost) {
+        return <LoginSplash />;
+    }
 
     return (
         <div className="admin-dashboard-container">
@@ -486,9 +522,11 @@ const AdminDashboard = ({
                         <button className={`nav-item-btn ${selectedSection === 'morgue' ? 'active' : ''}`} onClick={() => handleSectionChange('morgue', 'Morgue Records')}>
                             <i className="fas fa-microscope"></i> <span>Morgue Records</span>
                         </button>
-                        <button className={`nav-item-btn ${selectedSection === 'dev' ? 'active' : ''}`} onClick={() => handleSectionChange('dev', 'Developer Console')}>
-                            <i className="fas fa-terminal"></i> <span>Developer Console</span>
-                        </button>
+                        {hasDevAccess && (
+                            <button className={`nav-item-btn ${selectedSection === 'dev' ? 'active' : ''}`} onClick={() => handleSectionChange('dev', 'Developer Console')}>
+                                <i className="fas fa-terminal"></i> <span>Developer Console</span>
+                            </button>
+                        )}
                     </nav>
                 </aside>
 
@@ -643,7 +681,9 @@ const AdminDashboard = ({
                             ) : <div className="admin-section"><div className="alert alert-warning border-0 bg-opacity-25 shadow-sm p-4">Webhook Access Denied</div></div>
                         )}
 
-                        {selectedSection === 'dev' && <div className="admin-section"><FirebaseFunctionsTester showInAppNotification={showInAppNotification} /></div>}
+                        {selectedSection === 'dev' && (
+                            hasDevAccess ? <div className="admin-section"><FirebaseFunctionsTester showInAppNotification={showInAppNotification} /></div> : <div className="admin-section"><div className="alert alert-danger border-0 bg-opacity-25 shadow-sm p-4">Access Denied</div></div>
+                        )}
 
                         {selectedSection === 'factions' && (
                             hasFactionUpload ? <FactionDataUpload showNotification={showInAppNotification} /> : <div className="admin-section"><div className="alert alert-warning border-0 bg-opacity-25 shadow-sm p-4">Denied</div></div>

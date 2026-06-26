@@ -421,7 +421,7 @@ export const GtaWorldAuthProvider = ({ children }) => {
 
     // REAL-TIME MEMBERSHIP ENFORCEMENT
     useEffect(() => {
-        if (!user || isGoogleAdmin || isStaff) return;
+        if (!user || !firebaseUser || isGoogleAdmin || isStaff) return;
 
         const activeId = user?.faction?.characterId || user?.activeCharacter?.characterId;
         if (!activeId) return;
@@ -449,7 +449,7 @@ export const GtaWorldAuthProvider = ({ children }) => {
             console.log('[GtaWorldAuthContext] Cleaning up real-time membership listener');
             unsubscribe();
         };
-    }, [user, isGoogleAdmin, isStaff, handleLogout]);
+    }, [user, firebaseUser, isGoogleAdmin, isStaff, handleLogout]);
 
     const value = useMemo(() => ({
         user,

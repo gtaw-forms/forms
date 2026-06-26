@@ -312,7 +312,6 @@ const UnprocessedCKsViewer = ({ selectedForm, onPreload }) => {
                         ethnicity: inferredEthnicity,
                         placeOfDeath: finalPlaceOfDeath,
                         Manner: displayData.mannerOfDeath || '',
-                        causeA: morgueMatch?.causeOfDeath || displayData.probableCauseOfDeath || '',
                         caseNumber: morgueMatch?.caseId || '',
                         dnaProfile: morgueMatch?.dnaProfile || '',
                         bacLevel: morgueMatch?.bac || '',

@@ -21,5 +21,8 @@ export const triggerTestHealthAlert = (data) => triggerFunction('triggerTestHeal
 export const triggerFetchExternalUrl = (data) => triggerFunction('fetchExternalUrl', data);
 export const triggerManualMaintenance = () => triggerFunction('triggerManualMaintenance');
 export const triggerRefreshGtawUser = (data) => triggerFunction('refreshGtawUser', data);
-export const triggerWebhookProxy = (webhookType, payload) => triggerFunction('sendWebhookProxy', { webhookType, payload });
+export const triggerWebhookProxy = (webhookType, payload, webhookId = null) => {
+    console.log(`[Webhook] Dispatching '${webhookType}'${webhookId ? ` (ID: ${webhookId})` : ''}...`);
+    return triggerFunction('sendWebhookProxy', { webhookType, payload, webhookId });
+};
 export const triggerGetPublicConfig = () => triggerFunction('getPublicConfig');
