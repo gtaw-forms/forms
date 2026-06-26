@@ -116,6 +116,14 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
     }),
   }), []);
 
+  const prevTypeOfDeath = useRef(formValues.typeOfDeath);
+  useEffect(() => {
+    if (formValues.typeOfDeath === 'PK' && prevTypeOfDeath.current !== 'PK' && formValues.decedentName !== 'John Doe' && formValues.decedentName !== 'Jane Doe') {
+      handleChange('decedentName', 'John Doe');
+    }
+    prevTypeOfDeath.current = formValues.typeOfDeath;
+  }, [formValues.typeOfDeath]);
+
   // Conditional visibility logic
   if (!evaluateFieldVisibility(field, formValues)) {
     return null;
@@ -133,14 +141,6 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
   const inputStyle = { width: "100%", padding: "0.8rem", background: "#1e293b", border: "1px solid #334155", color: "#e2e8f0", borderRadius: 8 };
   const inputDisabledStyle = { width: "100%", padding: "0.8rem", background: "#0f172a", border: "1px solid #1e293b", color: "#475569", borderRadius: 8, cursor: "not-allowed" };
   const labelStyle = { display: "block", marginBottom: "0.5rem", fontWeight: "600", color: "#94a3b8" };
-
-  const prevTypeOfDeath = useRef(formValues.typeOfDeath);
-  useEffect(() => {
-    if (formValues.typeOfDeath === 'PK' && prevTypeOfDeath.current !== 'PK' && formValues.decedentName !== 'John Doe' && formValues.decedentName !== 'Jane Doe') {
-      handleChange('decedentName', 'John Doe');
-    }
-    prevTypeOfDeath.current = formValues.typeOfDeath;
-  }, [formValues.typeOfDeath]);
 
   switch (field.type) {
     case "hr":

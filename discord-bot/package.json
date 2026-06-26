@@ -1,0 +1,19 @@
+{
+  "name": "phmc-discord-bot",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Discord bot for PHMC Forms — Morgue lookup and more",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.18.0",
+    "firebase-admin": "^13.7.0",
+    "playwright": "^1.61.1",
+    "playwright-extra": "^4.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "sharp": "^0.35.1"
+  }
+}

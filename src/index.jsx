@@ -227,6 +227,29 @@ root.render(
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     const swUrl = `${import.meta.env.BASE_URL}sw.js`;
-    navigator.serviceWorker.register(swUrl).catch(() => {});
+    navigator.serviceWorker.register(swUrl).then((registration) => {
+      const sendConfig = (worker) => {
+        if (worker) {
+          worker.postMessage({
+            type: 'SET_FIREBASE_CONFIG',
+            databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL
+          });
+        }
+      };
+      const worker = registration.active || registration.installing;
+      if (worker) {
+        sendConfig(worker);
+      }
+      registration.addEventListener('updatefound', () => {
+        const newWorker = registration.installing;
+        if (newWorker) {
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'activated') {
+              sendConfig(newWorker);
+            }
+          });
+        }
+      });
+    }).catch(() => {});
   });
 }

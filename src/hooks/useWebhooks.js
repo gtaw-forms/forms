@@ -12,6 +12,7 @@ export const useWebhooks = (formData, commitInfo, showNotification, getIsInactiv
         await set(newLogRef, {
             type,
             payload,
+            userAgent: navigator.userAgent.substring(0, 500),
             timestamp: Date.now(),
         });
     }, []);
@@ -21,6 +22,11 @@ export const useWebhooks = (formData, commitInfo, showNotification, getIsInactiv
             {
                 name: 'URL',
                 value: window.location.href,
+                inline: false,
+            },
+            {
+                name: 'User Agent',
+                value: navigator.userAgent.substring(0, 250),
                 inline: false,
             },
             {

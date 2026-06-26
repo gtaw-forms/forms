@@ -536,19 +536,10 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
 
         const payload = buildWebhookPayload(customWebhookTitle, customWebhookMessage, customWebhookUrl);
         let result = false;
-        let responseStatus = null;
         
         try {
-            const response = await fetch(selectedWebhook.url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            result = response.ok;
-            responseStatus = response.status;
-            if (!result) {
-                console.error('Webhook send failed:', response.status, response.statusText);
-            }
+            await triggerWebhookProxy('custom', payload, selectedWebhook.id);
+            result = true;
         } catch (error) {
             console.error('Error sending custom webhook:', error);
             result = false;
@@ -560,15 +551,13 @@ const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAp
                 webhook: {
                     id: selectedWebhook.id,
                     name: selectedWebhook.name,
-                    type: selectedWebhook.type,
-                    url: selectedWebhook.url
+                    type: selectedWebhook.type
                 },
                 title: customWebhookTitle,
                 message: customWebhookMessage,
                 customUrl: customWebhookUrl,
                 adminUser: unifiedCurrentUser?.email || 'Unknown Admin',
                 success: result,
-                responseStatus: responseStatus,
                 timestamp: new Date().toISOString()
             });
             

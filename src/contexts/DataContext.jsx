@@ -871,6 +871,21 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                     firebaseListeners.current = {};
                 };
             }, [loadData, setupFirebaseListeners, cleanupCache]); // Dependencies: ensure these useCallback functions are stable        // DEPRICATED - USE IN VERY LIMITED APPLICATIONS
+
+        // Retry data loading when auth state changes (e.g. user logs in after initial load failed)
+        const prevAuthRef = useRef(isAuthenticated);
+        useEffect(() => {
+            if (isAuthenticated && !prevAuthRef.current) {
+                console.log('[DataContext] Auth state changed to authenticated. Retrying data load...');
+                setHasFirebaseError(false);
+                dataInitializedRef.current = false;
+                setDataLoaded(false);
+                setIsLoadingData(true);
+                loadData();
+            }
+            prevAuthRef.current = isAuthenticated;
+        }, [isAuthenticated, loadData]);
+
         const phmcListData = useMemo(() => {
             // PHMC FACTION = 364, filtered by excluding CORONER categories
             if (!factionsData['364'] || typeof factionsData['364'].members !== 'object' || !factionsData['364'].members) {

@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useWebhook } from '../../contexts/WebhookProvider';
 import { Form, Button, Alert, Spinner } from 'react-bootstrap';
 import { getDatabase, ref, get } from 'firebase/database';
+import { triggerWebhookProxy } from '../../services/firebaseFunctions';
 
 const WebhookManager = () => {
     const { user: gtawUser, username: gtawUsername } = useGtaWorldAuth();
@@ -146,26 +147,18 @@ const WebhookManager = () => {
                 embeds: [embed],
             };
 
-            const response = await fetch(selectedWebhook.url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
+            await triggerWebhookProxy('custom', payload, selectedWebhook.id);
 
-            if (response.ok) {
-                setCustomResult({ success: true, message: `Webhook sent successfully to ${selectedWebhook.name}!` });
-                // Clear form after successful send
-                setWebhookTitle('');
-                setWebhookMessage('');
-                clearMedia();
-                setUrlInput(''); // Clear local url input
-                setSelectedWebhookId(''); // Clear local selected webhook
-                clearSavedWebhookState(); // Clear saved state from WebhookProvider
-                localStorage.removeItem('webhookUrlInput'); // Clear local storage for urlInput
-                localStorage.removeItem('selectedWebhookId'); // Clear local storage for selectedWebhookId
-            } else {
-                setCustomResult({ success: false, message: `Failed to send webhook: ${response.status}` });
-            }
+            setCustomResult({ success: true, message: `Webhook sent successfully to ${selectedWebhook.name}!` });
+            // Clear form after successful send
+            setWebhookTitle('');
+            setWebhookMessage('');
+            clearMedia();
+            setUrlInput(''); // Clear local url input
+            setSelectedWebhookId(''); // Clear local selected webhook
+            clearSavedWebhookState(); // Clear saved state from WebhookProvider
+            localStorage.removeItem('webhookUrlInput'); // Clear local storage for urlInput
+            localStorage.removeItem('selectedWebhookId'); // Clear local storage for selectedWebhookId
         } catch (error) {
             console.error('Error sending webhook:', error);
             setCustomResult({ success: false, message: 'Network error occurred. Please try again.' });
