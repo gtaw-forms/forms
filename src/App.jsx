@@ -13,7 +13,6 @@ import ProtectedRoute from './components/Auth/ProtectedRoute.jsx';
 import RequireAuth from './components/Auth/RequireAuth.jsx';
 import Admin from './components/Admin/Admin.jsx';
 import DiscordNameCheck from './components/Auth/DiscordNameCheck.jsx';
-import { useUpdateAvailable } from './hooks/useUpdateAvailable.js';
 
 // Lazy load non-critical components
 const GtaLogin = lazy(() => import('./components/Auth/GtaLogin.jsx'));
@@ -25,7 +24,6 @@ function App() {
     const [formData, setFormData] = useState({});
     const [lastWebhookIdentifier, setLastWebhookIdentifier] = useState(null);
     const { showNotification, removeNotification } = useNotification();
-    const { updateAvailable, currentSha, latestSha } = useUpdateAvailable();
 
     // GLOBAL SECURITY KILL-SWITCH LISTENER
     useEffect(() => {
@@ -202,51 +200,6 @@ function App() {
                     </DiscordNameCheck>
                 </Router>
             </FormProvider>
-
-            {updateAvailable && (
-                <div
-                    onClick={() => window.location.reload()}
-                    style={{
-                        position: 'fixed',
-                        bottom: '24px',
-                        right: '24px',
-                        zIndex: 10000,
-                        cursor: 'pointer',
-                    }}
-                >
-                    <div className="update-available-pill d-flex align-items-center gap-2 px-3 py-2 rounded-pill shadow-lg border"
-                         style={{
-                             backgroundColor: 'rgba(25, 135, 84, 0.95)',
-                             borderColor: '#198754 !important',
-                             color: '#fff',
-                             backdropFilter: 'blur(8px)',
-                             transition: 'transform 0.2s ease',
-                         }}
-                         onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.05)'}
-                         onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
-                    >
-                        <span className="update-available-dot" style={{
-                            width: 10, height: 10, borderRadius: '50%',
-                            backgroundColor: '#fff', display: 'inline-block',
-                            animation: 'updatePulse 2s ease-in-out infinite',
-                        }}></span>
-                        <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>
-                            <i className="fas fa-sync-alt me-1"></i>Update Available
-                        </span>
-                        <span style={{ fontSize: '0.75rem', opacity: 0.8 }}>({latestSha})</span>
-                    </div>
-                </div>
-            )}
-
-            <style>{`
-                @keyframes updatePulse {
-                    0%, 100% { opacity: 1; transform: scale(1); }
-                    50% { opacity: 0.5; transform: scale(1.3); }
-                }
-                .update-available-pill:hover {
-                    background-color: rgba(25, 135, 84, 1) !important;
-                }
-            `}</style>
         </Sentry.ErrorBoundary>
     );
 }

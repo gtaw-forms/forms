@@ -23,8 +23,6 @@ const _runMaintenance = async (triggerContext) => {
         reportCleanup: { oldReportsCleaned: 0, errors: [] },
         factionSync: { success: false, count: 0, error: null },
         pendingDeployments: { coronerReports: 0, coronerEmails: 0, total: 0, errors: [] },
-        webhookLogsCleanup: { cleaned: 0 },
-        monitoringCleanup: { cleaned: 0 },
         functionStats: null,
     };
 
@@ -169,61 +167,8 @@ const _runMaintenance = async (triggerContext) => {
         maintenanceResults.reportCleanup.errors.push(`Critical: ${error.message}`);
     }
 
-    // --- 3. Webhook Logs Cleanup (> 30 days) ---
-    try {
-        const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
-        const webhookSnapshot = await db.ref('/webhook_logs').once('value');
-
-        if (webhookSnapshot.exists()) {
-            const updates = {};
-            let cleanedCount = 0;
-            webhookSnapshot.forEach(childSnap => {
-                const entry = childSnap.val();
-                if (entry.timestamp && entry.timestamp < thirtyDaysAgo) {
-                    updates[`/webhook_logs/${childSnap.key}`] = null;
-                    cleanedCount++;
-                }
-            });
-
-            if (Object.keys(updates).length > 0) {
-                await db.ref().update(updates);
-                console.log(`[Maintenance] Cleaned ${cleanedCount} old webhook log entries.`);
-                maintenanceResults.webhookLogsCleanup = { cleaned: cleanedCount };
-            }
-        }
-    } catch (error) {
-        console.error('[Maintenance] Error cleaning webhook logs:', error);
-        maintenanceResults.webhookLogsCleanup = { cleaned: 0, error: error.message };
-    }
-
-    // --- 4. Monitoring Data Cleanup (> 1 day) ---
-    try {
-        const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
-        const monitoringSnapshot = await db.ref('/monitoring').once('value');
-
-        if (monitoringSnapshot.exists()) {
-            const monitorData = monitoringSnapshot.val();
-            const updates = {};
-            let cleanedCount = 0;
-
-            for (const key of Object.keys(monitorData)) {
-                const entry = monitorData[key];
-                if (entry.lastChecked && entry.lastChecked < oneDayAgo) {
-                    updates[`/monitoring/${key}`] = null;
-                    cleanedCount++;
-                }
-            }
-
-            if (Object.keys(updates).length > 0) {
-                await db.ref().update(updates);
-                console.log(`[Maintenance] Cleaned ${cleanedCount} old monitoring entries.`);
-                maintenanceResults.monitoringCleanup = { cleaned: cleanedCount };
-            }
-        }
-    } catch (error) {
-        console.error('[Maintenance] Error cleaning monitoring data:', error);
-        maintenanceResults.monitoringCleanup = { cleaned: 0, error: error.message };
-    }
+    // --- 3. Webhook Logs Cleanup ... [MOVED TO BOT] ---
+    // --- 4. Monitoring Data Cleanup ... [MOVED TO BOT] ---
 
     // --- 5. Function Usage Stats (last 24h) ---
     try {
@@ -237,8 +182,6 @@ const _runMaintenance = async (triggerContext) => {
 
     const hasCleanedUp = maintenanceResults.reportCleanup.oldReportsCleaned > 0 || maintenanceResults.duplicateCleanup.duplicatesDeleted > 0;
     const hasPending = maintenanceResults.pendingDeployments.total > 0;
-    const hasWebhooksCleanup = maintenanceResults.webhookLogsCleanup?.cleaned > 0;
-    const hasMonitoringCleanup = maintenanceResults.monitoringCleanup?.cleaned > 0;
     const fnStats = maintenanceResults.functionStats;
 
     const topFunctions = fnStats?.functions?.slice(0, 5) || [];
@@ -316,91 +259,6 @@ Deleted: ${maintenanceResults.duplicateCleanup.duplicatesDeleted}`, inline: true
         results: maintenanceResults
     };
 }
-
-
-// --- Morgue Overdue Check ---
-const MORGUE_PATH = '/morgue-records';
-const MORGUE_MONITOR_PATH = '/monitoring/morgueUpdate';
-
-export const checkMorgueOverdue = onSchedule({
-    schedule: "every 1 hours",
-    timeZone: "UTC",
-    region: "europe-west2",
-    memory: "256MiB",
-    secrets: ["PHMC_CONFIG"],
-}, async () => {
-    console.log('[MorgueMonitor] Checking morgue update status...');
-
-    try {
-        // Query only the single record with the highest lastUpdated value
-        // rather than downloading the entire morgue-records node into memory.
-        const snapshot = await db.ref(MORGUE_PATH)
-            .orderByChild('lastUpdated')
-            .limitToLast(1)
-            .once('value');
-
-        if (!snapshot.exists()) {
-            console.log('[MorgueMonitor] No morgue records found.');
-            return null;
-        }
-
-        let latest = 0;
-        snapshot.forEach(child => {
-            latest = child.val().lastUpdated || 0;
-        });
-
-        if (!latest) {
-            console.log('[MorgueMonitor] No valid lastUpdated timestamps found.');
-            return null;
-        }
-
-        const now = Date.now();
-        const overdue = now - latest > 24 * 60 * 60 * 1000;
-
-        if (!overdue) {
-            console.log('[MorgueMonitor] Morgue is up to date.');
-            return null;
-        }
-
-        // Check last notified time to avoid spamming
-        const monitorSnap = await db.ref(MORGUE_MONITOR_PATH).once('value');
-        const monitorData = monitorSnap.val() || {};
-        const lastNotified = monitorData.lastNotified || 0;
-        const cooldownMs = 6 * 60 * 60 * 1000; // re-notify every 6 hours
-
-        if (now - lastNotified < cooldownMs) {
-            console.log('[MorgueMonitor] Already notified recently, skipping.');
-            return null;
-        }
-
-        const lastUpdatedStr = new Date(latest).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
-        const hoursOverdue = Math.floor((now - latest) / (1000 * 60 * 60));
-
-        const embed = {
-            title: 'Morgue Database Update Overdue',
-            color: 0xe74c3c,
-            description: 'The morgue database has not been updated in over 24 hours.',
-            fields: [
-                { name: 'Last Update', value: lastUpdatedStr, inline: true },
-                { name: 'Hours Overdue', value: `${hoursOverdue}h`, inline: true },
-                { name: 'Timestamp', value: new Date().toLocaleString(), inline: false }
-            ],
-            footer: { text: 'PHMC Morgue Status Alert' }
-        };
-
-        const payload = { content: '<@228306972204597248>', embeds: [embed] };
-        await sendWebhook(payload);
-
-        // Persist last notified time
-        await db.ref(MORGUE_MONITOR_PATH).set({ lastNotified: now });
-
-        console.log('[MorgueMonitor] Overdue notification sent.');
-    } catch (error) {
-        console.error('[MorgueMonitor] Error:', error);
-    }
-
-    return null;
-});
 
 // --- Scheduled Cloud Function (v2) ---
 export const dailyMaintenanceTask = onSchedule({

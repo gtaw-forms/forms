@@ -46,6 +46,9 @@ firebase-admin-key.json
 tools/
 tools/service-account.json
 docs/
-# functions (Firebase Cloud Functions API/proxy endpoints)
+# functions (Firebase Cloud Functions API/proxy endpoints)#
+functions
 # AI context artifact
 changelog.md
+## discord bot 
+discord-bot/

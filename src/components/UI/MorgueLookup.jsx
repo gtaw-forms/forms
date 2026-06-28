@@ -402,7 +402,17 @@ const MorgueLookup = () => {
                                         timestamp: new Date().toISOString(),
                                         footer: { text: 'PHMC Morgue Usage Analytics' }
                                     }]
-                                }).catch(() => {});
+                                }).catch(err => {
+                                    console.error('[MorgueLookup] Search webhook failed:', err);
+                                    triggerWebhookProxy('admin', {
+                                        embeds: [{
+                                            title: '⚠️ Morgue Search Webhook Failed',
+                                            color: 0xffc107,
+                                            description: `**User:** ${userDisplayInfo?.name || 'Unknown'}\n**Search:** \`${query || '(none)'}\`\n**Error:** ${err.message || 'Unknown'}`,
+                                            timestamp: new Date().toISOString(),
+                                        }]
+                                    }).catch(() => {});
+                                });
                             }
                         }}
                     />
