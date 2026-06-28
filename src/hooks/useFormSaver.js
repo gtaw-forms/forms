@@ -6,18 +6,23 @@ import { getCharacterName, getCharacterID } from '../utils/identityUtils';
 import { comprehensiveSanitize } from '../utils/textUtils';
 import { useNotification } from '../contexts/NotificationContext';
 import { reportLogicalError } from '../utils/logging';
+import { isBotDeployOptedIn } from '../components/Modals/BotDeployOptInModal';
 
 const isLocalHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
-const deployTrackedForms = ['coroner-report', 'coroner_email', 'death-record', 'autopsy'];
+const deployTrackedForms = ['coroner-report', 'coroner_email', 'death-record', 'autopsy', 'patient_notes', 'mass-ftality-test'];
 
-export function getReportBasePath(formFirebaseKey) {
-  if (isLocalHost && deployTrackedForms.includes(formFirebaseKey)) return 'testingSavedReports';
+export function getReportBasePath(formFirebaseKey, botDeployOptedIn = false) {
+  if (deployTrackedForms.includes(formFirebaseKey)) {
+    if (isLocalHost || botDeployOptedIn) return 'testingSavedReports';
+  }
   return 'newSavedReports';
 }
 
-export function getBBCodeBasePath(formFirebaseKey) {
-  if (isLocalHost && deployTrackedForms.includes(formFirebaseKey)) return 'testingSavedReportBBCode';
+export function getBBCodeBasePath(formFirebaseKey, botDeployOptedIn = false) {
+  if (deployTrackedForms.includes(formFirebaseKey)) {
+    if (isLocalHost || botDeployOptedIn) return 'testingSavedReportBBCode';
+  }
   return 'newSavedReportBBCode';
 }
 
@@ -116,6 +121,7 @@ import { useGtaWorldAuthContext } from '../contexts/GtaWorldAuthContext';
 import { triggerWebhookProxy } from '../services/firebaseFunctions';
 
 export const useFormSaver = (gtaWorldUser, isGtaAuthenticated) => {
+    const botDeployOptedIn = isBotDeployOptedIn();
     const { showNotification } = useNotification();
     const { isFactionMember } = useGtaWorldAuthContext();
 
@@ -165,15 +171,36 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated) => {
                 console.warn("Could not generate standardized Coroner Report title due to missing decedentName, decedentOOC or dateTime. Using default title.");
             }
         } else if (selectedForm.firebaseKey === 'mass-ftality-test') { // Handle Mass Fatality Report
-            // ... Mass Fatality Report logic ...
+            const decedents = Array.isArray(formValues.decedents) ? formValues.decedents : [];
+            const label = (selectedForm.name || '').toLowerCase().includes('multi')
+                ? 'Multi Fatality Report'
+                : 'Mass Fatality Report';
+            // Group decedents by display name: CKs show real (OOC) name, PKs show character name
+            const nameGroups = {};
+            for (const dec of decedents) {
+                const isCK = dec?.typeOfDeath?.toUpperCase() === 'CK';
+                const displayName = isCK && dec?.decedentOOC
+                    ? dec.decedentOOC.trim()
+                    : (dec?.decedentName || 'Unknown').trim();
+                nameGroups[displayName] = (nameGroups[displayName] || 0) + 1;
+            }
+            // Format: "John Doe (x2), Kelly Clarkson"
+            const nameParts = Object.entries(nameGroups).map(([name, count]) =>
+                count > 1 ? `${name} (x${count})` : name
+            );
+            const nameSummary = nameParts.join(', ');
+            // Find the best date from any decedent that has one, or fall back to form level
+            const anyDecWithDate = decedents.find(d => d.dateOfDeath);
+            const dateSource = anyDecWithDate?.dateOfDeath || formValues.dateTime;
+            const formattedMFDate = formatToNorthAmericanDate(dateSource);
+            finalTitle = `[${label}] ${nameSummary} - ${formattedMFDate}`;
         } else if (selectedForm.firebaseKey === 'death-record') { // Handle Death Record title
-            const currentYear = new Date().getFullYear();
-            const caseNumber = parseCaseNumber(formValues.deathReportPostId) || formValues.caseNumber || 'UNKNOWN';
+            const deathType = (formValues.typeOfDeath || 'PK').toUpperCase();
             const decedentName = formValues.decedentName || 'UNKNOWN';
             const decedentOOC = formValues.decedentOOC || 'N/A';
             const formattedDateOfDeath = formatToMMM_DD_YYYY(formValues.dateOfDeath || formValues.formattedDateOfDeath);
 
-            finalTitle = `[CASE #${currentYear}-${caseNumber}] ${decedentName} ((${decedentOOC})) - ${formattedDateOfDeath}`;
+            finalTitle = `[${deathType}] ${decedentName} ((${decedentOOC})) - ${formattedDateOfDeath}`;
         }
 
         let currentAuthor = getCharacterName(gtaWorldUser);
@@ -272,8 +299,8 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated) => {
             reportDataToSave.processed = !!formValues.processed;
         }
 
-        const reportBasePath = getReportBasePath(selectedForm.firebaseKey);
-        const bbCodeBasePath = getBBCodeBasePath(selectedForm.firebaseKey);
+        const reportBasePath = getReportBasePath(selectedForm.firebaseKey, botDeployOptedIn);
+        const bbCodeBasePath = getBBCodeBasePath(selectedForm.firebaseKey, botDeployOptedIn);
         const reportPath = `${reportBasePath}/${sanitizedAuthorId}/${sanitizedKey}`;
         const bbCodePath = `${bbCodeBasePath}/${sanitizedAuthorId}/${sanitizedKey}`;
 
@@ -291,6 +318,15 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated) => {
                 set(bbCodeRef, { bbCode: bbCode }),
                 runTransaction(userReportCountRef, (currentCount) => (currentCount || 0) + 1),
             ];
+
+            // Dual-save: when opted in on live site, also save to newSavedReports
+            // so the Saved Reports modal can find it.
+            if (botDeployOptedIn && !isLocalHost && deployTrackedForms.includes(selectedForm.firebaseKey)) {
+                const liveReportRef = ref(database, `newSavedReports/${sanitizedAuthorId}/${sanitizedKey}`);
+                const liveBBCodeRef = ref(database, `newSavedReportBBCode/${sanitizedAuthorId}/${sanitizedKey}`);
+                promises.push(set(liveReportRef, reportDataToSave));
+                promises.push(set(liveBBCodeRef, { bbCode: bbCode }));
+            }
 
             if (selectedForm.firebaseKey === 'coroner-report' && reportDataToSave.isCK && !reportDataToSave.processed) {
                  const ckRef = ref(database, `unprocessedCKs/${sanitizedKey}`);
@@ -402,7 +438,7 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated) => {
                 Sentry.captureException(err, { extra: { context: 'saveReport - Webhook' } });
             }
 
-            return { success: true };
+            return { success: true, reportKey: sanitizedKey, authorId: sanitizedAuthorId, reportPath };
 
         } catch (error) {
             console.error("Error saving new report to Firebase:", error);

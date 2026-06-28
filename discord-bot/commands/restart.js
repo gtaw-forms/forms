@@ -73,45 +73,24 @@ export async function execute(interaction) {
         }
 
         if (buttonInteraction.customId === 'restart_confirm') {
-            console.log('[RESTART] ✅ Confirmed — spawning new process...');
+            console.log('[RESTART] ✅ Confirmed — restarting via systemd...');
             await buttonInteraction.update({
-                content: '🔄 **Restarting...**',
+                content: '🔄 **Restarting via systemd...**',
                 components: [],
             });
 
-            // Spawn the replacement in the same console so terminal output continues.
-            // When running via `npm start`, npm exits as soon as we do — so we spawn
-            // `npm start` via cmd.exe so the full npm→node chain stays alive.
-            const scriptPath = resolve(__dirname, 'index.js');
-            const isNpmContext = !!process.env.npm_lifecycle_event;
-            const cmd = isNpmContext ? 'cmd.exe' : process.execPath;
-            const args = isNpmContext
-                ? ['/c', 'npm.cmd', 'start']
-                : [scriptPath];
-
-            console.log(`[RESTART] 🚀 Spawning: ${cmd} ${args.join(' ')}`);
-
-            const child = spawn(cmd, args, {
-                cwd: __dirname,
-                stdio: 'inherit',
-                shell: false,
+            // Use systemd to restart — this works with the service setup
+            const { exec } = await import('child_process');
+            exec('sudo systemctl restart phmc-bot', (err) => {
+                if (err) {
+                    console.error('[RESTART] ❌ systemctl restart failed:', err.message);
+                } else {
+                    console.log('[RESTART] ✅ systemctl restart issued successfully');
+                }
             });
 
-            child.on('error', (err) => {
-                console.error(`[RESTART] ❌ Failed to spawn child:`, err.message);
-            });
-
-            child.on('spawn', () => {
-                console.log('[RESTART] ✅ Child process spawned — exiting current process.');
-                // Brief delay so the interaction update reaches Discord before we die
-                setTimeout(() => process.exit(0), 500);
-            });
-
-            // Fallback: if spawn never fires, exit anyway after a timeout
-            setTimeout(() => {
-                console.log('[RESTART] ⏰ Spawn event not received — exiting anyway.');
-                process.exit(0);
-            }, 5000);
+            // Brief delay then exit so the response reaches Discord
+            setTimeout(() => process.exit(0), 1000);
 
         } else {
             console.log('[RESTART] ❌ Cancelled');

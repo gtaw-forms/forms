@@ -25,6 +25,7 @@ import LsccManager from './LsccManager';
 import FormsManager from './FormsManager';
 import MetricsDashboard from './MetricsDashboard';
 import MorgueManager from './MorgueManager';
+import BotStatus from './BotStatus';
 
 const AdminDashboard = ({
 
@@ -47,8 +48,12 @@ const AdminDashboard = ({
     const [isMigratingReports, setIsMigratingReports] = useState(false);
     const [isTriggeringReport, setIsTriggeringReport] = useState(false);
     const [isScanningLocations, setIsScanningLocations] = useState(false);
+    const [lsccModalActive, setLsccModalActive] = useState(null);
     const [showMigrator, setShowMigrator] = useState(false);
     const [mapEnabled, setMapEnabled] = useState(false);
+    const [maintenanceActive, setMaintenanceActive] = useState(false);
+    const [maintenanceMessage, setMaintenanceMessage] = useState('');
+    const [isSavingMaintenance, setIsSavingMaintenance] = useState(false);
     const navigate = useNavigate();
 
     const [externalStatuses, setExternalStatuses] = useState({
@@ -130,6 +135,18 @@ const AdminDashboard = ({
             }
         };
         fetchMapStatus();
+
+        // Load current maintenance state
+        const loadMaintenance = async () => {
+            const dbRef = ref(getDatabase(), 'appMetadata/maintenance');
+            const snapshot = await get(dbRef);
+            if (snapshot.exists()) {
+                const data = snapshot.val();
+                setMaintenanceActive(!!data.active);
+                setMaintenanceMessage(data.message || '');
+            }
+        };
+        loadMaintenance();
     }, []);
 
     const handleToggleMap = async () => {
@@ -229,6 +246,7 @@ const AdminDashboard = ({
             case 'factions': return hasFactionUpload;
             case 'database': return hasDatabaseAccess;
             case 'morgue': return hasDatabaseAccess;
+            case 'botStatus': return hasDevAccess;
             case 'dev': return hasDevAccess;
             default: return true;
         }
@@ -244,6 +262,7 @@ const AdminDashboard = ({
             case 'factions': return 10;
             case 'database': return 12;
             case 'morgue': return 12;
+            case 'botStatus': return 11;
             case 'dev': return 11;
             default: return null;
         }
@@ -429,6 +448,27 @@ const AdminDashboard = ({
     };
 
 
+    const handleSaveMaintenance = async () => {
+        setIsSavingMaintenance(true);
+        try {
+            const dbRef = ref(getDatabase(), 'appMetadata/maintenance');
+            await set(dbRef, {
+                active: maintenanceActive,
+                message: maintenanceMessage.trim(),
+                updatedAt: Date.now(),
+                updatedBy: currentUser?.email || 'unknown',
+            });
+            showInAppNotification(
+                maintenanceActive ? '🔧 Maintenance mode enabled.' : '✅ Maintenance mode disabled.',
+                'success'
+            );
+        } catch (error) {
+            showInAppNotification('Failed to save maintenance settings.', 'error');
+        } finally {
+            setIsSavingMaintenance(false);
+        }
+    };
+
     const handleSectionChange = (sectionName, sectionLabel) => {
         setSelectedSection(sectionName);
         const { userAgent, timeZone } = getUserContext();
@@ -522,6 +562,16 @@ const AdminDashboard = ({
                         <button className={`nav-item-btn ${selectedSection === 'morgue' ? 'active' : ''}`} onClick={() => handleSectionChange('morgue', 'Morgue Records')}>
                             <i className="fas fa-microscope"></i> <span>Morgue Records</span>
                         </button>
+                        {hasDevAccess && (
+                            <button className={`nav-item-btn ${selectedSection === 'botStatus' ? 'active' : ''}`} onClick={() => handleSectionChange('botStatus', 'PHMC Bot')}>
+                                <i className="fas fa-robot"></i> <span>PHMC Bot</span>
+                            </button>
+                        )}
+                        {hasDevAccess && (
+                            <button className={`nav-item-btn ${selectedSection === 'maintenance' ? 'active' : ''}`} onClick={() => handleSectionChange('maintenance', 'System Maintenance')}>
+                                <i className="fas fa-wrench"></i> <span>System Maintenance</span>
+                            </button>
+                        )}
                         {hasDevAccess && (
                             <button className={`nav-item-btn ${selectedSection === 'dev' ? 'active' : ''}`} onClick={() => handleSectionChange('dev', 'Developer Console')}>
                                 <i className="fas fa-terminal"></i> <span>Developer Console</span>
@@ -695,6 +745,64 @@ const AdminDashboard = ({
 
                         {selectedSection === 'morgue' && (
                             hasDatabaseAccess ? <MorgueManager showNotification={showInAppNotification} /> : <div className="admin-section"><div className="alert alert-warning border-0 bg-opacity-25 shadow-sm p-4">Denied</div></div>
+                        )}
+
+                        {selectedSection === 'botStatus' && (
+                            hasDevAccess ? <BotStatus /> : <div className="admin-section"><div className="alert alert-danger border-0 bg-opacity-25 shadow-sm p-4">Access Denied</div></div>
+                        )}
+
+                        {selectedSection === 'maintenance' && (
+                            hasDevAccess ? (
+                                <div className="admin-section">
+                                    <div className="d-flex justify-content-between align-items-center mb-4">
+                                        <h2 className="mb-0 fw-800"><i className="fas fa-wrench me-3 text-warning"></i>System Maintenance</h2>
+                                    </div>
+                                    <div className="card border-0 shadow-sm">
+                                        <div className="card-body p-4">
+                                            <div className="form-check form-switch mb-4">
+                                                <input
+                                                    className="form-check-input"
+                                                    type="checkbox"
+                                                    role="switch"
+                                                    id="maintenanceToggle"
+                                                    checked={maintenanceActive}
+                                                    onChange={(e) => setMaintenanceActive(e.target.checked)}
+                                                    style={{ transform: 'scale(1.5)', marginRight: '12px', cursor: 'pointer' }}
+                                                />
+                                                <label className="form-check-label fw-bold" htmlFor="maintenanceToggle" style={{ fontSize: '1.1rem' }}>
+                                                    {maintenanceActive ? '🔧 Maintenance Mode Active' : '✅ Maintenance Mode Off'}
+                                                </label>
+                                            </div>
+
+                                            <div className="mb-3">
+                                                <label className="form-label fw-bold">Maintenance Message</label>
+                                                <textarea
+                                                    className="form-control bg-dark border-secondary text-white"
+                                                    rows={4}
+                                                    placeholder="Enter the message users will see..."
+                                                    value={maintenanceMessage}
+                                                    onChange={(e) => setMaintenanceMessage(e.target.value)}
+                                                />
+                                                <div className="form-text text-muted mt-1">
+                                                    This message will be shown as a banner at the top of the app for all users.
+                                                </div>
+                                            </div>
+
+                                            <button
+                                                className="btn btn-warning fw-bold px-4 py-2"
+                                                onClick={handleSaveMaintenance}
+                                                disabled={isSavingMaintenance}
+                                            >
+                                                {isSavingMaintenance ? (
+                                                    <><Spinner animation="border" size="sm" className="me-2" />Saving...</>
+                                                ) : (
+                                                    <><i className="fas fa-save me-2"></i>Save Settings</>
+                                                )}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : <div className="admin-section"><div className="alert alert-danger border-0 bg-opacity-25 shadow-sm p-4">Access Denied</div></div>
                         )}
                     </div>
                 </main>

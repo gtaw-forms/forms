@@ -131,11 +131,12 @@ export const NotificationProvider = ({ children }) => {
     }, [removeNotification]);
 
     useEffect(() => {
-        const maintenanceRef = ref(database, 'appMetadata/maintenanceMode');
+        const maintenanceRef = ref(database, 'appMetadata/maintenance');
         const handleValue = (snapshot) => {
-            if (snapshot.val()) {
+            const data = snapshot.val();
+            if (data && data.active) {
                 showNotification(
-                    'Some parts of the application is unavailable, if you have issues logging in, please notify Alyson Frost (Fr0styDev) on Discord.',
+                    data.message || 'System maintenance in progress. Some features may be unavailable.',
                     'error',
                     0,
                     { key: 'maintenance-banner' }

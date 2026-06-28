@@ -47,6 +47,7 @@ const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.GuildEmojisAndStickers,
     ],
 });
 
@@ -71,14 +72,18 @@ async function registerCommands() {
     const restart = await import('./commands/restart.js');
     const autopsy = await import('./commands/autopsy.js');
     const user = await import('./commands/user.js');
-    const report = await import('./commands/report.js');
+    const formQueued = await import('./commands/form-queued.js');
+    const maintenance = await import('./commands/maintenance.js');
+    const dashboard = await import('./commands/dashboard.js');
     const commands = [
         morgue.data.toJSON(),
         card.data.toJSON(),
         restart.data.toJSON(),
         autopsy.data.toJSON(),
         user.data.toJSON(),
-        report.data.toJSON(),
+        formQueued.data.toJSON(),
+        maintenance.data.toJSON(),
+        dashboard.data.toJSON(),
     ];
 
     const rest = new REST({ version: '10' }).setToken(token);
@@ -115,9 +120,41 @@ client.once('clientReady', async () => {
     console.log('═══════════════════════════════════════════');
 
     await registerCommands();
+
+    // ── Start auto-deploy listener (monitors Firebase, queues deployments) ──
+    try {
+        const { startAutoDeploy } = await import('./services/autoDeploy.js');
+        startAutoDeploy();
+    } catch (err) {
+        console.warn('[BOT] ⚠️ Auto-deploy failed to start (non-fatal):', err.message);
+    }
+
+    // ── Start system monitor (health checks, morgue overdue, data cleanup) ──
+    try {
+        const { startSystemMonitor } = await import('./services/systemMonitor.js');
+        startSystemMonitor();
+    } catch (err) {
+        console.warn('[BOT] ⚠️ System monitor failed to start (non-fatal):', err.message);
+    }
+
+    // ── Start dashboard manager (live status embed, 5-min refresh) ──
+    try {
+        const { setDashboardClient, startDashboardManager } = await import('./services/dashboardManager.js');
+        setDashboardClient(client);
+        startDashboardManager();
+    } catch (err) {
+        console.warn('[BOT] ⚠️ Dashboard manager failed to start (non-fatal):', err.message);
+    }
 });
 
 client.on('interactionCreate', async (interaction) => {
+    // Handle dashboard refresh button
+    if (interaction.isButton() && interaction.customId === 'dashboard_refresh') {
+        const { handleDashboardRefresh } = await import('./services/dashboardManager.js');
+        await handleDashboardRefresh(interaction);
+        return;
+    }
+
     if (!interaction.isChatInputCommand()) return;
 
     console.log(`[BOT] 🎯 Command received: /${interaction.commandName} from ${interaction.user.tag} (${interaction.user.id})`);
@@ -172,8 +209,14 @@ async function start() {
     const userCmd = await import('./commands/user.js');
     client.commands.set(userCmd.data.name, { execute: userCmd.execute });
 
-    const reportCmd = await import('./commands/report.js');
-    client.commands.set(reportCmd.data.name, { execute: reportCmd.execute });
+    const formQueuedCmd = await import('./commands/form-queued.js');
+    client.commands.set(formQueuedCmd.data.name, { execute: formQueuedCmd.execute });
+
+    const maintenanceCmd = await import('./commands/maintenance.js');
+    client.commands.set(maintenanceCmd.data.name, { execute: maintenanceCmd.execute });
+
+    const dashboardCmd = await import('./commands/dashboard.js');
+    client.commands.set(dashboardCmd.data.name, { execute: dashboardCmd.execute });
 
     console.log('[BOT] 🔌 Connecting to Discord...');
     await client.login(token);

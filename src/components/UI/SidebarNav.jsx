@@ -7,6 +7,7 @@ import { useImageUpload } from '../../hooks/useImageUpload';
 import phmcLogoSrc from '../../assets/phmc.png';
 import MapModal from '../Modals/MapModal';
 import BusinessCardModal from '../Modals/BusinessCardModal';
+import { isBotDeployOptedIn, setBotDeployPref } from '../Modals/BotDeployOptInModal';
 
 /**
  * Reusable Sidebar Navigation component for Form Handler and EMS Dashboard
@@ -32,6 +33,13 @@ const SidebarNav = ({
   const [showMapModal, setShowMapModal] = useState(false);
   const [showBusinessCardModal, setShowBusinessCardModal] = useState(false);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const [botDeployEnabled, setBotDeployEnabled] = useState(() => isBotDeployOptedIn());
+
+  const toggleBotDeploy = () => {
+    const newVal = !botDeployEnabled;
+    setBotDeployEnabled(newVal);
+    setBotDeployPref(newVal ? 'true' : 'false');
+  };
 
   const togglePanel = () => {
     setIsPanelOpen(!isPanelOpen);
@@ -154,6 +162,29 @@ const SidebarNav = ({
 
         {/* Custom children buttons */}
         {children}
+
+        <div className={panelStyles.panelDivider} />
+        <div className={panelStyles.panelHeader}>Dev Feature</div>
+        <button
+          className={panelStyles.panelButton}
+          onClick={toggleBotDeploy}
+          style={{
+            border: botDeployEnabled ? '1px solid #28a745' : '1px solid #6c757d',
+            background: botDeployEnabled ? '#1a3a2a' : '#2d2d2d',
+          }}
+        >
+          <i className={`fas ${botDeployEnabled ? 'fa-robot text-success' : 'fa-times-circle text-danger'}`}></i>
+          <span style={{ flex: 1 }}>PHMC Bot Testing</span>
+          <span style={{
+            fontSize: '0.7rem',
+            padding: '2px 8px',
+            borderRadius: 10,
+            background: botDeployEnabled ? '#28a745' : '#6c757d',
+            color: '#fff',
+          }}>
+            {botDeployEnabled ? 'ON' : 'OFF'}
+          </span>
+        </button>
 
         <div className={panelStyles.panelDivider} />
         <div className={panelStyles.panelHeader}>Settings & Help</div>

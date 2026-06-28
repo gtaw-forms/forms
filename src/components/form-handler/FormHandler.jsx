@@ -17,6 +17,8 @@ import { useFormSaver } from '../../hooks/useFormSaver';
 import FormQuickLinks from './FormQuickLinks';
 import { validateForm, evaluateFieldVisibility } from '../../utils/formValidation';
 import { triggerWebhookProxy } from '../../services/firebaseFunctions';
+import { database } from '../../firebase';
+import { ref, onValue } from 'firebase/database';
 import { useInactivityReload } from '../../hooks/useInactivityReload';
 import { cleanRankText } from '../../utils/textUtils';
 import { STORAGE_KEYS } from '../../services/gtaWorldAuth';
@@ -603,6 +605,47 @@ const handleClearForm = useCallback(() => {
 
       if (saveResult?.success) {
         finalNotificationMessage = `Report "${generatedTitle}" saved!`;
+
+        // ── Watch for bot deploy status updates ──
+        const deployTrackedForms = ['coroner-report', 'coroner_email', 'death-record', 'autopsy', 'mass-ftality-test', 'patient_notes'];
+        const isDeployTracked = selectedForm?.firebaseKey && deployTrackedForms.includes(selectedForm.firebaseKey);
+        const optedIn = localStorage.getItem('botDeployOptIn') === 'true';
+
+        if (isDeployTracked && optedIn && saveResult.reportPath) {
+          const statusRef = ref(database, saveResult.reportPath);
+          const notifIdRef = { current: showNotification('⏳ Queued — waiting for bot...', 'spinner fa-spin', 0) };
+
+          const STATUS_MESSAGES = {
+            searching:       { icon: '🔍', text: 'Searching for patient thread...', color: '#60a5fa' },
+            replying:        { icon: '📝', text: 'Posting reply to thread...', color: '#60a5fa' },
+            posted:          { icon: '✅', text: 'Report posted successfully!', color: '#28a745', final: true },
+            dry_run:         { icon: '🏜️', text: 'Bot filled form (dry run — not submitted)', color: '#ffc107', final: true },
+            topic_not_found: { icon: '📭', text: 'Topic not found — create manually on forum', color: '#ffc107', final: true },
+            reply_failed:    { icon: '❌', text: 'Reply failed', color: '#dc3545', final: true },
+            error:           { icon: '❌', text: 'Missing information', color: '#dc3545', final: true },
+          };
+
+          const unsubscribe = onValue(statusRef, (snap) => {
+            const data = snap.val();
+            if (data?.deployStatus && STATUS_MESSAGES[data.deployStatus]) {
+              const msg = STATUS_MESSAGES[data.deployStatus];
+              const displayText = data.deployMessage || msg.text;
+              removeNotification(notifIdRef.current);
+              if (msg.final) {
+                const type = data.deployStatus === 'posted' ? 'success' : 'warning';
+                showNotification(`${msg.icon} ${displayText}`, type, 15000);
+              } else {
+                notifIdRef.current = showNotification(`${msg.icon} ${displayText}`, 'spinner fa-spin', 0);
+              }
+            }
+          });
+
+          setTimeout(() => {
+            try { unsubscribe(); } catch {}
+            removeNotification(notifIdRef.current);
+          }, 5 * 60 * 1000);
+        }
+
         if (isCoronerEmail) {
           finalNotificationOptions = [
             {
@@ -1305,48 +1348,101 @@ const handleClearForm = useCallback(() => {
           </div>
 
           <div>
-{generatedBBCode ? (
+{generatedBBCode ? (() => {
+  const deployTrackedForms = ['coroner-report', 'coroner_email', 'death-record', 'autopsy', 'mass-ftality-test', 'patient_notes'];
+  const isDeployTracked = selectedForm?.firebaseKey && deployTrackedForms.includes(selectedForm.firebaseKey);
+  const optedIn = localStorage.getItem('botDeployOptIn') === 'true';
+  if (isDeployTracked && optedIn) return null;
+  return (
   <button
     onClick={() => setShowBBCode(!showBBCode)}
     className={formStyles.rightPanelButton}
     style={{ background: showBBCode ? "#7c3aed" : "#4c1d95" }}
   >
     {showBBCode ? "Hide" : "Show"} BBCode Preview
-  </button>
-) : (
+  </button>);
+})() : (
   <div style={{ color: "#94a3b8", fontStyle: "italic", padding: "0.75rem" }}>
     Click &quot;Generate BBCode&quot; to preview
   </div>
 )}
           <button onClick={copyAndSaveReport} disabled={!generatedBBCode} className={`${formStyles.rightPanelButton} ${generatedBBCode ? formStyles.copy : ''}`}>
-            {Array.isArray(generatedBBCode) ? `Copy Part 1 + Save (${generatedBBCode.length} Parts)` : (generatedBBCode ? "Copy BBCode + Save" : "No BBCode Yet")}
+            {(() => {
+              const deployTrackedForms = ['coroner-report', 'coroner_email', 'death-record', 'autopsy', 'mass-ftality-test', 'patient_notes'];
+              const isDeployTracked = selectedForm?.firebaseKey && deployTrackedForms.includes(selectedForm.firebaseKey);
+              const optedIn = localStorage.getItem('botDeployOptIn') === 'true';
+              if (isDeployTracked && optedIn) return 'Save and Queue';
+              if (Array.isArray(generatedBBCode)) return `Copy Part 1 + Save (${generatedBBCode.length} Parts)`;
+              return generatedBBCode ? 'Copy BBCode + Save' : 'No BBCode Yet';
+            })()}
           </button>
           </div>
 
 {generatedBBCode && (
   <>
-    {selectedForm?.category === 'DMEC' && (
-      <div style={{ 
-        color: "#94a3b8", 
-        fontSize: "0.85rem", 
-        marginBottom: "0.6rem", 
-        fontWeight: "600",
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px'
-      }}>
-        <i className="fas fa-info-circle" style={{ color: '#60a5fa' }}></i>
-        Click this box to copy the generated title!
-      </div>
-    )}
-    <div
-      style={{
-        background: "#0f172a",
-        padding: "1.5rem",
-        borderRadius: 12,
-        color: selectedForm?.category === 'DMEC' ? "#e2e8f0" : "#fbbf24",
-        fontSize: "1.1rem",
-        fontWeight: "700",
+    {/* Bot Deploy Opt-In Notice */}
+    {(() => {
+      const deployTrackedForms = ['coroner-report', 'coroner_email', 'death-record', 'autopsy', 'mass-ftality-test', 'patient_notes'];
+      const isDeployTracked = selectedForm?.firebaseKey && deployTrackedForms.includes(selectedForm.firebaseKey);
+      const optedIn = localStorage.getItem('botDeployOptIn') === 'true';
+      if (isDeployTracked && optedIn) {
+        return (
+          <div style={{
+            background: '#132a1a',
+            border: '1px solid #28a745',
+            borderRadius: 12,
+            padding: '14px 18px',
+            marginBottom: '1rem',
+            color: '#b7eb8f',
+            fontSize: '0.9rem',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 12,
+          }}>
+            <i className="fas fa-robot" style={{ fontSize: '1.3rem', color: '#28a745', marginTop: 2 }}></i>
+            <div>
+              <strong style={{ color: '#fff' }}>Auto-Deploy Enabled</strong>
+              <p style={{ margin: '4px 0 0 0', color: '#a3d9a5' }}>
+                You have opted in for the PHMC Bot to automatically post your reports.
+                You do not need to take any further action. Reports will be posted within 1 minute.
+              </p>
+            </div>
+          </div>
+        );
+      }
+      return null;
+    })()}
+
+    {(() => {
+      const deployTrackedForms = ['coroner-report', 'coroner_email', 'death-record', 'autopsy', 'mass-ftality-test', 'patient_notes'];
+      const isDeployTracked = selectedForm?.firebaseKey && deployTrackedForms.includes(selectedForm.firebaseKey);
+      const optedIn = localStorage.getItem('botDeployOptIn') === 'true';
+      // Hide title when auto-deploy is enabled
+      if (isDeployTracked && optedIn) return null;
+
+      return <>
+        {selectedForm?.category === 'DMEC' && (
+          <div style={{
+            color: "#94a3b8",
+            fontSize: "0.85rem",
+            marginBottom: "0.6rem",
+            fontWeight: "600",
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}>
+            <i className="fas fa-info-circle" style={{ color: '#60a5fa' }}></i>
+            Click this box to copy the generated title!
+          </div>
+        )}
+        <div
+          style={{
+            background: "#0f172a",
+            padding: "1.5rem",
+            borderRadius: 12,
+            color: selectedForm?.category === 'DMEC' ? "#e2e8f0" : "#fbbf24",
+            fontSize: "1.1rem",
+            fontWeight: "700",
         marginBottom: "1rem",
         whiteSpace: "pre-wrap",
         cursor: selectedForm?.category === 'DMEC' ? "pointer" : "default",
@@ -1392,23 +1488,40 @@ const handleClearForm = useCallback(() => {
         ? (generatedTitle || "No Title Generated") 
         : "Please add this to the patient's thread, if one is missing, kindly make one"}
     </div>
+    </>})()}
 
-    <FormQuickLinks 
-      form={selectedForm} 
-      formValues={formValues} 
-      agencyDataStore={agencyDataStore} 
-      generatedBBCode={generatedBBCode}
-      generatedTitle={generatedTitle}
-    />
+    {(() => {
+      const deployTrackedForms = ['coroner-report', 'coroner_email', 'death-record', 'autopsy', 'mass-ftality-test', 'patient_notes'];
+      const isDeployTracked = selectedForm?.firebaseKey && deployTrackedForms.includes(selectedForm.firebaseKey);
+      const optedIn = localStorage.getItem('botDeployOptIn') === 'true';
+      // Hide quick links when auto-deploy is enabled — bot handles posting
+      if (isDeployTracked && optedIn) return null;
+      return (
+        <FormQuickLinks
+          form={selectedForm}
+          formValues={formValues}
+          agencyDataStore={agencyDataStore}
+          generatedBBCode={generatedBBCode}
+          generatedTitle={generatedTitle}
+        />
+      );
+    })()}
 
-    {showBBCode && (
-      Array.isArray(generatedBBCode) ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginTop: '1rem' }}>
+    {(() => {
+      const deployTrackedForms = ['coroner-report', 'coroner_email', 'death-record', 'autopsy', 'mass-ftality-test', 'patient_notes'];
+      const isDeployTracked = selectedForm?.firebaseKey && deployTrackedForms.includes(selectedForm.firebaseKey);
+      const optedIn = localStorage.getItem('botDeployOptIn') === 'true';
+      // Hide BBCode preview when auto-deploy is enabled
+      if (isDeployTracked && optedIn) return null;
+      if (!showBBCode) return null;
+
+      if (Array.isArray(generatedBBCode)) {
+        return <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginTop: '1rem' }}>
           {generatedBBCode.map((part, idx) => (
             <div key={idx} style={{ background: '#0f172a', padding: '1rem', borderRadius: 12, border: '1px solid #1e293b' }}>
                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
                   <span style={{ color: '#a78bfa', fontWeight: 'bold', fontSize: '0.9rem' }}>PART {idx + 1} of {generatedBBCode.length}</span>
-                  <button 
+                  <button
                     onClick={() => {
                       navigator.clipboard.writeText(part);
                       showNotification(`Part ${idx + 1} copied!`, 'success');
@@ -1419,7 +1532,7 @@ const handleClearForm = useCallback(() => {
                     Copy Part {idx + 1}
                   </button>
                </div>
-               <pre 
+               <pre
                   style={{
                     background: "#020617",
                     padding: "1rem",
@@ -1437,28 +1550,28 @@ const handleClearForm = useCallback(() => {
                 </pre>
             </div>
           ))}
-        </div>
-      ) : (
-        <pre 
-          style={{
-            background: "#0f172a",
-            padding: "1.5rem",
-            borderRadius: 12,
-            color: "#e2e8f0",
-            fontSize: "0.9rem",
-            maxHeight: "60vh",
-            overflow: "auto",
-            marginTop: "1rem",
-            whiteSpace: "pre-wrap",
-            cursor: "pointer"
-          }}
-          onClick={copyAndSaveReport}
-          title="Click to Copy BBCode + Save"
-        >
-          {generatedBBCode}
-        </pre>
-      )
-    )}
+        </div>;
+      }
+
+      return <pre
+        style={{
+          background: "#0f172a",
+          padding: "1.5rem",
+          borderRadius: 12,
+          color: "#e2e8f0",
+          fontSize: "0.9rem",
+          maxHeight: "60vh",
+          overflow: "auto",
+          marginTop: "1rem",
+          whiteSpace: "pre-wrap",
+          cursor: "pointer"
+        }}
+        onClick={copyAndSaveReport}
+        title="Click to Copy BBCode + Save"
+      >
+        {generatedBBCode}
+      </pre>;
+    })()}
   </>
 )}        </div>
       </div>
@@ -1471,7 +1584,7 @@ const handleClearForm = useCallback(() => {
       </Suspense>
 
       {/* Global Image Previewer */}
-      <ImagePreviewModal 
+      <ImagePreviewModal
         isOpen={!!imagePreviewUrl}
         onClose={closeImagePreview}
         imageUrl={imagePreviewUrl}
@@ -1479,6 +1592,7 @@ const handleClearForm = useCallback(() => {
         currentIndex={currentPreviewIndex}
         onIndexChange={setCurrentPreviewIndex}
       />
+
 
       {selectedForm && formProgress.total > 0 && (
         <div style={{ position: 'fixed', bottom: 20, right: 20, zIndex: 1000, display: 'flex', alignItems: 'center', gap: 12, background: '#0f172a', border: '1px solid #334155', borderRadius: 16, padding: '12px 18px', boxShadow: '0 8px 32px rgba(0,0,0,0.5)', fontWeight: 600, fontSize: '0.85rem', color: '#e2e8f0' }}>
