@@ -607,7 +607,7 @@ const handleClearForm = useCallback(() => {
         finalNotificationMessage = `Report "${generatedTitle}" saved!`;
 
         // ── Watch for bot deploy status updates ──
-        const deployTrackedForms = ['coroner-report', 'coroner_email', 'death-record', 'autopsy', 'mass-ftality-test', 'patient_notes'];
+        const deployTrackedForms = ['coroner-report', 'coroner_email', 'death_record', 'autopsy', 'mass-ftality-test', 'patient_notes'];
         const isDeployTracked = selectedForm?.firebaseKey && deployTrackedForms.includes(selectedForm.firebaseKey);
         const optedIn = localStorage.getItem('botDeployOptIn') === 'true';
 
@@ -1349,7 +1349,7 @@ const handleClearForm = useCallback(() => {
 
           <div>
 {generatedBBCode ? (() => {
-  const deployTrackedForms = ['coroner-report', 'coroner_email', 'death-record', 'autopsy', 'mass-ftality-test', 'patient_notes'];
+  const deployTrackedForms = ['coroner-report', 'coroner_email', 'death_record', 'autopsy', 'mass-ftality-test', 'patient_notes'];
   const isDeployTracked = selectedForm?.firebaseKey && deployTrackedForms.includes(selectedForm.firebaseKey);
   const optedIn = localStorage.getItem('botDeployOptIn') === 'true';
   if (isDeployTracked && optedIn) return null;
@@ -1368,7 +1368,7 @@ const handleClearForm = useCallback(() => {
 )}
           <button onClick={copyAndSaveReport} disabled={!generatedBBCode} className={`${formStyles.rightPanelButton} ${generatedBBCode ? formStyles.copy : ''}`}>
             {(() => {
-              const deployTrackedForms = ['coroner-report', 'coroner_email', 'death-record', 'autopsy', 'mass-ftality-test', 'patient_notes'];
+              const deployTrackedForms = ['coroner-report', 'coroner_email', 'death_record', 'autopsy', 'mass-ftality-test', 'patient_notes'];
               const isDeployTracked = selectedForm?.firebaseKey && deployTrackedForms.includes(selectedForm.firebaseKey);
               const optedIn = localStorage.getItem('botDeployOptIn') === 'true';
               if (isDeployTracked && optedIn) return 'Save and Queue';
@@ -1382,7 +1382,7 @@ const handleClearForm = useCallback(() => {
   <>
     {/* Bot Deploy Opt-In Notice */}
     {(() => {
-      const deployTrackedForms = ['coroner-report', 'coroner_email', 'death-record', 'autopsy', 'mass-ftality-test', 'patient_notes'];
+      const deployTrackedForms = ['coroner-report', 'coroner_email', 'death_record', 'autopsy', 'mass-ftality-test', 'patient_notes'];
       const isDeployTracked = selectedForm?.firebaseKey && deployTrackedForms.includes(selectedForm.firebaseKey);
       const optedIn = localStorage.getItem('botDeployOptIn') === 'true';
       if (isDeployTracked && optedIn) {
@@ -1414,7 +1414,7 @@ const handleClearForm = useCallback(() => {
     })()}
 
     {(() => {
-      const deployTrackedForms = ['coroner-report', 'coroner_email', 'death-record', 'autopsy', 'mass-ftality-test', 'patient_notes'];
+      const deployTrackedForms = ['coroner-report', 'coroner_email', 'death_record', 'autopsy', 'mass-ftality-test', 'patient_notes'];
       const isDeployTracked = selectedForm?.firebaseKey && deployTrackedForms.includes(selectedForm.firebaseKey);
       const optedIn = localStorage.getItem('botDeployOptIn') === 'true';
       // Hide title when auto-deploy is enabled
@@ -1491,7 +1491,7 @@ const handleClearForm = useCallback(() => {
     </>})()}
 
     {(() => {
-      const deployTrackedForms = ['coroner-report', 'coroner_email', 'death-record', 'autopsy', 'mass-ftality-test', 'patient_notes'];
+      const deployTrackedForms = ['coroner-report', 'coroner_email', 'death_record', 'autopsy', 'mass-ftality-test', 'patient_notes'];
       const isDeployTracked = selectedForm?.firebaseKey && deployTrackedForms.includes(selectedForm.firebaseKey);
       const optedIn = localStorage.getItem('botDeployOptIn') === 'true';
       // Hide quick links when auto-deploy is enabled — bot handles posting
@@ -1508,7 +1508,7 @@ const handleClearForm = useCallback(() => {
     })()}
 
     {(() => {
-      const deployTrackedForms = ['coroner-report', 'coroner_email', 'death-record', 'autopsy', 'mass-ftality-test', 'patient_notes'];
+      const deployTrackedForms = ['coroner-report', 'coroner_email', 'death_record', 'autopsy', 'mass-ftality-test', 'patient_notes'];
       const isDeployTracked = selectedForm?.firebaseKey && deployTrackedForms.includes(selectedForm.firebaseKey);
       const optedIn = localStorage.getItem('botDeployOptIn') === 'true';
       // Hide BBCode preview when auto-deploy is enabled

@@ -10,18 +10,18 @@ import { isBotDeployOptedIn } from '../components/Modals/BotDeployOptInModal';
 
 const isLocalHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
-const deployTrackedForms = ['coroner-report', 'coroner_email', 'death-record', 'autopsy', 'patient_notes', 'mass-ftality-test'];
+const deployTrackedForms = ['coroner-report', 'coroner_email', 'death_record', 'autopsy', 'patient_notes', 'mass-ftality-test'];
 
 export function getReportBasePath(formFirebaseKey, botDeployOptedIn = false) {
   if (deployTrackedForms.includes(formFirebaseKey)) {
-    if (isLocalHost || botDeployOptedIn) return 'testingSavedReports';
+    if (isLocalHost || botDeployOptedIn) return 'scheduledReports';
   }
   return 'newSavedReports';
 }
 
 export function getBBCodeBasePath(formFirebaseKey, botDeployOptedIn = false) {
   if (deployTrackedForms.includes(formFirebaseKey)) {
-    if (isLocalHost || botDeployOptedIn) return 'testingSavedReportBBCode';
+    if (isLocalHost || botDeployOptedIn) return 'scheduledReportsBBCode';
   }
   return 'newSavedReportBBCode';
 }
@@ -194,13 +194,14 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated) => {
             const dateSource = anyDecWithDate?.dateOfDeath || formValues.dateTime;
             const formattedMFDate = formatToNorthAmericanDate(dateSource);
             finalTitle = `[${label}] ${nameSummary} - ${formattedMFDate}`;
-        } else if (selectedForm.firebaseKey === 'death-record') { // Handle Death Record title
-            const deathType = (formValues.typeOfDeath || 'PK').toUpperCase();
+        } else if (selectedForm.firebaseKey === 'death_record') { // Handle Death Record title
             const decedentName = formValues.decedentName || 'UNKNOWN';
             const decedentOOC = formValues.decedentOOC || 'N/A';
+            const year = new Date().getFullYear();
+            const caseNum = parseCaseNumber(formValues.deathReportPostId) || parseCaseNumber(formValues.caseNumber) || 'UNKNOWN';
             const formattedDateOfDeath = formatToMMM_DD_YYYY(formValues.dateOfDeath || formValues.formattedDateOfDeath);
 
-            finalTitle = `[${deathType}] ${decedentName} ((${decedentOOC})) - ${formattedDateOfDeath}`;
+            finalTitle = `[CASE #${year}-${caseNum}] ${decedentName} ((${decedentOOC})) | ${formattedDateOfDeath}`;
         }
 
         let currentAuthor = getCharacterName(gtaWorldUser);
@@ -396,7 +397,7 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated) => {
                     webhookPayload.department = (typeof deptVal === 'object' && deptVal !== null) ? (deptVal.label || deptVal.value) : deptVal;
                 }
 
-                const isDeathRecord = selectedForm.firebaseKey === 'death-record';
+                const isDeathRecord = selectedForm.firebaseKey === 'death_record';
                 const discordPayload = {
                     embeds: [{
                         title: isDeathRecord ? '💀 Death Record Saved (CK)' : 'Report Saved',

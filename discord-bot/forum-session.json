@@ -1,0 +1,79 @@
+{
+  "cookies": [
+    {
+      "name": "phpbb3_9jl3s_k",
+      "value": "",
+      "domain": ".phmc.gta.world",
+      "path": "/",
+      "expires": 1813974099.435053,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "cf_clearance",
+      "value": "CkR0siJQ97lgy8qDGWlaEB4Yx5UQCF9rJUZ23DvqZI4-1782438092-1.2.1.1-CPbavpSSqWGMbX1T7gcyy0HSlfc3T56IlxPcOsrTFygVQmA5jdlXd6kra8_AQnLlfhnlkymfp7Ue9Q0NG2JtpgGCXRXjSih47DqA2owfNTty.Hei6x17KlqalvgxlqV2l6yGLku8QoxXZqPc7hNG_db1HtFFepmS4UNVfo7eqHd38olo_BMaPH9nse0Eb_MOLb6BpGBwPB_y7vm_uGhRnpPGLDnwPy8NwzHRh71RkkLswuy6zao5om4RUtfQlGLgNIOuoWwb6QUTaQW0Mx3TVlDKDIQbklVYbGKgcRJhnGo1KPCUznSE8YgMPjbkgmUPJL9KTK6mgdfyXWPVrNyCgg",
+      "domain": ".gta.world",
+      "path": "/",
+      "expires": 1813974092.209748,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None",
+      "partitionKey": "https://gta.world",
+      "_crHasCrossSiteAncestor": false
+    },
+    {
+      "name": "_cfuvid",
+      "value": "kuQpxmeoOW4oHnVoPSaRTJIv1LGVPMqlBQtiJHN9MDc-1782438092.4110463-1.0.1.1-FdBPMSp6vRQ84bIJHks3KJ4ktnelEQHNdbKTrHmnS6c",
+      "domain": ".discord.com",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "phpbb3_9jl3s_u",
+      "value": "1579",
+      "domain": ".phmc.gta.world",
+      "path": "/",
+      "expires": 1813974099.434958,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "phpbb3_9jl3s_sid",
+      "value": "1904a61f7c43b5ef9552a1d315701fab",
+      "domain": ".phmc.gta.world",
+      "path": "/",
+      "expires": 1813974099.435075,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "cf_clearance",
+      "value": "Ch4bytXfgfGyOai6.B7q9vq_RKpWEe5IqxQNifohkSg-1782438100-1.2.1.1-_sRB5wHdSBeOZyEQ5bTWEm9Y9k8d2hLOhw8LvCCcrIm2zqbR.RnWveY8qRxrykUljM52JnqJCJ5XKJsAOjrbC0zSzltnTi2Za5w1EpAMG9kCEocqRWUKdZ98wBGjWkYFzpR8E2gZ0BB8eTkItytpQzmyThTzO7Rw0QuG.KdRPz6gfeTxN19j4CZohcR5VXCcihR9FNTSzk0SB68.6tNopuU_LMlEOnubyMtvBusM3ypcW2_kwdlRy8UpAt20f4LULmQs9RCpHv0A88QkoJpIUyuceeBVl.Dhv8xW21Hrekv5rYirIwuf84PCR.HLgjDCH5WhQbjJZVda7eLHo2K8bA",
+      "domain": ".discord.com",
+      "path": "/",
+      "expires": 1813974099.786907,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None",
+      "partitionKey": "https://gta.world",
+      "_crHasCrossSiteAncestor": true
+    }
+  ],
+  "origins": [
+    {
+      "origin": "https://phmc.gta.world",
+      "localStorage": [
+        {
+          "name": "jQuery-Collapse",
+          "value": "{\"forumlist_collapse\":[1,1,1,1,1],\"sidebar_right\":[1]}"
+        }
+      ]
+    }
+  ]
+}

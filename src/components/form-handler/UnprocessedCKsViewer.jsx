@@ -7,7 +7,7 @@ import { useModal } from '../../contexts/ModalProvider';
 import { useData } from '../../contexts/DataContext';
 
 const UnprocessedCKsViewer = ({ selectedForm, onPreload }) => {
-    const { morgueRecords } = useData();
+    const { morgueRecords, loadMorgueRecords } = useData();
     const [ckList, setCkList] = useState([]);
     const [loading, setLoading] = useState(true);
     const { showNotification, removeNotification } = useNotification();
@@ -45,12 +45,21 @@ const UnprocessedCKsViewer = ({ selectedForm, onPreload }) => {
         }, null);
     };
 
+    // Lazy-load morgue records for CK matching (only on death record forms)
     useEffect(() => {
-// ... existing useEffect ...
+        if (selectedForm?.firebaseKey === 'death-record' ||
+            selectedForm?.firebaseKey === 'death_record' ||
+            selectedForm?.name === 'Death Record') {
+            loadMorgueRecords();
+        }
+    }, [selectedForm, loadMorgueRecords]);
+
+    useEffect(() => {
+	// ... existing useEffect ...
         // Only active for Death Record form
         // Checking multiple possible keys/names to ensure robustness against legacy/migration inconsistencies
-        if (selectedForm?.firebaseKey !== 'death-record' && 
-            selectedForm?.firebaseKey !== 'death_record' && 
+        if (selectedForm?.firebaseKey !== 'death-record' &&
+            selectedForm?.firebaseKey !== 'death_record' &&
             selectedForm?.name !== 'Death Record') {
             return;
         }

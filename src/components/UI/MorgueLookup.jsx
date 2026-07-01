@@ -1,6 +1,4 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { database } from '../../firebase';
-import { ref, get, set } from 'firebase/database';
 import { useData } from '../../contexts/DataContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useGtaWorldAuth } from '../../hooks/useGtaWorldAuth';
@@ -13,7 +11,7 @@ import { reportLogicalError } from '../../utils/logging';
 import { triggerWebhookProxy } from '../../services/firebaseFunctions';
 
 const MorgueLookup = () => {
-    const { morgueRecords, factionsData, isLoadingData } = useData();
+    const { morgueRecords, factionsData, isLoadingData, loadMorgueRecords } = useData();
     const { isPhmcMember, user: firebaseUser } = useAuth();
     const { user: gtawUser, isAuthenticated } = useGtaWorldAuth();
     const { showNotification } = useNotification();
@@ -276,50 +274,12 @@ const MorgueLookup = () => {
         }
     }, [hasAccess, isAuthenticated, gtawUser]);
 
-    // Diagnostic: compare client-side vs server-side record count on mount
+    // Lazy-load morgue records on mount (not fetched during initial app load)
     useEffect(() => {
-        if (isLoadingData || !hasAccess || !isAuthenticated) return;
-
-        const sessionKey = 'morgue_diag_compared';
-        if (sessionStorage.getItem(sessionKey)) return;
-        sessionStorage.setItem(sessionKey, 'true');
-
-        const runDiag = async () => {
-            try {
-                const key = `morgue_diag_count_${gtawUser?.username || 'anon'}`;
-                if (sessionStorage.getItem(key)) return;
-                sessionStorage.setItem(key, 'true');
-
-                const snapshot = await get(ref(database, '/morgue-records'));
-                const serverCount = snapshot.exists() ? Object.keys(snapshot.val()).length : 0;
-                const clientCount = morgueRecords?.length || 0;
-                const match = serverCount === clientCount;
-
-                triggerWebhookProxy('admin', {
-                    embeds: [{
-                        title: match ? 'Morgue Data Sync: OK' : 'Morgue Data Sync: MISMATCH',
-                        color: match ? 0x2ecc71 : 0xe74c3c,
-                        description: match
-                            ? `Client cache matches server for **${gtawUser?.username || 'Unknown'}**.`
-                            : `Client cache is out of sync for **${gtawUser?.username || 'Unknown'}**.`,
-                        fields: [
-                            { name: 'Client Records', value: String(clientCount), inline: true },
-                            { name: 'Server Records', value: String(serverCount), inline: true },
-                            { name: 'Delta', value: String(serverCount - clientCount), inline: true },
-                            { name: 'User', value: gtawUser?.username || 'Unknown', inline: true },
-                            { name: 'Character', value: userDisplayInfo?.name || 'Unknown', inline: true },
-                        ],
-                        timestamp: new Date().toISOString(),
-                        footer: { text: 'PHMC Morgue Data Integrity Check' }
-                    }]
-                }).catch(() => {});
-            } catch (err) {
-                console.warn('[MorgueLookup] Diagnostics failed:', err);
-            }
-        };
-
-        runDiag();
-    }, [isLoadingData, hasAccess, isAuthenticated, morgueRecords, gtawUser, userDisplayInfo]);
+        if (hasAccess) {
+            loadMorgueRecords();
+        }
+    }, [hasAccess, loadMorgueRecords]);
 
     const handleRequestUpdate = useCallback(async () => {
         const payload = {

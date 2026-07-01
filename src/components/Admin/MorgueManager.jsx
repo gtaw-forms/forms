@@ -1,18 +1,31 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Form, Button, Table, Card, Tabs, Tab, Spinner, InputGroup, Modal } from 'react-bootstrap';
-import { ref, update, onValue, remove, set } from 'firebase/database';
+import { ref, update, remove, set, runTransaction } from 'firebase/database';
 import { database } from '../../firebase';
 import { parseBulkMorgueRecords } from '../../utils/morgue';
 import { useDropzone } from 'react-dropzone';
+import { useData } from '../../contexts/DataContext';
 
 const MorgueManager = ({ showNotification }) => {
+    const { morgueRecords, loadMorgueRecords } = useData();
+
+    // Bump the morgue data version after any write to trigger cache invalidation on connected clients
+    const bumpMorgueVersion = async () => {
+        try {
+            const versionRef = ref(database, 'appMetadata/morgueDataVersion');
+            await runTransaction(versionRef, (current) => (current || 0) + 1);
+        } catch (error) {
+            console.warn('Failed to bump morgue data version:', error);
+        }
+    };
+
     const [rawLogs, setRawLogs] = useState('');
     const [parsedRecords, setParsedRecords] = useState([]);
     const [existingRecords, setExistingRecords] = useState([]);
     const [isProcessing, setIsProcessing] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('upload');
-    
+
     // Search and Pagination state
     const [searchTerm, setSearchTerm] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
@@ -44,27 +57,21 @@ const MorgueManager = ({ showNotification }) => {
     };
     const [manualRecord, setManualRecord] = useState({ ...emptyManualRecord });
     const [isSavingManual, setIsSavingManual] = useState(false);
-    
-    useEffect(() => {
-        const morgueRef = ref(database, 'morgue-records');
-        const unsubscribe = onValue(morgueRef, (snapshot) => {
-            if (snapshot.exists()) {
-                const data = snapshot.val();
-                const recordList = Object.keys(data).map(key => ({
-                    ...data[key],
-                    firebaseKey: key
-                }));
-                // Sort by lastUpdated or caseId
-                recordList.sort((a, b) => (b.lastUpdated || 0) - (a.lastUpdated || 0));
-                setExistingRecords(recordList);
-            } else {
-                setExistingRecords([]);
-            }
-            setIsLoading(false);
-        });
 
-        return () => unsubscribe();
-    }, []);
+    // Load morgue records on demand via DataContext (lazy-loaded, no duplicate listener)
+    useEffect(() => {
+        loadMorgueRecords().finally(() => setIsLoading(false));
+    }, [loadMorgueRecords]);
+
+    // Sync context data to local state
+    useEffect(() => {
+        if (morgueRecords && morgueRecords.length > 0) {
+            const sorted = [...morgueRecords].sort((a, b) => (b.lastUpdated || 0) - (a.lastUpdated || 0));
+            setExistingRecords(sorted);
+        } else if (morgueRecords && morgueRecords.length === 0) {
+            setExistingRecords([]);
+        }
+    }, [morgueRecords]);
 
     const onDrop = useCallback((acceptedFiles) => {
         const file = acceptedFiles[0];
@@ -142,6 +149,7 @@ const MorgueManager = ({ showNotification }) => {
             }
 
             await update(ref(database), updates);
+            await bumpMorgueVersion();
             
             const message = updatedCount > 0 
                 ? `Processed ${parsedRecords.length} records: ${newCount} new, ${updatedCount} updated. Admin Notes preserved.`
@@ -167,6 +175,7 @@ const MorgueManager = ({ showNotification }) => {
 
         try {
             await remove(ref(database, `morgue-records/${key}`));
+            await bumpMorgueVersion();
             showNotification(`Deleted record: ${name}`, 'success');
         } catch (error) {
             console.error('Error deleting record:', error);
@@ -188,6 +197,7 @@ const MorgueManager = ({ showNotification }) => {
         setIsProcessing(true);
         try {
             await remove(ref(database, 'morgue-records'));
+            await bumpMorgueVersion();
             showNotification('Successfully purged all morgue records.', 'success');
         } catch (error) {
             console.error('Error purging records:', error);
@@ -225,6 +235,7 @@ const MorgueManager = ({ showNotification }) => {
         try {
             const noteRef = ref(database, `morgue-records/${editingNoteRecord.firebaseKey}/adminNote`);
             await set(noteRef, noteValue.trim());
+            await bumpMorgueVersion();
             showNotification('Admin note updated successfully.', 'success');
             setEditingNoteRecord(null);
             setNoteValue('');
@@ -299,6 +310,7 @@ const MorgueManager = ({ showNotification }) => {
                 lastUpdated: Date.now()
             };
             await set(ref(database, `morgue-records/${key}`), record);
+            await bumpMorgueVersion();
             showNotification(`Manual entry saved for ${record.name}.`, 'success');
             setManualRecord({ ...emptyManualRecord });
             setActiveTab('manage');

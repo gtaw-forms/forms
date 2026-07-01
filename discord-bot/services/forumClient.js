@@ -42,6 +42,24 @@ class ForumClient {
         this.browser = null;
         this.context = null;
         this.page = null;
+        this._lock = Promise.resolve();
+        this._lockOwner = null;
+    }
+
+    /**
+     * Acquire a mutual-exclusion lock so only one forum operation runs at a time.
+     * All public methods (login, postTopic, sendPM, etc.) call this first.
+     * Returns a unique token; call release(token) to hand the lock back.
+     */
+    async _acquire(owner = 'unknown') {
+        const token = Symbol('lock-token');
+        let release;
+        const prev = this._lock;
+        this._lock = new Promise((resolve) => { release = resolve; });
+        await prev; // wait for previous holder to finish
+        this._lockOwner = owner;
+        console.log(`[FORUM] 🔒 Lock acquired by: ${owner}`);
+        return { token, release: () => { this._lockOwner = null; release(token); } };
     }
 
     get baseUrl() {
@@ -69,7 +87,7 @@ class ForumClient {
     async ensureBrowser() {
         if (this.browser && this.context) return;
 
-        console.log('[FORUM] 🚀 Launching browser...');
+
         this.browser = await chromium.launch({
             headless: this.headless,
             args: [
@@ -141,6 +159,8 @@ class ForumClient {
     }
 
     async close() {
+        const lock = await this._acquire('close');
+        try {
         if (this.browser) {
             try { await this.browser.close(); } catch { /* ignore */ }
             this.browser = null;
@@ -148,6 +168,7 @@ class ForumClient {
             this.page = null;
             console.log('[FORUM] 🛑 Browser closed');
         }
+        } finally { lock.release(); }
     }
 
     // ── Session ──
@@ -166,6 +187,8 @@ class ForumClient {
     // ── Authentication ──
 
     async login(overrideUsername, overridePassword, { force = false, baseUrl: baseUrlOverride } = {}) {
+        const lock = await this._acquire('login');
+        try {
         await this.ensureBrowser();
 
         const username = overrideUsername || this.username;
@@ -295,6 +318,7 @@ class ForumClient {
 
         console.log('[FORUM] ✅ Login successful');
         await this.saveSession();
+        } finally { lock.release(); }
         return { ok: true, method: 'credentials' };
     }
 
@@ -308,6 +332,10 @@ class ForumClient {
     // ── Topic Posting ──
 
     async postTopic(forumId, subject, bbCode, forumUrlOverride) {
+        const lock = await this._acquire('postTopic');
+        let ok;
+        let url;
+        try {
         await this.ensureBrowser();
         console.log(`[FORUM] 📝 Posting new topic to forum ${forumId}: "${subject}"`);
 
@@ -371,9 +399,10 @@ class ForumClient {
         }
 
         await this.page.waitForTimeout(5000);
-        const url = this.page.url();
-        const ok = url.includes('viewtopic.php');
+        url = this.page.url();
+        ok = url.includes('viewtopic.php');
 
+        } finally { lock.release(); }
         return {
             ok,
             url: ok ? url : null,
@@ -384,6 +413,10 @@ class ForumClient {
     // ── Private Message ──
 
     async sendPM(recipient, subject, bbCode, { baseUrl: baseUrlOverride } = {}) {
+        const lock = await this._acquire('sendPM');
+        let ok;
+        let finalUrl;
+        try {
         await this.ensureBrowser();
 
         const domain = baseUrlOverride || this.baseUrl;
@@ -463,8 +496,8 @@ class ForumClient {
         }
 
         await this.page.waitForTimeout(3000);
-        const finalUrl = this.page.url();
-        let ok = finalUrl.includes('&msg=') || finalUrl.includes('mode=view') || !finalUrl.includes('mode=compose');
+        finalUrl = this.page.url();
+        ok = finalUrl.includes('&msg=') || finalUrl.includes('mode=view') || !finalUrl.includes('mode=compose');
 
         // ── Handle phpBB Preview Step ──
         // phpBB shows a preview page before the actual send.
@@ -537,6 +570,7 @@ class ForumClient {
         }
 
         console.log(`[FORUM] 📬 PM result: ${ok ? '✅ Sent' : '⚠️ Unknown'} — ${finalUrl}`);
+        } finally { lock.release(); }
 
         return {
             ok,
@@ -554,6 +588,8 @@ class ForumClient {
      * @returns {Promise<{topicId: number|null, title: string|null}>}
      */
     async searchForPatientTopic(patientID) {
+        const lock = await this._acquire('searchForPatientTopic');
+        try {
         await this.ensureBrowser();
 
         const searchUrl = `https://phmc.gta.world/search.php?keywords=${encodeURIComponent(patientID)}&fid[]=97&sf=firstpost`;
@@ -608,6 +644,7 @@ class ForumClient {
         } else {
             console.log('[FORUM] ⚠️ Search returned results but could not parse topic link');
         }
+        } finally { lock.release(); }
 
         return result;
     }
@@ -621,6 +658,10 @@ class ForumClient {
      * @returns {Promise<{ok: boolean, url: string|null}>}
      */
     async replyToTopic(topicId, forumId, bbCode, { dryRun = true } = {}) {
+        const lock = await this._acquire('replyToTopic');
+        let ok;
+        let finalUrl;
+        try {
         await this.ensureBrowser();
 
         const replyUrl = `https://phmc.gta.world/posting.php?mode=reply&f=${forumId}&t=${topicId}`;
@@ -682,9 +723,10 @@ class ForumClient {
         }
 
         await this.page.waitForTimeout(5000);
-        const finalUrl = this.page.url();
-        const ok = finalUrl.includes('viewtopic.php');
+        finalUrl = this.page.url();
+        ok = finalUrl.includes('viewtopic.php');
         console.log(`[FORUM] 📬 Reply ${ok ? '✅ Posted' : '⚠️ Unknown'} — ${finalUrl}`);
+        } finally { lock.release(); }
 
         return { ok, url: ok ? finalUrl : null };
     }
@@ -697,7 +739,7 @@ class ForumClient {
     static FORUM_MAP = {
         // All report types now post to the same PHMC forum section f=267
         'coroner-report':    { forumId: 267, name: 'Coroner Reports', url: 'https://phmc.gta.world/posting.php?mode=post&f=267' },
-        'death-record':      { forumId: 267, name: 'Death Records', url: 'https://phmc.gta.world/posting.php?mode=post&f=267' },
+        'death_record':      { forumId: 404, name: 'Death Records', url: 'https://phmc.gta.world/posting.php?mode=post&f=404' },
         'mass-ftality-test': { forumId: 267, name: 'Mass Fatality Reports', url: 'https://phmc.gta.world/posting.php?mode=post&f=267' },
         'autopsy':           { forumId: 267, name: 'Autopsy Requests', url: 'https://phmc.gta.world/posting.php?mode=post&f=267' },
         'patient_notes':     { forumId: 97,  name: 'Medical Records', url: 'https://phmc.gta.world/posting.php?mode=post&f=97' },
@@ -718,6 +760,8 @@ class ForumClient {
      * @returns {Promise<{status: string, latency: number|null, details: string}>}
      */
     async checkHealth(url) {
+        const lock = await this._acquire('checkHealth');
+        try {
         await this.ensureBrowser();
         const page = await this.context.newPage();
         const start = Date.now();
@@ -777,6 +821,7 @@ class ForumClient {
         } finally {
             await page.close().catch(() => {});
         }
+        } finally { lock.release(); }
     }
 }
 

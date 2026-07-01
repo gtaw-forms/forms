@@ -75,6 +75,9 @@ async function registerCommands() {
     const formQueued = await import('./commands/form-queued.js');
     const maintenance = await import('./commands/maintenance.js');
     const dashboard = await import('./commands/dashboard.js');
+    const reportSkip = await import('./commands/report-skip.js');
+    const deathRecordCheck = await import('./commands/death-record-check.js');
+    const deathRecordPending = await import('./commands/death-record-pending.js');
     const commands = [
         morgue.data.toJSON(),
         card.data.toJSON(),
@@ -84,6 +87,9 @@ async function registerCommands() {
         formQueued.data.toJSON(),
         maintenance.data.toJSON(),
         dashboard.data.toJSON(),
+        reportSkip.data.toJSON(),
+        deathRecordCheck.data.toJSON(),
+        deathRecordPending.data.toJSON(),
     ];
 
     const rest = new REST({ version: '10' }).setToken(token);
@@ -119,6 +125,18 @@ client.once('clientReady', async () => {
     console.log(`[BOT] 🆔 Client ID: ${client.user.id}`);
     console.log('═══════════════════════════════════════════');
 
+    // ── Register log channel (for startup, error, crash messages) ──
+    const { setLogClient, sendLogMessage } = await import('./services/logChannel.js');
+    setLogClient(client);
+
+    // ── Log startup to the log channel ──
+    sendLogMessage(null, {
+        title: 'Bot Online',
+        description: `Logged in as **${client.user.tag}**\nServers: ${client.guilds.cache.size}\nCommands registered.`,
+        color: 0x28a745,
+        footer: { text: new Date().toLocaleString() },
+    });
+
     await registerCommands();
 
     // ── Start auto-deploy listener (monitors Firebase, queues deployments) ──
@@ -145,6 +163,15 @@ client.once('clientReady', async () => {
     } catch (err) {
         console.warn('[BOT] ⚠️ Dashboard manager failed to start (non-fatal):', err.message);
     }
+
+    // ── Register Death Record Draft client (for Approve/Deny buttons) ──
+    try {
+        const { setDraftClient } = await import('./services/deathRecordDraft.js');
+        setDraftClient(client);
+        console.log('[BOT] ✅ Death Record Draft client registered');
+    } catch (err) {
+        console.warn('[BOT] ⚠️ Death Record Draft client failed to register (non-fatal):', err.message);
+    }
 });
 
 client.on('interactionCreate', async (interaction) => {
@@ -152,6 +179,55 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.isButton() && interaction.customId === 'dashboard_refresh') {
         const { handleDashboardRefresh } = await import('./services/dashboardManager.js');
         await handleDashboardRefresh(interaction);
+        return;
+    }
+
+    // Handle Death Record draft buttons (Approve/Edit/Deny)
+    if (interaction.isButton() && (interaction.customId.startsWith('dr_approve_') || interaction.customId.startsWith('dr_edit_') || interaction.customId.startsWith('dr_checkmorgue_') || interaction.customId.startsWith('dr_deny_'))) {
+        const { handleDraftButton } = await import('./services/deathRecordDraft.js');
+        await handleDraftButton(interaction);
+        return;
+    }
+
+    // Handle Death Record draft Edit modal submission
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('dr_edit_modal_')) {
+        const { handleEditModal } = await import('./services/deathRecordDraft.js');
+        await handleEditModal(interaction);
+        return;
+    }
+
+    // Handle /report-skip select menu
+    if (interaction.isStringSelectMenu() && interaction.customId === 'skip_report_select') {
+        const ownerId = process.env.BOT_OWNER_ID;
+        if (!ownerId || interaction.user.id !== ownerId) {
+            await interaction.reply({
+                content: 'Only the bot owner can skip queued reports.',
+                flags: MessageFlags.Ephemeral,
+            });
+            return;
+        }
+
+        const entityKey = interaction.values[0];
+        const { skipReport } = await import('./services/autoDeploy.js');
+        const result = await skipReport(entityKey, interaction.user.tag);
+
+        const { EmbedBuilder } = await import('discord.js');
+        if (result.ok) {
+            const embed = new EmbedBuilder()
+                .setColor(0x9b59b6)
+                .setTitle('Report Skipped')
+                .setDescription(`**${result.label}** has been removed from the deploy queue and marked as \`skipped_manual\`.`)
+                .setFooter({ text: `Skipped by ${interaction.user.tag}` })
+                .setTimestamp();
+            await interaction.update({ embeds: [embed], components: [] });
+        } else {
+            const embed = new EmbedBuilder()
+                .setColor(0xe74c3c)
+                .setTitle('Could Not Skip')
+                .setDescription(result.error || 'An unknown error occurred.')
+                .setTimestamp();
+            await interaction.update({ embeds: [embed], components: [] });
+        }
         return;
     }
 
@@ -181,6 +257,25 @@ client.on('interactionCreate', async (interaction) => {
             });
         }
     }
+});
+
+// ── Crash handlers (set up before login to catch early crashes) ──
+// Logs to both the file (via logger.js) and the Discord log channel.
+process.on('uncaughtException', async (error) => {
+    console.error(`[BOT] 💥 UNCAUGHT EXCEPTION: ${error.message}`);
+    console.error(error.stack);
+    try {
+        const { sendCrashReport } = await import('./services/logChannel.js');
+        await sendCrashReport('Uncaught Exception', error);
+    } catch { /* best effort */ }
+});
+
+process.on('unhandledRejection', async (reason) => {
+    console.error(`[BOT] 💥 UNHANDLED REJECTION:`, reason);
+    try {
+        const { sendCrashReport } = await import('./services/logChannel.js');
+        await sendCrashReport('Unhandled Rejection', reason);
+    } catch { /* best effort */ }
 });
 
 // ──────────────────────────────────────────
@@ -217,6 +312,15 @@ async function start() {
 
     const dashboardCmd = await import('./commands/dashboard.js');
     client.commands.set(dashboardCmd.data.name, { execute: dashboardCmd.execute });
+
+    const reportSkipCmd = await import('./commands/report-skip.js');
+    client.commands.set(reportSkipCmd.data.name, { execute: reportSkipCmd.execute });
+
+    const deathRecordCheckCmd = await import('./commands/death-record-check.js');
+    client.commands.set(deathRecordCheckCmd.data.name, { execute: deathRecordCheckCmd.execute });
+
+    const deathRecordPendingCmd = await import('./commands/death-record-pending.js');
+    client.commands.set(deathRecordPendingCmd.data.name, { execute: deathRecordPendingCmd.execute });
 
     console.log('[BOT] 🔌 Connecting to Discord...');
     await client.login(token);

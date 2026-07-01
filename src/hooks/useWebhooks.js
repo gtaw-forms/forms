@@ -17,7 +17,7 @@ export const useWebhooks = (formData, commitInfo, showNotification, getIsInactiv
         });
     }, []);
 
-    const sendDataRequestLog = useCallback(async (file, cached, source, cachedDataSize, networkTransferSize, loggedIn, user, requestedPortions, missingPortions, segmentSizes = {}, error = null) => {
+    const sendDataRequestLog = useCallback(async (file, cached, source, cachedDataSize, networkTransferSize, loggedIn, user, requestedPortions, missingPortions, segmentSizes = {}, error = null, metadata = {}) => {
         const fields = [
             {
                 name: 'URL',
@@ -61,6 +61,44 @@ export const useWebhooks = (formData, commitInfo, showNotification, getIsInactiv
                 name: 'User',
                 value: user,
                 inline: true,
+            });
+        }
+
+        // Enhanced metadata fields
+        if (metadata.route) {
+            fields.push({
+                name: 'Route',
+                value: metadata.route,
+                inline: true,
+            });
+        }
+
+        if (metadata.trigger) {
+            fields.push({
+                name: 'Trigger',
+                value: metadata.trigger,
+                inline: true,
+            });
+        }
+
+        if (metadata.segmentSources) {
+            const loadingModeLines = Object.entries(metadata.segmentSources).map(([segment, source]) => {
+                const size = segmentSizes[segment] ? ` (${segmentSizes[segment].toFixed(2)} KB)` : '';
+                const badge = source === 'cache' ? '[CACHE]' : source === 'network' ? '[NETWORK]' : '[NOT LOADED]';
+                return `${segment}${size} - ${badge}`;
+            });
+            fields.push({
+                name: 'Loading Mode',
+                value: loadingModeLines.join('\n'),
+                inline: false,
+            });
+        }
+
+        if (metadata.detail) {
+            fields.push({
+                name: 'Detail',
+                value: metadata.detail,
+                inline: false,
             });
         }
 
