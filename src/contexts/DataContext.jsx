@@ -155,6 +155,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
     const hasLoggedInitialLoad = useRef(false); // Flag to prevent duplicate logging in StrictMode
     const [dataLoaded, setDataLoaded] = useState(false);
     const firebaseListeners = useRef({});
+    const morgueRecordsLoadedRef = useRef(false);
 
     // Cache configuration
     const CACHE_PREFIX = 'firebaseCache';
@@ -176,6 +177,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
         if (segment === CACHE_SEGMENTS.FACTIONS) return localStorage.getItem('factionsDataVersion') || '0';
         if (segment === CACHE_SEGMENTS.SELECT_OPTIONS) return localStorage.getItem('selectOptionsDataVersion') || '0';
         if (segment === CACHE_SEGMENTS.LSCC) return localStorage.getItem('lsccDataVersion') || '0';
+        if (segment === CACHE_SEGMENTS.MORGUE_RECORDS) return localStorage.getItem('morgueDataVersion') || '0';
         return SEGMENT_VERSIONS[segment] || '1.0';
     };
 
@@ -299,25 +301,97 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
         await refreshSegments(segments);
     }, [pendingRefreshInfo, refreshSegments]);
 
+    // Lazy-load morgue records on demand (not fetched during initial app load)
+    const loadMorgueRecords = useCallback(async () => {
+        // Already loaded — return cached data
+        if (morgueRecordsLoadedRef.current && dataCache.current[CACHE_SEGMENTS.MORGUE_RECORDS]) {
+            return dataCache.current[CACHE_SEGMENTS.MORGUE_RECORDS];
+        }
+
+        const segment = CACHE_SEGMENTS.MORGUE_RECORDS;
+
+        // Try loading from localStorage cache first
+        if (!morgueRecordsLoadedRef.current) {
+            const cacheKey = getCacheKey(segment);
+            const cachedData = localStorage.getItem(cacheKey);
+
+            if (cachedData && isCacheValid(segment)) {
+                try {
+                    const data = JSON.parse(cachedData);
+                    dataCache.current[segment] = data;
+                    const morgueAsList = data ? Object.keys(data).map(key => ({ ...data[key], firebaseKey: key })) : [];
+                    setMorgueRecords(morgueAsList);
+                    morgueRecordsLoadedRef.current = true;
+                    const cacheSizeKB = (cachedData.length / 1024).toFixed(2);
+                    console.debug(`[DataContext] Loaded morgue records from cache (${cacheSizeKB} KB)`);
+
+                    // Log the cache hit so the transition from NOT LOADED is visible
+                    try {
+                        const loadingMode = {};
+                        Object.values(CACHE_SEGMENTS).forEach(s => {
+                            loadingMode[s] = s === CACHE_SEGMENTS.MORGUE_RECORDS ? 'cache' : 'not_loaded';
+                        });
+                        webhooks.sendDataRequestLog('DataContext.jsx', true, 'Local Storage', parseFloat(cacheSizeKB), 0, isAuthenticated, user?.faction?.characterName || user?.username, ['morgue-records'], [], { 'morgue-records': parseFloat(cacheSizeKB) }, null, {
+                            route: window.location.hash || '/',
+                            trigger: 'lazy',
+                            segmentSources: loadingMode,
+                            detail: 'Loaded from localStorage cache'
+                        });
+                    } catch (logError) {
+                        console.warn('[DataContext] Failed to send morgue cache log:', logError);
+                    }
+
+                    return data;
+                } catch (error) {
+                    console.error('Error parsing cached morgue records, fetching from Firebase.', error);
+                }
+            }
+        }
+
+        // Fetch from Firebase
+        try {
+            const snapshot = await get(ref(database, segment));
+            if (snapshot.exists()) {
+                const data = snapshot.val();
+                const segmentSize = (JSON.stringify(data).length / 1024).toFixed(2);
+                await updateCacheSegment(CACHE_SEGMENTS.MORGUE_RECORDS, data);
+                morgueRecordsLoadedRef.current = true;
+                console.debug(`[DataContext] Fetched morgue records from Firebase (${segmentSize} KB)`);
+
+                // Log the lazy load for observability
+                try {
+                    const loadingMode = {};
+                    Object.values(CACHE_SEGMENTS).forEach(s => {
+                        loadingMode[s] = s === CACHE_SEGMENTS.MORGUE_RECORDS ? 'network' : 'not_loaded';
+                    });
+                    webhooks.sendDataRequestLog('DataContext.jsx', false, 'Firebase', 0, parseFloat(segmentSize), isAuthenticated, user?.faction?.characterName || user?.username, ['morgue-records'], [], { 'morgue-records': parseFloat(segmentSize) }, null, {
+                        route: window.location.hash || '/',
+                        trigger: 'lazy',
+                        segmentSources: loadingMode
+                    });
+                } catch (logError) {
+                    console.warn('[DataContext] Failed to send morgue data request log:', logError);
+                }
+
+                return data;
+            } else {
+                console.warn('[DataContext] Morgue records path does not exist in Firebase.');
+                morgueRecordsLoadedRef.current = true;
+                return null;
+            }
+        } catch (error) {
+            console.error('[DataContext] Failed to fetch morgue records:', error);
+            return null;
+        }
+    }, [updateCacheSegment, webhooks, isAuthenticated, user]);
+
     // Setup Firebase listeners for real-time version checks
     // Data is loaded via get() in refreshSegments(); version listeners trigger re-fetches.
-    // Morgue-records uses a direct onValue() listener (no version node exists for it).
     const setupFirebaseListeners = useCallback(() => {
         // Cleanup existing listeners
         Object.values(firebaseListeners.current).forEach(unsubscribe => unsubscribe());
         firebaseListeners.current = {};
 
-        // --- Listener for morgue records changes ---
-        const morgueRef = ref(database, CACHE_SEGMENTS.MORGUE_RECORDS);
-        firebaseListeners.current.morgue = onValue(morgueRef, (snapshot) => {
-            if (!dataInitializedRef.current) return;
-            if (snapshot.exists()) {
-                const morgueData = snapshot.val();
-                if (JSON.stringify(morgueData) !== JSON.stringify(dataCache.current[CACHE_SEGMENTS.MORGUE_RECORDS])) {
-                    updateCacheSegment(CACHE_SEGMENTS.MORGUE_RECORDS, morgueData);
-                }
-            }
-        });
 
         // --- Listener for Global Forms Version ---
         // Use an async IIFE to perform a get() before attaching the onValue listener
@@ -593,12 +667,149 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                 lsccFirstFire = false;
             });
         })();
-    }, [updateCacheSegment, showNotification, refreshSegments]);
+
+        // --- Listener for Morgue Data Version ---
+        (async () => {
+            const morgueVersionRef = ref(database, 'appMetadata/morgueDataVersion');
+            let initialServerVersion = null;
+            const oldLocalVersion = localStorage.getItem('morgueDataVersion');
+
+            try {
+                const snapshot = await get(morgueVersionRef);
+                if (snapshot.exists()) {
+                    initialServerVersion = String(snapshot.val());
+                    console.debug(`[DataContext] Initial morgueDataVersion fetched from server: v${initialServerVersion}`);
+                    localStorage.setItem('morgueDataVersion', initialServerVersion);
+                } else {
+                    console.log('[DataContext] morgueDataVersion does not exist on server initially. Clearing local version.');
+                    localStorage.removeItem('morgueDataVersion');
+                }
+            } catch (error) {
+                console.error('[DataContext] Failed to get initial morgueDataVersion from server:', error);
+                localStorage.removeItem('morgueDataVersion');
+            }
+
+            if (initialServerVersion !== null && (oldLocalVersion === null || oldLocalVersion !== initialServerVersion)) {
+                const changeDesc = oldLocalVersion === null
+                    ? `New version detected: v${initialServerVersion}`
+                    : `Version changed offline: v${oldLocalVersion} → v${initialServerVersion}`;
+                console.log(`🔄 ${changeDesc}. Prefetching morgue records.`);
+                localStorage.removeItem(getCacheKey(CACHE_SEGMENTS.MORGUE_RECORDS));
+                localStorage.removeItem(getTimestampKey(CACHE_SEGMENTS.MORGUE_RECORDS));
+                localStorage.removeItem(getVersionKey(CACHE_SEGMENTS.MORGUE_RECORDS));
+                morgueRecordsLoadedRef.current = false;
+                refreshSegments([CACHE_SEGMENTS.MORGUE_RECORDS]);
+
+                // Log the version-driven refresh
+                try {
+                    const loadingMode = {};
+                    Object.values(CACHE_SEGMENTS).forEach(s => {
+                        loadingMode[s] = s === CACHE_SEGMENTS.MORGUE_RECORDS ? 'network' : 'not_loaded';
+                    });
+                    webhooks.sendDataRequestLog('DataContext.jsx', false, 'Firebase', 0, 0, isAuthenticated, user?.faction?.characterName || user?.username, ['morgue-records'], [], {}, null, {
+                        route: window.location.hash || '/',
+                        trigger: 'version_change',
+                        segmentSources: loadingMode,
+                        detail: changeDesc
+                    });
+                } catch (logError) {
+                    console.warn('[DataContext] Failed to send morgue version refresh log:', logError);
+                }
+            }
+
+            let morgueFirstFire = true;
+            firebaseListeners.current.morgueVersion = onValue(morgueVersionRef, async (snapshot) => {
+                if (!dataInitializedRef.current) {
+                    console.log('[DataContext] Morgue version listener triggered, but DataContext not initialized. Skipping.');
+                    return;
+                }
+                const serverVersion = snapshot.exists() ? String(snapshot.val()) : null;
+                const localVersion = localStorage.getItem('morgueDataVersion');
+
+                console.debug(`Global Morgue Version - Local: ${localVersion || 'N/A'}, Server: ${serverVersion || 'N/A'}`);
+
+                if (serverVersion !== null && localVersion !== serverVersion) {
+                    console.log(`🔄 Morgue version mismatch (v${localVersion} → v${serverVersion}). Refreshing.`);
+
+                    localStorage.removeItem(getCacheKey(CACHE_SEGMENTS.MORGUE_RECORDS));
+                    localStorage.removeItem(getTimestampKey(CACHE_SEGMENTS.MORGUE_RECORDS));
+                    localStorage.removeItem(getVersionKey(CACHE_SEGMENTS.MORGUE_RECORDS));
+                    localStorage.setItem('morgueDataVersion', serverVersion);
+                    morgueRecordsLoadedRef.current = false;
+
+                    if (morgueFirstFire) {
+                        await refreshSegments([CACHE_SEGMENTS.MORGUE_RECORDS]);
+                    } else {
+                        await debouncedRefresh([CACHE_SEGMENTS.MORGUE_RECORDS]);
+                    }
+                    morgueFirstFire = false;
+
+                    // Log the version-driven refresh (after refresh, so we have the actual size)
+                    try {
+                        const loadingMode = {};
+                        const actualSegmentSizes = {};
+                        Object.values(CACHE_SEGMENTS).forEach(s => {
+                            if (s === CACHE_SEGMENTS.MORGUE_RECORDS) {
+                                loadingMode[s] = 'network';
+                                const cached = dataCache.current[s];
+                                actualSegmentSizes[s] = cached ? (JSON.stringify(cached).length / 1024) : 0;
+                            } else {
+                                loadingMode[s] = 'not_loaded';
+                            }
+                        });
+                        webhooks.sendDataRequestLog('DataContext.jsx', false, 'Firebase', 0, actualSegmentSizes[CACHE_SEGMENTS.MORGUE_RECORDS] || 0, isAuthenticated, user?.faction?.characterName || user?.username, ['morgue-records'], [], actualSegmentSizes, null, {
+                            route: window.location.hash || '/',
+                            trigger: 'version_change',
+                            segmentSources: loadingMode,
+                            detail: `Version mismatch: v${localVersion} → v${serverVersion}`
+                        });
+                    } catch (logError) {
+                        console.warn('[DataContext] Failed to send morgue version refresh log:', logError);
+                    }
+                } else if (serverVersion === null && localVersion !== null) {
+                    console.log(`🗑️ Morgue version deleted from server.`);
+                    localStorage.removeItem(getCacheKey(CACHE_SEGMENTS.MORGUE_RECORDS));
+                    localStorage.removeItem(getTimestampKey(CACHE_SEGMENTS.MORGUE_RECORDS));
+                    localStorage.removeItem(getVersionKey(CACHE_SEGMENTS.MORGUE_RECORDS));
+                    localStorage.removeItem('morgueDataVersion');
+                    morgueRecordsLoadedRef.current = false;
+                    await debouncedRefresh([CACHE_SEGMENTS.MORGUE_RECORDS]);
+
+                    // Log the version-deleted refresh
+                    try {
+                        const loadingMode = {};
+                        Object.values(CACHE_SEGMENTS).forEach(s => {
+                            loadingMode[s] = s === CACHE_SEGMENTS.MORGUE_RECORDS ? 'network' : 'not_loaded';
+                        });
+                        webhooks.sendDataRequestLog('DataContext.jsx', false, 'Firebase', 0, 0, isAuthenticated, user?.faction?.characterName || user?.username, ['morgue-records'], [], {}, null, {
+                            route: window.location.hash || '/',
+                            trigger: 'version_change',
+                            segmentSources: loadingMode,
+                            detail: `Version node deleted from server`
+                        });
+                    } catch (logError) {
+                        console.warn('[DataContext] Failed to send morgue version refresh log:', logError);
+                    }
+                }
+                morgueFirstFire = false;
+            });
+        })();
+    }, [updateCacheSegment, showNotification, refreshSegments, webhooks, isAuthenticated, user]);
 
 
 
     const loadData = useCallback(async (forceRefresh = false) => {
         setHasFirebaseError(false);
+
+        // Skip data loading for non-authenticated users in production — Firebase rules require auth
+        // Localhost bypasses this so devs can test with cached Firebase auth state
+        if (!isAuthenticated && window.location.hostname !== 'localhost') {
+            console.log('[DataContext] User not authenticated. Skipping data load.');
+            setDataLoaded(true);
+            setIsLoadingData(false);
+            return;
+        }
+
         if (dataLoaded && !forceRefresh) {
             console.log('[DataContext] Data already loaded, skipping redundant load.');
             return;
@@ -610,12 +821,13 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
         let totalCachedSize = 0;
     
         if (forceRefresh) {
-            segmentsToFetch.push(...Object.values(CACHE_SEGMENTS));
+            segmentsToFetch.push(...Object.values(CACHE_SEGMENTS).filter(s => s !== CACHE_SEGMENTS.MORGUE_RECORDS));
             didLoadFromCache.current = false;
         } else {
             Object.values(CACHE_SEGMENTS).forEach(segment => {
                 if (EXCLUDED_FROM_CACHE.includes(segment)) return;
-                
+                if (segment === CACHE_SEGMENTS.MORGUE_RECORDS) return; // Lazy-loaded on demand
+
                 const cacheKey = getCacheKey(segment);
                 const cachedData = localStorage.getItem(cacheKey);
     
@@ -646,7 +858,21 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
     
         if (segmentsToFetch.length === 0) {
             if (!hasLoggedInitialLoad.current) {
-                webhooks.sendDataRequestLog('DataContext.jsx', true, 'Local Storage', totalCachedSize, 0, isAuthenticated, user?.faction?.characterName || user?.username, Object.keys(cachedSegments), [], segmentSizes, null);
+                const loadingMode = {};
+                Object.values(CACHE_SEGMENTS).forEach(s => {
+                    if (s === CACHE_SEGMENTS.MORGUE_RECORDS) {
+                        loadingMode[s] = 'not_loaded'; // lazy-loaded on demand
+                    } else if (cachedSegments[s]) {
+                        loadingMode[s] = 'cache';
+                    } else {
+                        loadingMode[s] = 'not_loaded';
+                    }
+                });
+                webhooks.sendDataRequestLog('DataContext.jsx', true, 'Local Storage', totalCachedSize, 0, isAuthenticated, user?.faction?.characterName || user?.username, Object.keys(cachedSegments), [], segmentSizes, null, {
+                    route: window.location.hash || '/',
+                    trigger: 'initial',
+                    segmentSources: loadingMode
+                });
                 hasLoggedInitialLoad.current = true;
             }
             setDataLoaded(true);
@@ -682,7 +908,23 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
     
             if (Object.keys(fetchedData).length > 0) {
                 if (!hasLoggedInitialLoad.current) {
-                    webhooks.sendDataRequestLog('DataContext.jsx', didLoadFromCache.current, didLoadFromCache.current ? 'Partial Cache' : 'Firebase', totalCachedSize + totalNetworkTransferSize, totalNetworkTransferSize, isAuthenticated, user?.faction?.characterName || user?.username, Object.keys(cachedSegments).concat(segmentsToFetch), segmentsToFetch.filter(s => !fetchedData[s]), segmentSizes, null);
+                    const loadingMode = {};
+                    Object.values(CACHE_SEGMENTS).forEach(s => {
+                        if (s === CACHE_SEGMENTS.MORGUE_RECORDS) {
+                            loadingMode[s] = 'not_loaded';
+                        } else if (cachedSegments[s]) {
+                            loadingMode[s] = 'cache';
+                        } else if (fetchedData[s]) {
+                            loadingMode[s] = 'network';
+                        } else {
+                            loadingMode[s] = 'not_loaded';
+                        }
+                    });
+                    webhooks.sendDataRequestLog('DataContext.jsx', didLoadFromCache.current, didLoadFromCache.current ? 'Partial Cache' : 'Firebase', totalCachedSize + totalNetworkTransferSize, totalNetworkTransferSize, isAuthenticated, user?.faction?.characterName || user?.username, Object.keys(cachedSegments).concat(segmentsToFetch), segmentsToFetch.filter(s => !fetchedData[s]), segmentSizes, null, {
+                        route: window.location.hash || '/',
+                        trigger: 'initial',
+                        segmentSources: loadingMode
+                    });
                     hasLoggedInitialLoad.current = true;
                 }
     
@@ -700,7 +942,23 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
             showNotification("An error occurred while fetching data.", 'error');
             console.error("Error fetching data from Realtime Database:", error);
             if (!hasLoggedInitialLoad.current) {
-                webhooks.sendDataRequestLog('DataContext.jsx', didLoadFromCache.current, 'Firebase Error', totalCachedSize, 0, isAuthenticated, user?.faction?.characterName || user?.username, Object.keys(cachedSegments), segmentsToFetch, segmentSizes, error.message || 'Unknown Fetch Error');
+                const loadingMode = {};
+                Object.values(CACHE_SEGMENTS).forEach(s => {
+                    if (s === CACHE_SEGMENTS.MORGUE_RECORDS) {
+                        loadingMode[s] = 'not_loaded';
+                    } else if (cachedSegments[s]) {
+                        loadingMode[s] = 'cache';
+                    } else if (segmentsToFetch.includes(s)) {
+                        loadingMode[s] = 'network';
+                    } else {
+                        loadingMode[s] = 'not_loaded';
+                    }
+                });
+                webhooks.sendDataRequestLog('DataContext.jsx', didLoadFromCache.current, 'Firebase Error', totalCachedSize, 0, isAuthenticated, user?.faction?.characterName || user?.username, Object.keys(cachedSegments), segmentsToFetch, segmentSizes, error.message || 'Unknown Fetch Error', {
+                    route: window.location.hash || '/',
+                    trigger: 'initial',
+                    segmentSources: loadingMode
+                });
                 hasLoggedInitialLoad.current = true;
             }
             setHasFirebaseError(true);
@@ -782,6 +1040,19 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
             }
         });
 
+        // Explicitly remove old morgue cache versions (legacy v1.0 — now uses dynamic version from morgueDataVersion)
+        const oldMorgueCacheKeys = [
+            'firebaseCache_morgue-records_v1.0',
+            'firebaseCache_morgue-records_v1.0_timestamp',
+            'firebaseCache_morgue-records_v1.0_version',
+        ];
+        oldMorgueCacheKeys.forEach(key => {
+            if (localStorage.getItem(key) !== null) {
+                console.log(`🧹 Explicitly cleaning up old morgue cache key: ${key}`);
+                localStorage.removeItem(key);
+            }
+        });
+
         const prefix = CACHE_PREFIX + '_';
         for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
@@ -848,11 +1119,18 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                         } catch { /* best effort */ }
 
                         // loadData handles internal caching logic (memory/localStorage/Firebase fetch)
-                        await loadData(); 
+                        await loadData();
                         if (isMounted) {
-                            console.log('[DataContext] Data load complete. Setting up Firebase listeners.');
-                            sessionStorage.setItem('dataContextInitialized', 'true'); // Mark session as initialized
-                            setupFirebaseListeners();
+                            // Only attach real-time listeners if authenticated in production
+                            // Localhost bypasses this so devs can test with cached Firebase auth
+                            if (isAuthenticated || window.location.hostname === 'localhost') {
+                                console.log('[DataContext] Data load complete. Setting up Firebase listeners.');
+                                sessionStorage.setItem('dataContextInitialized', 'true');
+                                setupFirebaseListeners();
+                            } else {
+                                console.log('[DataContext] Data load skipped (not authenticated). Firebase listeners not attached.');
+                                sessionStorage.setItem('dataContextInitialized', 'true');
+                            }
                         }
                     } catch (error) {
                         console.error('[DataContext] Error during DataContext initialization:', error);
@@ -881,10 +1159,12 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                 dataInitializedRef.current = false;
                 setDataLoaded(false);
                 setIsLoadingData(true);
-                loadData();
+                loadData().then(() => {
+                    setupFirebaseListeners();
+                });
             }
             prevAuthRef.current = isAuthenticated;
-        }, [isAuthenticated, loadData]);
+        }, [isAuthenticated, loadData, setupFirebaseListeners]);
 
         const phmcListData = useMemo(() => {
             // PHMC FACTION = 364, filtered by excluding CORONER categories
@@ -979,6 +1259,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
         sendDataRequestLog: webhooks.sendDataRequestLog,
         lsccData,
         morgueRecords,
+        loadMorgueRecords,
         hasFirebaseError,
     };
             

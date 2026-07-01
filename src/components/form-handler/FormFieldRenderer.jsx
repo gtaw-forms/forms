@@ -15,7 +15,7 @@ import { evaluateFieldVisibility } from '../../utils/formValidation';
 import { sanitizeMorgueText } from '../../utils/textUtils';
 
 const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, finalSelectOptions, currentUtcTime, agencyDataStore, toggleSavedReports, showNotification, isUploading, setShowMapModal, setMapTargetField, isUploadingMapImage = {} }) => {
-  const { factionsData, morgueRecords, isLoadingData } = useData();
+  const { factionsData, morgueRecords, isLoadingData, loadMorgueRecords } = useData();
   const { openImagePreview } = useModal();
 
   const employeeOptions = useMemo(() => {
@@ -980,7 +980,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
             {step === 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <p style={{ color: "#cbd5e1", margin: "0 0 0.5rem" }}>Search the Morgue Database to automatically populate this form.</p>
-                <button onClick={() => setStep(4)} style={{ background: "#3498db", color: "white", border: "none", padding: "0.8rem 1.5rem", borderRadius: 8, width: '100%' }}>
+                <button onClick={() => { loadMorgueRecords(); setStep(4); }} style={{ background: "#3498db", color: "white", border: "none", padding: "0.8rem 1.5rem", borderRadius: 8, width: '100%' }}>
                     <i className="fas fa-search" style={{ marginRight: '8px' }}></i> Search Morgue Database
                 </button>
               </div>

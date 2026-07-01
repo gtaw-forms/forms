@@ -8,7 +8,7 @@ const AVAILABLE_FORMS = [
     { value: 'coroner-report', label: 'Coroner Report' },
     { value: 'mass-ftality-test', label: 'Mass Fatality Report' },
     { value: 'coroner_email', label: 'Coroner Email' },
-    { value: 'death-record', label: 'Death Record' },
+    { value: 'death_record', label: 'Death Record' },
     { value: 'autopsy', label: 'Autopsy Report' },
 ];
 

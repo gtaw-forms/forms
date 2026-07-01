@@ -266,7 +266,7 @@ const formatToNorthAmericanDate = (isoDateTime) => {
         }
       }
 
-      if ((selectedForm?.name === 'Coroner Report' || selectedForm?.id === 'death-record') && !processedFormValues.placeOfDeath) {
+      if ((selectedForm?.name === 'Coroner Report' || selectedForm?.id === 'death_record') && !processedFormValues.placeOfDeath) {
           if (Array.isArray(processedFormValues.decedents) && processedFormValues.decedents.length > 0) {
               const firstDecedent = processedFormValues.decedents[0];
               if (firstDecedent && firstDecedent.decedentLocation) {
@@ -450,7 +450,7 @@ const formatToNorthAmericanDate = (isoDateTime) => {
         const reportType = totalDecedents >= 4 ? 'Mass Fatality' : 'Multi Fatality';
         finalTitle = `[${reportType} Report] ${namesList} - ${dateStr}`;
       }
-      else if (selectedForm.firebaseKey === 'death-record' || selectedForm.id === 'death-record' || selectedForm.name === 'Death Record') {
+      else if (selectedForm.firebaseKey === 'death_record' || selectedForm.id === 'death_record' || selectedForm.name === 'Death Record') {
         const year = new Date().getFullYear();
         const caseNum = parseCaseNumber(processedFormValues.deathReportPostId) || parseCaseNumber(processedFormValues.caseNumber) || 'UNKNOWN';
         const name = processedFormValues.decedentName || 'UNKNOWN_NAME';

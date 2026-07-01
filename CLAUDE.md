@@ -4,7 +4,46 @@
 
 - Avoid the usage of any emojis unless explicitly prompted.
 - When performing tasks, changes and/or file modifications, write the change to `changelog.md` to ensure accurate tracking of file changes.
-- Discord bot changes MUST be written to `discord-bot/changelog.md`.
+- Discord bot changes MUST be written to `discord-bot/changelog.md`. After editing bot files, upload only the changed files via `gcloud compute scp` (see "Discord Bot: GCP Auto-Deploy" section below), then ask the user to restart the bot via Discord #dashboard channel.
+
+## Key Commands
+
+```bash
+# SSH into the bot VM
+gcloud compute ssh phmc-bot --zone=us-central1-a
+
+# Kill bot immediately (use when spamming or erratic)
+gcloud compute ssh phmc-bot --zone=us-central1-a --command="sudo systemctl kill phmc-bot --signal=SIGKILL"
+
+# Stop bot (prevents systemd auto-restart)
+gcloud compute ssh phmc-bot --zone=us-central1-a --command="sudo systemctl stop phmc-bot"
+
+# Restart bot (kill + start sequence for clean xvfb-run restart)
+gcloud compute ssh phmc-bot --zone=us-central1-a --command="sudo systemctl kill phmc-bot --signal=SIGKILL; sleep 3; sudo systemctl start phmc-bot"
+
+# Check status
+gcloud compute ssh phmc-bot --zone=us-central1-a --command="sudo systemctl status phmc-bot --no-pager | head -5"
+
+# Live log monitor (watch all output in real time)
+gcloud compute ssh phmc-bot --zone=us-central1-a --command="sudo journalctl -u phmc-bot -f --output=short-iso"
+
+# Filtered log monitor (errors, crashes, warnings only)
+gcloud compute ssh phmc-bot --zone=us-central1-a --command="sudo journalctl -u phmc-bot -f --output=short-iso" 2>&1 | grep -iE --line-buffered 'error|fail|crash|exception|unhandled'
+
+# Tail recent logs (last 50 lines, no follow)
+gcloud compute ssh phmc-bot --zone=us-central1-a --command="sudo journalctl -u phmc-bot --no-pager -n 50 --output=short-iso"
+
+# Upload a single file
+gcloud compute scp discord-bot/services/someFile.js phmc-bot:/opt/phmc-bot/discord-bot/services/someFile.js --zone=us-central1-a
+
+# Upload all commonly-changed files at once
+gcloud compute scp discord-bot/services/deathRecordDraft.js phmc-bot:/opt/phmc-bot/discord-bot/services/deathRecordDraft.js --zone=us-central1-a
+gcloud compute scp discord-bot/services/autoDeploy.js phmc-bot:/opt/phmc-bot/discord-bot/services/autoDeploy.js --zone=us-central1-a
+gcloud compute scp discord-bot/services/dashboardManager.js phmc-bot:/opt/phmc-bot/discord-bot/services/dashboardManager.js --zone=us-central1-a
+gcloud compute scp discord-bot/commands/death-record-check.js phmc-bot:/opt/phmc-bot/discord-bot/commands/death-record-check.js --zone=us-central1-a
+gcloud compute scp discord-bot/commands/death-record-pending.js phmc-bot:/opt/phmc-bot/discord-bot/commands/death-record-pending.js --zone=us-central1-a
+gcloud compute scp discord-bot/index.js phmc-bot:/opt/phmc-bot/discord-bot/index.js --zone=us-central1-a
+```
 
 ## Project Overview
 
@@ -65,7 +104,7 @@ npm run deploy
 
 ## Admin Dashboard — Bot Status Section
 
-`src/components/Admin/BotStatus.jsx` — queries `testingSavedReports` from Firebase RTDB to show deploy queue status, failures, and history. Accessible from the Admin sidebar via "PHMC Bot" nav item (requires dev access, rank 11+).
+`src/components/Admin/BotStatus.jsx` — queries `scheduledReports` from Firebase RTDB to show deploy queue status, failures, and history. Accessible from the Admin sidebar via "PHMC Bot" nav item (requires dev access, rank 11+).
 
 ## Discord Bot: GCP Auto-Deploy
 
@@ -78,12 +117,16 @@ gcloud compute scp discord-bot/index.js phmc-bot:/opt/phmc-bot/discord-bot/index
 # Add any other changed files here
 ```
 
-Then restart the bot on the VM:
+Then ask the user to restart the bot via Discord #dashboard channel.
+
+Alternatively, restart manually:
 ```bash
-gcloud compute ssh phmc-bot --zone=us-central1-a --command="sudo systemctl restart phmc-bot --no-block"
+gcloud compute ssh phmc-bot --zone=us-central1-a --command="sudo systemctl kill phmc-bot --signal=SIGKILL; sleep 3; sudo systemctl start phmc-bot"
 ```
 
-> **Note:** `.env` and `firebase-admin-key.json` contain secrets — never commit to git or auto-upload. Update them manually on the VM via `nano` or `gcloud compute scp` when needed.
+> **Note:** `xvfb-run` does not propagate SIGTERM cleanly, so `systemctl restart --no-block` can leave the process stuck in `deactivating (final-sigterm)`. The `kill` + `start` sequence above avoids this by sending SIGKILL directly.
+>
+> `.env` and `firebase-admin-key.json` contain secrets — never commit to git or auto-upload. Update them manually on the VM via `nano` or `gcloud compute scp` when needed.
 
 ## Bot File Sync Reference
 
@@ -144,7 +187,7 @@ https://phmc.gta.world/search.php?keywords=0192&fid[]=97&sf=firstpost
 
 - Shows when a user selects a form with `accessType === 'Coroner'`
 - Only appears if `localStorage.getItem('botDeployOptIn')` is `null` (never shown before)
-- On opt-in: sets localStorage to `'true'`, future saves go to `testingSavedReports` with `hasdeployed: false`
+- On opt-in: sets localStorage to `'true'`, future saves go to `scheduledReports` with `hasdeployed: false`
 - On opt-out: sets localStorage to `'false'`, saves go to normal path without deploy flag
 
 ## Forum Quirks (phpBB + Cloudflare)
@@ -185,8 +228,8 @@ gcloud compute ssh phmc-bot --zone=us-central1-a
 # View bot logs
 gcloud compute ssh phmc-bot --zone=us-central1-a --command="sudo journalctl -u phmc-bot -f"
 
-# Restart bot
-gcloud compute ssh phmc-bot --zone=us-central1-a --command="sudo systemctl restart phmc-bot --no-block"
+# Restart bot (use kill+start — xvfb-run ignores SIGTERM)
+gcloud compute ssh phmc-bot --zone=us-central1-a --command="sudo systemctl kill phmc-bot --signal=SIGKILL; sleep 3; sudo systemctl start phmc-bot"
 
 # Check status
 gcloud compute ssh phmc-bot --zone=us-central1-a --command="sudo systemctl status phmc-bot"

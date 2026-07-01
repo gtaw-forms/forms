@@ -39,6 +39,9 @@
       ".read": "auth != null",
       ".write": "auth != null"
     },
+    "deathRecordDrafts": {
+      ".indexOn": "needsMorgue"
+    },
     "morgue-records": {
       ".indexOn": "lastUpdated"
     }

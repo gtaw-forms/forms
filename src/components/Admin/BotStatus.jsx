@@ -44,7 +44,7 @@ const BotStatus = () => {
         setLoading(true);
         setError(null);
         try {
-            const snap = await get(ref(database, 'testingSavedReports'));
+            const snap = await get(ref(database, 'scheduledReports'));
             if (!snap.exists()) {
                 setReports([]);
                 setLoading(false);

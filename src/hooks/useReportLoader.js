@@ -9,8 +9,8 @@ import { comprehensiveSanitize } from '../utils/textUtils';
 import useGtaWorldAuth from './useGtaWorldAuth';
 
 const isLocalHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-const REPORTS_PATH = isLocalHost ? 'testingSavedReports' : 'newSavedReports';
-const BBCODE_PATH = isLocalHost ? 'testingSavedReportBBCode' : 'newSavedReportBBCode';
+const REPORTS_PATH = isLocalHost ? 'scheduledReports' : 'newSavedReports';
+const BBCODE_PATH = isLocalHost ? 'scheduledReportsBBCode' : 'newSavedReportBBCode';
 
 export const useReportLoader = () => {
     const { showNotification, removeNotification } = useNotification();
