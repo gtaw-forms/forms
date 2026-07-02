@@ -25,7 +25,7 @@ const CHECK_INTERVAL_MS = parseInt(process.env.AUTOPSY_MONITOR_INTERVAL || '', 1
 
 // Autopsy Request - Name ((OOC Name)) - [LSPD/LSSD]
 // Handles various dash characters and flexible spacing
-const TITLE_REGEX = /^Autopsy\s+Request\s*[-–—]\s*(.+?)\s*\(\((.+?)\)\)\s*[-–—]\s*\[(LSPD|LSSD)\]/i;
+const TITLE_REGEX = /^Autopsy\s+Request\s*[-–—]\s*(.+?)\s*\(\((.+?)\)\)\s*[-–—]?\s*\[(LSPD|LSSD)\]/i;
 
 // ── State ──
 
