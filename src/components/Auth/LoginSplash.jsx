@@ -29,7 +29,7 @@ const LoginSplash = ({ title, message, returnPath }) => {
                 <div className="spinner-border text-primary" role="status">
                     <span className="visually-hidden">Loading...</span>
                 </div>
-                <p style={{ fontSize: '0.9rem', opacity: 0.6 }}>Restoring session....</p>
+                <p style={{ fontSize: '0.9rem', opacity: 0.6 }}>Restoring session.....</p>
             </div>
         );
     }
