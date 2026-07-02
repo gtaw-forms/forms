@@ -7,24 +7,30 @@
 
 import firebase from './firebase.js';
 import { getForumClient } from './forumClient.js';
+import { sendLogMessage } from './logChannel.js';
+import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 
-// ── Discord Webhook ──
+// ── Discord Client (for interactive messages) ──
+// Set via setAutoDeployClient() from index.js on startup.
+let _discordClient = null;
 
-const DEPLOY_WEBHOOK_URL = process.env.DEPLOY_WEBHOOK_URL;
+export function setAutoDeployClient(client) {
+    _discordClient = client;
+}
+
+// ── Pending Autopsy Topic Selections ──
+// When multiple case threads match a decedent name, we ask staff to pick.
+// Map<customId, { db, authorId, key, reportData, bbCode, topics }>
+const pendingAutopsyPicks = new Map();
+let autopsyPickCounter = 0;
+
+// ── Discord Notifications (sent to bot-spam / log channel) ──
 
 async function sendWebhook(content, embed) {
-    if (!DEPLOY_WEBHOOK_URL) return;
     try {
-        const payload = {};
-        if (content) payload.content = content;
-        if (embed) payload.embeds = [embed];
-        await fetch(DEPLOY_WEBHOOK_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-        });
+        await sendLogMessage(content, embed);
     } catch (err) {
-        console.error('[AUTO] ⚠️ Webhook send failed:', err.message);
+        console.error('[AUTO] ⚠️ Deploy notification failed:', err.message);
     }
 }
 
@@ -40,6 +46,78 @@ async function logStep(label, detail, { color = 0x007bff, isFinal = false } = {}
         footer: { text: isFinal ? '' : 'PHMC Bot — Step' },
         timestamp: new Date().toISOString(),
     });
+}
+
+// ── User Consent Check ──
+
+const CONSENT_PATH = 'user-consent';
+
+/**
+ * Check whether a user has consented to auto-deploy for a specific form type.
+ * Uses Firebase `user-consent/<uid>/<formId>` — set by the web app's consent modal.
+ *
+ * @param {object} db - Firebase database ref
+ * @param {string} authorId - Firebase Auth UID
+ * @param {string} formId - Form type (e.g. 'coroner-report', 'coroner_email')
+ * @returns {Promise<boolean>} true if consent is given or missing (backward compat), false if explicitly denied
+ */
+async function checkUserConsent(db, authorId, formId) {
+    try {
+        const snap = await db.ref(`${CONSENT_PATH}/${authorId}/${formId}`).once('value');
+        const val = snap.val();
+        // Missing / null / true → allowed. Explicit false → denied.
+        return val !== false;
+    } catch (err) {
+        console.error(`[AUTO] ⚠️ Consent check error for ${authorId}/${formId}: ${err.message}`);
+        return true; // Fail open — don't block deploys on a read error
+    }
+}
+
+/**
+ * Handle a report that was skipped because the user denied consent.
+ * Marks it in Firebase and sends a notification webhook.
+ */
+async function skipDueToConsent(db, authorId, reportKey, formId, label) {
+    console.log(`[AUTO] ⏭️ ${label} — user has not consented to ${formId}`);
+    try {
+        await db.ref(`scheduledReports/${authorId}/${reportKey}`).update({
+            hasdeployed: true,
+            deployStatus: 'skipped_no_consent',
+            deployMessage: `Auto-deploy blocked: user has not consented to ${formId}. Visit the Bot Consent settings to opt in.`,
+            deployCheckedAt: new Date().toISOString(),
+        });
+    } catch (err) {
+        console.error(`[AUTO] ⚠️ Failed to mark consent-skip for ${reportKey}: ${err.message}`);
+    }
+
+    await sendWebhook(null, {
+        title: '⏭️ Skipped — No Consent',
+        description: [
+            `**Report:** ${label}`,
+            `**Key:** \`${reportKey}\``,
+            `**Form:** ${formId}`,
+            `**Author:** \`${authorId}\``,
+            '',
+            'This user has not opted into auto-deploy for this form type. The report was saved but will not be posted automatically.',
+        ].join('\n'),
+        color: 0xffc107,
+        footer: { text: 'PHMC Bot — Auto Deploy / Consent' },
+        timestamp: new Date().toISOString(),
+    });
+}
+
+/**
+ * Consent-gated enqueue: checks user consent before adding to the deploy queue.
+ * If the user has explicitly denied consent for this form type, skips the report.
+ * If no consent record exists, falls through to normal enqueue (backward compatible).
+ */
+async function consentGateAndEnqueue(type, item, formId) {
+    const consented = await checkUserConsent(item.db, item.authorId, formId);
+    if (!consented) {
+        await skipDueToConsent(item.db, item.authorId, item.key, formId, item.report.originalKey || item.key);
+        return;
+    }
+    enqueue(type, item);
 }
 
 // ── Maintenance Mode ──
@@ -150,9 +228,24 @@ async function enqueue(type, data) {
         console.log(`[AUTO] 🔄 ${label} — replaced by newer version, timer reset`);
     } else {
         console.log(`[AUTO] 📥 ${label} — queued, will deploy at ${deployTime} (awaiting corrections...)`);
+
+        // Build a richer queued description based on deploy type
+        const d = data.report?.data || {};
+        let queueDetail = '';
+        if (type === 'pm') {
+            const recipient = d.requestingOfficer || d.requesting_officer || d.officerName || d.recipient || 'Unknown';
+            const rawDept = d.department || '';
+            const deptStr = (typeof rawDept === 'object' ? (rawDept.label || rawDept.value || '') : String(rawDept)) || '?';
+            queueDetail = `\n**To:** ${recipient} (${deptStr})`;
+        } else if (type === 'topic') {
+            const fInfo = getForumClient().constructor.FORUM_MAP[data.report?.formId];
+            queueDetail = `\n**Forum:** ${fInfo?.name || 'PHMC Forum'}`;
+        } else if (type === 'autopsy-reply') {
+            queueDetail = `\n**Forum:** Case Management (reply)`;
+        }
         sendWebhook(null, {
             title: '⏳ Report Queued',
-            description: `**${label}**\n\`${firebaseKey}\`\nDelaying ~${Math.round(DEFER_MS / 60000)} min for potential corrections.\nDeploy scheduled around **${deployTime}**.`,
+            description: `**${label}**\n\`${firebaseKey}\`${queueDetail}\nDelaying ~${Math.round(DEFER_MS / 60000)} min for potential corrections.\nDeploy scheduled around **${deployTime}**.`,
             color: 0xffc107,
             footer: { text: 'PHMC Bot — Auto Deploy' },
             timestamp: new Date().toISOString(),
@@ -254,6 +347,8 @@ export function getQueuedDeployments() {
         } else if (entry.type === 'topic' || entry.type === 'medical-record') {
             const MAP = { 'coroner-report':'Coroner Reports', 'death_record':'Death Records', 'mass-ftality-test':'Mass Fatality', 'autopsy':'Autopsy' };
             forumLabel = MAP[formId] || 'PHMC Forum';
+        } else if (entry.type === 'autopsy-reply') {
+            forumLabel = 'Case Management';
         } else {
             const d = entry.data.report?.data || {};
             const rawDept = d.department || '';
@@ -301,6 +396,8 @@ async function runDeploy(type, data) {
     if (type === 'topic' || type === 'medical-record' || type === 'patient_notes') {
         const fInfo = getForumClient().constructor.FORUM_MAP[data.report?.formId];
         forumLabel = fInfo?.name || 'PHMC Forum';
+    } else if (type === 'autopsy-reply') {
+        forumLabel = 'Case Management';
     } else {
         // PM routing — determine by department field
         const rawDept = d.department || '';
@@ -310,10 +407,22 @@ async function runDeploy(type, data) {
     }
     currentProcessing = { label, type, forum: forumLabel };
 
+    // Build richer deploy description
+    let deployDetail = `\n**Sending to:** ${forumLabel}`;
+    if (type === 'pm') {
+        const recipient = d.requestingOfficer || d.requesting_officer || d.officerName || d.recipient || 'Unknown';
+        deployDetail += `\n**Recipient:** ${recipient}`;
+    } else if (type === 'topic') {
+        const fInfo = getForumClient().constructor.FORUM_MAP[data.report?.formId];
+        if (fInfo) deployDetail += `\n**Forum:** ${fInfo.name}`;
+    } else if (type === 'autopsy-reply') {
+        deployDetail += `\n**Forum:** Case Management (reply)`;
+    }
+
     console.log(`[AUTO] ▶️ Deploying ${label} (${data.key}) to ${forumLabel}...`);
     await sendWebhook(null, {
         title: '🚀 Deploying Report',
-        description: `**${label}**\n\`${data.key}\`\nNow sending to **${forumLabel}**...`,
+        description: `**${label}**\n\`${data.key}\`${deployDetail}`,
         color: 0x007bff,
         footer: { text: 'PHMC Bot — Auto Deploy' },
         timestamp: new Date().toISOString(),
@@ -353,6 +462,8 @@ async function runDeploy(type, data) {
                 await handleTopic(data);
             } else if (type === 'patient_notes' || type === 'medical-record') {
                 await handleMedicalRecord(data);
+            } else if (type === 'autopsy-reply') {
+                await handleAutopsyReply(data);
             }
         } finally {
             clearTimeout(slowWarning);
@@ -522,8 +633,8 @@ async function handleTopic(report) {
 
     console.log(`[AUTO] 📰 Posting topic to ${forumInfo.name} (f=${forumInfo.forumId})...`);
     const client = getForumClient();
-    // Force login on PHMC forum (different domain from PM forums)
-    await client.login(null, null, { force: true, baseUrl: process.env.FORUM_BASE_URL });
+    // Force login on PHMC forum — only if session expired
+    await client.login(null, null, { force: false, baseUrl: process.env.FORUM_BASE_URL });
     const result = await client.postTopic(forumInfo.forumId, reportData.originalKey || key, bbCode, forumInfo.url);
     if (result.ok) {
         const label = reportData.originalKey || key;
@@ -640,7 +751,7 @@ async function handleMedicalRecord(report) {
 
     const client = getForumClient();
     await logStep('🌐 Opening browser...', `Logging into PHMC forum...`);
-    await client.login(null, null, { force: true, baseUrl: process.env.FORUM_BASE_URL });
+    await client.login(null, null, { force: false, baseUrl: process.env.FORUM_BASE_URL });
 
     await logStep('🔍 Searching...', `Looking for thread by **${isNumericId ? 'patient ID' : 'name'}**: \`${searchTerm}\``);
 
@@ -678,6 +789,271 @@ async function handleMedicalRecord(report) {
         await setDeployStatus(db, authorId, key, 'reply_failed', result.reason || 'Unknown error replying to topic');
         console.error(`[AUTO] ❌ Failed to reply to topic #${topicId}: ${result.reason || 'Unknown'}`);
         await logStep('❌ Reply Failed', `**Topic #${topicId}:** ${result.reason || 'Unknown error'}`, { color: 0xdc3545, isFinal: true });
+    }
+}
+
+// ── Autopsy Reply Handler ──
+
+const CASE_MGMT_FORUM_ID = 266;
+const AUTOPSY_DRY_RUN = process.env.AUTOPSY_DRY_RUN !== 'false'; // default dry-run
+
+/**
+ * Handle an Autopsy report — search Case Management forum (f=266) by decedent name
+ * and reply to the case thread with the autopsy BBCode.
+ * Dry-run by default for safety — set AUTOPSY_DRY_RUN=false in .env to enable live posting.
+ */
+async function handleAutopsyReply(report) {
+    const { authorId, key, report: reportData, db } = report;
+    const DRY = AUTOPSY_DRY_RUN;
+
+    console.log(`[AUTO] 🔬 handleAutopsyReply called for ${key} — name: "${reportData.data?.decedentName}"`);
+
+    // Determine search terms from report data
+    const decedentName = (reportData.data?.decedentName || '').trim();
+    const decedentOOC = (reportData.data?.decedentOOC || '').trim();
+    const searchTerm = decedentName || decedentOOC || reportData.originalKey || '';
+
+    if (!searchTerm) {
+        console.log(`[AUTO] ⏭️ ${key} — no decedent name to search for`);
+        await setDeployStatus(db, authorId, key, 'error', 'Missing decedent name. Add a name to the report and save again.');
+        await logStep('❌ Cannot Process', 'Add a **Decedent Name** to the autopsy report, then save again.', { color: 0xdc3545, isFinal: true });
+        return;
+    }
+
+    const bbSnap = await db.ref(`scheduledReportsBBCode/${authorId}/${key}`).once('value');
+    const bbCode = bbSnap.val()?.bbCode;
+    if (!bbCode) {
+        console.log(`[AUTO] ⏭️ ${key} — no BBCode, marking as deployed`);
+        await setDeployStatus(db, authorId, key, 'error', 'No BBCode content found in report. Regenerate and save again.');
+        await logStep('❌ No BBCode', 'The report has no BBCode content. Regenerate and save again.', { color: 0xdc3545, isFinal: true });
+        return;
+    }
+
+    const client = getForumClient();
+    await logStep('🌐 Opening browser...', `Logging into PHMC forum...`);
+    await client.login(null, null, { force: false, baseUrl: process.env.FORUM_BASE_URL });
+
+    await logStep('🔍 Searching Case Management...', `Looking for case thread by **${searchTerm}** in forum f=${CASE_MGMT_FORUM_ID}...`);
+
+    await setDeployStatus(db, authorId, key, 'searching', `Searching for "${searchTerm}" in Case Management...`);
+    const caseThreads = await client.searchCaseManagement(searchTerm);
+
+    if (caseThreads.length === 0) {
+        console.log(`[AUTO] 📭 No case thread found for "${searchTerm}"`);
+        await setDeployStatus(db, authorId, key, 'topic_not_found', `No case thread found for "${searchTerm}". Create one manually in the Case Management forum, then re-save.`);
+        await logStep('📭 Case Not Found', `**"${searchTerm}"** — no matching case thread exists.\nCreate the case thread manually, then save the report again.`, { color: 0xffc107, isFinal: true });
+        return;
+    }
+
+    let topicId, foundTitle;
+
+    if (caseThreads.length > 1 && _discordClient) {
+        // ── Multiple matches — let staff pick ──
+        const pickId = `autopsy_pick_${++autopsyPickCounter}`;
+        pendingAutopsyPicks.set(pickId, { db, authorId, key, reportData, bbCode, topics: caseThreads });
+
+        console.log(`[AUTO] ⚠️ ${caseThreads.length} case threads found for "${searchTerm}" — prompting staff`);
+
+        // Build the embed and buttons
+        const embed = new EmbedBuilder()
+            .setColor(0xffc107)
+            .setTitle('Multiple Case Threads Found')
+            .setDescription([
+                `**Report:** ${reportData.originalKey || key}`,
+                `**Search:** \`${searchTerm}\``,
+                '',
+                'Multiple matching threads found. Pick the correct one:',
+            ].join('\n'))
+            .setFooter({ text: `Expires in 5 min | ${pickId}` })
+            .setTimestamp();
+
+        const rows = [];
+        // Split into rows of up to 3 buttons each (Discord limit: 5 per row)
+        for (let i = 0; i < caseThreads.length; i += 3) {
+            const chunk = caseThreads.slice(i, i + 3);
+            const row = new ActionRowBuilder().addComponents(
+                chunk.map((t, j) =>
+                    new ButtonBuilder()
+                        .setCustomId(`${pickId}_${t.topicId}`)
+                        .setLabel(`#${t.topicId}`)
+                        .setStyle(ButtonStyle.Primary)
+                )
+            );
+            rows.push(row);
+        }
+
+        // Add a "None of these" cancel button
+        rows.push(new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`${pickId}_cancel`)
+                .setLabel('Cancel')
+                .setStyle(ButtonStyle.Danger)
+        ));
+
+        try {
+            const channelId = process.env.BOT_LOG_CHANNEL_ID;
+            if (!channelId) throw new Error('No BOT_LOG_CHANNEL_ID configured');
+            const channel = await _discordClient.channels.fetch(channelId);
+            await channel.send({ embeds: [embed], components: rows });
+
+            // Cancel pending pick after 5 minutes and re-queue the report
+            setTimeout(async () => {
+                const expired = pendingAutopsyPicks.get(pickId);
+                if (expired) {
+                    pendingAutopsyPicks.delete(pickId);
+                    console.log(`[AUTO] ⌛ Autopsy pick ${pickId} expired — re-queuing ${expired.key}`);
+
+                    // Remove from knownReportKeys so it gets picked up by the listener again
+                    if (knownReportKeys) knownReportKeys.delete(expired.key);
+
+                    // Mark in Firebase so the web app shows why it's stuck
+                    try {
+                        await expired.db.ref(`scheduledReports/${expired.authorId}/${expired.key}`).update({
+                            deployStatus: 'pick_timed_out',
+                            deployMessage: 'Topic pick timed out (5 min). The report will be re-attempted on the next save.',
+                            deployCheckedAt: new Date().toISOString(),
+                        });
+                    } catch (err) {
+                        console.error(`[AUTO] ⚠️ Failed to update timeout status: ${err.message}`);
+                    }
+                }
+            }, 5 * 60 * 1000);
+
+            console.log(`[AUTO] ⏸️ Waiting for staff to pick a thread for "${searchTerm}"`);
+            return;
+        } catch (err) {
+            console.error(`[AUTO] ⚠️ Failed to prompt staff for topic pick: ${err.message}`);
+            // Fall through to auto-pick the first result
+        }
+        pendingAutopsyPicks.delete(pickId);
+    }
+
+    // Auto-pick: use the most recent/relevant match
+    topicId = caseThreads[0].topicId;
+    foundTitle = caseThreads[0].title;
+    if (caseThreads.length > 1) {
+        console.log(`[AUTO] ⚠️ ${caseThreads.length} case threads found — auto-picked most recent: #${topicId} "${foundTitle}"`);
+    }
+
+    // Topic found — reply
+    console.log(`[AUTO] ✅ Case thread found: #${topicId} — "${foundTitle}"`);
+    await setDeployStatus(db, authorId, key, 'replying', `Found case #${topicId}. ${DRY ? 'Filling form (dry run — will not submit)' : 'Posting reply...'}`);
+    await logStep('✅ Case Found', `**#${topicId}:** ${foundTitle}\n${DRY ? '🔍 Dry run — form will not be submitted' : '📤 Submitting reply...'}`, { color: DRY ? 0xffc107 : 0x28a745 });
+
+    const result = await client.replyToTopic(topicId, CASE_MGMT_FORUM_ID, bbCode, { dryRun: DRY });
+
+    if (result.ok && !result.dryRun) {
+        const label = reportData.originalKey || key;
+        const completed = await markReportComplete(db, authorId, key, label, 'autopsy-reply', result.url);
+        if (completed) {
+            await logStep('✅ Autopsy Posted', `[View Reply](<${result.url}>)`, { color: 0x28a745, isFinal: true });
+        } else {
+            await logStep('⚠️ Autopsy Posted But Status Update Failed', `Reply was posted at [View Reply](<${result.url}>) but the Firebase status update did not verify.`, { color: 0xffc107, isFinal: true });
+        }
+    } else if (result.dryRun) {
+        await setDeployStatus(db, authorId, key, 'dry_run', `Form filled for case #${topicId} but NOT submitted. Set AUTOPSY_DRY_RUN=false to enable.`);
+        console.log(`[AUTO] 🏜️ Dry run — form filled for case #${topicId}`);
+        await logStep('🏜️ Dry Run Complete', `**#${topicId}:** ${foundTitle}\nForm filled but **not submitted**. Set \`AUTOPSY_DRY_RUN=false\` in .env to enable.`, { color: 0xffc107, isFinal: true });
+    } else {
+        await setDeployStatus(db, authorId, key, 'reply_failed', result.reason || 'Unknown error replying to case thread');
+        console.error(`[AUTO] ❌ Failed to reply to case #${topicId}: ${result.reason || 'Unknown'}`);
+        await logStep('❌ Reply Failed', `**Case #${topicId}:** ${result.reason || 'Unknown error'}`, { color: 0xdc3545, isFinal: true });
+    }
+}
+
+// ── Interactive Autopsy Topic Picker ──
+
+/**
+ * Handle a staff member's button click picking which case thread to reply to.
+ * Called from index.js when an autopsy_pick_* button is clicked.
+ *
+ * @param {import('discord.js').ButtonInteraction} interaction
+ */
+export async function resolveAutopsyTopic(interaction) {
+    const customId = interaction.customId; // e.g. "autopsy_pick_1_12345" or "autopsy_pick_1_cancel"
+
+    // Extract the pick ID from the customId: e.g. "autopsy_pick_1_12345" → "autopsy_pick_1"
+    const parts = customId.split('_');
+    const cancelIdx = parts.indexOf('cancel');
+    if (cancelIdx > 0) {
+        // Cancel button pressed
+        const pickId = parts.slice(0, cancelIdx).join('_');
+        const pending = pendingAutopsyPicks.get(pickId);
+        if (pending) {
+            pendingAutopsyPicks.delete(pickId);
+            await interaction.update({ content: 'Cancelled — no topic selected. Re-save the report to try again.', embeds: [], components: [] });
+        } else {
+            await interaction.update({ content: 'This selection has expired.', ephemeral: true });
+        }
+        return;
+    }
+
+    // Extract pickId (everything except the last part which is the topicId)
+    const topicIdStr = parts.pop();
+    const pickId = parts.join('_');
+    const pending = pendingAutopsyPicks.get(pickId);
+
+    if (!pending) {
+        await interaction.update({ content: 'This selection has expired (5 min timeout). Re-save the report to try again.', embeds: [], components: [] });
+        return;
+    }
+
+    const topicId = parseInt(topicIdStr, 10);
+    const topic = pending.topics.find(t => t.topicId === topicId);
+    if (!topic) {
+        await interaction.update({ content: `Topic #${topicId} not found in results.`, ephemeral: true });
+        return;
+    }
+
+    pendingAutopsyPicks.delete(pickId);
+    console.log(`[AUTO] 👤 Staff picked topic #${topicId} — "${topic.title}"`);
+
+    // Update the prompt message to show which was picked
+    await interaction.update({
+        content: `Picked **#${topicId}** — proceeding with reply...`,
+        embeds: [],
+        components: [],
+    });
+
+    // Re-run the reply flow (duplicate code from handleAutopsyReply but skips the search)
+    const { db, authorId, key, reportData, bbCode } = pending;
+    const DRY = AUTOPSY_DRY_RUN;
+
+    const client = getForumClient();
+    await client.login(null, null, { force: false, baseUrl: process.env.FORUM_BASE_URL });
+
+    await setDeployStatus(db, authorId, key, 'replying', `Staff picked case #${topicId}. ${DRY ? 'Filling form (dry run)' : 'Posting reply...'}`);
+    await sendWebhook(null, {
+        title: '🔬 Autopsy — Case Selected',
+        description: `**Report:** ${reportData.originalKey || key}\n**Case:** #${topicId} — ${topic.title}\n**Dept:** Case Management\n${DRY ? '🔍 Dry run' : '📤 Submitting...'}`,
+        color: DRY ? 0xffc107 : 0x28a745,
+    });
+
+    const result = await client.replyToTopic(topicId, CASE_MGMT_FORUM_ID, bbCode, { dryRun: DRY });
+
+    if (result.ok && !result.dryRun) {
+        const label = reportData.originalKey || key;
+        const completed = await markReportComplete(db, authorId, key, label, 'autopsy-reply', result.url);
+        await sendWebhook(null, {
+            title: completed ? '✅ Autopsy Posted to Case' : '⚠️ Autopsy Posted But Status Update Failed',
+            description: `**${label}** → Case #${topicId}\n${result.url ? `[View Reply](<${result.url}>)` : ''}`,
+            color: completed ? 0x28a745 : 0xffc107,
+        });
+    } else if (result.dryRun) {
+        await setDeployStatus(db, authorId, key, 'dry_run', `Form filled for case #${topicId} but NOT submitted. Set AUTOPSY_DRY_RUN=false to enable.`);
+        await sendWebhook(null, {
+            title: '🏜️ Autopsy Dry Run Complete',
+            description: `Case **#${topicId}** — form filled but not submitted.\nSet \`AUTOPSY_DRY_RUN=false\` in .env to enable live posting.`,
+            color: 0xffc107,
+        });
+    } else {
+        await setDeployStatus(db, authorId, key, 'reply_failed', result.reason || 'Unknown error');
+        console.error(`[AUTO] ❌ Failed to reply to case #${topicId}: ${result.reason || 'Unknown'}`);
+        await sendWebhook(null, {
+            title: '❌ Autopsy Reply Failed',
+            description: `Case **#${topicId}:** ${result.reason || 'Unknown error'}`,
+            color: 0xdc3545,
+        });
     }
 }
 
@@ -1009,6 +1385,7 @@ export function startAutoDeploy() {
     // Using on('value') because child_added only fires for NEW top-level children (authors),
     // not for reports added under EXISTING authors. value fires on any change.
     knownReportKeys = new Set();
+    const _autoDeployStartupTime = Date.now();
     const CK_EPOCH = 1782864000000; // 2026-07-01T00:00:00Z — reports saved before this are skipped for CK drafting
     console.log(`[AUTO] ⏳ CK drafting: skipping reports saved before 01/JUL/2026`);
     db.ref('scheduledReports').on('value', (snap) => {
@@ -1035,11 +1412,13 @@ export function startAutoDeploy() {
                 };
 
                 if (reportData.formId === 'coroner_email') {
-                    enqueue('pm', item);
-                } else if (['death_record', 'mass-ftality-test', 'coroner-report', 'autopsy'].includes(reportData.formId)) {
-                    enqueue('topic', item);
+                    consentGateAndEnqueue('pm', item, reportData.formId);
+                } else if (['death_record', 'mass-ftality-test', 'coroner-report'].includes(reportData.formId)) {
+                    consentGateAndEnqueue('topic', item, reportData.formId);
                 } else if (reportData.formId === 'patient_notes') {
-                    enqueue('medical-record', item);
+                    consentGateAndEnqueue('medical-record', item, reportData.formId);
+                } else if (reportData.formId === 'autopsy') {
+                    consentGateAndEnqueue('autopsy-reply', item, reportData.formId);
                 }
 
                 // ── Passive CK check (death record drafting) ──
@@ -1079,11 +1458,13 @@ export function startAutoDeploy() {
                 const item = { authorId, key: reportKey, report: reportData, db };
 
                 if (reportData.formId === 'coroner_email') {
-                    enqueue('pm', item);
-                } else if (['death_record', 'mass-ftality-test', 'coroner-report', 'autopsy'].includes(reportData.formId)) {
-                    enqueue('topic', item);
+                    consentGateAndEnqueue('pm', item, reportData.formId);
+                } else if (['death_record', 'mass-ftality-test', 'coroner-report'].includes(reportData.formId)) {
+                    consentGateAndEnqueue('topic', item, reportData.formId);
                 } else if (reportData.formId === 'patient_notes') {
-                    enqueue('medical-record', item);
+                    consentGateAndEnqueue('medical-record', item, reportData.formId);
+                } else if (reportData.formId === 'autopsy') {
+                    consentGateAndEnqueue('autopsy-reply', item, reportData.formId);
                 }
             });
         });

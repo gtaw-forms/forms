@@ -9,7 +9,7 @@
 import firebase from './firebase.js';
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 
-const DASHBOARD_REFRESH_MS = 5 * 60 * 1000; // 5 minutes
+const DASHBOARD_REFRESH_MS = 2 * 60 * 1000; // 2 minutes — frequent enough for queue updates, uses cached data
 const DASHBOARD_CONFIG_PATH = 'appMetadata/dashboard';
 
 let client = null;
@@ -197,7 +197,13 @@ async function gatherDashboardData(db, force = false) {
         data.queue = [];
     }
 
-    // 6. Pending Death Record drafts (removed — handled via /death-record-check command)
+    // 6. Scheduled tasks (periodic monitors)
+    try {
+        const { getMonitorStatus } = await import('./autopsyRequestMonitor.js');
+        data.autopsyMonitor = getMonitorStatus();
+    } catch {
+        data.autopsyMonitor = { active: false };
+    }
 
     return data;
 }
@@ -262,6 +268,30 @@ function buildDashboardEmbed(data) {
         });
     }
 
+    // Scheduled Tasks
+    const taskLines = [];
+    // Autopsy Request Monitor
+    const am = data.autopsyMonitor || {};
+    if (am.active) {
+        const intervalMin = Math.round((am.intervalMs || 300000) / 60000);
+        const lastCheck = am.lastCheckTime
+            ? `<t:${Math.floor(am.lastCheckTime / 1000)}:R>`
+            : 'pending...';
+        const statusIcon = am.lastCheckTime === null ? '⏳' : am.lastCheckSuccess ? '✅' : '❌';
+        taskLines.push(
+            `${statusIcon} **Autopsy Monitor** — every ${intervalMin}min (f=265)\n` +
+            `└ LSPD: ${am.lspdCount ?? '?'} | LSSD: ${am.lssdCount ?? '?'} — last check: ${lastCheck}`
+        );
+    } else {
+        taskLines.push('⏹️ **Autopsy Monitor** — inactive');
+    }
+
+    embed.addFields({
+        name: '🔄 Scheduled Tasks',
+        value: taskLines.join('\n') || 'None configured',
+        inline: false,
+    });
+
     return embed;
 }
 
@@ -317,10 +347,11 @@ async function postOrUpdateDashboard(db) {
             }
         }
 
-        // Hold pending while we fetch live data (no cache)
+        // Use cached monitoring data for auto-refresh (no browser checks = no lock contention).
+        // Live browser checks still happen via the "Refresh Now" button and system monitor.
         const [data] = await Promise.all([
-            gatherDashboardData(db, true), // force = live browser checks
-            new Promise(r => setTimeout(r, 3000)), // minimum 3s so pending is visible
+            gatherDashboardData(db, false),
+            new Promise(r => setTimeout(r, 1000)),
         ]);
         data.lastCheckTime = Date.now();
         const embed = buildDashboardEmbed(data);

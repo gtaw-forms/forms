@@ -78,6 +78,7 @@ async function registerCommands() {
     const reportSkip = await import('./commands/report-skip.js');
     const deathRecordCheck = await import('./commands/death-record-check.js');
     const deathRecordPending = await import('./commands/death-record-pending.js');
+    const reportRetry = await import('./commands/report-retry.js');
     const commands = [
         morgue.data.toJSON(),
         card.data.toJSON(),
@@ -90,6 +91,7 @@ async function registerCommands() {
         reportSkip.data.toJSON(),
         deathRecordCheck.data.toJSON(),
         deathRecordPending.data.toJSON(),
+        reportRetry.data.toJSON(),
     ];
 
     const rest = new REST({ version: '10' }).setToken(token);
@@ -172,6 +174,36 @@ client.once('clientReady', async () => {
     } catch (err) {
         console.warn('[BOT] ⚠️ Death Record Draft client failed to register (non-fatal):', err.message);
     }
+
+    // ── Register Auto-Deploy client (for interactive autopsy topic picker) ──
+    try {
+        const { setAutoDeployClient } = await import('./services/autoDeploy.js');
+        setAutoDeployClient(client);
+        console.log('[BOT] ✅ Auto-deploy client registered');
+    } catch (err) {
+        console.warn('[BOT] ⚠️ Auto-deploy client failed to register (non-fatal):', err.message);
+    }
+
+    // ── Start autopsy request monitor (checks forum for new requests) ──
+    try {
+        const { startAutopsyRequestMonitor } = await import('./services/autopsyRequestMonitor.js');
+        startAutopsyRequestMonitor();
+    } catch (err) {
+        console.warn('[BOT] ⚠️ Autopsy request monitor failed to start (non-fatal):', err.message);
+    }
+
+    // ── Start queue dashboard (lightweight deploy queue embed in bot-spam) ──
+    try {
+        const { setQueueDashboardClient, setupQueueDashboard } = await import('./services/queueDashboard.js');
+        setQueueDashboardClient(client);
+        const logChannelId = process.env.BOT_LOG_CHANNEL_ID;
+        if (logChannelId) {
+            await setupQueueDashboard(logChannelId);
+            console.log('[BOT] ✅ Queue dashboard posted to bot-spam');
+        }
+    } catch (err) {
+        console.warn('[BOT] ⚠️ Queue dashboard failed to start (non-fatal):', err.message);
+    }
 });
 
 client.on('interactionCreate', async (interaction) => {
@@ -179,6 +211,20 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.isButton() && interaction.customId === 'dashboard_refresh') {
         const { handleDashboardRefresh } = await import('./services/dashboardManager.js');
         await handleDashboardRefresh(interaction);
+        return;
+    }
+
+    // Handle queue dashboard refresh button
+    if (interaction.isButton() && interaction.customId === 'queue_refresh') {
+        const { handleQueueRefresh } = await import('./services/queueDashboard.js');
+        await handleQueueRefresh(interaction);
+        return;
+    }
+
+    // Handle Autopsy topic picker buttons (multiple case threads found)
+    if (interaction.isButton() && interaction.customId.startsWith('autopsy_pick_')) {
+        const { resolveAutopsyTopic } = await import('./services/autoDeploy.js');
+        await resolveAutopsyTopic(interaction);
         return;
     }
 
@@ -193,6 +239,55 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.isModalSubmit() && interaction.customId.startsWith('dr_edit_modal_')) {
         const { handleEditModal } = await import('./services/deathRecordDraft.js');
         await handleEditModal(interaction);
+        return;
+    }
+
+    // Handle /report-retry select menu
+    if (interaction.isStringSelectMenu() && interaction.customId === 'retry_report_select') {
+        const ownerId = process.env.BOT_OWNER_ID;
+        if (!ownerId || interaction.user.id !== ownerId) {
+            await interaction.reply({
+                content: 'Only the bot owner can retry reports.',
+                flags: MessageFlags.Ephemeral,
+            });
+            return;
+        }
+
+        const value = interaction.values[0];
+        const [authorId, reportKey] = value.split('|');
+
+        const { default: firebase } = await import('./services/firebase.js');
+        firebase.init();
+        const db = firebase.db;
+
+        try {
+            // Reset the report so the listener picks it up
+            await db.ref(`scheduledReports/${authorId}/${reportKey}`).update({
+                deployStatus: 'queued',
+                deployMessage: 'Re-queued by staff via /report-retry',
+                deployCheckedAt: new Date().toISOString(),
+                hasdeployed: false,
+                retryAt: null,
+            });
+
+            // Remove from knownReportKeys so the value listener re-processes it
+            const { getQueuedDeployments } = await import('./services/autoDeploy.js');
+
+            const embed = new EmbedBuilder()
+                .setColor(0x28a745)
+                .setTitle('Report Re-queued')
+                .setDescription(`**${reportKey}** has been reset and will be picked up by the deploy listener shortly.`)
+                .setFooter({ text: `Retried by ${interaction.user.tag}` })
+                .setTimestamp();
+            await interaction.update({ embeds: [embed], components: [] });
+        } catch (err) {
+            console.error('[RETRY] Failed to retry report:', err.message);
+            await interaction.update({
+                content: `Failed to retry: ${err.message}`,
+                embeds: [],
+                components: [],
+            });
+        }
         return;
     }
 
@@ -244,17 +339,29 @@ client.on('interactionCreate', async (interaction) => {
     try {
         await command.execute(interaction);
     } catch (error) {
+        // DiscordAPIError[10062] = Unknown interaction (expired 3s window) — silent skip
+        if (error?.code === 10062) {
+            console.log(`[BOT] ⏰ Interaction expired for /${interaction.commandName} — skipped reply`);
+            return;
+        }
         console.error(`[BOT] ❌ Error executing /${interaction.commandName}:`, error);
-        if (interaction.replied || interaction.deferred) {
-            await interaction.followUp({
-                content: '❌ An unexpected error occurred. Please try again.',
-                flags: MessageFlags.Ephemeral,
-            });
-        } else {
-            await interaction.reply({
-                content: '❌ An unexpected error occurred. Please try again.',
-                flags: MessageFlags.Ephemeral,
-            });
+        try {
+            if (interaction.replied || interaction.deferred) {
+                await interaction.followUp({
+                    content: '❌ An unexpected error occurred. Please try again.',
+                    flags: MessageFlags.Ephemeral,
+                });
+            } else {
+                await interaction.reply({
+                    content: '❌ An unexpected error occurred. Please try again.',
+                    flags: MessageFlags.Ephemeral,
+                });
+            }
+        } catch (replyErr) {
+            // If the reply itself also fails (e.g. already expired), just log and move on
+            if (replyErr?.code !== 10062) {
+                console.error(`[BOT] ⚠️ Failed to send error reply:`, replyErr.message);
+            }
         }
     }
 });
@@ -321,6 +428,9 @@ async function start() {
 
     const deathRecordPendingCmd = await import('./commands/death-record-pending.js');
     client.commands.set(deathRecordPendingCmd.data.name, { execute: deathRecordPendingCmd.execute });
+
+    const reportRetryCmd = await import('./commands/report-retry.js');
+    client.commands.set(reportRetryCmd.data.name, { execute: reportRetryCmd.execute });
 
     console.log('[BOT] 🔌 Connecting to Discord...');
     await client.login(token);

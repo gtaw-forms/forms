@@ -40,7 +40,13 @@ export const decedentItemSchema = [
   textInput('decedentName', 'Decedent Name', 'Full Name', compact50),
   textInput('decedentOOC', 'Decedent OOC', 'Out-of-Character Name', compact50),
   textInput('evidenceLockerID', 'Evidence Locker ID', 'Unique Locker ID', compact50),
-  
+    {
+    name: 'typeOfDeath',
+    label: 'Type of Death',
+    type: 'select',
+    optionsKey: 'typeOfDeathOptions',
+    ...compact50,
+  },
   sectionHeader('Medical Findings'),
   textareaInput('synopsis', 'Injuries / Things of Note', 'Brief synopsis of the decedent, injuries, etc.', 3),
   textInput('pronouncedTimeOfDeath', 'Probable Time of Death', 'e.g., 04/20/2024 14:30', compact50),
@@ -52,13 +58,7 @@ export const decedentItemSchema = [
     optionsKey: 'mannerOfDeath',
     ...compact50,
   },
-  {
-    name: 'typeOfDeath',
-    label: 'Type of Death',
-    type: 'select',
-    optionsKey: 'typeOfDeathOptions',
-    ...compact50,
-  },
+
   
   sectionHeader('Scene Evidence'),
   imageInput('scenePhotos', 'Scene Photos & Evidence', 6),
