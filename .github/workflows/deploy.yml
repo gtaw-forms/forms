@@ -23,6 +23,7 @@ jobs:
         run: npm run build
 
       - name: Deploy to gh-pages
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
