@@ -6,11 +6,12 @@ import { getCharacterName, getCharacterID } from '../utils/identityUtils';
 import { comprehensiveSanitize } from '../utils/textUtils';
 import { useNotification } from '../contexts/NotificationContext';
 import { reportLogicalError } from '../utils/logging';
-import { isBotDeployOptedIn } from '../components/Modals/BotDeployOptInModal';
+import { useAuth } from '../contexts/AuthContext';
+import { checkConsentDirect } from './useConsent';
 
 const isLocalHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
-const deployTrackedForms = ['coroner-report', 'coroner_email', 'death_record', 'autopsy', 'patient_notes', 'mass-ftality-test'];
+const deployTrackedForms = ['coroner-report', 'coroner_email', 'death_record', 'patient_notes', 'mass-ftality-test'];
 
 export function getReportBasePath(formFirebaseKey, botDeployOptedIn = false) {
   if (deployTrackedForms.includes(formFirebaseKey)) {
@@ -121,9 +122,10 @@ import { useGtaWorldAuthContext } from '../contexts/GtaWorldAuthContext';
 import { triggerWebhookProxy } from '../services/firebaseFunctions';
 
 export const useFormSaver = (gtaWorldUser, isGtaAuthenticated) => {
-    const botDeployOptedIn = isBotDeployOptedIn();
     const { showNotification } = useNotification();
     const { isFactionMember } = useGtaWorldAuthContext();
+    const { user: authUser } = useAuth();
+    const firebaseUid = authUser?.uid || null;
 
     const validateMembership = useCallback(() => {
         // --- LOCALHOST DEVELOPMENT BYPASS ---
@@ -300,8 +302,36 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated) => {
             reportDataToSave.processed = !!formValues.processed;
         }
 
-        const reportBasePath = getReportBasePath(selectedForm.firebaseKey, botDeployOptedIn);
-        const bbCodeBasePath = getBBCodeBasePath(selectedForm.firebaseKey, botDeployOptedIn);
+        // ── Pre-save validation: ensure BBCode matches the form ──
+        // Catches cases where the user switched forms without re-generating BBCode.
+        if (deployTrackedForms.includes(selectedForm.firebaseKey)) {
+            const formLabel = selectedForm.name || '';
+            const formIdLabel = selectedForm.firebaseKey || '';
+            // Check that the finalTitle at least references the form type, not a completely different form
+            const titleLower = finalTitle.toLowerCase();
+            const mismatch = (
+                (formIdLabel === 'coroner_email' && titleLower.includes('mass fatality')) ||
+                (formIdLabel === 'coroner_email' && titleLower.includes('multi fatality')) ||
+                (formIdLabel === 'coroner-report' && titleLower.includes('coroner email'))
+            );
+            if (mismatch) {
+                const msg = `Title "${finalTitle}" doesn't match form "${formLabel}". Please generate BBCode first.`;
+                console.warn(`[useFormSaver] ⚠️ ${msg}`);
+                if (!options.silent) {
+                    showNotification(msg, 'error', 8000);
+                }
+                return { success: false, error: 'Title/form mismatch' };
+            }
+        }
+
+        // Determine deploy path and consent for this form type
+        const isDeployTracked = deployTrackedForms.includes(selectedForm.firebaseKey);
+        const hasConsent = isDeployTracked
+            ? await checkConsentDirect(firebaseUid, selectedForm.firebaseKey)
+            : false;
+
+        const reportBasePath = getReportBasePath(selectedForm.firebaseKey, hasConsent);
+        const bbCodeBasePath = getBBCodeBasePath(selectedForm.firebaseKey, hasConsent);
         const reportPath = `${reportBasePath}/${sanitizedAuthorId}/${sanitizedKey}`;
         const bbCodePath = `${bbCodeBasePath}/${sanitizedAuthorId}/${sanitizedKey}`;
 
@@ -320,9 +350,9 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated) => {
                 runTransaction(userReportCountRef, (currentCount) => (currentCount || 0) + 1),
             ];
 
-            // Dual-save: when opted in on live site, also save to newSavedReports
+            // Dual-save: when user has consented on live site, also save to newSavedReports
             // so the Saved Reports modal can find it.
-            if (botDeployOptedIn && !isLocalHost && deployTrackedForms.includes(selectedForm.firebaseKey)) {
+            if (hasConsent && !isLocalHost && isDeployTracked) {
                 const liveReportRef = ref(database, `newSavedReports/${sanitizedAuthorId}/${sanitizedKey}`);
                 const liveBBCodeRef = ref(database, `newSavedReportBBCode/${sanitizedAuthorId}/${sanitizedKey}`);
                 promises.push(set(liveReportRef, reportDataToSave));

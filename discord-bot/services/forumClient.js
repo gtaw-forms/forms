@@ -650,6 +650,80 @@ class ForumClient {
     }
 
     /**
+     * Search the Case Management forum (f=266) for topics by decedent name.
+     * Used by the Autopsy auto-poster to find the case thread to reply to.
+     * Returns all matching topics sorted by most recent activity first,
+     * so the handler can decide which one to use.
+     *
+     * @param {string} searchTerm - decedent name to search for (e.g. "John Doe")
+     * @returns {Promise<Array<{topicId: number, title: string}>>}
+     */
+    async searchCaseManagement(searchTerm) {
+        const lock = await this._acquire('searchCaseManagement');
+        try {
+            await this.ensureBrowser();
+
+            const encoded = encodeURIComponent(searchTerm);
+            const searchUrl = `https://phmc.gta.world/search.php?keywords=${encoded}&terms=all&fid[]=266&sc=1&sf=all&sr=posts&sk=t&sd=d&st=0&ch=300&t=0&submit=Search`;
+            console.log(`[FORUM] 🔍 Searching Case Management for "${searchTerm}"...`);
+            console.log(`[FORUM] 🌐 ${searchUrl}`);
+
+            await this.page.goto(searchUrl, { waitUntil: 'networkidle', timeout: 180000 });
+            await this.page.waitForTimeout(2000);
+
+            const pageUrl = this.page.url();
+            const pageTitle = await this.page.title().catch(() => '(no title)');
+            console.log(`[FORUM] 🔍 Search page: "${pageTitle}" — ${pageUrl}`);
+
+            // Check if no results
+            const noResults = await this.page.evaluate(() =>
+                document.body?.innerText?.includes('No suitable matches were found') ?? false
+            ).catch(() => false);
+
+            if (noResults) {
+                console.log(`[FORUM] 📭 No case threads found for "${searchTerm}"`);
+                return [];
+            }
+
+            // Parse ALL topic links from search results, preferring name matches
+            const results = await this.page.evaluate((term) => {
+                const found = [];
+                const links = document.querySelectorAll('a.topictitle');
+                links.forEach((link) => {
+                    const href = link.getAttribute('href') || '';
+                    const match = href.match(/[?&]t=(\d+)/);
+                    if (match) {
+                        const title = link.textContent?.trim() || '';
+                        found.push({
+                            topicId: parseInt(match[1], 10),
+                            title,
+                            // Boost relevance: results containing the search term are preferred
+                            relevance: title.toLowerCase().includes(term.toLowerCase()) ? 1 : 0,
+                        });
+                    }
+                });
+                // Sort: relevant first, then by topicId (higher = newer)
+                found.sort((a, b) => b.relevance - a.relevance || b.topicId - a.topicId);
+                return found.map(({ topicId, title }) => ({ topicId, title }));
+            }, searchTerm).catch(() => []);
+
+            if (results.length > 0) {
+                console.log(`[FORUM] ✅ Found ${results.length} case thread(s) for "${searchTerm}"`);
+                console.log(`[FORUM] 📋 Best match: #${results[0].topicId} — "${results[0].title}"`);
+                if (results.length > 1) {
+                    console.log(`[FORUM] ⚠️ ${results.length - 1} additional match(es) — using most recent`);
+                }
+            } else {
+                console.log('[FORUM] ⚠️ Search returned results but could not parse topic links');
+            }
+
+            return results;
+        } finally {
+            lock.release();
+        }
+    }
+
+    /**
      * Post a reply to an existing topic (Medical Records).
      * Navigates to the reply page, fills the form, but does NOT submit — returns the URL.
      * @param {number} topicId - phpBB topic ID
@@ -729,6 +803,68 @@ class ForumClient {
         } finally { lock.release(); }
 
         return { ok, url: ok ? finalUrl : null };
+    }
+
+    // ── Forum Topic Listing ──
+
+    /**
+     * Fetch all topics from a forum page with their IDs and titles.
+     * Uses its own temporary page (not the shared `this.page`) so it does NOT
+     * block concurrent deploy operations. Read-only — no mutex lock needed.
+     *
+     * @param {number|string} forumId - The forum section ID (e.g. 265)
+     * @param {object} [options]
+     * @param {string} [options.baseUrl] - Forum base URL (defaults to phmc.gta.world)
+     * @param {number} [options.timeout] - Navigation timeout in ms (default 30000)
+     * @returns {Promise<Array<{topicId: number, title: string, href: string}>>}
+     */
+    async getForumTopics(forumId, { baseUrl, timeout = 30000 } = {}) {
+        // No lock — creates a disposable page so it won't block deploy operations
+        await this.ensureBrowser();
+
+        const domain = baseUrl || this.baseUrl;
+        const url = `${domain}/viewforum.php?f=${forumId}`;
+        console.log(`[FORUM] 📋 Fetching topics from forum f=${forumId}...`);
+        console.log(`[FORUM] 🌐 ${url}`);
+
+        const page = await this.context.newPage();
+        try {
+            await page.goto(url, { waitUntil: 'domcontentloaded', timeout });
+            await page.waitForTimeout(2000);
+            // Quick Cloudflare poll (15s max — don't hold up deploys)
+            const cfStart = Date.now();
+            while (Date.now() - cfStart < 15000) {
+                const isCf = await page.evaluate(() =>
+                    document.body?.innerHTML?.includes('cf-wrapper') ||
+                    document.title?.includes('Just a moment')
+                ).catch(() => false);
+                if (!isCf) break;
+                await page.waitForTimeout(1500);
+            }
+
+            const topics = await page.evaluate(() => {
+                const results = [];
+                const links = document.querySelectorAll('a.topictitle');
+                links.forEach((link) => {
+                    const href = link.getAttribute('href') || '';
+                    const title = link.textContent.trim();
+                    const tMatch = href.match(/[?&]t=(\d+)/);
+                    if (tMatch && title) {
+                        results.push({
+                            topicId: parseInt(tMatch[1], 10),
+                            title,
+                            href: href.startsWith('http') ? href : `https://phmc.gta.world/${href.replace(/^\.\//, '')}`,
+                        });
+                    }
+                });
+                return results;
+            });
+
+            console.log(`[FORUM] 📋 Found ${topics.length} topics in forum f=${forumId}`);
+            return topics;
+        } finally {
+            await page.close().catch(() => {});
+        }
     }
 
     // ── Forum Mappings ──

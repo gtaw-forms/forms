@@ -22,6 +22,9 @@ import { ref, onValue } from 'firebase/database';
 import { useInactivityReload } from '../../hooks/useInactivityReload';
 import { cleanRankText } from '../../utils/textUtils';
 import { STORAGE_KEYS } from '../../services/gtaWorldAuth';
+import { useAuth } from '../../contexts/AuthContext';
+import { useConsent, DEPLOY_TRACKED_FORMS } from '../../hooks/useConsent';
+import BotDeployOptInModal from '../Modals/BotDeployOptInModal';
 import phmcLogo from '../../assets/phmc.png';
 import { decedentItemSchema } from '../../formSchemas/decedentSchema';
 import 'bootstrap/dist/css/bootstrap.min.css';
@@ -167,6 +170,62 @@ export const FormHandler = () => {
 
   const { saveReport: saveNewReport, validateMembership } = useFormSaver(user, isAuthenticated);
   const modalCloseTimer = React.useRef(null);
+  const { user: firebaseAuthUser } = useAuth();
+  const firebaseUid = firebaseAuthUser?.uid || null;
+
+  // ── Per-form-type bot consent for auto-deploy ──
+  const {
+    consent: botConsent,
+    saveAllConsent: saveBotConsent,
+    setConsent: setBotConsent,
+    isLoading: consentLoading,
+    hasConsentRecord,
+  } = useConsent();
+
+  const [showConsentModal, setShowConsentModal] = useState(false);
+
+  // Track whether we've auto-prompted this session (sessionStorage)
+  // const consentPromptedThisSession = sessionStorage.getItem('consentPrompted') === 'true';
+
+  // Show the consent modal when a deploy-tracked form is selected and no consent record exists
+  const selectedFormFirebaseKey = selectedForm?.firebaseKey;
+  useEffect(() => {
+    if (selectedFormFirebaseKey && DEPLOY_TRACKED_FORMS.includes(selectedFormFirebaseKey)) {
+      if (!hasConsentRecord && !consentLoading) {
+        setShowConsentModal(true);
+      }
+    }
+  }, [selectedFormFirebaseKey, hasConsentRecord, consentLoading]);
+
+  // ── First-visit auto-prompt ──
+  // Shows the consent modal on mount if authenticated with no consent record yet.
+  // Commented out for testing — uncomment once ready for production rollout.
+  // useEffect(() => {
+  //   if (consentLoading) return;
+  //   if (!firebaseUid) return;
+  //   if (consentPromptedThisSession) return;
+  //   if (hasConsentRecord) return;
+  //   if (selectedFormFirebaseKey && DEPLOY_TRACKED_FORMS.includes(selectedFormFirebaseKey)) return;
+  //
+  //   sessionStorage.setItem('consentPrompted', 'true');
+  //   setShowConsentModal(true);
+  // }, [consentLoading, firebaseUid, hasConsentRecord, consentPromptedThisSession, selectedFormFirebaseKey]);
+
+  // UI helper: check if user has opted into auto-deploy for the given form type.
+  // Uses Firebase consent when available, falls back to legacy localStorage.
+  const isFormOptedIn = useCallback((formId) => {
+    if (!formId) return false;
+    if (!DEPLOY_TRACKED_FORMS.includes(formId)) return false;
+    if (hasConsentRecord && formId in (botConsent || {})) {
+      return botConsent[formId] === true;
+    }
+    // Fallback: legacy localStorage for backward compatibility
+    try {
+      return localStorage.getItem('botDeployOptIn') === 'true';
+    } catch {
+      return false;
+    }
+  }, [botConsent, hasConsentRecord]);
 
   // Memos
   const finalSelectOptions = useMemo(() => {
@@ -607,13 +666,12 @@ const handleClearForm = useCallback(() => {
         finalNotificationMessage = `Report "${generatedTitle}" saved!`;
 
         // ── Watch for bot deploy status updates ──
-        const deployTrackedForms = ['coroner-report', 'coroner_email', 'death_record', 'autopsy', 'mass-ftality-test', 'patient_notes'];
-        const isDeployTracked = selectedForm?.firebaseKey && deployTrackedForms.includes(selectedForm.firebaseKey);
-        const optedIn = localStorage.getItem('botDeployOptIn') === 'true';
+        const isDeployTracked = selectedForm?.firebaseKey && DEPLOY_TRACKED_FORMS.includes(selectedForm.firebaseKey);
+        const formOptedIn = isFormOptedIn(selectedForm?.firebaseKey);
 
-        if (isDeployTracked && optedIn && saveResult.reportPath) {
+        if (isDeployTracked && formOptedIn && saveResult.reportPath) {
           const statusRef = ref(database, saveResult.reportPath);
-          const notifIdRef = { current: showNotification('⏳ Queued — waiting for bot...', 'spinner fa-spin', 0) };
+          const notifIdRef = { current: showNotification('📥 In Queue — bot will deploy shortly', 'spinner fa-spin', 0) };
 
           const STATUS_MESSAGES = {
             searching:       { icon: '🔍', text: 'Searching for patient thread...', color: '#60a5fa' },
@@ -1140,9 +1198,10 @@ const handleClearForm = useCallback(() => {
           mapTargetField={mapTargetField}
           selectedForm={selectedForm}
         />
-      <FormHandlerNavButtons 
-        onToggleSavedReports={handleNavToggleSavedReports} 
+      <FormHandlerNavButtons
+        onToggleSavedReports={handleNavToggleSavedReports}
         phmcLogoSrc={phmcLogo}
+        onOpenBotConsent={() => setShowConsentModal(true)}
       />
 
       <LeftSidebarNav
@@ -1349,9 +1408,8 @@ const handleClearForm = useCallback(() => {
 
           <div>
 {generatedBBCode ? (() => {
-  const deployTrackedForms = ['coroner-report', 'coroner_email', 'death_record', 'autopsy', 'mass-ftality-test', 'patient_notes'];
-  const isDeployTracked = selectedForm?.firebaseKey && deployTrackedForms.includes(selectedForm.firebaseKey);
-  const optedIn = localStorage.getItem('botDeployOptIn') === 'true';
+  const isDeployTracked = selectedForm?.firebaseKey && DEPLOY_TRACKED_FORMS.includes(selectedForm.firebaseKey);
+  const optedIn = isFormOptedIn(selectedForm?.firebaseKey);
   if (isDeployTracked && optedIn) return null;
   return (
   <button
@@ -1368,9 +1426,8 @@ const handleClearForm = useCallback(() => {
 )}
           <button onClick={copyAndSaveReport} disabled={!generatedBBCode} className={`${formStyles.rightPanelButton} ${generatedBBCode ? formStyles.copy : ''}`}>
             {(() => {
-              const deployTrackedForms = ['coroner-report', 'coroner_email', 'death_record', 'autopsy', 'mass-ftality-test', 'patient_notes'];
-              const isDeployTracked = selectedForm?.firebaseKey && deployTrackedForms.includes(selectedForm.firebaseKey);
-              const optedIn = localStorage.getItem('botDeployOptIn') === 'true';
+              const isDeployTracked = selectedForm?.firebaseKey && DEPLOY_TRACKED_FORMS.includes(selectedForm.firebaseKey);
+              const optedIn = isFormOptedIn(selectedForm?.firebaseKey);
               if (isDeployTracked && optedIn) return 'Save and Queue';
               if (Array.isArray(generatedBBCode)) return `Copy Part 1 + Save (${generatedBBCode.length} Parts)`;
               return generatedBBCode ? 'Copy BBCode + Save' : 'No BBCode Yet';
@@ -1382,9 +1439,8 @@ const handleClearForm = useCallback(() => {
   <>
     {/* Bot Deploy Opt-In Notice */}
     {(() => {
-      const deployTrackedForms = ['coroner-report', 'coroner_email', 'death_record', 'autopsy', 'mass-ftality-test', 'patient_notes'];
-      const isDeployTracked = selectedForm?.firebaseKey && deployTrackedForms.includes(selectedForm.firebaseKey);
-      const optedIn = localStorage.getItem('botDeployOptIn') === 'true';
+      const isDeployTracked = selectedForm?.firebaseKey && DEPLOY_TRACKED_FORMS.includes(selectedForm.firebaseKey);
+      const optedIn = isFormOptedIn(selectedForm?.firebaseKey);
       if (isDeployTracked && optedIn) {
         return (
           <div style={{
@@ -1414,9 +1470,8 @@ const handleClearForm = useCallback(() => {
     })()}
 
     {(() => {
-      const deployTrackedForms = ['coroner-report', 'coroner_email', 'death_record', 'autopsy', 'mass-ftality-test', 'patient_notes'];
-      const isDeployTracked = selectedForm?.firebaseKey && deployTrackedForms.includes(selectedForm.firebaseKey);
-      const optedIn = localStorage.getItem('botDeployOptIn') === 'true';
+      const isDeployTracked = selectedForm?.firebaseKey && DEPLOY_TRACKED_FORMS.includes(selectedForm.firebaseKey);
+      const optedIn = isFormOptedIn(selectedForm?.firebaseKey);
       // Hide title when auto-deploy is enabled
       if (isDeployTracked && optedIn) return null;
 
@@ -1491,9 +1546,8 @@ const handleClearForm = useCallback(() => {
     </>})()}
 
     {(() => {
-      const deployTrackedForms = ['coroner-report', 'coroner_email', 'death_record', 'autopsy', 'mass-ftality-test', 'patient_notes'];
-      const isDeployTracked = selectedForm?.firebaseKey && deployTrackedForms.includes(selectedForm.firebaseKey);
-      const optedIn = localStorage.getItem('botDeployOptIn') === 'true';
+      const isDeployTracked = selectedForm?.firebaseKey && DEPLOY_TRACKED_FORMS.includes(selectedForm.firebaseKey);
+      const optedIn = isFormOptedIn(selectedForm?.firebaseKey);
       // Hide quick links when auto-deploy is enabled — bot handles posting
       if (isDeployTracked && optedIn) return null;
       return (
@@ -1508,9 +1562,8 @@ const handleClearForm = useCallback(() => {
     })()}
 
     {(() => {
-      const deployTrackedForms = ['coroner-report', 'coroner_email', 'death_record', 'autopsy', 'mass-ftality-test', 'patient_notes'];
-      const isDeployTracked = selectedForm?.firebaseKey && deployTrackedForms.includes(selectedForm.firebaseKey);
-      const optedIn = localStorage.getItem('botDeployOptIn') === 'true';
+      const isDeployTracked = selectedForm?.firebaseKey && DEPLOY_TRACKED_FORMS.includes(selectedForm.firebaseKey);
+      const optedIn = isFormOptedIn(selectedForm?.firebaseKey);
       // Hide BBCode preview when auto-deploy is enabled
       if (isDeployTracked && optedIn) return null;
       if (!showBBCode) return null;
@@ -1582,6 +1635,16 @@ const handleClearForm = useCallback(() => {
           showNotification={showNotification}
         />
       </Suspense>
+
+      {/* ── Bot Deploy Consent Modal ── */}
+      <BotDeployOptInModal
+        show={showConsentModal}
+        onClose={() => setShowConsentModal(false)}
+        consent={botConsent}
+        saveAllConsent={saveBotConsent}
+        setConsent={setBotConsent}
+        isLoading={consentLoading}
+      />
 
       {/* Global Image Previewer */}
       <ImagePreviewModal

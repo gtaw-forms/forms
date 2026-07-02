@@ -4,19 +4,20 @@ import SidebarNav from '../UI/SidebarNav';
 /**
  * Adapter for the new SidebarNav in the Form Handler context
  */
-const FormHandlerNavButtons = ({ 
-    onToggleSavedReports, 
+const FormHandlerNavButtons = ({
+    onToggleSavedReports,
     groupedForms,
     collapsedCategories,
     toggleCategory,
     onSelectForm,
     selectedForm,
     searchTerm,
-    setSearchTerm
+    setSearchTerm,
+    onOpenBotConsent,
 }) => {
   return (
     <>
-      <SidebarNav 
+      <SidebarNav
         onToggleSavedReports={onToggleSavedReports}
         groupedForms={groupedForms}
         collapsedCategories={collapsedCategories}
@@ -25,6 +26,7 @@ const FormHandlerNavButtons = ({
         selectedForm={selectedForm}
         searchTerm={searchTerm}
         setSearchTerm={setSearchTerm}
+        onOpenBotConsent={onOpenBotConsent}
       />
     </>
   );
