@@ -94,7 +94,7 @@ const LoginSplash = ({ title, message, returnPath }) => {
                 <p style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '6px' }}>
                     {loginRole === 'employee'
                         ? 'Verifies PHMC faction membership — grants full access'
-                        : 'Skips faction check — faster login, limited functionality'}
+                        : 'Skips faction check — faster login, limited functionality.'}
                 </p>
             </div>
 
