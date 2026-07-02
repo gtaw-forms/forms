@@ -24,12 +24,14 @@ jobs:
         run: npm run build
 
       - name: Deploy to gh-pages
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd build
           git init
           git config user.name "Deploy Bot"
           git config user.email "bot@phmc.local"
-          git remote add origin https://github.com/gtaw-forms/forms.git
+          git remote add origin https://x-access-token:${GH_TOKEN}@github.com/gtaw-forms/forms.git
           git checkout -b gh-pages
           git add .
           git commit -m "Deploy $(date)"
