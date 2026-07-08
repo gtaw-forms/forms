@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Form, Button, Table, Card, Tabs, Tab, Spinner, InputGroup, Modal } from 'react-bootstrap';
-import { ref, update, remove, set, runTransaction } from 'firebase/database';
+import { ref, update, set, runTransaction } from 'firebase/database';
 import { database } from '../../firebase';
 import { parseBulkMorgueRecords } from '../../utils/morgue';
 import { useDropzone } from 'react-dropzone';
 import { useData } from '../../contexts/DataContext';
+import { triggerDeleteMorgueRecord, triggerPurgeMorgueRecords } from '../../services/firebaseFunctions';
 
 const MorgueManager = ({ showNotification }) => {
-    const { morgueRecords, loadMorgueRecords } = useData();
+    const { morgueRecords, loadMorgueRecords, removeMorgueRecord } = useData();
 
     // Bump the morgue data version after any write to trigger cache invalidation on connected clients
     const bumpMorgueVersion = async () => {
@@ -35,6 +36,7 @@ const MorgueManager = ({ showNotification }) => {
     const [editingNoteRecord, setEditingNoteRecord] = useState(null);
     const [noteValue, setNoteValue] = useState('');
     const [isSavingNote, setIsSavingNote] = useState(false);
+    const [selectedRecords, setSelectedRecords] = useState(new Set());
 
     // Manual entry state
     const emptyManualRecord = {
@@ -168,18 +170,71 @@ const MorgueManager = ({ showNotification }) => {
         }
     };
 
-    const handleDeleteRecord = async (key, name) => {
+    const handleDeleteRecord = async (key, name, caseId) => {
         if (!window.confirm(`Are you sure you want to permanently delete the record for ${name}?`)) {
             return;
         }
 
         try {
-            await remove(ref(database, `morgue-records/${key}`));
-            await bumpMorgueVersion();
+            // Delete via Cloud Function (handles VPS local file + Firebase + version bump)
+            await triggerDeleteMorgueRecord({ caseId: String(caseId || key) });
+            // Remove from local state immediately — no full re-download needed
+            removeMorgueRecord(String(caseId || key));
             showNotification(`Deleted record: ${name}`, 'success');
         } catch (error) {
-            console.error('Error deleting record:', error);
-            showNotification('Failed to delete record.', 'error');
+            console.error('Error deleting record via function:', error);
+            // Fallback: delete from Firebase directly, update local state
+            try {
+                const { remove } = await import('firebase/database');
+                await remove(ref(database, `morgue-records/${key}`));
+                removeMorgueRecord(String(caseId || key));
+                showNotification(`Deleted record: ${name} (Firebase only — VPS may still have it)`, 'warning');
+            } catch (fbErr) {
+                console.error('Fallback delete also failed:', fbErr);
+                showNotification('Failed to delete record.', 'error');
+            }
+        }
+    };
+
+    const handleBatchDelete = async () => {
+        if (selectedRecords.size === 0) return;
+        if (!window.confirm(`Delete ${selectedRecords.size} selected record(s)? This cannot be undone.`)) return;
+
+        setIsProcessing(true);
+        let success = 0;
+        let fail = 0;
+
+        for (const caseId of selectedRecords) {
+            const record = existingRecords.find(r => String(r.caseId) === caseId || r.firebaseKey === caseId);
+            const name = record?.name || caseId;
+            try {
+                await triggerDeleteMorgueRecord({ caseId: String(caseId) });
+                removeMorgueRecord(String(caseId));
+                success++;
+            } catch {
+                fail++;
+            }
+        }
+
+        setSelectedRecords(new Set());
+        showNotification(`Batch delete: ${success} deleted, ${fail} failed.`, fail > 0 ? 'warning' : 'success');
+        setIsProcessing(false);
+    };
+
+    const toggleSelectRecord = (caseId) => {
+        setSelectedRecords(prev => {
+            const next = new Set(prev);
+            if (next.has(caseId)) next.delete(caseId);
+            else next.add(caseId);
+            return next;
+        });
+    };
+
+    const toggleSelectAll = () => {
+        if (selectedRecords.size === filteredRecords.length) {
+            setSelectedRecords(new Set());
+        } else {
+            setSelectedRecords(new Set(filteredRecords.map(r => String(r.caseId))));
         }
     };
 
@@ -196,12 +251,22 @@ const MorgueManager = ({ showNotification }) => {
 
         setIsProcessing(true);
         try {
-            await remove(ref(database, 'morgue-records'));
-            await bumpMorgueVersion();
+            // Purge via Cloud Function (handles VPS local file + Firebase + version bump)
+            await triggerPurgeMorgueRecords();
+            // Clear local state
+            setExistingRecords([]);
             showNotification('Successfully purged all morgue records.', 'success');
         } catch (error) {
-            console.error('Error purging records:', error);
-            showNotification('Failed to purge records.', 'error');
+            console.error('Error purging records via function:', error);
+            // Fallback: purge Firebase directly
+            try {
+                const { remove } = await import('firebase/database');
+                await remove(ref(database, 'morgue-records'));
+                showNotification('Purged Firebase only. Run /api/morgue/export on VPS to complete.', 'warning');
+            } catch (fbErr) {
+                console.error('Fallback purge also failed:', fbErr);
+                showNotification('Failed to purge records.', 'error');
+            }
         } finally {
             setIsProcessing(false);
         }
@@ -724,8 +789,19 @@ const MorgueManager = ({ showNotification }) => {
                     <Card className="bg-dark text-light border-secondary shadow">
                         <Card.Header className="border-secondary d-flex justify-content-between align-items-center flex-wrap gap-3">
                             <h4 className="mb-0">Existing Morgue Records</h4>
-                            
+
                             <div className="d-flex gap-3 align-items-center">
+                                {selectedRecords.size > 0 && (
+                                    <Button
+                                        variant="danger"
+                                        size="sm"
+                                        onClick={handleBatchDelete}
+                                        disabled={isProcessing}
+                                    >
+                                        <i className="fas fa-trash-alt me-1"></i>Delete ({selectedRecords.size})
+                                    </Button>
+                                )}
+
                                 <InputGroup size="sm" style={{ maxWidth: '300px' }}>
                                     <InputGroup.Text className="bg-dark border-secondary text-light">
                                         <i className="fas fa-search"></i>
@@ -742,10 +818,10 @@ const MorgueManager = ({ showNotification }) => {
                                 </InputGroup>
 
                                 {existingRecords.length > 0 && (
-                                    <Button 
-                                        variant="outline-danger" 
-                                        size="sm" 
-                                        onClick={handlePurgeRecords} 
+                                    <Button
+                                        variant="outline-danger"
+                                        size="sm"
+                                        onClick={handlePurgeRecords}
                                         disabled={isProcessing}
                                     >
                                         <i className="fas fa-bomb me-2"></i>Purge All
@@ -765,6 +841,13 @@ const MorgueManager = ({ showNotification }) => {
                                         <Table striped bordered hover variant="dark" className="mb-0">
                                             <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
                                                 <tr>
+                                                    <th style={{ width: '40px' }}>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={selectedRecords.size > 0 && selectedRecords.size === filteredRecords.length}
+                                                            onChange={toggleSelectAll}
+                                                        />
+                                                    </th>
                                                     <th>Case #</th>
                                                     <th>Name</th>
                                                     <th>Location</th>
@@ -775,7 +858,15 @@ const MorgueManager = ({ showNotification }) => {
                                             <tbody>
                                                 {paginatedRecords.length > 0 ? (
                                                     paginatedRecords.map((record) => (
-                                                        <tr key={record.firebaseKey}>
+                                                        <tr key={record.firebaseKey}
+                                                            style={{ background: selectedRecords.has(String(record.caseId)) ? 'rgba(52, 152, 219, 0.1)' : '' }}>
+                                                            <td>
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={selectedRecords.has(String(record.caseId))}
+                                                                    onChange={() => toggleSelectRecord(String(record.caseId))}
+                                                                />
+                                                            </td>
                                                             <td>{record.caseId}</td>
                                                             <td><strong>{record.name}</strong></td>
                                                             <td>{record.location}</td>
@@ -784,8 +875,8 @@ const MorgueManager = ({ showNotification }) => {
                                                             </td>
                                                             <td className="text-center">
                                                                 <div className="d-flex gap-2 justify-content-center">
-                                                                    <Button 
-                                                                        variant="outline-info" 
+                                                                    <Button
+                                                                        variant="outline-info"
                                                                         size="sm"
                                                                         onClick={() => {
                                                                             setEditingNoteRecord(record);
@@ -794,10 +885,10 @@ const MorgueManager = ({ showNotification }) => {
                                                                     >
                                                                         <i className="fas fa-edit"></i> Note
                                                                     </Button>
-                                                                    <Button 
-                                                                        variant="outline-danger" 
+                                                                    <Button
+                                                                        variant="outline-danger"
                                                                         size="sm"
-                                                                        onClick={() => handleDeleteRecord(record.firebaseKey, record.name)}
+                                                                        onClick={() => handleDeleteRecord(record.firebaseKey, record.name, record.caseId)}
                                                                     >
                                                                         <i className="fas fa-trash-alt"></i>
                                                                     </Button>
@@ -807,7 +898,7 @@ const MorgueManager = ({ showNotification }) => {
                                                     ))
                                                 ) : (
                                                     <tr>
-                                                        <td colSpan="5" className="text-center p-4">
+                                                        <td colSpan="6" className="text-center p-4">
                                                             {searchTerm ? `No records found matching "${searchTerm}"` : 'No records found in database.'}
                                                         </td>
                                                     </tr>

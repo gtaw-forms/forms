@@ -8,6 +8,7 @@
 import { readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { sendLogMessage } from './logChannel.js';
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } from 'discord.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -17,6 +18,68 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEATH_RECORD_FORUM_ID = 404;
 const TEMPLATE_PATH = resolve(__dirname, '..', 'templates', 'death-record.json');
 const DRAFT_TRACK_PATH = 'deathRecordDrafts';
+
+// ── In-Memory Morgue Cache ──
+// Loaded once at startup, updated incrementally via child_added/child_changed listeners.
+// Eliminates repeated full-subtree reads of morgue-records from findMorgueRecord().
+let _morgueCache = null;       // Array<{name, caseId, ...firebaseKey}>
+let _morgueCacheLoaded = false;
+
+/**
+ * Initialize the morgue cache by loading all records from Firebase.
+ * Called from autoDeploy startup alongside startMorgueListener().
+ * @param {object} db - Firebase database ref
+ */
+export async function initMorgueCache(db) {
+    try {
+        const snap = await db.ref('morgue-records').once('value');
+        _morgueCache = [];
+        _morgueCacheLoaded = true;
+        if (snap.exists()) {
+            snap.forEach((child) => {
+                _morgueCache.push({ ...child.val(), firebaseKey: child.key });
+            });
+        }
+        console.log(`[DRAFT] 📋 Morgue cache loaded — ${_morgueCache.length} records`);
+    } catch (err) {
+        console.error('[DRAFT] ⚠️ Failed to load morgue cache:', err.message);
+        _morgueCache = [];
+        _morgueCacheLoaded = true;
+    }
+}
+
+/**
+ * Update the morgue cache when a record is added or changed.
+ * Called by the morgue listener on child_added / child_changed events.
+ * @param {string} firebaseKey
+ * @param {object} record
+ */
+export function updateMorgueCache(firebaseKey, record) {
+    if (!_morgueCache) return;
+    const idx = _morgueCache.findIndex(r => r.firebaseKey === firebaseKey);
+    if (idx !== -1) {
+        _morgueCache[idx] = { ...record, firebaseKey };
+    } else {
+        _morgueCache.push({ ...record, firebaseKey });
+    }
+}
+
+/**
+ * Remove a record from the morgue cache (child_removed event).
+ * @param {string} firebaseKey
+ */
+export function removeMorgueCache(firebaseKey) {
+    if (!_morgueCache) return;
+    _morgueCache = _morgueCache.filter(r => r.firebaseKey !== firebaseKey);
+}
+
+/**
+ * Get the morgue cache (for external use).
+ * @returns {Array} cached morgue records
+ */
+export function getMorgueCache() {
+    return _morgueCache || [];
+}
 
 let _client = null;
 let _forumClient = null;
@@ -72,26 +135,36 @@ function fillTemplate(template, values) {
 // ── Morgue Lookup ──
 
 /**
- * Query Firebase morgue-records for a decedent by name (case-insensitive).
- * Returns the best match or null.
+ * Find a morgue record by decedent name using the in-memory cache.
+ * Falls back to Firebase if cache hasn't been loaded yet.
+ * @param {object} db - Firebase ref (used as fallback only)
+ * @param {string} decedentName
+ * @returns {Promise<object|null>} Best match or null
  */
 async function findMorgueRecord(db, decedentName) {
     if (!decedentName) return null;
 
-    const snap = await db.ref('morgue-records').once('value');
-    if (!snap.exists()) return null;
+    // Use in-memory cache if available (avoids full-subtree Firebase read)
+    let records = _morgueCache;
+    if (!records) {
+        // Cache not loaded — fall back to Firebase read
+        const snap = await db.ref('morgue-records').once('value');
+        if (!snap.exists()) return null;
+        records = [];
+        snap.forEach((child) => {
+            records.push({ ...child.val(), firebaseKey: child.key });
+        });
+    }
 
     const nameLower = decedentName.toLowerCase().trim();
     let bestMatch = null;
     let bestScore = 0;
 
-    snap.forEach((child) => {
-        const rec = child.val();
+    for (const rec of records) {
         const recName = (rec.name || '').toLowerCase().trim();
         if (recName === nameLower) {
-            bestScore = 999;
-            bestMatch = { ...rec, firebaseKey: child.key };
-            return true; // exact match, stop
+            bestMatch = { ...rec };
+            break; // exact match is best possible
         }
         if (recName.includes(nameLower) || nameLower.includes(recName)) {
             const score = Math.max(
@@ -100,10 +173,10 @@ async function findMorgueRecord(db, decedentName) {
             );
             if (score > bestScore) {
                 bestScore = score;
-                bestMatch = { ...rec, firebaseKey: child.key };
+                bestMatch = { ...rec };
             }
         }
-    });
+    }
 
     return bestMatch;
 }
@@ -141,7 +214,12 @@ function generateDraft(reportData, morgueRecord) {
     const title = `[CASE #${year}-${caseNum}] ${decedentName} ((${decedentOOC})) | ${dod}`;
 
     // Resolve age with morgue bug indicator
-    const rawAge = data.age || morgueRecord?.estimatedAge || '';
+    // Also handles logger bug where tattoo text bleeds into the age field
+    let rawAge = data.age || morgueRecord?.estimatedAge || '';
+    if (rawAge && rawAge !== 'Unknown' && rawAge !== 'unknown') {
+        // Take only the first line/sentence in case tattoo text got appended
+        rawAge = rawAge.split('\n')[0].split('Tattoos')[0].trim();
+    }
     const age = (rawAge && rawAge !== 'Unknown' && rawAge !== 'unknown')
         ? rawAge
         : 'Unknown ((Morgue Script Bug))';
@@ -149,8 +227,28 @@ function generateDraft(reportData, morgueRecord) {
     // Resolve body status — default to HELD for morgue-sourced records
     const bodyStatus = data.bodyStatus || 'HELD';
 
-    // Resolve ethnicity with morgue bug indicator
-    const ethnicity = data.ethnicity || '((Unknown due to Morgue Bug))';
+    // Resolve ethnicity — check report data, then scan morgue physical description for keywords
+    const ETHNICITY_KEYWORDS = [
+        { words: ['asian', 'oriental', 'chinese', 'japanese', 'korean', 'vietnamese', 'filipino', 'thai', 'khmer', 'south asian', 'indian', 'pakistani', 'bangladeshi', 'sri lankan'], label: 'Asian' },
+        { words: ['caucasian', 'white', 'european'], label: 'Caucasian' },
+        { words: ['black', 'african', 'african american', 'caribbean'], label: 'Black' },
+        { words: ['hispanic', 'latino', 'latina', 'mexican', 'puerto rican', 'cuban', 'central american', 'south american'], label: 'Hispanic' },
+        { words: ['middle eastern', 'arab', 'persian', 'turkish'], label: 'Middle Eastern' },
+        { words: ['native american', 'indigenous', 'american indian'], label: 'Native American' },
+        { words: ['pacific islander', 'polynesian', 'micronesian', 'melanesian', 'hawaiian'], label: 'Pacific Islander' },
+        { words: ['mixed', 'biracial', 'multiracial', 'mixed race'], label: 'Mixed' },
+    ];
+    let ethnicity = data.ethnicity || '';
+    if (!ethnicity || ethnicity === 'Unknown' || ethnicity === 'unknown') {
+        const physDesc = (morgueRecord?.physicalDescription || '').toLowerCase();
+        for (const group of ETHNICITY_KEYWORDS) {
+            if (group.words.some(w => physDesc.includes(w))) {
+                ethnicity = group.label;
+                break;
+            }
+        }
+    }
+    if (!ethnicity) ethnicity = '((Unknown due to Morgue Bug))';
 
     // Map values from report data + morgue record
     const values = {
@@ -551,6 +649,11 @@ async function handleApprove(interaction, reportKey) {
             // Real forum posting
             const { getForumClient } = await import('./forumClient.js');
             const client = getForumClient();
+            await sendLogMessage(null, {
+                title: '📝 Death Record Posting',
+                description: `**${draftInfo.title}**\nApproved by **${interaction.user.tag}**\nPosting to Death Records forum (f=${DEATH_RECORD_FORUM_ID})...`,
+                color: 0x007bff,
+            });
             await client.login(null, null, { force: true, baseUrl: process.env.FORUM_BASE_URL });
             const result = await client.postTopic(
                 DEATH_RECORD_FORUM_ID,
@@ -571,6 +674,11 @@ async function handleApprove(interaction, reportKey) {
 
                 await interaction.editReply({
                     content: `Death Record posted successfully!\n${result.url}`,
+                });
+                await sendLogMessage(null, {
+                    title: '✅ Death Record Posted',
+                    description: `**${draftInfo.title}**\n[View Post](<${result.url}>)`,
+                    color: 0x28a745,
                 });
                 console.log(`[DRAFT] ✅ ${reportKey} — Approved by ${interaction.user.tag}, posted to f=${DEATH_RECORD_FORUM_ID}`);
             } else {
@@ -599,6 +707,14 @@ export function startMorgueListener(db) {
     // Use child_added + child_changed instead of value so we only process the
     // specific morgue record that was added/changed, not iterate ALL records.
     const handleMorgueChange = (snap) => {
+        // Update the in-memory cache immediately
+        if (_morgueCache) {
+            const key = snap.key;
+            const val = snap.val();
+            if (val) {
+                updateMorgueCache(key, val);
+            }
+        }
         if (debounceTimer) clearTimeout(debounceTimer);
         debounceTimer = setTimeout(async () => {
             try {
@@ -987,6 +1103,11 @@ export function startCKListener(db) {
     if (_knownPassiveCKKeys) {
         console.log('[DRAFT] ⏭️ Passive CK listener already active');
         return;
+    }
+
+    // Pre-load morgue cache so findMorgueRecord() doesn't hit Firebase on every CK check
+    if (!_morgueCacheLoaded) {
+        initMorgueCache(db).catch(() => {});
     }
 
     _knownPassiveCKKeys = new Set();

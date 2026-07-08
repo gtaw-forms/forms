@@ -19,16 +19,16 @@ export const DEPLOY_TRACKED_FORMS = [
     'coroner-report',
     'coroner_email',
     'death_record',
+    'autopsy',
     'mass-ftality-test',
-    'patient_notes',
 ];
 
 export const FORM_LABELS = {
     coroner_email:      'Coroner Email (PM)',
     'coroner-report':   'Coroner Report',
     death_record:       'Death Record',
+    autopsy:            'Autopsy',
     'mass-ftality-test':'Mass Fatality',
-    patient_notes:      'Medical Record',
 };
 
 /** Section grouping for the consent modal UI */
@@ -38,9 +38,10 @@ export const FORM_SECTIONS = {
         'coroner_email',
         'death_record',
         'mass-ftality-test',
+        'autopsy',
     ],
     'Medical Files': [
-        'patient_notes',
+        // Reserved for future medical deploy-tracked forms
     ],
     'Mental Health': [
         // Reserved for future mental-health deploy-tracked forms

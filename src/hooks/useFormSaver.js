@@ -11,7 +11,7 @@ import { checkConsentDirect } from './useConsent';
 
 const isLocalHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
-const deployTrackedForms = ['coroner-report', 'coroner_email', 'death_record', 'patient_notes', 'mass-ftality-test'];
+const deployTrackedForms = ['coroner-report', 'coroner_email', 'death_record', 'autopsy', 'mass-ftality-test'];
 
 export function getReportBasePath(formFirebaseKey, botDeployOptedIn = false) {
   if (deployTrackedForms.includes(formFirebaseKey)) {

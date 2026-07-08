@@ -9,7 +9,7 @@
 import firebase from './firebase.js';
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 
-const DASHBOARD_REFRESH_MS = 2 * 60 * 1000; // 2 minutes — frequent enough for queue updates, uses cached data
+const DASHBOARD_REFRESH_MS = 5 * 60 * 1000; // 5 minutes — uses cached monitoring data, no browser opens
 const DASHBOARD_CONFIG_PATH = 'appMetadata/dashboard';
 
 let client = null;
@@ -86,7 +86,16 @@ async function gatherDashboardData(db, force = false) {
     const now = Date.now();
     const data = {};
 
-    // 1. Forum latency
+    // 1. Read entire monitoring subtree ONCE (replaces 4 separate reads)
+    let monitoringData = {};
+    try {
+        const monitoringSnap = await db.ref('monitoring').once('value');
+        monitoringData = monitoringSnap.val() || {};
+    } catch (err) {
+        console.error('[DASHBOARD] Monitoring data error:', err.message);
+    }
+
+    // 2. Forum latency
     if (force) {
         // Live HTTP check (Refresh button)
         data.forums = await liveForumCheck();
@@ -94,8 +103,7 @@ async function gatherDashboardData(db, force = false) {
         // From cached monitoring data (auto-refresh)
         data.forums = [];
         try {
-            const forumsSnap = await db.ref('monitoring/forums').once('value');
-            const forumsVal = forumsSnap.val();
+            const forumsVal = monitoringData.forums;
             if (forumsVal && typeof forumsVal === 'object') {
                 data.forums = Object.entries(forumsVal)
                     .filter(([, f]) => f && typeof f === 'object')
@@ -121,47 +129,31 @@ async function gatherDashboardData(db, force = false) {
         }
     }
 
-    // 2. Cloudflare status from Firebase monitoring state
-    try {
-        const cfSnap = await db.ref('monitoring/cloudflare').once('value');
-        const cf = cfSnap.val() || {};
-        data.cloudflare = cf.indicator === 'none'
-            ? { emoji: '✅', text: 'All Systems Operational' }
-            : { emoji: '⚠️', text: `${cf.description || cf.indicator || 'Unknown'} (${cf.indicator || '?'})` };
-    } catch {
-        data.cloudflare = { emoji: '❓', text: 'Unknown' };
-    }
+    // 3. Cloudflare status (from already-fetched monitoring data)
+    const cf = monitoringData.cloudflare || {};
+    data.cloudflare = cf.indicator === 'none'
+        ? { emoji: '✅', text: 'All Systems Operational' }
+        : { emoji: '⚠️', text: `${cf.description || cf.indicator || 'Unknown'} (${cf.indicator || '?'})` };
 
-    // 3. GTAW UCP status from Firebase monitoring state
-    try {
-        const gtawSnap = await db.ref('monitoring/gtaw').once('value');
-        const gtaw = gtawSnap.val() || {};
-        const statusMap = {
-            normal: { emoji: '✅', text: `${gtaw.lastLatency || '?'}ms` },
-            slow:   { emoji: '⚠️', text: `${gtaw.lastLatency || '?'}ms (High Latency)` },
-            error:  { emoji: '🔴', text: `Unreachable${gtaw.lastError ? ': ' + gtaw.lastError.slice(0, 60) : ''}` },
-        };
-        data.gtaw = statusMap[gtaw.status] || { emoji: '❓', text: 'Unknown' };
-    } catch {
-        data.gtaw = { emoji: '❓', text: 'Unknown' };
-    }
+    // 4. GTAW UCP status (from already-fetched monitoring data)
+    const gtaw = monitoringData.gtaw || {};
+    const statusMap = {
+        normal: { emoji: '✅', text: `${gtaw.lastLatency || '?'}ms` },
+        slow:   { emoji: '⚠️', text: `${gtaw.lastLatency || '?'}ms (High Latency)` },
+        error:  { emoji: '🔴', text: `Unreachable${gtaw.lastError ? ': ' + gtaw.lastError.slice(0, 60) : ''}` },
+    };
+    data.gtaw = statusMap[gtaw.status] || { emoji: '❓', text: 'Unknown' };
 
-    // Track when monitoring data was last actually gathered
-    try {
-        const tsSnap = await db.ref('monitoring').once('value');
-        const monitoring = tsSnap.val() || {};
-        const timestamps = [];
-        if (monitoring.cloudflare?.lastChecked) timestamps.push(monitoring.cloudflare.lastChecked);
-        if (monitoring.gtaw?.lastChecked) timestamps.push(monitoring.gtaw.lastChecked);
-        if (monitoring.forums) {
-            Object.values(monitoring.forums).forEach(f => {
-                if (f?.lastChecked) timestamps.push(f.lastChecked);
-            });
-        }
-        data.lastCheckTime = timestamps.length > 0 ? Math.max(...timestamps) : null;
-    } catch {
-        data.lastCheckTime = null;
+    // 5. Track when monitoring data was last gathered (from already-fetched data)
+    const timestamps = [];
+    if (monitoringData.cloudflare?.lastChecked) timestamps.push(monitoringData.cloudflare.lastChecked);
+    if (monitoringData.gtaw?.lastChecked) timestamps.push(monitoringData.gtaw.lastChecked);
+    if (monitoringData.forums) {
+        Object.values(monitoringData.forums).forEach(f => {
+            if (f?.lastChecked) timestamps.push(f.lastChecked);
+        });
     }
+    data.lastCheckTime = timestamps.length > 0 ? Math.max(...timestamps) : null;
 
     // 4. Morgue latest update
     try {
@@ -203,6 +195,38 @@ async function gatherDashboardData(db, force = false) {
         data.autopsyMonitor = getMonitorStatus();
     } catch {
         data.autopsyMonitor = { active: false };
+    }
+
+    // 7. ME assignments from Firebase
+    try {
+        const assignSnap = await db.ref('autopsy-requested').once('value');
+        const meList = [];
+        if (assignSnap.exists()) {
+            assignSnap.forEach((child) => {
+                const c = child.val();
+                if (c.assignedTo && !c.completedAt) {
+                    meList.push({
+                        name: c.assignedTo,
+                        caseNum: c.title || '?',
+                        caseUrl: c.caseUrl || null,
+                        topicId: c.topicId,
+                    });
+                }
+            });
+        }
+        data.meAssignments = meList;
+
+        // LOA list
+        const loaSnap = await db.ref('autopsy-requests/loa').once('value');
+        data.meLoa = [];
+        if (loaSnap.exists()) {
+            loaSnap.forEach((child) => {
+                if (child.val() === true) data.meLoa.push(child.key);
+            });
+        }
+    } catch {
+        data.meAssignments = [];
+        data.meLoa = [];
     }
 
     return data;
@@ -289,6 +313,33 @@ function buildDashboardEmbed(data) {
     embed.addFields({
         name: '🔄 Scheduled Tasks',
         value: taskLines.join('\n') || 'None configured',
+        inline: false,
+    });
+
+    // ME Assignments
+    const meLines = [];
+    const assignments = data.meAssignments || [];
+    const loaList = data.meLoa || [];
+    const loaLower = loaList.map(n => n.toLowerCase());
+
+    if (assignments.length > 0) {
+        assignments.forEach((a) => {
+            const loaTag = loaLower.includes(a.name.toLowerCase()) ? ' [LOA]' : '';
+            // Extract OOC name from request title for a cleaner link label
+            const oocM = (a.caseNum || '').match(/\(\(\s*(.*?)\s*\)\)/);
+            const oocLabel = oocM ? oocM[1] : a.caseNum || 'Case';
+            const caseLink = a.caseUrl ? `[${oocLabel}](<${a.caseUrl}>)` : `*${oocLabel}*`;
+            meLines.push(`**${a.name}**${loaTag} — ${caseLink}`);
+        });
+    }
+    if (loaList.length > 0) {
+        meLines.push('', `_On LOA: ${loaList.join(', ')}_`);
+    }
+    if (meLines.length === 0) meLines.push('No active assignments');
+
+    embed.addFields({
+        name: '🔬 ME Assignments',
+        value: meLines.join('\n'),
         inline: false,
     });
 
@@ -470,7 +521,7 @@ export function startDashboardManager() {
         refreshInterval = setTimeout(scheduleNext, DASHBOARD_REFRESH_MS);
     });
 
-    console.log(`[DASHBOARD] ✅ Dashboard manager active (${DASHBOARD_REFRESH_MS / 60000}-min cycle, live data).`);
+    console.log(`[DASHBOARD] ✅ Dashboard manager active (${DASHBOARD_REFRESH_MS / 60000}-min cycle, cached data).`);
 }
 
 export function stopDashboardManager() {

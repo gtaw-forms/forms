@@ -79,6 +79,15 @@ async function registerCommands() {
     const deathRecordCheck = await import('./commands/death-record-check.js');
     const deathRecordPending = await import('./commands/death-record-pending.js');
     const reportRetry = await import('./commands/report-retry.js');
+    const forceAutopsyCheck = await import('./commands/force-autopsy-check.js');
+    const autopsyLoa = await import('./commands/autopsy-loa.js');
+    const syncAutopsyRequests = await import('./commands/sync-autopsy-requests.js');
+    const reassignAutopsy = await import('./commands/reassign-autopsy.js');
+    const syncAutopsyPoster = await import('./commands/sync-autopsy-poster.js');
+    const forceAutopsySend = await import('./commands/force-autopsy-send.js');
+    const assignAutopsy = await import('./commands/assign-autopsy.js');
+    const testAutopsy = await import('./commands/test-autopsy.js');
+    const forceAutopsyComplete = await import('./commands/force-autopsy-complete.js');
     const commands = [
         morgue.data.toJSON(),
         card.data.toJSON(),
@@ -92,6 +101,15 @@ async function registerCommands() {
         deathRecordCheck.data.toJSON(),
         deathRecordPending.data.toJSON(),
         reportRetry.data.toJSON(),
+        forceAutopsyCheck.data.toJSON(),
+        autopsyLoa.data.toJSON(),
+        syncAutopsyRequests.data.toJSON(),
+        reassignAutopsy.data.toJSON(),
+        syncAutopsyPoster.data.toJSON(),
+        forceAutopsySend.data.toJSON(),
+        assignAutopsy.data.toJSON(),
+        testAutopsy.data.toJSON(),
+        forceAutopsyComplete.data.toJSON(),
     ];
 
     const rest = new REST({ version: '10' }).setToken(token);
@@ -126,6 +144,28 @@ client.once('clientReady', async () => {
     console.log(`[BOT] 🌐 Servers: ${client.guilds.cache.size}`);
     console.log(`[BOT] 🆔 Client ID: ${client.user.id}`);
     console.log('═══════════════════════════════════════════');
+
+    // ── Validate required env vars ──
+    const REQUIRED_ENV = [
+        'DISCORD_BOT_TOKEN',
+        'FIREBASE_DATABASE_URL',
+        'FIREBASE_ADMIN_KEY_PATH',
+        'FORUM_BASE_URL',
+        'FORUM_USERNAME',
+        'FORUM_PASSWORD',
+        'BOT_LOG_CHANNEL_ID',
+        'BOT_OWNER_ID',
+    ];
+    const RECOMMENDED_ENV = [
+        'FORUM_LSPD_URL', 'FORUM_LSPD_USERNAME', 'FORUM_LSPD_PASSWORD',
+        'FORUM_LSSD_URL', 'FORUM_LSSD_USERNAME', 'FORUM_LSSD_PASSWORD',
+    ];
+    for (const key of REQUIRED_ENV) {
+        if (!process.env[key]) console.warn(`[BOT] ⚠️ Missing required env var: ${key}`);
+    }
+    for (const key of RECOMMENDED_ENV) {
+        if (!process.env[key]) console.log(`[BOT] ℹ️ Optional env var not set: ${key}`);
+    }
 
     // ── Register log channel (for startup, error, crash messages) ──
     const { setLogClient, sendLogMessage } = await import('./services/logChannel.js');
@@ -221,8 +261,9 @@ client.on('interactionCreate', async (interaction) => {
         return;
     }
 
-    // Handle Autopsy topic picker buttons (multiple case threads found)
-    if (interaction.isButton() && interaction.customId.startsWith('autopsy_pick_')) {
+    // Handle Autopsy topic picker buttons (PHMC Case Management + LSSD cross-post)
+    const pickPrefixes = ['autopsy_pick_', 'lssd_xp_'];
+    if (interaction.isButton() && pickPrefixes.some(p => interaction.customId.startsWith(p))) {
         const { resolveAutopsyTopic } = await import('./services/autoDeploy.js');
         await resolveAutopsyTopic(interaction);
         return;
@@ -291,7 +332,7 @@ client.on('interactionCreate', async (interaction) => {
         return;
     }
 
-    // Handle /report-skip select menu
+    // Handle skip_report_select
     if (interaction.isStringSelectMenu() && interaction.customId === 'skip_report_select') {
         const ownerId = process.env.BOT_OWNER_ID;
         if (!ownerId || interaction.user.id !== ownerId) {
@@ -323,6 +364,20 @@ client.on('interactionCreate', async (interaction) => {
                 .setTimestamp();
             await interaction.update({ embeds: [embed], components: [] });
         }
+        return;
+    }
+
+    // Handle reassign-autopsy case pick
+    if (interaction.isStringSelectMenu() && interaction.customId === 'reassign_case_pick') {
+        const { onCasePick } = await import('./commands/reassign-autopsy.js');
+        await onCasePick(interaction);
+        return;
+    }
+
+    // Handle reassign-autopsy ME pick
+    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('reassign_me_pick_')) {
+        const { onMePick } = await import('./commands/reassign-autopsy.js');
+        await onMePick(interaction);
         return;
     }
 
@@ -431,6 +486,33 @@ async function start() {
 
     const reportRetryCmd = await import('./commands/report-retry.js');
     client.commands.set(reportRetryCmd.data.name, { execute: reportRetryCmd.execute });
+
+    const forceAutopsyCheckCmd = await import('./commands/force-autopsy-check.js');
+    client.commands.set(forceAutopsyCheckCmd.data.name, { execute: forceAutopsyCheckCmd.execute });
+
+    const autopsyLoaCmd = await import('./commands/autopsy-loa.js');
+    client.commands.set(autopsyLoaCmd.data.name, { execute: autopsyLoaCmd.execute });
+
+    const syncAutopsyRequestsCmd = await import('./commands/sync-autopsy-requests.js');
+    client.commands.set(syncAutopsyRequestsCmd.data.name, { execute: syncAutopsyRequestsCmd.execute });
+
+    const reassignAutopsyCmd = await import('./commands/reassign-autopsy.js');
+    client.commands.set(reassignAutopsyCmd.data.name, { execute: reassignAutopsyCmd.execute });
+
+    const syncAutopsyPosterCmd = await import('./commands/sync-autopsy-poster.js');
+    client.commands.set(syncAutopsyPosterCmd.data.name, { execute: syncAutopsyPosterCmd.execute });
+
+    const forceAutopsySendCmd = await import('./commands/force-autopsy-send.js');
+    client.commands.set(forceAutopsySendCmd.data.name, { execute: forceAutopsySendCmd.execute });
+
+    const assignAutopsyCmd = await import('./commands/assign-autopsy.js');
+    client.commands.set(assignAutopsyCmd.data.name, { execute: assignAutopsyCmd.execute });
+
+    const testAutopsyCmd = await import('./commands/test-autopsy.js');
+    client.commands.set(testAutopsyCmd.data.name, { execute: testAutopsyCmd.execute });
+
+    const forceAutopsyCompleteCmd = await import('./commands/force-autopsy-complete.js');
+    client.commands.set(forceAutopsyCompleteCmd.data.name, { execute: forceAutopsyCompleteCmd.execute });
 
     console.log('[BOT] 🔌 Connecting to Discord...');
     await client.login(token);

@@ -21,11 +21,23 @@ export async function execute(interaction) {
         return;
     }
 
-    const { getQueuedDeployments, skipReport } = await import('../services/autoDeploy.js');
-    const queue = getQueuedDeployments();
+    const { getQueuedDeployments, getStuckReports, skipReport } = await import('../services/autoDeploy.js');
+    let queue = getQueuedDeployments();
+    let skippable = queue.filter(e => e.status === 'queued');
 
-    // Filter out the currently-processing item (can't skip what's running)
-    const skippable = queue.filter(e => e.status === 'queued');
+    // If queue is empty but maintenance mode might be hiding reports, scan Firebase directly
+    if (skippable.length === 0) {
+        const firebase = await import('../services/firebase.js');
+        firebase.default.init();
+        const db = firebase.default.db;
+        const snap = await db.ref('appMetadata/botMaintenance').once('value');
+        if (snap.val() === true) {
+            const stuck = await getStuckReports();
+            if (stuck.length > 0) {
+                skippable = stuck;
+            }
+        }
+    }
 
     if (skippable.length === 0) {
         const embed = new EmbedBuilder()
@@ -41,11 +53,18 @@ export async function execute(interaction) {
     // Build dropdown options (Discord limits: 25 options, label max 100 chars)
     const options = skippable.slice(0, 25).map((entry, i) => {
         const label = (entry.label || 'Untitled').slice(0, 100);
-        const desc = `[${entry.forum}] ${entry.type} — ${entry.remainingSec > 60 ? `${Math.round(entry.remainingSec / 60)}m` : `${entry.remainingSec}s`}`.slice(0, 100);
+        const value = entry.entityKey || `${entry.authorId}|${entry.key}`;
+        // Stuck reports (from Firebase) may not have in-memory fields
+        const forum = entry.forum || '?';
+        const type = entry.type || entry.status || 'stuck';
+        const timeStr = entry.remainingSec != null
+            ? (entry.remainingSec > 60 ? `${Math.round(entry.remainingSec / 60)}m` : `${entry.remainingSec}s`)
+            : 'stuck';
+        const desc = `[${forum}] ${type} — ${timeStr}`.slice(0, 100);
         return new StringSelectMenuOptionBuilder()
             .setLabel(label)
             .setDescription(desc)
-            .setValue(entry.entityKey);
+            .setValue(value);
     });
 
     const select = new StringSelectMenuBuilder()

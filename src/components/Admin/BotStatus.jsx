@@ -4,14 +4,15 @@ import { ref, get } from 'firebase/database';
 import { Spinner, Table, Button, Badge } from 'react-bootstrap';
 
 const DEPLOY_STATUS_LABELS = {
-    deploy_failed: { label: 'Failed', variant: 'danger' },
-    searching:     { label: 'Searching', variant: 'info' },
-    replying:      { label: 'Replying', variant: 'primary' },
-    posted:        { label: 'Deployed', variant: 'success' },
+    queued:          { label: 'Queued', variant: 'warning' },
+    deploy_failed:   { label: 'Failed', variant: 'danger' },
+    searching:       { label: 'Searching', variant: 'info' },
+    replying:        { label: 'Replying', variant: 'primary' },
+    posted:          { label: 'Deployed', variant: 'success' },
     topic_not_found: { label: 'No Thread', variant: 'warning' },
-    dry_run:       { label: 'Dry Run', variant: 'secondary' },
-    reply_failed:  { label: 'Reply Failed', variant: 'danger' },
-    error:         { label: 'Error', variant: 'danger' },
+    dry_run:         { label: 'Dry Run', variant: 'secondary' },
+    reply_failed:    { label: 'Reply Failed', variant: 'danger' },
+    error:           { label: 'Error', variant: 'danger' },
 };
 
 const FORM_LABELS = {
@@ -92,8 +93,8 @@ const BotStatus = () => {
 
     // ── Summary counts ──
     const total = reports.length;
-    const queued = reports.filter(r => !r.hasDeployed && !r.deployStatus).length;
-    const processing = reports.filter(r => !r.hasDeployed && r.deployStatus && r.deployStatus !== 'deploy_failed' && r.deployStatus !== 'error').length;
+    const queued = reports.filter(r => !r.hasDeployed && (!r.deployStatus || r.deployStatus === 'queued')).length;
+    const processing = reports.filter(r => !r.hasDeployed && r.deployStatus && r.deployStatus !== 'queued' && r.deployStatus !== 'deploy_failed' && r.deployStatus !== 'error').length;
     const failed = reports.filter(r => r.deployStatus === 'deploy_failed' || r.deployStatus === 'error' || r.deployStatus === 'reply_failed').length;
     const deployed = reports.filter(r => r.hasDeployed).length;
 

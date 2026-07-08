@@ -26,3 +26,6 @@ export const triggerWebhookProxy = (webhookType, payload, webhookId = null) => {
     return triggerFunction('sendWebhookProxy', { webhookType, payload, webhookId });
 };
 export const triggerGetPublicConfig = () => triggerFunction('getPublicConfig');
+export const triggerGetMorgueRecords = (data) => triggerFunction('getMorgueRecords', data);
+export const triggerDeleteMorgueRecord = (data) => triggerFunction('deleteMorgueRecord', data);
+export const triggerPurgeMorgueRecords = () => triggerFunction('purgeMorgueRecords', { confirmed: true });

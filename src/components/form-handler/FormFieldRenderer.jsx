@@ -49,7 +49,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
     if (!morgueRecords) return [];
     return morgueRecords.map(r => ({
       value: r.firebaseKey,
-      label: `CASE #${r.caseId} - ${r.name}${r.timeOfDeath ? ` - ${formatDateOfDeath(r.timeOfDeath)}` : ''}${r.adminNote ? ' 📝' : ''}`,
+      label: `#${r.caseId} - ${r.name}${r.location ? ` @ ${r.location}` : ''}${r.timeOfDeath ? ` [${formatDateOfDeath(r.timeOfDeath)}]` : ''}${r.adminNote ? ' 📝' : ''}`,
       record: r
     }));
   }, [morgueRecords]);
@@ -704,11 +704,11 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
                 uniqueWoundTypes.add(typeLower);
                 if (typeLower.includes('gunshot wound') && partLower === 'head') hasGunshotToHead = true;
 
-                if (typeLower.includes('gunshot wound')) {
+                if (typeLower.includes('gunshot')) {
                     const rangeText = distRounded !== null ? `, estimated range ${distRounded}m` : '';
                     return `Gunshot Wound to ${part}${rangeText}`;
                 }
-                
+
                 const hideDist = typeLower.includes('blunt force trauma') || typeLower.includes('stab wound');
                 return `${type} to ${part}${(distRounded !== null && !hideDist) ? ` (${distRounded}m)` : ''}`;
             }).filter(Boolean);
@@ -727,8 +727,9 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
         }
 
         // Bullets
-        const bulletsArr = record.bullets
-            ? (Array.isArray(record.bullets) ? record.bullets : [record.bullets])
+        const rawBullets = record.bullets;
+        const bulletsArr = rawBullets && typeof rawBullets === 'object'
+            ? (Array.isArray(rawBullets) ? rawBullets : Object.keys(rawBullets).length > 0 ? [rawBullets] : [])
             : [];
         if (bulletsArr.length > 0) {
             data.casings = bulletsArr.map(b => `Bullet found with striation marks (${sanitizeMorgueText(b.type)}) #${b.id}`);
@@ -864,7 +865,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
                 return null;
               }
               
-              if (typeLower.includes('gunshot wound')) {
+              if (typeLower.includes('gunshot')) {
                 const rangeText = distRounded !== null ? `, estimated range ${distRounded}m` : '';
                 return `Gunshot Wound to ${part}${rangeText}`;
               } else if (typeLower.includes('blunt force trauma') || typeLower.includes('stab wound')) {

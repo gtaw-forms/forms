@@ -6,10 +6,12 @@
   "description": "Discord bot for PHMC Forms — Morgue lookup and more",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "morgue-api": "node morgue-api.js"
   },
   "dependencies": {
     "discord.js": "^14.18.0",
+    "express": "^4.21.0",
     "firebase-admin": "^13.7.0",
     "playwright": "^1.61.1",
     "playwright-extra": "^4.3.6",
