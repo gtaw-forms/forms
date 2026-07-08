@@ -315,12 +315,19 @@ const formatToNorthAmericanDate = (isoDateTime) => {
       addFallback('coronerEmployee', 'CoronerEmployee'); addFallback('CoronerEmployee', 'coronerEmployee');
 
       if (selectedForm.name === "Coroner Email" || selectedForm.id === "coroner_email") {
-        // SIMPLIFIED APPROACH: For Coroner Email, ONLY use attached reports
-        // Each report title contains the complete list of decedents and OOC names
-        
-        const collectedDecedents = []; // [{ic, oocList}, ...]
-        const allOocNames = [];
-        let totalDecedentCount = 0;
+        // Coroner Email title: use structured decedent data from attached report (set by useReportAttachment).
+        // Falls back to regex-based title parsing for non-Version 11 reports.
+        const decedentName = processedFormValues.decedentName || '';
+        const decedentOOC = processedFormValues.decedentOOC || '';
+
+        if (decedentName && decedentOOC) {
+          const nameList = decedentName.split(',').map(n => n.trim()).filter(Boolean).join(', ');
+          finalTitle = `Coroner Report - ${nameList} (( ${decedentOOC} ))`;
+          console.log('[CoronerEmail] Title from structured data:', finalTitle);
+        } else {
+          // Flallback: parse names from attached report titles
+          const collectedDecedents = [];
+          const allOocNames = [];
 
         if (Array.isArray(processedFormValues.additionalReports) && processedFormValues.additionalReports.length > 0) {
           processedFormValues.additionalReports.forEach(report => {
@@ -428,7 +435,8 @@ const formatToNorthAmericanDate = (isoDateTime) => {
         }
         
         finalTitle = titleParts.join(' ').replace(/\s{2,}/g, ' ').trim();
-        console.log('[CoronerEmail Debug] Final title:', finalTitle);
+        console.log('[CoronerEmail] Title from fallback parsing:', finalTitle);
+        }
       }
       else if (selectedForm.firebaseKey === 'mass-ftality-test' || selectedForm.id === 'mass-fatality' || selectedForm.name?.toLowerCase().includes('mass fatality')) {
         const decedentCounts = {};
@@ -727,6 +735,9 @@ const formatToNorthAmericanDate = (isoDateTime) => {
     setShowBBCode(true);
     setGeneratedBBCode(bbcode);
     setGeneratedTitle(finalTitle);
+
+    // Return the generated values so callers (e.g. Save & Queue) can use them synchronously
+    return { bbcode, finalTitle };
   }, [selectedForm, formValues, finalSelectOptions, agencyDataStore, gtaWorldUser, factionsData]);
 
   return {

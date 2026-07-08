@@ -54,6 +54,10 @@ function lssdUrl()    { return process.env.FORUM_LSSD_URL || 'http://lssd.gta.wo
 function lssdUser()   { return process.env.FORUM_LSSD_USERNAME; }
 function lssdPass()   { return process.env.FORUM_LSSD_PASSWORD; }
 
+function sadcrUrl()   { return process.env.FORUM_SADCR_URL || 'http://sadcr.gta.world'; }
+function sadcrUser()  { return process.env.FORUM_SADCR_USERNAME; }
+function sadcrPass()  { return process.env.FORUM_SADCR_PASSWORD; }
+
 // ── Firebase Queries ──
 
 /**
@@ -209,9 +213,19 @@ export async function deployPendingPMs(options = {}) {
         const domain = forumUrl.toLowerCase();
         const isLspd = domain.includes('lspd');
         const isLssd = domain.includes('lssd');
+        const isSadcr = domain.includes('sadcr');
         let loginUser = null, loginPass = null, forumLabel = '';
 
-        if (isLspd) {
+        if (isSadcr) {
+            loginUser = sadcrUser();
+            loginPass = sadcrPass();
+            forumLabel = 'SADCR';
+            if (!loginUser || !loginPass) {
+                console.error('[DEPLOY] ❌ SADCR forum requires FORUM_SADCR_USERNAME and FORUM_SADCR_PASSWORD in .env');
+                if (closeBrowser) await client.close();
+                return { deployed: 0, skipped: 0, failed: reports.length, results: [] };
+            }
+        } else if (isLspd) {
             loginUser = lspdUser();
             loginPass = lspdPass();
             forumLabel = 'LSPD';

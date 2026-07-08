@@ -43,7 +43,11 @@
       ".indexOn": "needsMorgue"
     },
     "morgue-records": {
+      ".read": false,
       ".indexOn": "lastUpdated"
+    },
+    "autopsy-requested": {
+      ".indexOn": ["oocName", "lssdCrosspostStatus", "lssdTopicId"]
     }
   }
 }

@@ -5,6 +5,8 @@ import { useNotification } from './NotificationContext.jsx';
 import { useWebhooks } from '../hooks/useWebhooks';
 import { useInactivityReload } from '../hooks/useInactivityReload';
 import useGtaWorldAuth from '../hooks/useGtaWorldAuth';
+import { triggerGetMorgueRecords } from '../services/firebaseFunctions';
+import { idbGet, idbSet, idbRemove } from '../utils/idbCache';
 
 // Cache versions below this threshold are considered dead/broken and force a fresh fetch.
 // Bump this after fixing cache-corruption bugs to invalidate all stale client caches.
@@ -22,7 +24,8 @@ const CACHE_SEGMENTS = {
 };
 
 // Define segments that should not be cached in localStorage
-const EXCLUDED_FROM_CACHE = ['savedReports'];
+// morgue-records uses IndexedDB (too large for 5MB localStorage quota)
+const EXCLUDED_FROM_CACHE = ['savedReports', 'morgue-records'];
 
 const DataContext = createContext();
 
@@ -169,7 +172,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
         [CACHE_SEGMENTS.FORMS]: '1.2.3', 
         [CACHE_SEGMENTS.LSCC]: '1.0',
         [CACHE_SEGMENTS.VERIFIED_ADMINS]: '1.0',
-        [CACHE_SEGMENTS.MORGUE_RECORDS]: '1.0',
+        [CACHE_SEGMENTS.MORGUE_RECORDS]: '1.1',  // bumped 2026-07-05 — switched from Firebase to VPS API
     };
 
     const getSegmentVersion = (segment) => {
@@ -310,53 +313,57 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
 
         const segment = CACHE_SEGMENTS.MORGUE_RECORDS;
 
-        // Try loading from localStorage cache first
+        // Try loading from IndexedDB cache first (supports large data, unlike localStorage)
         if (!morgueRecordsLoadedRef.current) {
-            const cacheKey = getCacheKey(segment);
-            const cachedData = localStorage.getItem(cacheKey);
-
-            if (cachedData && isCacheValid(segment)) {
-                try {
-                    const data = JSON.parse(cachedData);
-                    dataCache.current[segment] = data;
-                    const morgueAsList = data ? Object.keys(data).map(key => ({ ...data[key], firebaseKey: key })) : [];
-                    setMorgueRecords(morgueAsList);
-                    morgueRecordsLoadedRef.current = true;
-                    const cacheSizeKB = (cachedData.length / 1024).toFixed(2);
-                    console.debug(`[DataContext] Loaded morgue records from cache (${cacheSizeKB} KB)`);
-
-                    // Log the cache hit so the transition from NOT LOADED is visible
-                    try {
-                        const loadingMode = {};
-                        Object.values(CACHE_SEGMENTS).forEach(s => {
-                            loadingMode[s] = s === CACHE_SEGMENTS.MORGUE_RECORDS ? 'cache' : 'not_loaded';
-                        });
-                        webhooks.sendDataRequestLog('DataContext.jsx', true, 'Local Storage', parseFloat(cacheSizeKB), 0, isAuthenticated, user?.faction?.characterName || user?.username, ['morgue-records'], [], { 'morgue-records': parseFloat(cacheSizeKB) }, null, {
-                            route: window.location.hash || '/',
-                            trigger: 'lazy',
-                            segmentSources: loadingMode,
-                            detail: 'Loaded from localStorage cache'
-                        });
-                    } catch (logError) {
-                        console.warn('[DataContext] Failed to send morgue cache log:', logError);
+            try {
+                const idbData = await idbGet('morgue-records');
+                if (idbData && idbData.data && idbData.version) {
+                    const localVersion = localStorage.getItem('morgueDataVersion');
+                    if (String(idbData.version) === String(localVersion)) {
+                        dataCache.current[segment] = idbData.data;
+                        const morgueAsList = Object.keys(idbData.data).map(key => ({ ...idbData.data[key], firebaseKey: key }));
+                        setMorgueRecords(morgueAsList);
+                        morgueRecordsLoadedRef.current = true;
+                        const cacheSizeKB = (JSON.stringify(idbData.data).length / 1024).toFixed(2);
+                        console.debug(`[DataContext] Loaded morgue records from IndexedDB (${cacheSizeKB} KB)`);
+                        return idbData.data;
                     }
-
-                    return data;
-                } catch (error) {
-                    console.error('Error parsing cached morgue records, fetching from Firebase.', error);
                 }
+            } catch (err) {
+                console.warn('[DataContext] IndexedDB cache read failed, fetching fresh:', err.message);
             }
         }
 
-        // Fetch from Firebase
+        // Fetch from VPS API via Firebase Function (replaces direct Firebase RTDB read)
         try {
-            const snapshot = await get(ref(database, segment));
-            if (snapshot.exists()) {
-                const data = snapshot.val();
+            const result = await triggerGetMorgueRecords();  // no limit — VPS returns all records
+
+            // Convert the records array back to the Firebase-style object for the cache layer
+            const data = {};
+            if (result?.records && Array.isArray(result.records)) {
+                result.records.forEach(r => {
+                    data[r.caseId] = r;
+                });
+            }
+
+            if (Object.keys(data).length > 0) {
+                // Update the local version from the API response
+                const version = result.morgueDataVersion;
+                if (version) {
+                    localStorage.setItem('morgueDataVersion', String(version));
+                }
+
+                // Save to IndexedDB for persistent cache (much larger quota than localStorage)
+                try {
+                    await idbSet('morgue-records', { data, version, cachedAt: Date.now() });
+                } catch (idbErr) {
+                    console.warn('[DataContext] Failed to save morgue cache to IndexedDB:', idbErr.message);
+                }
+
                 const segmentSize = (JSON.stringify(data).length / 1024).toFixed(2);
                 await updateCacheSegment(CACHE_SEGMENTS.MORGUE_RECORDS, data);
                 morgueRecordsLoadedRef.current = true;
-                console.debug(`[DataContext] Fetched morgue records from Firebase (${segmentSize} KB)`);
+                console.debug(`[DataContext] Fetched morgue records from VPS API via Cloud Function (${segmentSize} KB) — cached to IndexedDB`);
 
                 // Log the lazy load for observability
                 try {
@@ -364,7 +371,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                     Object.values(CACHE_SEGMENTS).forEach(s => {
                         loadingMode[s] = s === CACHE_SEGMENTS.MORGUE_RECORDS ? 'network' : 'not_loaded';
                     });
-                    webhooks.sendDataRequestLog('DataContext.jsx', false, 'Firebase', 0, parseFloat(segmentSize), isAuthenticated, user?.faction?.characterName || user?.username, ['morgue-records'], [], { 'morgue-records': parseFloat(segmentSize) }, null, {
+                    webhooks.sendDataRequestLog('DataContext.jsx', false, 'Cloud Function', 0, parseFloat(segmentSize), isAuthenticated, user?.faction?.characterName || user?.username, ['morgue-records'], [], { 'morgue-records': parseFloat(segmentSize) }, null, {
                         route: window.location.hash || '/',
                         trigger: 'lazy',
                         segmentSources: loadingMode
@@ -375,15 +382,26 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
 
                 return data;
             } else {
-                console.warn('[DataContext] Morgue records path does not exist in Firebase.');
+                console.warn('[DataContext] Morgue records API returned empty.');
                 morgueRecordsLoadedRef.current = true;
                 return null;
             }
         } catch (error) {
-            console.error('[DataContext] Failed to fetch morgue records:', error);
+            console.error('[DataContext] Failed to fetch morgue records via Cloud Function:', error);
             return null;
         }
     }, [updateCacheSegment, webhooks, isAuthenticated, user]);
+
+    // Remove a single morgue record from in-memory cache + state (no re-fetch)
+    const removeMorgueRecord = useCallback((caseId) => {
+        const data = dataCache.current[CACHE_SEGMENTS.MORGUE_RECORDS];
+        if (data && data[caseId]) {
+            delete data[caseId];
+            dataCache.current[CACHE_SEGMENTS.MORGUE_RECORDS] = data;
+            const morgueAsList = Object.keys(data).map(key => ({ ...data[key], firebaseKey: key }));
+            setMorgueRecords(morgueAsList);
+        }
+    }, []);
 
     // Setup Firebase listeners for real-time version checks
     // Data is loaded via get() in refreshSegments(); version listeners trigger re-fetches.
@@ -668,130 +686,30 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
             });
         })();
 
-        // --- Listener for Morgue Data Version ---
+        // --- Morgue Version Tracker ---
+        // Listens on appMetadata/morgueDataVersion in Firebase. When the version
+        // changes (PS script runs, admin edits), invalidates the in-memory cache
+        // so the next loadMorgueRecords() call re-fetches via Cloud Function.
         (async () => {
             const morgueVersionRef = ref(database, 'appMetadata/morgueDataVersion');
-            let initialServerVersion = null;
-            const oldLocalVersion = localStorage.getItem('morgueDataVersion');
-
             try {
                 const snapshot = await get(morgueVersionRef);
                 if (snapshot.exists()) {
-                    initialServerVersion = String(snapshot.val());
-                    console.debug(`[DataContext] Initial morgueDataVersion fetched from server: v${initialServerVersion}`);
-                    localStorage.setItem('morgueDataVersion', initialServerVersion);
-                } else {
-                    console.log('[DataContext] morgueDataVersion does not exist on server initially. Clearing local version.');
-                    localStorage.removeItem('morgueDataVersion');
+                    localStorage.setItem('morgueDataVersion', String(snapshot.val()));
                 }
-            } catch (error) {
-                console.error('[DataContext] Failed to get initial morgueDataVersion from server:', error);
-                localStorage.removeItem('morgueDataVersion');
-            }
+            } catch { /* best effort */ }
 
-            if (initialServerVersion !== null && (oldLocalVersion === null || oldLocalVersion !== initialServerVersion)) {
-                const changeDesc = oldLocalVersion === null
-                    ? `New version detected: v${initialServerVersion}`
-                    : `Version changed offline: v${oldLocalVersion} → v${initialServerVersion}`;
-                console.log(`🔄 ${changeDesc}. Prefetching morgue records.`);
-                localStorage.removeItem(getCacheKey(CACHE_SEGMENTS.MORGUE_RECORDS));
-                localStorage.removeItem(getTimestampKey(CACHE_SEGMENTS.MORGUE_RECORDS));
-                localStorage.removeItem(getVersionKey(CACHE_SEGMENTS.MORGUE_RECORDS));
-                morgueRecordsLoadedRef.current = false;
-                refreshSegments([CACHE_SEGMENTS.MORGUE_RECORDS]);
-
-                // Log the version-driven refresh
-                try {
-                    const loadingMode = {};
-                    Object.values(CACHE_SEGMENTS).forEach(s => {
-                        loadingMode[s] = s === CACHE_SEGMENTS.MORGUE_RECORDS ? 'network' : 'not_loaded';
-                    });
-                    webhooks.sendDataRequestLog('DataContext.jsx', false, 'Firebase', 0, 0, isAuthenticated, user?.faction?.characterName || user?.username, ['morgue-records'], [], {}, null, {
-                        route: window.location.hash || '/',
-                        trigger: 'version_change',
-                        segmentSources: loadingMode,
-                        detail: changeDesc
-                    });
-                } catch (logError) {
-                    console.warn('[DataContext] Failed to send morgue version refresh log:', logError);
-                }
-            }
-
-            let morgueFirstFire = true;
-            firebaseListeners.current.morgueVersion = onValue(morgueVersionRef, async (snapshot) => {
-                if (!dataInitializedRef.current) {
-                    console.log('[DataContext] Morgue version listener triggered, but DataContext not initialized. Skipping.');
-                    return;
-                }
-                const serverVersion = snapshot.exists() ? String(snapshot.val()) : null;
+            firebaseListeners.current.morgueVersion = onValue(morgueVersionRef, (snapshot) => {
+                if (!snapshot.exists() || !dataInitializedRef.current) return;
+                const serverVersion = String(snapshot.val());
                 const localVersion = localStorage.getItem('morgueDataVersion');
 
-                console.debug(`Global Morgue Version - Local: ${localVersion || 'N/A'}, Server: ${serverVersion || 'N/A'}`);
+                console.log(`[MORGUE] LocalVersion vs ServerVersion: ${localVersion || 'N/A'} vs ${serverVersion}`);
+                if (serverVersion === localVersion) return;
 
-                if (serverVersion !== null && localVersion !== serverVersion) {
-                    console.log(`🔄 Morgue version mismatch (v${localVersion} → v${serverVersion}). Refreshing.`);
-
-                    localStorage.removeItem(getCacheKey(CACHE_SEGMENTS.MORGUE_RECORDS));
-                    localStorage.removeItem(getTimestampKey(CACHE_SEGMENTS.MORGUE_RECORDS));
-                    localStorage.removeItem(getVersionKey(CACHE_SEGMENTS.MORGUE_RECORDS));
-                    localStorage.setItem('morgueDataVersion', serverVersion);
-                    morgueRecordsLoadedRef.current = false;
-
-                    if (morgueFirstFire) {
-                        await refreshSegments([CACHE_SEGMENTS.MORGUE_RECORDS]);
-                    } else {
-                        await debouncedRefresh([CACHE_SEGMENTS.MORGUE_RECORDS]);
-                    }
-                    morgueFirstFire = false;
-
-                    // Log the version-driven refresh (after refresh, so we have the actual size)
-                    try {
-                        const loadingMode = {};
-                        const actualSegmentSizes = {};
-                        Object.values(CACHE_SEGMENTS).forEach(s => {
-                            if (s === CACHE_SEGMENTS.MORGUE_RECORDS) {
-                                loadingMode[s] = 'network';
-                                const cached = dataCache.current[s];
-                                actualSegmentSizes[s] = cached ? (JSON.stringify(cached).length / 1024) : 0;
-                            } else {
-                                loadingMode[s] = 'not_loaded';
-                            }
-                        });
-                        webhooks.sendDataRequestLog('DataContext.jsx', false, 'Firebase', 0, actualSegmentSizes[CACHE_SEGMENTS.MORGUE_RECORDS] || 0, isAuthenticated, user?.faction?.characterName || user?.username, ['morgue-records'], [], actualSegmentSizes, null, {
-                            route: window.location.hash || '/',
-                            trigger: 'version_change',
-                            segmentSources: loadingMode,
-                            detail: `Version mismatch: v${localVersion} → v${serverVersion}`
-                        });
-                    } catch (logError) {
-                        console.warn('[DataContext] Failed to send morgue version refresh log:', logError);
-                    }
-                } else if (serverVersion === null && localVersion !== null) {
-                    console.log(`🗑️ Morgue version deleted from server.`);
-                    localStorage.removeItem(getCacheKey(CACHE_SEGMENTS.MORGUE_RECORDS));
-                    localStorage.removeItem(getTimestampKey(CACHE_SEGMENTS.MORGUE_RECORDS));
-                    localStorage.removeItem(getVersionKey(CACHE_SEGMENTS.MORGUE_RECORDS));
-                    localStorage.removeItem('morgueDataVersion');
-                    morgueRecordsLoadedRef.current = false;
-                    await debouncedRefresh([CACHE_SEGMENTS.MORGUE_RECORDS]);
-
-                    // Log the version-deleted refresh
-                    try {
-                        const loadingMode = {};
-                        Object.values(CACHE_SEGMENTS).forEach(s => {
-                            loadingMode[s] = s === CACHE_SEGMENTS.MORGUE_RECORDS ? 'network' : 'not_loaded';
-                        });
-                        webhooks.sendDataRequestLog('DataContext.jsx', false, 'Firebase', 0, 0, isAuthenticated, user?.faction?.characterName || user?.username, ['morgue-records'], [], {}, null, {
-                            route: window.location.hash || '/',
-                            trigger: 'version_change',
-                            segmentSources: loadingMode,
-                            detail: `Version node deleted from server`
-                        });
-                    } catch (logError) {
-                        console.warn('[DataContext] Failed to send morgue version refresh log:', logError);
-                    }
-                }
-                morgueFirstFire = false;
+                console.log(`[MORGUE] Version changed: ${localVersion} → ${serverVersion}. Cache invalidated.`);
+                localStorage.setItem('morgueDataVersion', serverVersion);
+                morgueRecordsLoadedRef.current = false;
             });
         })();
     }, [updateCacheSegment, showNotification, refreshSegments, webhooks, isAuthenticated, user]);
@@ -1260,6 +1178,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
         lsccData,
         morgueRecords,
         loadMorgueRecords,
+        removeMorgueRecord,
         hasFirebaseError,
     };
             

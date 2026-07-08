@@ -37,11 +37,11 @@ const BotDeployOptInModal = ({
     // Reset local state when consent data loads or modal opens
     useEffect(() => {
         if (!show) return;
+        const defaults = {};
+        DEPLOY_TRACKED_FORMS.forEach((f) => { defaults[f] = f === 'autopsy' ? true : false; });
         if (consent && Object.keys(consent).length > 0) {
-            setLocal({ ...consent });
+            setLocal({ ...defaults, ...consent, autopsy: true });
         } else {
-            const defaults = {};
-            DEPLOY_TRACKED_FORMS.forEach((f) => { defaults[f] = false; });
             setLocal(defaults);
         }
     }, [consent, show]);
@@ -65,7 +65,7 @@ const BotDeployOptInModal = ({
     const handleSave = async () => {
         setSaving(true);
         try {
-            await saveAllConsent(local);
+            await saveAllConsent({ ...local, autopsy: true });
             onClose();
         } catch {
             // handled in hook
@@ -81,9 +81,9 @@ const BotDeployOptInModal = ({
     };
 
     const disableAll = () => {
-        const none = {};
-        DEPLOY_TRACKED_FORMS.forEach((f) => { none[f] = false; });
-        setLocal(none);
+        const all = {};
+        DEPLOY_TRACKED_FORMS.forEach((f) => { all[f] = f === 'autopsy' ? true : false; });
+        setLocal(all);
     };
 
     if (!show) return null;
@@ -225,13 +225,18 @@ const BotDeployOptInModal = ({
                                                     <label
                                                         htmlFor={`bdc-${formId}`}
                                                         style={{
-                                                            cursor: 'pointer',
+                                                            cursor: formId === 'autopsy' ? 'default' : 'pointer',
                                                             fontSize: '0.9rem',
                                                             color: '#e2e8f0',
                                                             userSelect: 'none',
                                                         }}
                                                     >
                                                         {label}
+                                                        {formId === 'autopsy' && (
+                                                            <span style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', marginTop: 2, fontStyle: 'italic' }}>
+                                                                Required — cannot be disabled
+                                                            </span>
+                                                        )}
                                                     </label>
                                                     <label
                                                         style={{
@@ -239,14 +244,16 @@ const BotDeployOptInModal = ({
                                                             display: 'inline-block',
                                                             width: 44,
                                                             height: 24,
-                                                            cursor: 'pointer',
+                                                            cursor: formId === 'autopsy' ? 'not-allowed' : 'pointer',
+                                                            opacity: formId === 'autopsy' ? 0.6 : 1,
                                                         }}
                                                     >
                                                         <input
                                                             id={`bdc-${formId}`}
                                                             type="checkbox"
-                                                            checked={checked}
-                                                            onChange={() => handleToggle(formId)}
+                                                            checked={formId === 'autopsy' ? true : checked}
+                                                            disabled={formId === 'autopsy'}
+                                                            onChange={(formId === 'autopsy') ? undefined : () => handleToggle(formId)}
                                                             style={{
                                                                 opacity: 0,
                                                                 width: 0,
@@ -392,7 +399,7 @@ const BotDeployOptInModal = ({
 export default BotDeployOptInModal;
 
 // ── Backward-compatible exports for SidebarNav ──
-const STORAGE_KEY = 'botDeployOptIn';
+const STORAGE_KEY = 'PHMC-Bot-OptIn';
 
 export function getBotDeployPref() {
   try { return localStorage.getItem(STORAGE_KEY); } catch { return null; }

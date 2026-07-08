@@ -24,6 +24,9 @@ import { cleanRankText } from '../../utils/textUtils';
 import { STORAGE_KEYS } from '../../services/gtaWorldAuth';
 import { useAuth } from '../../contexts/AuthContext';
 import { useConsent, DEPLOY_TRACKED_FORMS } from '../../hooks/useConsent';
+
+// Must match discord-bot/services/deployState.js DEFER_MS
+const QUEUE_DELAY_MIN = 2;
 import BotDeployOptInModal from '../Modals/BotDeployOptInModal';
 import phmcLogo from '../../assets/phmc.png';
 import { decedentItemSchema } from '../../formSchemas/decedentSchema';
@@ -40,6 +43,7 @@ const EmployeeCredentialsSection = lazy(() => import('../Modals/EmployeeCredenti
 const SavedReportsModal = lazy(() => import('../Modals/SavedReportsModal'));
 const BugReportModal = lazy(() => import('../Modals/BugReportModal'));
 const MapModal = lazy(() => import("../Modals/MapModal"));
+import AssignedAutopsiesModal from '../Modals/AssignedAutopsiesModal';
 import UnprocessedCKsViewer from './UnprocessedCKsViewer';
 import ImagePreviewModal from '../Modals/ImagePreviewModal';
 
@@ -68,6 +72,7 @@ export const FormHandler = () => {
   const [showMapModal, setShowMapModal] = useState(false);
   const [mapTargetField, setMapTargetField] = useState(null);
   const [isUploadingMapImage, setIsUploadingMapImage] = useState({});
+  const [showAssignedAutopsies, setShowAssignedAutopsies] = useState(false);
   
 
 
@@ -172,6 +177,7 @@ export const FormHandler = () => {
   const modalCloseTimer = React.useRef(null);
   const { user: firebaseAuthUser } = useAuth();
   const firebaseUid = firebaseAuthUser?.uid || null;
+  const lastGeneratedFormKey = React.useRef(null);
 
   // ── Per-form-type bot consent for auto-deploy ──
   const {
@@ -181,23 +187,44 @@ export const FormHandler = () => {
     isLoading: consentLoading,
     hasConsentRecord,
   } = useConsent();
-
   const [showConsentModal, setShowConsentModal] = useState(false);
 
   // Track whether we've auto-prompted this session (sessionStorage)
   // const consentPromptedThisSession = sessionStorage.getItem('consentPrompted') === 'true';
 
-  // Show the consent modal when a deploy-tracked form is selected and no consent record exists
+  // Auto-show assigned autopsies modal when the autopsy form is selected
+  useEffect(() => {
+    console.log('[AssignedModal] Selected form changed:', selectedForm?.firebaseKey);
+    if (selectedForm?.firebaseKey === 'autopsy') {
+      console.log('[AssignedModal] Autopsy selected — opening modal');
+      setShowAssignedAutopsies(true);
+    }
+  }, [selectedForm?.firebaseKey]);
+
+  // ── Consent modal auto-prompt ──
+  // Shows when a deploy-tracked form is selected and no consent record exists.
+  // Disabled for now — accessible only via sidebar "Bot Consent Settings" button.
+  // Uncomment to re-enable:
+  // ── Consent modal auto-prompt ──
+
   const selectedFormFirebaseKey = selectedForm?.firebaseKey;
   useEffect(() => {
-    if (selectedFormFirebaseKey && DEPLOY_TRACKED_FORMS.includes(selectedFormFirebaseKey)) {
-      if (!hasConsentRecord && !consentLoading) {
+    if (!consentLoading && selectedFormFirebaseKey && DEPLOY_TRACKED_FORMS.includes(selectedFormFirebaseKey)) {
+      if (!hasConsentRecord) {
         setShowConsentModal(true);
       }
     }
-  }, [selectedFormFirebaseKey, hasConsentRecord, consentLoading]);
+  }, [consentLoading, selectedFormFirebaseKey, hasConsentRecord]);
+  useEffect(() => {
+  console.log('[Consent] Check:', { selectedFormFirebaseKey, consentLoading, hasConsentRecord });
+  if (!consentLoading && selectedFormFirebaseKey && DEPLOY_TRACKED_FORMS.includes(selectedFormFirebaseKey)) {
+    if (!hasConsentRecord) {
+      setShowConsentModal(true);
+    }
+  }
+}, [consentLoading, selectedFormFirebaseKey, hasConsentRecord]);
 
-  // ── First-visit auto-prompt ──
+    // ── First-visit auto-prompt ──
   // Shows the consent modal on mount if authenticated with no consent record yet.
   // Commented out for testing — uncomment once ready for production rollout.
   // useEffect(() => {
@@ -649,11 +676,25 @@ const handleClearForm = useCallback(() => {
   }, [formValues, setFormValues, selectedForm, showNotification, keepCredentials, isAuthenticated, user, phmcListData, coronerListData, cleanRankText]);
 
   const copyAndSaveReport = useCallback(async () => {
-    if (generatedBBCode) {
+    // Prevent saving BBCode generated for a different form
+    if (lastGeneratedFormKey.current && lastGeneratedFormKey.current !== selectedForm?.firebaseKey) {
+      showNotification('Generate BBCode for this form first! The current BBCode is from a different form.', 'error', 8000);
+      return;
+    }
+    let bbcodeToUse = generatedBBCode;
+    if (!bbcodeToUse) {
+      // Auto-generate BBCode if not already generated, so Save & Queue works in one click
+      const genResult = generateBBCode();
+      if (genResult?.bbcode) {
+        bbcodeToUse = genResult.bbcode;
+      } else {
+        showNotification('Failed to generate BBCode. Check form fields and try again.', 'error', 5000);
+        return;
+      }
+    }
+    {
       const isCoronerEmail = selectedForm?.id === 'coroner_email' || selectedForm?.name === 'Coroner Email';
-      
-      // Join multi-part BBCode with a separator for saving to database (keeping logic but it will be a string now)
-      const bbcodeToSave = Array.isArray(generatedBBCode) ? generatedBBCode.join('\n\n[PART_BREAK]\n\n') : generatedBBCode;
+      const bbcodeToSave = Array.isArray(bbcodeToUse) ? bbcodeToUse.join('\n\n[PART_BREAK]\n\n') : bbcodeToUse;
       
       const saveResult = await saveNewReport(selectedForm, formValues, generatedTitle, bbcodeToSave, { silent: true });
 
@@ -674,6 +715,7 @@ const handleClearForm = useCallback(() => {
           const notifIdRef = { current: showNotification('📥 In Queue — bot will deploy shortly', 'spinner fa-spin', 0) };
 
           const STATUS_MESSAGES = {
+            queued:          { icon: '⏳', text: 'Report queued — will deploy in a few min. Re-save to make edits.', color: '#ffc107' },
             searching:       { icon: '🔍', text: 'Searching for patient thread...', color: '#60a5fa' },
             replying:        { icon: '📝', text: 'Posting reply to thread...', color: '#60a5fa' },
             posted:          { icon: '✅', text: 'Report posted successfully!', color: '#28a745', final: true },
@@ -723,12 +765,12 @@ const handleClearForm = useCallback(() => {
       }
 
       try {
-        const textToCopy = Array.isArray(generatedBBCode) ? generatedBBCode[0] : generatedBBCode;
+        const textToCopy = Array.isArray(bbcodeToUse) ? bbcodeToUse[0] : bbcodeToUse;
         await navigator.clipboard.writeText(textToCopy);
-        if (finalNotificationType === 'success') { // Only append if report save was successful
-            if (Array.isArray(generatedBBCode)) {
+        if (finalNotificationType === 'success') {
+            if (Array.isArray(bbcodeToUse)) {
                 finalNotificationMessage += ' Part 1 copied. Please copy other parts manually from the preview below.';
-                finalNotificationType = 'info'; // Change type if it's info
+                finalNotificationType = 'info';
             } else {
                 finalNotificationMessage += ' and BBCode copied!';
             }
@@ -1361,7 +1403,8 @@ const handleClearForm = useCallback(() => {
                     }
  */
                     generateBBCode();
-                  }} 
+                    lastGeneratedFormKey.current = selectedForm?.firebaseKey || null;
+                  }}
                   className={formStyles.generateButton}
                 >                  Generate BBCode
                 </button>
@@ -1424,19 +1467,84 @@ const handleClearForm = useCallback(() => {
     Click &quot;Generate BBCode&quot; to preview
   </div>
 )}
-          <button onClick={copyAndSaveReport} disabled={!generatedBBCode} className={`${formStyles.rightPanelButton} ${generatedBBCode ? formStyles.copy : ''}`}>
-            {(() => {
-              const isDeployTracked = selectedForm?.firebaseKey && DEPLOY_TRACKED_FORMS.includes(selectedForm.firebaseKey);
-              const optedIn = isFormOptedIn(selectedForm?.firebaseKey);
-              if (isDeployTracked && optedIn) return 'Save and Queue';
-              if (Array.isArray(generatedBBCode)) return `Copy Part 1 + Save (${generatedBBCode.length} Parts)`;
-              return generatedBBCode ? 'Copy BBCode + Save' : 'No BBCode Yet';
-            })()}
-          </button>
+          <div style={{ display: 'flex', gap: 8, width: '100%' }}>
+            <button
+              onClick={() => {
+                generateBBCode();
+                lastGeneratedFormKey.current = selectedForm?.firebaseKey || null;
+              }}
+              title="Generate BBCode preview only — does not save or queue the report"
+              style={{
+                flex: 1, padding: '10px 12px', borderRadius: 8, border: '1px solid #6366f1',
+                background: '#1a1d2e', color: '#e2e8f0', fontSize: '0.85rem',
+                fontWeight: 600, cursor: 'pointer',
+              }}
+            >
+              <i className="fas fa-code me-1"></i> Preview
+            </button>
+            <button onClick={copyAndSaveReport}
+              style={{
+                flex: 1, padding: '10px 12px', borderRadius: 8, border: '1px solid #6366f1',
+                background: '#1a1d2e', color: '#e2e8f0', fontSize: '0.85rem',
+                fontWeight: 600, cursor: 'pointer',
+              }}
+            >
+              {(() => {
+                const isDeployTracked = selectedForm?.firebaseKey && DEPLOY_TRACKED_FORMS.includes(selectedForm.firebaseKey);
+                const optedIn = isFormOptedIn(selectedForm?.firebaseKey);
+                if (isDeployTracked && optedIn) return <><i className="fas fa-cloud-upload-alt me-1"></i> Save and Queue</>;
+                if (Array.isArray(generatedBBCode)) return `Copy Part 1 + Save (${generatedBBCode.length} Parts)`;
+                return generatedBBCode ? <><i className="fas fa-copy me-1"></i> Save</> : 'No BBCode Yet';
+              })()}
+            </button>
           </div>
+          </div>
+
+{selectedForm?.firebaseKey === 'autopsy' && (
+  <button onClick={() => setShowAssignedAutopsies(true)}
+    style={{ width: '100%', background: '#1a1d2e', border: '1px solid #6366f1', borderRadius: 12, padding: '14px 18px', marginBottom: '1rem', color: '#e2e8f0', fontSize: '0.9rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12 }}>
+    <i className="fas fa-clipboard-list" style={{ fontSize: '1.3rem', color: '#6366f1' }}></i>
+    <div style={{ textAlign: 'left' }}>
+      <strong style={{ color: '#fff' }}>Assigned Autopsies</strong>
+      <p style={{ margin: '2px 0 0', color: '#94a3b8', fontSize: '0.8rem' }}>Click to view your assigned cases</p>
+    </div>
+    <i className="fas fa-chevron-right" style={{ marginLeft: 'auto', color: '#6366f1' }}></i>
+  </button>
+)}
 
 {generatedBBCode && (
   <>
+    {/* Stale BBCode Warning — generated for a different form */}
+    {(() => {
+      const isDeployTracked = selectedForm?.firebaseKey && DEPLOY_TRACKED_FORMS.includes(selectedForm.firebaseKey);
+      const formMismatch = lastGeneratedFormKey.current && lastGeneratedFormKey.current !== selectedForm?.firebaseKey;
+      if (isDeployTracked && formMismatch) {
+        return (
+          <div style={{
+            background: '#2d1b1b',
+            border: '2px solid #dc3545',
+            borderRadius: 12,
+            padding: '16px 20px',
+            marginBottom: '1rem',
+            color: '#f5a3a3',
+            fontSize: '0.9rem',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 12,
+          }}>
+            <i className="fas fa-exclamation-triangle" style={{ fontSize: '1.4rem', color: '#dc3545', marginTop: 2 }}></i>
+            <div>
+              <strong style={{ color: '#fff', fontSize: '0.95rem' }}>BBCode Not Generated for This Form</strong>
+              <p style={{ margin: '6px 0 0 0', color: '#fca5a5', fontSize: '0.85rem' }}>
+                The current BBCode was generated for a different form. Click <strong>Generate BBCode</strong> above before saving to avoid posting incorrect data.
+              </p>
+            </div>
+          </div>
+        );
+      }
+      return null;
+    })()}
+
     {/* Bot Deploy Opt-In Notice */}
     {(() => {
       const isDeployTracked = selectedForm?.firebaseKey && DEPLOY_TRACKED_FORMS.includes(selectedForm.firebaseKey);
@@ -1460,7 +1568,8 @@ const handleClearForm = useCallback(() => {
               <strong style={{ color: '#fff' }}>Auto-Deploy Enabled</strong>
               <p style={{ margin: '4px 0 0 0', color: '#a3d9a5' }}>
                 You have opted in for the PHMC Bot to automatically post your reports.
-                You do not need to take any further action. Reports will be posted within 1 minute.
+                You do not need to take any further action. Reports will be posted within {QUEUE_DELAY_MIN} minutes.
+                <br /><strong style={{ color: '#d4edda' }}>Made a mistake? Re-save within ~{QUEUE_DELAY_MIN} minutes to apply corrections.</strong>
               </p>
             </div>
           </div>
@@ -1635,6 +1744,90 @@ const handleClearForm = useCallback(() => {
           showNotification={showNotification}
         />
       </Suspense>
+
+      {/* ── Assigned Autopsies Modal ── */}
+      <AssignedAutopsiesModal
+        show={showAssignedAutopsies}
+        onClose={() => setShowAssignedAutopsies(false)}
+        onLoadCase={(morgue, entry) => {
+          // Clear previous case fields first
+          const clearFields = ['decedentName','decedentOOC','Requester','sex','placeOfDeath','deathType',
+            'dnaProfile','bacLevel','narcoticTraces','externalExamination','department',
+            'anatomicSummaryListItems','casings','RadiologyResult','synopsis','causeDetail',
+            'causeOfDeath','deathCausesListItems','dateTime','timeOfDeath'];
+          setFormValues(prev => {
+            const cleared = { ...prev };
+            clearFields.forEach(f => { cleared[f] = ''; });
+            return cleared;
+          });
+          const updates = {};
+          const p = entry?.parsed || {};
+          // Extract IC name: "John Doe ((OOC))" -> "John Doe"
+          const fullName = p.decedentName || morgue?.name || '';
+          const icMatch = fullName.match(/^(.+?)\s*\(\(/);
+          const icName = icMatch ? icMatch[1].trim() : fullName.replace(/\(\(.+?\)\)/g, '').trim() || fullName;
+          updates.decedentName = icName;
+          updates.decedentOOC = entry?.oocName || '';
+          if (p.requesterName) updates.Requester = p.requesterName;
+          if (p.sex || morgue?.sex) updates.sex = p.sex || morgue.sex;
+          if (p.placeOfDeath || morgue?.location) updates.placeOfDeath = p.placeOfDeath || morgue.location;
+          if (p.deathType) updates.deathType = (p.deathType || '').toUpperCase() === 'CK' ? 'CK' : 'PK';
+          if (morgue?.dnaProfile) updates.dnaProfile = morgue.dnaProfile;
+          if (morgue?.bac) updates.bacLevel = morgue.bac;
+          if (morgue?.narcotics) updates.narcoticTraces = morgue.narcotics;
+          // Build external examination from morgue physical description
+          if (morgue?.physicalDescription) {
+            let extLines = `** The Morgue Technician provides a written description below of the Decedent ** ((This section is descriptive purposes only and is automatically generated from the Morgue Records ))
+
+`;
+            extLines += `Physical Description:
+${morgue.physicalDescription || ""}
+
+`;
+            if (morgue.tattoos && morgue.tattoos !== "None" && morgue.tattoos !== "Unknown") {
+              extLines += `Tattoos/Marks:
+${morgue.tattoos}
+
+`;
+            }
+            if (morgue.estimatedAge && morgue.estimatedAge !== "Unknown") {
+              extLines += `Est. Age: ${morgue.estimatedAge}
+`;
+            }
+            updates.externalExamination = extLines.trim();
+          }
+          const deptMap = { LSPD: 'Los Santos Police Department', LSSD: 'Los Santos County Sheriffs Department', SADCR: 'San Andreas Department of Corrections and Rehabilitation' };
+          if (entry?.faction) updates.department = deptMap[entry.faction] || entry.faction;
+          if (Array.isArray(morgue?.findings) && morgue.findings.length > 0) {
+            updates.anatomicSummaryListItems = morgue.findings.map(f => {
+              const type = (f.type || '').trim();
+              const part = (f.part || '').trim();
+              const typeL = type.toLowerCase();
+              const dist = f.dist ? f.dist.replace(/[^\d.]/g, '') : '';
+              const distN = parseFloat(dist);
+              const distR = !isNaN(distN) ? Math.floor(distN) : null;
+              if (!typeL || typeL === 'blood loss' || typeL.includes('wound type') || part.includes('body part') || part === '—' || part === 'N/A') return null;
+              if (typeL.includes('gunshot')) {
+                return 'Gunshot Wound to ' + part + (distR !== null ? ', estimated range ' + distR + 'm' : '');
+              }
+              if (typeL.includes('blunt force trauma') || typeL.includes('stab wound')) {
+                return type.replace(/\b\w/g, c => c.toUpperCase()) + ' to ' + part;
+              }
+              return type + ' to ' + part + (distR !== null ? ' (' + distR + 'm)' : '');
+            }).filter(Boolean);
+          }
+          if (Array.isArray(morgue?.bullets) && morgue.bullets.length > 0) {
+            updates.casings = morgue.bullets.map(b => 'Bullet found with striation marks - ' + (b.type || '') + ' #' + (b.id || ''));
+            updates.RadiologyResult = morgue.bullets.length + ' projectiles/slugs were identified via fluoroscopy and recovered during the autopsy.';
+          }
+          if (!morgue) {
+            showNotification('Cannot load case - no morgue record found for this decedent. Upload the body via the PS Logger or Morgue Manager first.', 'error');
+            return;
+          }
+          showNotification('Case loaded from morgue - if the body doesn\'t match the scene, use the Morgue Data Import Tool to find the correct record. Review and generate BBCode.', 'success');
+          setFormValues(prev => ({ ...prev, ...updates }));
+        }}
+      />
 
       {/* ── Bot Deploy Consent Modal ── */}
       <BotDeployOptInModal

@@ -3,24 +3,15 @@
  * that were previously handled by Firebase Cloud Functions.
  *
  * Wired into index.js on bot startup.
- * Runs on a 60-minute cycle: health check → morgue check → data cleanup.
+ * Runs on a 3-hour cycle: health check → morgue check → data cleanup.
  */
 
 import firebase from './firebase.js';
-
-const SYSTEM_WEBHOOK_URL = process.env.DEPLOY_WEBHOOK_URL;
+import { sendLogMessage } from './logChannel.js';
 
 async function sendWebhook(content, embed) {
-    if (!SYSTEM_WEBHOOK_URL) return;
     try {
-        const payload = {};
-        if (content) payload.content = content;
-        if (embed) payload.embeds = [embed];
-        await fetch(SYSTEM_WEBHOOK_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-        });
+        await sendLogMessage(content, embed);
     } catch (err) {
         console.error('[MONITOR] ⚠️ Webhook send failed:', err.message);
     }
@@ -352,7 +343,7 @@ export function startSystemMonitor() {
     firebase.init();
     const db = firebase.db;
 
-    console.log('[MONITOR] ✅ System monitor active (60-min cycle).');
+    console.log('[MONITOR] ✅ System monitor active (3-hour cycle).');
 
     // Run immediately on startup
     const runAll = async () => {
@@ -375,7 +366,7 @@ export function startSystemMonitor() {
         }
     };
 
-    // Run now, then every 60 minutes
+    // Run now, then every 3 hours
     runAll();
-    setInterval(runAll, 60 * 60 * 1000);
+    setInterval(runAll, 3 * 60 * 60 * 1000);
 }

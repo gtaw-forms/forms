@@ -184,6 +184,24 @@ class ForumClient {
         return existsSync(SESSION_FILE);
     }
 
+    /**
+     * Validate the current PHMC session is alive. If not, force a fresh login.
+     * Call this before any deploy operation to prevent "not permitted" errors from stale sessions.
+     */
+    async ensureLoggedIn() {
+        await this.ensureBrowser();
+        const domain = process.env.FORUM_BASE_URL || 'https://phmc.gta.world';
+        await this.page.goto(`${domain}/ucp.php`, { waitUntil: 'networkidle', timeout: 120000 }).catch(() => {});
+        await this.page.waitForTimeout(2000);
+        const stillValid = !this.page.url().includes('mode=login');
+        if (!stillValid) {
+            console.log('[FORUM] ⚠️ Session expired — forcing re-login before deploy...');
+            await this.login(null, null, { force: true, baseUrl: domain });
+        } else {
+            console.log('[FORUM] ✅ Session valid');
+        }
+    }
+
     // ── Authentication ──
 
     async login(overrideUsername, overridePassword, { force = false, baseUrl: baseUrlOverride } = {}) {
@@ -344,27 +362,48 @@ class ForumClient {
         await this.page.goto(postUrl, { waitUntil: 'networkidle', timeout: 180000 });
         await this.page.waitForTimeout(2000);
 
-        // Fill subject
+        // Check if we got redirected to a login page (session expired) BEFORE filling form
+        const pageUrl = this.page.url();
+        let pageTitle = await this.page.title().catch(() => '(no title)');
+        if (pageUrl.includes('mode=login') || pageTitle.toLowerCase().includes('login')) {
+            console.log(`[FORUM] ⚠️ Login page detected — session expired, logging in directly...`);
+            // Fill and submit the login form directly on this page (no lock re-entry)
+            await this.page.fill('input[name="username"]', this.username, { timeout: 10000 });
+            await this.page.fill('input[name="password"]', this.password, { timeout: 10000 });
+            await this.page.evaluate(() => {
+                const btn = document.querySelector('input[type="submit"]') || document.querySelector('button[type="submit"]');
+                if (btn) btn.click();
+            });
+            await this.page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
+            await this.page.waitForTimeout(3000);
+            // Save the new session for future use
+            await this.saveSession();
+            pageTitle = await this.page.title().catch(() => '(no title)');
+            console.log(`[FORUM] 🔍 After re-login — page title: "${pageTitle}", URL: ${this.page.url()}`);
+
+            // Wait for the posting form to fully render after login redirect
+            await this.page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
+            await this.page.waitForTimeout(2000);
+        }
+
+        await this.page.waitForTimeout(1000);
+
+        // Fill subject and message (now we're definitely on the posting page, not login)
         await this.page.evaluate((s) => {
             const el = document.querySelector('input[name="subject"]');
             if (el) { el.value = s; el.dispatchEvent(new Event('input', { bubbles: true })); }
         }, subject);
-
-        // Fill message
         await this.page.evaluate((msg) => {
             const ta = document.querySelector('textarea[name="message"]');
             if (ta) { ta.value = msg; ta.dispatchEvent(new Event('input', { bubbles: true })); return; }
             const ed = document.querySelector('div[contenteditable="true"]');
             if (ed) { ed.textContent = msg; ed.dispatchEvent(new Event('input', { bubbles: true })); }
         }, bbCode);
+        await this.page.waitForTimeout(500);
 
-        await this.page.waitForTimeout(1000);
-
-        // Debug: dump page state for troubleshooting
-        const pageUrl = this.page.url();
-        const pageTitle = await this.page.title().catch(() => '(no title)');
+        // Debug: dump page state
         const pageHtml = await this.page.evaluate(() => document.body?.innerHTML?.slice(0, 3000) || '(no body)').catch(() => '(error reading HTML)');
-        console.log(`[FORUM] 🔍 Page URL: ${pageUrl}`);
+        console.log(`[FORUM] 🔍 Page URL: ${this.page.url()}`);
         console.log(`[FORUM] 🔍 Page title: ${pageTitle}`);
 
         // Submit
@@ -452,7 +491,7 @@ class ForumClient {
 
         // Fill message
         const msgOk = await this.page.evaluate((msg) => {
-            const ta = document.querySelector('textarea[name="message"]');
+            const ta = document.querySelector('textarea[name=\"message\"]');
             if (ta) { ta.value = msg; ta.dispatchEvent(new Event('input', { bubbles: true })); return true; }
             const ed = document.querySelector('div[contenteditable="true"]');
             if (ed) { ed.textContent = msg; ed.dispatchEvent(new Event('input', { bubbles: true })); return true; }
@@ -650,6 +689,101 @@ class ForumClient {
     }
 
     /**
+     * Search any phpBB forum by keyword. Generic alternative to searchForPatientTopic / searchCaseManagement.
+     *
+     * @param {string} searchTerm - Keyword to search for
+     * @param {number|string} forumId - Forum section ID to search in
+     * @param {object} [options]
+     * @param {string} [options.baseUrl] - Forum base URL (defaults to phmc.gta.world)
+     * @returns {Promise<Array<{topicId: number, title: string}>>}
+     */
+    async searchForum(searchTerm, forumId, { baseUrl } = {}) {
+        const lock = await this._acquire('searchForum');
+        try {
+            await this.ensureBrowser();
+            const domain = baseUrl || this.baseUrl;
+            const encoded = encodeURIComponent(searchTerm);
+            const forumFilter = forumId != null ? `&fid[]=${forumId}` : '';
+            const searchUrl = `${domain}/search.php?keywords=${encoded}&terms=all${forumFilter}&sc=1&sf=all&sr=posts&sk=t&sd=d&st=0&ch=300&t=0&submit=Search`;
+
+            console.log(`[FORUM] 🔍 Searching ${forumId ? `forum f=${forumId}` : 'all forums'} for "${searchTerm}"...`);
+            console.log(`[FORUM] 🌐 URL: ${searchUrl}`);
+            try {
+                await this.page.goto(searchUrl, { waitUntil: 'networkidle', timeout: 180000 });
+            } catch (navErr) {
+                console.log(`[FORUM] ⚠️ Navigation error (${navErr.message}), retrying with lenient wait...`);
+                await this.page.goto(searchUrl, { waitUntil: 'load', timeout: 180000 });
+            }
+            await this.page.waitForTimeout(2000);
+
+            const pageTitle = await this.page.title().catch(() => '(no title)');
+            const finalUrl = this.page.url();
+            console.log(`[FORUM] 📄 Page: "${pageTitle}" — ${finalUrl}`);
+
+            // Debug: check page content for understanding what the search returned
+            const pageText = await this.page.evaluate(() => document.body?.innerText?.slice(0, 500) || '').catch(() => '');
+            const pageHtmlSnippet = await this.page.evaluate(() => document.body?.innerHTML?.slice(0, 3000) || '').catch(() => '');
+            const hasNoResults = pageText.includes('No suitable matches were found');
+            const hasViewtopicLinks = pageHtmlSnippet.includes('viewtopic.php');
+
+            if (hasNoResults && !hasViewtopicLinks) {
+                console.log(`[FORUM] 📭 No results for "${searchTerm}" in f=${forumId}`);
+                console.log(`[FORUM] 🔍 Page text preview: "${pageText.slice(0, 200)}"`);
+                return [];
+            }
+
+            // If we get here but saw "no results" text, the page might have both — log it
+            if (hasNoResults) {
+                console.log(`[FORUM] ⚠️ 'No results' text found but viewtopic links exist — parsing anyway`);
+            }
+
+            // Log all visible topic titles for debugging (try multiple selectors for different phpBB themes)
+            const allTitles = await this.page.evaluate(() => {
+                const selectors = 'a.topictitle, a.topictitle2, a[href*="viewtopic.php"], .topictitle a';
+                const links = document.querySelectorAll(selectors);
+                return Array.from(links).map(a => ({ href: a.getAttribute('href') || '', text: a.textContent?.trim() || '' }));
+            }).catch(() => []);
+            console.log(`[FORUM] 📋 Raw results (${allTitles.length}): ${allTitles.map(t => `"${t.text}"`).join(', ') || 'none'}`);
+
+            const results = await this.page.evaluate((term) => {
+                const found = [];
+                const selectors = 'a.topictitle, a.topictitle2, a[href*="viewtopic.php"], .topictitle a';
+                const links = document.querySelectorAll(selectors);
+                links.forEach((link) => {
+                    const href = link.getAttribute('href') || '';
+                    const match = href.match(/[?&]t=(\d+)/);
+                    if (match) {
+                        found.push({
+                            topicId: parseInt(match[1], 10),
+                            title: link.textContent?.trim() || '',
+                        });
+                    }
+                });
+                return found;
+            }, searchTerm).catch(() => []);
+
+            // Dedup by topicId — same topic can match multiple link selectors
+            const seenIds = new Set();
+            const deduped = results.filter(r => {
+                if (seenIds.has(r.topicId)) return false;
+                seenIds.add(r.topicId);
+                return true;
+            });
+
+            if (deduped.length === 0 && !hasNoResults) {
+                // Page loaded, no "no results" text, but we found no links — dump HTML for debugging
+                console.log(`[FORUM] ⚠️ Page loaded but no topic links found. Dumping HTML for debugging:`);
+                console.log(`[FORUM] 🔍 ${pageHtmlSnippet.slice(0, 1500)}`);
+            }
+
+            console.log(`[FORUM] ✅ Found ${deduped.length} result(s) in f=${forumId} for "${searchTerm}"`);
+            return deduped;
+        } finally {
+            lock.release();
+        }
+    }
+
+    /**
      * Search the Case Management forum (f=266) for topics by decedent name.
      * Used by the Autopsy auto-poster to find the case thread to reply to.
      * Returns all matching topics sorted by most recent activity first,
@@ -659,7 +793,7 @@ class ForumClient {
      * @returns {Promise<Array<{topicId: number, title: string}>>}
      */
     async searchCaseManagement(searchTerm) {
-        const lock = await this._acquire('searchCaseManagement');
+        let lock = await this._acquire('searchCaseManagement');
         try {
             await this.ensureBrowser();
 
@@ -668,12 +802,42 @@ class ForumClient {
             console.log(`[FORUM] 🔍 Searching Case Management for "${searchTerm}"...`);
             console.log(`[FORUM] 🌐 ${searchUrl}`);
 
-            await this.page.goto(searchUrl, { waitUntil: 'networkidle', timeout: 180000 });
+            try {
+                await this.page.goto(searchUrl, { waitUntil: 'networkidle', timeout: 180000 });
+            } catch (navErr) {
+                console.log(`[FORUM] ⚠️ Navigate error (${navErr.message}), retrying with lenient wait...`);
+                await this.page.goto(searchUrl, { waitUntil: 'load', timeout: 180000 });
+            }
             await this.page.waitForTimeout(2000);
 
             const pageUrl = this.page.url();
             const pageTitle = await this.page.title().catch(() => '(no title)');
             console.log(`[FORUM] 🔍 Search page: "${pageTitle}" — ${pageUrl}`);
+
+            // Check if session expired — "not permitted to use the search system" means not logged in
+            const notPermitted = await this.page.evaluate(() =>
+                document.body?.innerText?.includes('not permitted to use the search system') ?? false
+            ).catch(() => false);
+
+            if (notPermitted) {
+                console.log('[FORUM] ⚠️ Session expired — re-authenticating and retrying search...');
+                // Release the global lock before calling login() to avoid deadlock
+                lock.release();
+                await this.login(null, null, { force: true, baseUrl: 'https://phmc.gta.world' });
+                // Re-acquire lock before continuing
+                lock = await this._acquire('searchCaseManagement');
+                await this.ensureBrowser();
+                try {
+                    await this.page.goto(searchUrl, { waitUntil: 'networkidle', timeout: 180000 });
+                } catch (navErr) {
+                    console.log(`[FORUM] ⚠️ Retry navigate error (${navErr.message}), using lenient wait...`);
+                    await this.page.goto(searchUrl, { waitUntil: 'load', timeout: 180000 });
+                }
+                await this.page.waitForTimeout(2000);
+                const pageUrl2 = this.page.url();
+                const pageTitle2 = await this.page.title().catch(() => '(no title)');
+                console.log(`[FORUM] 🔍 Retry search page: "${pageTitle2}" — ${pageUrl2}`);
+            }
 
             // Check if no results
             const noResults = await this.page.evaluate(() =>
@@ -688,7 +852,8 @@ class ForumClient {
             // Parse ALL topic links from search results, preferring name matches
             const results = await this.page.evaluate((term) => {
                 const found = [];
-                const links = document.querySelectorAll('a.topictitle');
+                const sel = 'a.topictitle, a.topictitle2, a[href*="viewtopic.php"], .topictitle a';
+                const links = document.querySelectorAll(sel);
                 links.forEach((link) => {
                     const href = link.getAttribute('href') || '';
                     const match = href.match(/[?&]t=(\d+)/);
@@ -707,17 +872,35 @@ class ForumClient {
                 return found.map(({ topicId, title }) => ({ topicId, title }));
             }, searchTerm).catch(() => []);
 
-            if (results.length > 0) {
-                console.log(`[FORUM] ✅ Found ${results.length} case thread(s) for "${searchTerm}"`);
-                console.log(`[FORUM] 📋 Best match: #${results[0].topicId} — "${results[0].title}"`);
-                if (results.length > 1) {
-                    console.log(`[FORUM] ⚠️ ${results.length - 1} additional match(es) — using most recent`);
+            // Dedup by topicId — search results can include duplicate links to the same topic
+            const seenIds = new Set();
+            const deduped = results.filter(r => {
+                if (seenIds.has(r.topicId)) return false;
+                seenIds.add(r.topicId);
+                return true;
+            });
+
+            if (deduped.length > 0) {
+                console.log(`[FORUM] ✅ Found ${deduped.length} case thread(s) for "${searchTerm}"`);
+                console.log(`[FORUM] 📋 Best match: #${deduped[0].topicId} — "${deduped[0].title}"`);
+                if (deduped.length > 1) {
+                    console.log(`[FORUM] ⚠️ ${deduped.length - 1} additional match(es) — using most recent`);
                 }
             } else {
+                // Debug: dump raw page content to understand the search result format
                 console.log('[FORUM] ⚠️ Search returned results but could not parse topic links');
+                const pageText = await this.page.evaluate(() => document.body?.innerText?.slice(0, 500) || '').catch(() => '');
+                const htmlSnippet = await this.page.evaluate(() => document.body?.innerHTML?.slice(0, 2000) || '').catch(() => '');
+                const allTitles = await this.page.evaluate(() => {
+                    const links = document.querySelectorAll('a.topictitle, a.topictitle2, a[href*="viewtopic.php"], .topictitle a');
+                    return Array.from(links).map(a => ({ href: a.getAttribute('href') || '', text: a.textContent?.trim() || '' }));
+                }).catch(() => []);
+                console.log(`[FORUM] 📋 All found links (${allTitles.length}): ${JSON.stringify(allTitles.slice(0, 10))}`);
+                console.log(`[FORUM] 🔍 Page text preview: "${pageText.slice(0, 300)}"`);
+                console.log(`[FORUM] 🔍 HTML snippet: ${htmlSnippet.slice(0, 1500)}`);
             }
 
-            return results;
+            return deduped;
         } finally {
             lock.release();
         }
@@ -731,14 +914,15 @@ class ForumClient {
      * @param {string} bbCode - The BBCode message to post
      * @returns {Promise<{ok: boolean, url: string|null}>}
      */
-    async replyToTopic(topicId, forumId, bbCode, { dryRun = true } = {}) {
+    async replyToTopic(topicId, forumId, bbCode, { dryRun = true, baseUrl } = {}) {
         const lock = await this._acquire('replyToTopic');
         let ok;
         let finalUrl;
         try {
         await this.ensureBrowser();
 
-        const replyUrl = `https://phmc.gta.world/posting.php?mode=reply&f=${forumId}&t=${topicId}`;
+        const domain = baseUrl || 'https://phmc.gta.world';
+        const replyUrl = `${domain}/posting.php?mode=reply&f=${forumId}&t=${topicId}`;
         console.log(`[FORUM] 📝 Replying to topic #${topicId} (f=${forumId})...`);
         console.log(`[FORUM] 🌐 ${replyUrl}`);
 
@@ -757,7 +941,7 @@ class ForumClient {
 
         // Fill the message body
         const msgOk = await this.page.evaluate((msg) => {
-            const ta = document.querySelector('textarea[name="message"]');
+            const ta = document.querySelector('textarea[name=\"message\"]');
             if (ta) { ta.value = msg; ta.dispatchEvent(new Event('input', { bubbles: true })); return true; }
             const ed = document.querySelector('div[contenteditable="true"]');
             if (ed) { ed.textContent = msg; ed.dispatchEvent(new Event('input', { bubbles: true })); return true; }
@@ -796,16 +980,450 @@ class ForumClient {
             return { ok: false, url: pageUrl, reason: result.reason };
         }
 
-        await this.page.waitForTimeout(5000);
+        await this.page.waitForTimeout(3000);
         finalUrl = this.page.url();
-        ok = finalUrl.includes('viewtopic.php');
+
+        // Handle phpBB preview: if still on posting page after submit, click the real Submit button
+        if (!finalUrl.includes('viewtopic.php') && finalUrl.includes('posting.php')) {
+            console.log(`[FORUM] 🔄 Preview detected — re-submitting reply...`);
+
+            // Strategy 1: Click the Submit button by name="post"
+            let reSubmitted = false;
+            try {
+                reSubmitted = await this.page.evaluate(() => {
+                    const form = document.querySelector('form[action*="posting.php"]');
+                    if (!form) return false;
+                    const btn = form.querySelector(
+                        'input[type="submit"][name="post"], ' +
+                        'button[type="submit"][name="post"]'
+                    );
+                    if (!btn) return false;
+                    btn.click();
+                    return true;
+                });
+            } catch {}
+
+            if (reSubmitted) {
+                try {
+                    await Promise.race([
+                        this.page.waitForNavigation({ timeout: 20000 }),
+                        this.page.waitForTimeout(20000),
+                    ]);
+                } catch {}
+                finalUrl = this.page.url();
+            }
+
+            // Strategy 2: If still on posting.php, try different button selectors
+            if (!finalUrl.includes('viewtopic.php') && finalUrl.includes('posting.php')) {
+                console.log(`[FORUM] 🔄 Button click didn't navigate — trying alternative selectors...`);
+                try {
+                    await this.page.evaluate(() => {
+                        // Broader selectors for phpBB themes
+                        const btn =
+                            document.querySelector('#postform input[type="submit"][name="post"]') ||
+                            document.querySelector('input[type="submit"][value="Submit"]') ||
+                            document.querySelector('input[type="submit"][accesskey="s"]') ||
+                            document.querySelector('button[type="submit"][name="post"]') ||
+                            document.querySelector('#preview + input[type="submit"]') ||
+                            document.querySelector('input[name="post"][tabindex]');
+                        if (btn) { btn.click(); return true; }
+                        // Last resort: submit the form directly
+                        const form = document.querySelector('form[action*="posting.php"]');
+                        if (form) { form.submit(); }
+                        return false;
+                    });
+                    await Promise.race([
+                        this.page.waitForNavigation({ timeout: 20000 }),
+                        this.page.waitForTimeout(20000),
+                    ]);
+                } catch {}
+                finalUrl = this.page.url();
+            }
+
+            // Strategy 3: If still on posting.php, check page for success indicators
+            if (!finalUrl.includes('viewtopic.php') && !finalUrl.includes('p=')) {
+                const pageText = await this.page.evaluate(() => document.body.innerText || '').catch(() => '');
+                if (pageText.includes('posted successfully') || pageText.includes('Your message has been sent') || pageText.includes('has been submitted')) {
+                    console.log(`[FORUM] ✅ Page content indicates success despite URL`);
+                    ok = true;
+                }
+            }
+        }
+
+        ok = ok || finalUrl.includes('viewtopic.php') || finalUrl.includes('p=');
         console.log(`[FORUM] 📬 Reply ${ok ? '✅ Posted' : '⚠️ Unknown'} — ${finalUrl}`);
         } finally { lock.release(); }
 
         return { ok, url: ok ? finalUrl : null };
     }
 
-    // ── Forum Topic Listing ──
+    // ── Topic BBCode Fetcher ──
+
+    /**
+     * Navigate to a topic and extract the first post's BBCode from the quote page.
+     * Used by the autopsy parser to extract structured fields from request posts.
+     */
+    async getTopicBbcode(topicId, forumId, { baseUrl } = {}) {
+        const lock = await this._acquire('getTopicBbcode');
+        try {
+            await this.ensureBrowser();
+            const domain = baseUrl || this.baseUrl;
+            // Step 1: Navigate to the topic to get the post ID
+            const topicPage = `${domain}/viewtopic.php?t=${topicId}`;
+            await this.page.goto(topicPage, { waitUntil: 'domcontentloaded', timeout: 180000 });
+            await this.page.waitForTimeout(2000);
+            const postId = await this.page.evaluate(() => {
+                const links = document.querySelectorAll('a[href*="#p"]');
+                for (const link of links) {
+                    const m = link.getAttribute('href') || '';
+                    const p = m.match(/[#&?]p=(\d+)/);
+                    if (p) return p[1];
+                }
+                return null;
+            }).catch(() => null);
+            const qUrl = `${domain}/posting.php?mode=quote&f=${forumId}&p=${postId || topicId}`;
+            await this.page.goto(qUrl, { waitUntil: 'networkidle', timeout: 180000 });
+            await this.page.waitForTimeout(2000);
+
+            // Handle login redirect
+            let pUrl = this.page.url();
+            let pTitle = await this.page.title().catch(() => '');
+            if (pUrl.includes('mode=login') || pTitle.toLowerCase().includes('login')) {
+                console.log('[FORUM] ⚠️ Login on quote fetch — re-authenticating');
+                await this.page.fill('input[name="username"]', this.username, { timeout: 10000 });
+                await this.page.fill('input[name="password"]', this.password, { timeout: 10000 });
+                await this.page.evaluate(() => {
+                    const btn = document.querySelector('input[type="submit"]') || document.querySelector('button[type="submit"]');
+                    if (btn) btn.click();
+                });
+                await this.page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
+                await this.page.waitForTimeout(3000);
+                await this.saveSession();
+                await this.page.goto(qUrl, { waitUntil: 'networkidle', timeout: 180000 });
+                await this.page.waitForTimeout(2000);
+            }
+
+            const bbcode = await this.page.evaluate(() => {
+                const ta = document.querySelector('textarea[name="message"]');
+                if (ta && ta.value.trim()) return ta.value;
+                const all = document.querySelectorAll('textarea');
+                for (const t of all) { if (t.value && t.value.length > 50) return t.value; }
+                return null;
+            }).catch(() => null);
+            if (!bbcode) {
+                const pageTitle = await this.page.title().catch(() => '?');
+                const pageUrl = this.page.url();
+                console.log(`[FORUM] ⚠️ BBCode empty — page: "${pageTitle}" — ${pageUrl}`);
+            }
+            console.log(`[FORUM] 📄 Got topic #${topicId} BBCode (${(bbcode || '').length} chars)`);
+            return bbcode;
+        } finally { lock.release(); }
+    }
+
+    // ── Edit Topic Title ──
+
+    /**
+     * Edit the title of a topic's first post. Used to update case status after assignment.
+     * Navigates to the edit page, changes the subject, and submits.
+     */
+    async editTopicTitle(topicId, forumId, newTitle, { baseUrl } = {}) {
+        const lock = await this._acquire('editTopicTitle');
+        try {
+            await this.ensureBrowser();
+            const domain = baseUrl || this.baseUrl;
+            const topicUrl = `${domain}/viewtopic.php?t=${topicId}`;
+            await this.page.goto(topicUrl, { waitUntil: 'domcontentloaded', timeout: 180000 });
+            await this.page.waitForTimeout(2000);
+
+            const postId = await this.page.evaluate(() => {
+                const links = document.querySelectorAll('a[href*="#p"]');
+                for (const link of links) {
+                    const m = link.getAttribute('href') || '';
+                    const p = m.match(/[#&?]p=(\d+)/);
+                    if (p) return p[1];
+                }
+                return null;
+            }).catch(() => null);
+
+            if (!postId) {
+                console.log(`[FORUM] ❌ Could not find post ID for topic #${topicId}`);
+                return { ok: false };
+            }
+
+            const editUrl = `${domain}/posting.php?mode=edit&f=${forumId}&p=${postId}`;
+            console.log(`[FORUM] ✏️ Editing topic #${topicId} title → "${newTitle}"`);
+            await this.page.goto(editUrl, { waitUntil: 'networkidle', timeout: 180000 });
+            await this.page.waitForTimeout(2000);
+
+            // Handle login redirect
+            let eUrl = this.page.url();
+            let eTitle = await this.page.title().catch(() => '');
+            if (eUrl.includes('mode=login') || eTitle.toLowerCase().includes('login')) {
+                console.log('[FORUM] ⚠️ Login on edit — re-authenticating');
+                await this.page.fill('input[name="username"]', this.username, { timeout: 10000 });
+                await this.page.fill('input[name="password"]', this.password, { timeout: 10000 });
+                await this.page.evaluate(() => {
+                    const btn = document.querySelector('input[type="submit"]') || document.querySelector('button[type="submit"]');
+                    if (btn) btn.click();
+                });
+                await this.page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
+                await this.page.waitForTimeout(3000);
+                await this.saveSession();
+                await this.page.goto(editUrl, { waitUntil: 'networkidle', timeout: 180000 });
+                await this.page.waitForTimeout(2000);
+            }
+
+            // Fill the new subject
+            await this.page.evaluate((s) => {
+                const el = document.querySelector('input[name="subject"]');
+                if (el) { el.value = s; el.dispatchEvent(new Event('input', { bubbles: true })); }
+            }, newTitle);
+
+            await this.page.waitForTimeout(500);
+
+            // Submit
+            const result = await this.page.evaluate(() => {
+                const form = document.querySelector('form[action*="posting.php"]');
+                if (!form) return { ok: false, reason: 'No form' };
+                const btn = form.querySelector(
+                    'input[type="submit"][name="post"], ' +
+                    'input[type="submit"][value="Submit"], ' +
+                    'button[type="submit"][name="post"]'
+                );
+                if (!btn) return { ok: false, reason: 'No button' };
+                btn.click();
+                return { ok: true };
+            });
+
+            if (!result.ok) {
+                console.log(`[FORUM] ❌ ${result.reason}`);
+                return { ok: false };
+            }
+
+            await this.page.waitForTimeout(5000);
+            const finalUrl = this.page.url();
+            const success = finalUrl.includes('viewtopic.php');
+            console.log(`[FORUM] ✏️ Title edit ${success ? '✅' : '⚠️'} — ${finalUrl}`);
+            return { ok: success, url: success ? finalUrl : null };
+        } finally {
+            lock.release();
+        }
+    }
+
+    /**
+     * Fetch the username of the first post author in a topic.
+     * Used by the completion flow to DM the correct forum user (not the BBCode name).
+     * @param {number|string} topicId
+     * @param {{ baseUrl?: string }} [opts]
+     * @returns {Promise<string|null>}
+     */
+    async getTopicPoster(topicId, { baseUrl } = {}) {
+        const lock = await this._acquire('getTopicPoster');
+        try {
+            await this.ensureBrowser();
+            const domain = baseUrl || this.baseUrl;
+            const url = `${domain}/viewtopic.php?t=${topicId}`;
+            await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 180000 });
+            await this.page.waitForTimeout(2000);
+
+            const username = await this.page.evaluate(() => {
+                // phpBB places author links in the first post
+                const link = document.querySelector('a.username, a.username-coloured');
+                return link ? link.textContent?.trim() || null : null;
+            }).catch(() => null);
+
+            console.log(`[FORUM] 👤 Topic #${topicId} poster: "${username || 'not found'}"`);
+            return username;
+        } catch (err) {
+            console.error(`[FORUM] ❌ Failed to get topic poster for #${topicId}: ${err.message}`);
+            return null;
+        } finally {
+            lock.release();
+        }
+    }
+
+    // ── Group Members ──
+
+    /**
+     * Fetch usernames and user IDs from a phpBB group member list page.
+     * Used to assign autopsy cases to Medical Examiners.
+     *
+     * @param {number|string} groupId - phpBB group ID (e.g. 50 for Medical Examiners)
+     * @param {object} [options]
+     * @param {string} [options.baseUrl] - Forum base URL
+     * @param {string[]} [options.exclude] - Usernames to exclude from results
+     * @returns {Promise<Array<{name: string, userId: string|null}>>}
+     */
+    async getGroupMembers(groupId, { baseUrl, exclude = [] } = {}) {
+        const lock = await this._acquire('getGroupMembers');
+        try {
+            await this.ensureBrowser();
+            const domain = baseUrl || this.baseUrl;
+            const url = `${domain}/memberlist.php?mode=group&g=${groupId}`;
+            console.log(`[FORUM] 👥 Fetching group members for g=${groupId}...`);
+            await this.page.goto(url, { waitUntil: 'networkidle', timeout: 180000 });
+            await this.page.waitForTimeout(2000);
+
+            const members = await this.page.evaluate(() => {
+                const results = [];
+                const links = document.querySelectorAll('a.username, a.username-coloured');
+                links.forEach((link) => {
+                    const name = link.textContent?.trim();
+                    const href = link.getAttribute('href') || '';
+                    const uMatch = href.match(/[?&]u=(\d+)/);
+                    const userId = uMatch ? uMatch[1] : null;
+                    if (name) results.push({ name, userId });
+                });
+                return results;
+            }).catch(() => []);
+
+            console.log(`[FORUM] 👥 Group members: [${members.map(m => `"${m.name}"`).join(', ')}]`);
+
+            // Deduplicate and filter exclusions
+            const seen = new Set();
+            const filtered = members.filter(({ name }) => {
+                if (!name || seen.has(name)) return false;
+                if (exclude.some((e) => name.toLowerCase() === e.toLowerCase())) return false;
+                seen.add(name);
+                return true;
+            });
+
+            console.log(`[FORUM] 👥 Found ${filtered.length} group members (${members.length} total, ${exclude.length} excluded)`);
+            return filtered;
+        } finally {
+            lock.release();
+        }
+    }
+
+    // ── Quote & Repost (for auto case creation) ──
+
+    /**
+     * Navigate to a topic's quote page, extract the quoted BBCode, then post it
+     * as a new topic in a different forum. Used by the autopsy monitor to create
+     * Case Management entries from autopsy requests.
+     *
+     * @param {number} sourceTopicId - Topic to quote from
+     * @param {number} sourceForumId - Forum the source topic is in
+     * @param {number} targetForumId - Forum to post the new topic in
+     * @param {string} title - Title for the new topic
+     * @param {object} [options]
+     * @param {string} [options.baseUrl] - Forum base URL
+     * @returns {Promise<{ok: boolean, url?: string}>}
+     */
+            async quoteAndPost(sourceTopicId, sourceForumId, targetForumId, title, { baseUrl } = {}) {
+        const lock = await this._acquire("quoteAndPost");
+        try {
+            await this.ensureBrowser();
+            const domain = baseUrl || "https://phmc.gta.world";
+
+            const topicPage = domain + "/viewtopic.php?t=" + sourceTopicId;
+            console.log("[FORUM] Fetching post ID from topic #" + sourceTopicId);
+            await this.page.goto(topicPage, { waitUntil: "domcontentloaded", timeout: 180000 });
+            await this.page.waitForTimeout(2000);
+
+            const postId = await this.page.evaluate(() => {
+                const links = document.querySelectorAll('a[href*="#p"]');
+                for (const link of links) {
+                    const m = link.getAttribute("href") || "";
+                    const p = m.match(/[#&?]p=(\d+)/);
+                    if (p) return p[1];
+                }
+                return null;
+            }).catch(() => null);
+            console.log("[FORUM] Post ID: " + (postId || "not found"));
+
+            const quoteTarget = postId ? "p=" + postId : "t=" + sourceTopicId;
+            const quoteUrl = domain + "/posting.php?mode=quote&" + quoteTarget;
+            console.log("[FORUM] Opening quote page...");
+            await this.page.goto(quoteUrl, { waitUntil: "networkidle", timeout: 180000 });
+            await this.page.waitForTimeout(2000);
+
+            let qUrl = this.page.url();
+            let qTitle = await this.page.title().catch(() => "");
+            if (qUrl.includes("mode=login") || qTitle.toLowerCase().includes("login")) {
+                console.log("[FORUM] Login on quote, re-authing");
+                await this.page.fill('input[name="username"]', this.username, { timeout: 10000 });
+                await this.page.fill('input[name="password"]', this.password, { timeout: 10000 });
+                await this.page.evaluate(() => {
+                    const btn = document.querySelector('input[type="submit"]') || document.querySelector('button[type="submit"]');
+                    if (btn) btn.click();
+                });
+                await this.page.waitForLoadState("networkidle", { timeout: 30000 }).catch(() => {});
+                await this.page.waitForTimeout(3000);
+                await this.saveSession();
+                await this.page.goto(quoteUrl, { waitUntil: "networkidle", timeout: 180000 });
+                await this.page.waitForTimeout(2000);
+            }
+
+            const quotedBBCode = await this.page.evaluate(() => {
+                const ta = document.querySelector('textarea[name="message"]');
+                if (ta && ta.value.trim()) return ta.value;
+                const allTas = document.querySelectorAll("textarea");
+                for (const t of allTas) { if (t.value && t.value.length > 50) return t.value; }
+                return null;
+            });
+
+            if (!quotedBBCode) {
+                console.log("[FORUM] Could not extract quote");
+                return { ok: false };
+            }
+            console.log("[FORUM] Got quote (" + quotedBBCode.length + " chars)");
+
+            const postUrl = domain + "/posting.php?mode=post&f=" + targetForumId;
+            console.log("[FORUM] Posting to f=" + targetForumId + " - " + title);
+            await this.page.goto(postUrl, { waitUntil: "networkidle", timeout: 180000 });
+            await this.page.waitForTimeout(2000);
+
+            let pUrl = this.page.url();
+            let pTitle = await this.page.title().catch(() => "");
+            if (pUrl.includes("mode=login") || pTitle.toLowerCase().includes("login")) {
+                console.log("[FORUM] Login on post, re-authing");
+                await this.page.fill('input[name="username"]', this.username, { timeout: 10000 });
+                await this.page.fill('input[name="password"]', this.password, { timeout: 10000 });
+                await this.page.evaluate(() => {
+                    const btn = document.querySelector('input[type="submit"]') || document.querySelector('button[type="submit"]');
+                    if (btn) btn.click();
+                });
+                await this.page.waitForLoadState("networkidle", { timeout: 30000 }).catch(() => {});
+                await this.page.waitForTimeout(3000);
+                await this.saveSession();
+                await this.page.goto(postUrl, { waitUntil: "networkidle", timeout: 180000 });
+                await this.page.waitForTimeout(2000);
+            }
+
+            await this.page.evaluate((s) => {
+                const el = document.querySelector('input[name="subject"]');
+                if (el) { el.value = s; el.dispatchEvent(new Event("input", { bubbles: true })); }
+            }, title);
+            await this.page.evaluate((msg) => {
+                const ta = document.querySelector('textarea[name="message"]');
+                if (ta) { ta.value = msg; ta.dispatchEvent(new Event("input", { bubbles: true })); }
+            }, quotedBBCode);
+            await this.page.waitForTimeout(1000);
+
+            const submitResult = await this.page.evaluate(() => {
+                const form = document.querySelector('form[action*="posting.php"]');
+                if (!form) return { ok: false, reason: "No form" };
+                const btn = form.querySelector(
+                    'input[type="submit"][name="post"], ' +
+                    'input[type="submit"][value="Submit"], ' +
+                    'button[type="submit"][name="post"]'
+                );
+                if (!btn) return { ok: false, reason: "No button" };
+                btn.click();
+                return { ok: true };
+            });
+            if (!submitResult.ok) { console.log("[FORUM] " + submitResult.reason); return { ok: false }; }
+
+            await this.page.waitForTimeout(5000);
+            const finalUrl = this.page.url();
+            const success = finalUrl.includes("viewtopic.php");
+            console.log("[FORUM] New topic " + (success ? "created" : "unknown") + " - " + finalUrl);
+            return { ok: success, url: success ? finalUrl : null };
+        } finally {
+            lock.release();
+        }
+    }// ── Forum Topic Listing ──
 
     /**
      * Fetch all topics from a forum page with their IDs and titles.
@@ -844,7 +1462,7 @@ class ForumClient {
 
             const topics = await page.evaluate(() => {
                 const results = [];
-                const links = document.querySelectorAll('a.topictitle');
+                const sel = 'a.topictitle, a.topictitle2, a[href*="viewtopic.php"], .topictitle a'; const links = document.querySelectorAll(sel);
                 links.forEach((link) => {
                     const href = link.getAttribute('href') || '';
                     const title = link.textContent.trim();
