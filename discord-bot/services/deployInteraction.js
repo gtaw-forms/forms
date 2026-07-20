@@ -8,6 +8,7 @@ import { logFnCall, sendWebhook, logStep } from './deployLogger.js';
 import { state, C } from './deployState.js';
 import { setDeployStatus, markReportComplete } from './deployStatus.js';
 import { crosspostAutopsyToLssd } from './deployLssd.js';
+import { clearAssignment } from './autopsyRotation.js';
 
 const AUTOPSY_DRY_RUN = process.env.AUTOPSY_DRY_RUN !== 'false';
 const COMPLETION_TEMPLATE = `[divbox=white][center][img]https://i.imgur.com/Hxjt4M2.png[/img][/center][/divbox]
@@ -122,6 +123,7 @@ export async function resolveAutopsyTopic(interaction) {
 
             // Mark as completed in autopsy-requested
             let completedTopicId = null;
+            let completedLssdTopicId = null;
             try {
                 const ooc = (reportData.data?.decedentOOC || '').trim();
                 console.log('[AUTO-COMPLETE] Parsed OOC name from report');
@@ -131,17 +133,25 @@ export async function resolveAutopsyTopic(interaction) {
                         arSnap.forEach((child) => {
                             const entry = child.val();
                             completedTopicId = child.key;
+                            completedLssdTopicId = entry.lssdRequestTopicId;
                             if (entry.completedAt) return;
 
                             console.log('[AUTO-COMPLETE] Marking autopsy request as completed in Firebase');
                             const requesterName = entry.parsed?.requesterName || 'Requesting Party';
-                            const caseTitle = entry.caseUrl || entry.title || 'Autopsy Case';
+                            const caseTitle = (entry.caseUrl || entry.title || 'Autopsy Case').replace(/\s*[-–—]\s*UNASSIGNED\s*$/i, '');
                             const completionBb = COMPLETION_TEMPLATE
                                 .replace('CASE_TITLE', caseTitle)
                                 .replace('REQUESTER_NAME', requesterName);
 
                             child.ref.update({ completedAt: new Date().toISOString(), completedBbCode: bbCode });
                             console.log('[AUTO] Marked autopsy-requested #' + child.key + ' as completed');
+
+                            // Decrement the ME's active case count in the rotation tracker
+                            if (entry.assignedTo) {
+                                clearAssignment(db, entry.assignedTo, child.key).catch(err => {
+                                    console.warn(`[AUTO-COMPLETE] rotation tracking error: ${err.message}`);
+                                });
+                            }
 
                             // Reply with completion notice
                             console.log('[AUTO-COMPLETE] Sending completion reply to request topic #' + entry.topicId);
@@ -155,8 +165,11 @@ export async function resolveAutopsyTopic(interaction) {
                             // DM the requester via forum username
                             client.getTopicPoster(entry.topicId, { baseUrl: process.env.FORUM_BASE_URL })
                                 .then((forumUser) => {
-                                    const dmTarget = forumUser || requesterName;
-                                    if (!dmTarget || dmTarget === 'Requesting Party') {
+                                    let dmTarget = requesterName || '';
+                                    if (!dmTarget || dmTarget === 'Requesting Party' || dmTarget.toLowerCase().includes('bot')) {
+                                        dmTarget = forumUser || '';
+                                    }
+                                    if (!dmTarget || dmTarget === 'Requesting Party' || dmTarget.toLowerCase().includes('bot')) {
                                         console.log('[AUTO-COMPLETE] No valid DM target — skipping DM');
                                         return;
                                     }
@@ -179,7 +192,7 @@ export async function resolveAutopsyTopic(interaction) {
 
             // LSSD cross-post
             console.log('[AUTO-COMPLETE] LSSD cross-post triggered');
-            crosspostAutopsyToLssd(reportData, bbCode, completedTopicId, db).catch(() => {});
+            crosspostAutopsyToLssd(reportData, bbCode, completedTopicId, db, completedLssdTopicId).catch(() => {});
         } else {
             await logStep(' Autopsy Posted But Status Update Failed', 'Reply was posted at [View Reply](<' + result.url + '>) but the Firebase status update did not verify.', { color: 0xffc107, isFinal: true });
         }

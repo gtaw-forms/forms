@@ -5,7 +5,7 @@ import { getUtcFormattedDateTime, getUtcFormattedTime } from '../../utils/dateTi
 import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
-import { triggerWebhookProxy } from '../../services/firebaseFunctions';
+import { triggerWebhookProxy, triggerCheckOfficerName } from '../../services/firebaseFunctions';
 import DecedentItemRenderer from './DecedentItemRenderer'; // Import the new component
 import CharacterSelector from '../Modals/CharacterSelector';
 import { decedentItemSchema } from '../../formSchemas/decedentSchema';
@@ -21,26 +21,108 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
   const employeeOptions = useMemo(() => {
     if (!factionsData || !factionsData['364'] || !factionsData['364'].members) return [];
     return Object.values(factionsData['364'].members)
-        .map(member => ({
-            value: member.characterName, // Use name as value
-            label: formatCharacterNameForDisplay(member.characterName) 
-        }))
-        .sort((a, b) => a.label.localeCompare(b.label)); // Sort alphabetically
+      .map(member => ({
+        value: member.characterName, // Use name as value
+        label: formatCharacterNameForDisplay(member.characterName)
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label)); // Sort alphabetically
   }, [factionsData]);
+
+  // [ROSTER] Officer name validation — debounced check against LSPD/LSSD rosters
+  const [officerStatus, setOfficerStatus] = useState(null);
+  const officerCheckTimer = useRef(null);
+
+  const doOfficerCheck = useCallback(async (name, dept) => {
+    if (!name || name.length < 2) { setOfficerStatus(null); return; }
+    setOfficerStatus({ checking: true });
+    try {
+      const result = await triggerCheckOfficerName(
+        dept ? { name, department: dept } : { name }
+      );
+      setOfficerStatus(result);
+    } catch {
+      setOfficerStatus({ error: true });
+    }
+  }, []);
+
+  const handleOfficerNameChange = useCallback((rawValue, dept) => {
+    const value = rawValue || '';
+    if (officerCheckTimer.current) clearTimeout(officerCheckTimer.current);
+    if (!value || value.length < 2) { setOfficerStatus(null); return; }
+    setOfficerStatus({ waiting: true });
+    officerCheckTimer.current = setTimeout(() => doOfficerCheck(value, dept), 2000);
+  }, [doOfficerCheck]);
+
+  useEffect(() => () => officerCheckTimer.current && clearTimeout(officerCheckTimer.current), []);
+
+  function renderOfficerBadge() {
+    if (!officerStatus) return null;
+    if (officerStatus.checking) return <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: 4 }}>Checking roster...</div>;
+    if (officerStatus.waiting) return <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: 4 }}>Searching...</div>;
+    if (officerStatus.error) return <div style={{ fontSize: '0.78rem', color: '#f87171', marginTop: 4 }}>Check failed</div>;
+
+    // Auto-detect mode (no department) — matches array format
+    if (officerStatus.matches !== undefined) {
+      if (officerStatus.found && officerStatus.matches.length > 0) {
+        const names = officerStatus.matches.map(m =>
+          `${m.name} [${m.department.toUpperCase()}]`
+        );
+        return (
+          <div style={{ fontSize: '0.78rem', color: '#4ade80', marginTop: 4 }}>
+            Name(s) found: {names.join(', ')}
+          </div>
+        );
+      }
+      return (
+        <div style={{ fontSize: '0.78rem', color: '#f87171', marginTop: 4 }}>
+          Name not found in LSPD or LSSD rosters
+        </div>
+      );
+    }
+
+    // Specific department mode — original format
+    const deptLabel = officerStatus.department
+      ? `[${officerStatus.department.toUpperCase()}] `
+      : '';
+
+    if (officerStatus.found) {
+      return (
+        <div style={{ fontSize: '0.78rem', color: '#4ade80', marginTop: 4 }}>
+          {deptLabel}{officerStatus.name} — Found
+        </div>
+      );
+    }
+    if (officerStatus.altMatch) {
+      return (
+        <div style={{ fontSize: '0.78rem', color: '#fbbf24', marginTop: 4 }}>
+          Not found in expected dept, but found in{' '}
+          <strong>{officerStatus.altMatch.department.toUpperCase()}</strong> as{' '}
+          {officerStatus.altMatch.name}
+        </div>
+      );
+    }
+    return (
+      <div style={{ fontSize: '0.78rem', color: '#f87171', marginTop: 4 }}>
+        {deptLabel}{officerStatus.name} — NOT FOUND
+      </div>
+    );
+  }
 
   const formatDateOfDeath = (timeOfDeath) => {
     if (!timeOfDeath) return '';
     const dateMatch = timeOfDeath.match(/(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/);
     if (dateMatch) {
       const d = dateMatch[1].padStart(2, '0');
-      const months = {jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12',
-        january:'01',february:'02',march:'03',april:'04',may:'05',june:'06',july:'07',august:'08',september:'09',october:'10',november:'11',december:'12'};
+      const months = {
+        jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06', jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12',
+        january: '01', february: '02', march: '03', april: '04', may: '05', june: '06', july: '07', august: '08', september: '09', october: '10', november: '11', december: '12'
+      };
       const m = months[dateMatch[2].toLowerCase()] || '??';
       return `${d}/${m}/${dateMatch[3]}`;
     }
     const d = new Date(timeOfDeath);
     if (!isNaN(d.getTime())) {
-      return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+      return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
     }
     return '';
   };
@@ -57,8 +139,8 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
   const agencyOptions = useMemo(() => {
     if (!agencyDataStore) return [];
     return Object.values(agencyDataStore).map(agency => ({
-        value: agency.shortCode,
-        label: agency.fullName
+      value: agency.shortCode,
+      label: agency.fullName
     }));
   }, [agencyDataStore]);
 
@@ -157,42 +239,42 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
       );
     case "section":
       return (
-        <div 
+        <div
           data-tour-id={field.id}
           data-tour-name={field.name}
           data-tour-type={field.type}
-          style={{ 
-            margin: "2rem 8px 1rem", 
-            width: "calc(100% - 16px)", 
+          style={{
+            margin: "2rem 8px 1rem",
+            width: "calc(100% - 16px)",
             boxSizing: "border-box",
             borderBottom: "2px solid #334155",
             paddingBottom: "0.5rem"
-        }}>
-            <h3 style={{ 
-                color: "#60a5fa", 
-                margin: 0, 
-                fontSize: "1.2rem", 
-                textTransform: "uppercase", 
-                letterSpacing: "0.1rem",
-                display: "flex",
-                alignItems: "center",
-                gap: "10px"
-            }}>
-                <i className={field.icon || "fas fa-folder-open"} style={{ opacity: 0.7 }}></i>
-                {field.label}
-            </h3>
+          }}>
+          <h3 style={{
+            color: "#60a5fa",
+            margin: 0,
+            fontSize: "1.2rem",
+            textTransform: "uppercase",
+            letterSpacing: "0.1rem",
+            display: "flex",
+            alignItems: "center",
+            gap: "10px"
+          }}>
+            <i className={field.icon || "fas fa-folder-open"} style={{ opacity: 0.7 }}></i>
+            {field.label}
+          </h3>
         </div>
       );
     case "small_header":
       return (
         <div style={{ margin: "1.5rem 8px 0.8rem", width: "calc(100% - 16px)", boxSizing: "border-box" }}>
-          <h4 style={{ 
-              color: "#a78bfa", 
-              margin: 0, 
-              fontSize: "1rem", 
-              display: "flex", 
-              alignItems: "center", 
-              gap: "8px" 
+          <h4 style={{
+            color: "#a78bfa",
+            margin: 0,
+            fontSize: "1rem",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px"
           }}>
             <i className={field.icon || "fas fa-chevron-right"} style={{ fontSize: "0.8rem", opacity: 0.5 }}></i>
             {field.label}
@@ -230,7 +312,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
     }
     case "timer": {
       return (
-        <div style={{...fieldWrapperStyle }}>
+        <div style={{ ...fieldWrapperStyle }}>
           <div style={{ display: "flex", flexDirection: "column", marginBottom: "5px" }}> {/* Stacks label and span */}
             <label style={labelStyle}>{field.label}</label>
             {field.displayCurrentTime && (
@@ -252,7 +334,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
                 onClick={() => {
                   if (field.buttonAction === "set_current_time" || field.buttonAction === "capture") {
                     let capturedValue = "";
-                    
+
                     if (field.timerType === "datetime-local" || field.timerType === "dateTime") {
                       // Capture both date and time (YYYY-MM-DDTHH:MM)
                       capturedValue = getUtcFormattedDateTime();
@@ -268,7 +350,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
                       // Default fallback to datetime
                       capturedValue = getUtcFormattedDateTime();
                     }
-                    
+
                     handleChange(field.name, capturedValue);
                   }
                 }}
@@ -311,29 +393,29 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
       }
 
       return (
-        <div 
-          data-tour-id={field.id} 
+        <div
+          data-tour-id={field.id}
           data-tour-name={field.name}
           data-tour-type={field.type}
           style={{ ...fieldWrapperStyle, display: "inline-block" }}
         >
           <label style={labelStyle}>{field.label}</label>
-            <select
-              value={formValues[field.name] || ""}
-              onChange={(e) => handleChange(field.name, e.target.value)}
-              style={inputStyle}
-            >
-              <option value="">— Select —</option>
-              {optionsToRender.length > 0 ? (
-                optionsToRender.map((opt, index) => {
-                  const value = typeof opt === 'object' && opt !== null ? opt.value : opt;
-                  const label = typeof opt === 'object' && opt !== null ? opt.label : opt;
-                  return <option key={`${value}-${index}`} value={value}>{label}</option>;
-                })
-              ) : (
-                <option value="" disabled>{warningMessage || `No options found for "${field.optionsKey}"`}</option>
-              )}
-            </select>
+          <select
+            value={formValues[field.name] || ""}
+            onChange={(e) => handleChange(field.name, e.target.value)}
+            style={inputStyle}
+          >
+            <option value="">— Select —</option>
+            {optionsToRender.length > 0 ? (
+              optionsToRender.map((opt, index) => {
+                const value = typeof opt === 'object' && opt !== null ? opt.value : opt;
+                const label = typeof opt === 'object' && opt !== null ? opt.label : opt;
+                return <option key={`${value}-${index}`} value={value}>{label}</option>;
+              })
+            ) : (
+              <option value="" disabled>{warningMessage || `No options found for "${field.optionsKey}"`}</option>
+            )}
+          </select>
         </div>
       );
     }
@@ -374,44 +456,44 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
       );
     }
     case "multi_employee_select": {
-        return (
-            <div style={{ ...fieldWrapperStyle, display: "inline-block" }}>
-                <label style={labelStyle}>{field.label}</label>
-                <Select
-                    isMulti
-                    name={field.name}
-                    options={employeeOptions}
-                    classNamePrefix="react-select"
-                    styles={baseSelectStyles}
-                    value={employeeOptions.filter(option => (formValues[field.name] || []).includes(option.value))}
-                    onChange={(selectedOptions) => handleChange(field.name, selectedOptions ? selectedOptions.map(option => option.value) : [])}
-                    placeholder={field.placeholder || "Select employee(s)..."}
-                    isClearable
-                />
-            </div>
-        );
+      return (
+        <div style={{ ...fieldWrapperStyle, display: "inline-block" }}>
+          <label style={labelStyle}>{field.label}</label>
+          <Select
+            isMulti
+            name={field.name}
+            options={employeeOptions}
+            classNamePrefix="react-select"
+            styles={baseSelectStyles}
+            value={employeeOptions.filter(option => (formValues[field.name] || []).includes(option.value))}
+            onChange={(selectedOptions) => handleChange(field.name, selectedOptions ? selectedOptions.map(option => option.value) : [])}
+            placeholder={field.placeholder || "Select employee(s)..."}
+            isClearable
+          />
+        </div>
+      );
     }
     case "employee_select": {
-        return (
-            <div style={{ ...fieldWrapperStyle, display: "inline-block" }}>
-                <label style={labelStyle}>{field.label}</label>
-                <Select
-                    name={field.name}
-                    options={employeeOptions}
-                    classNamePrefix="react-select"
-                    styles={baseSelectStyles}
-                    value={employeeOptions.find(option => option.value === formValues[field.name]) || null}
-                    onChange={(selectedOption) => handleChange(field.name, selectedOption ? selectedOption.value : '')}
-                    placeholder={field.placeholder || "Select an employee..."}
-                    isClearable
-                />
-            </div>
-        );
+      return (
+        <div style={{ ...fieldWrapperStyle, display: "inline-block" }}>
+          <label style={labelStyle}>{field.label}</label>
+          <Select
+            name={field.name}
+            options={employeeOptions}
+            classNamePrefix="react-select"
+            styles={baseSelectStyles}
+            value={employeeOptions.find(option => option.value === formValues[field.name]) || null}
+            onChange={(selectedOption) => handleChange(field.name, selectedOption ? selectedOption.value : '')}
+            placeholder={field.placeholder || "Select an employee..."}
+            isClearable
+          />
+        </div>
+      );
     }
     case "textarea":
       return (
-        <div 
-          data-tour-id={field.id} 
+        <div
+          data-tour-id={field.id}
           data-tour-name={field.name}
           data-tour-type={field.type}
           style={{ ...fieldWrapperStyle, display: "inline-block" }}
@@ -503,11 +585,19 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
                   type={field.associatedInputField.type || 'text'}
                   name={field.associatedInputField.name}
                   value={formValues[field.associatedInputField.name] || ""}
-                  onChange={e => handleChange(field.associatedInputField.name, e.target.value)}
+                  onChange={e => {
+                    handleChange(field.associatedInputField.name, e.target.value);
+                    if (field.associatedInputField.name === 'requestingOfficer') {
+                      const dept = (formValues.department || '').toLowerCase().trim();
+                      const deptKey = dept.includes('lssd') || dept.includes('sheriff') ? 'lssd' : dept.includes('lspd') || dept.includes('police') ? 'lspd' : '';
+                      handleOfficerNameChange(e.target.value, deptKey || undefined);
+                    }
+                  }}
                   placeholder={field.associatedInputField.placeholder || ""}
                   style={inputStyle}
                 />
               )}
+              {field.associatedInputField.name === 'requestingOfficer' && renderOfficerBadge()}
             </>
           )}
         </div>
@@ -604,7 +694,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
       }, [parsedData]);
 
       const handleToggleSuggestion = useCallback((cause) => {
-        setSelectedSuggestions(prev => 
+        setSelectedSuggestions(prev =>
           prev.includes(cause) ? prev.filter(c => c !== cause) : [...prev, cause]
         );
       }, []);
@@ -625,16 +715,16 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
         const data = {};
         if (record.caseId) data.caseNumber = record.caseId;
         if (record.adminNote) data.adminNote = sanitizeMorgueText(record.adminNote);
-        
+
         if (record.name) {
-            const sanitizedName = sanitizeMorgueText(record.name);
-            const oocMatch = sanitizedName.match(/\(\(\s*(.*?)\s*\)\)/);
-            if (oocMatch) {
-                data.decedentName = sanitizedName.replace(/\(\(\s*(.*?)\s*\)\)/, '').trim();
-                data.decedentOOC = oocMatch[1].trim();
-            } else {
-                data.decedentName = sanitizedName;
-            }
+          const sanitizedName = sanitizeMorgueText(record.name);
+          const oocMatch = sanitizedName.match(/\(\(\s*(.*?)\s*\)\)/);
+          if (oocMatch) {
+            data.decedentName = sanitizedName.replace(/\(\(\s*(.*?)\s*\)\)/, '').trim();
+            data.decedentOOC = oocMatch[1].trim();
+          } else {
+            data.decedentName = sanitizedName;
+          }
         }
 
         // --- PK/CK Detection ---
@@ -650,90 +740,90 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
         if (record.timeOfDeath) data.dateTime = record.timeOfDeath;
         if (record.bac) data.bacLevel = record.bac;
         if (record.narcotics) data.narcoticTraces = sanitizeMorgueText(record.narcotics);
-        
+
         // External Exam
         let externalExam = "** The Morgue Technician provides a written description below of the Decedent  ** ((This section is descriptive purposes only and is automatically generated from the Morgue Records )) **\n\n";
         if (record.physicalDescription) externalExam += `Physical Description:\n${sanitizeMorgueText(record.physicalDescription)}\n\n`;
-        
+
         // Only add Tattoos if they aren't already in the narrative
         if (record.tattoos && record.tattoos !== 'None' && record.tattoos !== 'Unknown') {
-            const sanitizedTattoos = sanitizeMorgueText(record.tattoos);
-            if (!record.physicalDescription || !record.physicalDescription.includes(record.tattoos)) {
-                externalExam += `Tattoos/Marks:\n${sanitizedTattoos}\n\n`;
-            }
+          const sanitizedTattoos = sanitizeMorgueText(record.tattoos);
+          if (!record.physicalDescription || !record.physicalDescription.includes(record.tattoos)) {
+            externalExam += `Tattoos/Marks:\n${sanitizedTattoos}\n\n`;
+          }
         }
-        
+
         // Only add Est. Age if it's not already inside the physical description string to avoid duplicates
         const ageText = record.estimatedAge && record.estimatedAge !== 'Unknown' ? `Est. Age: ${record.estimatedAge}` : null;
         if (ageText && (!record.physicalDescription || !record.physicalDescription.includes(record.estimatedAge))) {
-            externalExam += `${ageText}\n`;
+          externalExam += `${ageText}\n`;
         }
 
         if (record.height && record.height !== 'Unknown') externalExam += `Height: ${record.height}\n`;
         if (record.weight && record.weight !== 'Unknown') externalExam += `Weight: ${record.weight}\n`;
-        
+
         if (externalExam) {
-            data.externalExamination = externalExam.trim();
+          data.externalExamination = externalExam.trim();
         }
 
         // Findings
         if (record.findings && Array.isArray(record.findings)) {
-            const uniqueWoundTypes = new Set();
-            let hasGunshotToHead = false;
+          const uniqueWoundTypes = new Set();
+          let hasGunshotToHead = false;
 
-            data.anatomicSummaryListItems = record.findings.map(f => {
-                const type = sanitizeMorgueText(f.type || '');
-                const part = sanitizeMorgueText(f.part || '');
-                const typeLower = type.toLowerCase();
-                const partLower = part.toLowerCase();
-                
-                // Skip headers or empty types
-                if (!typeLower || 
-                    typeLower.includes('wound type') || 
-                    partLower.includes('body part') || 
-                    typeLower === 'blood loss' || 
-                    part === '—' ||
-                    part === 'N/A') {
-                    return null;
-                }
+          data.anatomicSummaryListItems = record.findings.map(f => {
+            const type = sanitizeMorgueText(f.type || '');
+            const part = sanitizeMorgueText(f.part || '');
+            const typeLower = type.toLowerCase();
+            const partLower = part.toLowerCase();
 
-                const dist = f.dist ? f.dist.replace(/[^\d.]/g, '') : '';
-                const distParsed = parseFloat(dist);
-                const distRounded = !isNaN(distParsed) ? Math.floor(distParsed) : null;
-                
-                uniqueWoundTypes.add(typeLower);
-                if (typeLower.includes('gunshot wound') && partLower === 'head') hasGunshotToHead = true;
-
-                if (typeLower.includes('gunshot')) {
-                    const rangeText = distRounded !== null ? `, estimated range ${distRounded}m` : '';
-                    return `Gunshot Wound to ${part}${rangeText}`;
-                }
-
-                const hideDist = typeLower.includes('blunt force trauma') || typeLower.includes('stab wound');
-                return `${type} to ${part}${(distRounded !== null && !hideDist) ? ` (${distRounded}m)` : ''}`;
-            }).filter(Boolean);
-
-            // Generate suggestions
-            const suggestedCauses = [];
-            uniqueWoundTypes.forEach(woundType => {
-                if (causeOfDeathSuggestionsMap[woundType]) {
-                    suggestedCauses.push(...causeOfDeathSuggestionsMap[woundType]);
-                }
-            });
-            if (hasGunshotToHead && uniqueWoundTypes.has('gunshot wound')) {
-                suggestedCauses.push("Multiple gunshot wounds, with a fatal penetrating trauma to the head");
+            // Skip headers or empty types
+            if (!typeLower ||
+              typeLower.includes('wound type') ||
+              partLower.includes('body part') ||
+              typeLower === 'blood loss' ||
+              part === '—' ||
+              part === 'N/A') {
+              return null;
             }
-            data.suggestedCausesOfDeath = [...new Set(suggestedCauses)];
+
+            const dist = f.dist ? f.dist.replace(/[^\d.]/g, '') : '';
+            const distParsed = parseFloat(dist);
+            const distRounded = !isNaN(distParsed) ? Math.floor(distParsed) : null;
+
+            uniqueWoundTypes.add(typeLower);
+            if (typeLower.includes('gunshot wound') && partLower === 'head') hasGunshotToHead = true;
+
+            if (typeLower.includes('gunshot')) {
+              const rangeText = distRounded !== null ? `, estimated range ${distRounded}m` : '';
+              return `Gunshot Wound to ${part}${rangeText}`;
+            }
+
+            const hideDist = typeLower.includes('blunt force trauma') || typeLower.includes('stab wound');
+            return `${type} to ${part}${(distRounded !== null && !hideDist) ? ` (${distRounded}m)` : ''}`;
+          }).filter(Boolean);
+
+          // Generate suggestions
+          const suggestedCauses = [];
+          uniqueWoundTypes.forEach(woundType => {
+            if (causeOfDeathSuggestionsMap[woundType]) {
+              suggestedCauses.push(...causeOfDeathSuggestionsMap[woundType]);
+            }
+          });
+          if (hasGunshotToHead && uniqueWoundTypes.has('gunshot wound')) {
+            suggestedCauses.push("Multiple gunshot wounds, with a fatal penetrating trauma to the head");
+          }
+          data.suggestedCausesOfDeath = [...new Set(suggestedCauses)];
         }
 
         // Bullets
         const rawBullets = record.bullets;
         const bulletsArr = rawBullets && typeof rawBullets === 'object'
-            ? (Array.isArray(rawBullets) ? rawBullets : Object.keys(rawBullets).length > 0 ? [rawBullets] : [])
-            : [];
+          ? (Array.isArray(rawBullets) ? rawBullets : Object.keys(rawBullets).length > 0 ? [rawBullets] : [])
+          : [];
         if (bulletsArr.length > 0) {
-            data.casings = bulletsArr.map(b => `Bullet found with striation marks (${sanitizeMorgueText(b.type)}) #${b.id}`);
-            data.RadiologyResult = `${bulletsArr.length} projectiles/slugs were identified via fluoroscopy and recovered during the autopsy.`;
+          data.casings = bulletsArr.map(b => `Bullet found with striation marks (${sanitizeMorgueText(b.type)}) #${b.id}`);
+          data.RadiologyResult = `${bulletsArr.length} projectiles/slugs were identified via fluoroscopy and recovered during the autopsy.`;
         }
 
         return data;
@@ -778,7 +868,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
       const parseMorgueData = (text) => {
         const sanitizedText = sanitizeMorgueText(text);
         const data = {};
-        
+
         // Helper to extract multiline or single line values
         const extractField = (label) => {
           const regex = new RegExp(`${label}:\\s*\\n?\\s*([\\s\\S]*?)(?=\\n[A-Z\\s]+:|$|\\n----------------|\\nDNA PROFILE|\\nPHYSICAL DESCRIPTION|\\nFORENSIC DETAILS|\\nAUTOPSY FINDINGS)`, 'i');
@@ -789,7 +879,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
         // Case Number
         const caseMatch = sanitizedText.match(/CASE\s+#(\d+)/i);
         if (caseMatch) data.caseNumber = caseMatch[1];
-        
+
         // Name and OOC
         const rawName = extractField('NAME');
         if (rawName) {
@@ -815,7 +905,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
 
         // Place of Death
         data.placeOfDeath = extractField('LOCATION');
-        
+
         // Physical Description -> External Examination
         const physicalDescMatch = sanitizedText.match(/PHYSICAL DESCRIPTION\s*\n([\s\S]*?)(?=Tattoos description|Estimated age|FORENSIC DETAILS|AUTOPSY FINDINGS|$)/);
         if (physicalDescMatch) {
@@ -856,15 +946,15 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
               const partLower = part.toLowerCase();
 
               // Skip headers or empty types
-              if (!typeLower || 
-                  typeLower.includes('wound type') || 
-                  partLower.includes('body part') || 
-                  typeLower === 'blood loss' || 
-                  part === '—' ||
-                  part === 'N/A') {
+              if (!typeLower ||
+                typeLower.includes('wound type') ||
+                partLower.includes('body part') ||
+                typeLower === 'blood loss' ||
+                part === '—' ||
+                part === 'N/A') {
                 return null;
               }
-              
+
               if (typeLower.includes('gunshot')) {
                 const rangeText = distRounded !== null ? `, estimated range ${distRounded}m` : '';
                 return `Gunshot Wound to ${part}${rangeText}`;
@@ -872,7 +962,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
                 const formattedType = typeLower.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
                 return `${formattedType} to ${part}`;
               }
-              
+
               const rangeSuffix = distRounded !== null ? ` (${distRounded}m)` : '';
               return `${type} to ${part}${rangeSuffix}`;
             }
@@ -882,7 +972,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
             data.anatomicSummaryListItems = findings;
           }
         }
-        
+
         // Generate suggested causes of death
         if (data.anatomicSummaryListItems && data.anatomicSummaryListItems.length > 0) {
           const uniqueWoundTypes = new Set();
@@ -912,7 +1002,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
           if (hasGunshotToHead && uniqueWoundTypes.has('gunshot wound')) { // Ensure it's a gunshot wound and to the head
             suggestedCauses.push("Multiple gunshot wounds, with a fatal penetrating trauma to the head");
           }
-          
+
           data.suggestedCausesOfDeath = [...new Set(suggestedCauses)]; // Remove duplicates
         }
 
@@ -965,10 +1055,10 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
           Object.keys(parsedData).forEach(key => {
             handleChange(key, parsedData[key]);
           });
-          
+
           // Automatically set the Autopsy Start Time (Date of Autopsy)
           handleChange('autopsyStartTime', getUtcFormattedDateTime());
-          
+
           setStep(3);
           showNotification("Morgue data successfully imported!", "success");
         }
@@ -982,7 +1072,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <p style={{ color: "#cbd5e1", margin: "0 0 0.5rem" }}>Search the Morgue Database to automatically populate this form.</p>
                 <button onClick={() => { loadMorgueRecords(); setStep(4); }} style={{ background: "#3498db", color: "white", border: "none", padding: "0.8rem 1.5rem", borderRadius: 8, width: '100%' }}>
-                    <i className="fas fa-search" style={{ marginRight: '8px' }}></i> Search Morgue Database
+                  <i className="fas fa-search" style={{ marginRight: '8px' }}></i> Search Morgue Database
                 </button>
               </div>
             )}
@@ -1003,7 +1093,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
                   styles={customSelectStyles}
                 />
                 <button onClick={() => setStep(0)} style={{ background: "#475569", color: "white", border: "none", padding: "0.8rem 1.5rem", borderRadius: 8, width: '100%', marginTop: '1rem' }}>
-                    <i className="fas fa-arrow-left me-2"></i> Back
+                  <i className="fas fa-arrow-left me-2"></i> Back
                 </button>
               </div>
             )}
@@ -1011,7 +1101,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
               <div style={{ textAlign: 'center' }}>
                 <p style={{ color: "#cbd5e1", marginBottom: "1.5rem", fontSize: '1.1rem' }}>Is this death a <strong>PK</strong> or <strong>CK</strong>?</p>
                 <div style={{ display: 'flex', gap: '1rem' }}>
-                  <button 
+                  <button
                     onClick={() => {
                       const updatedData = { ...parsedData, deathType: 'PK' };
                       if (updatedData.sex) {
@@ -1019,16 +1109,16 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
                       }
                       setParsedData(updatedData);
                       setStep(2);
-                    }} 
+                    }}
                     style={{ background: "#3498db", color: "white", border: "none", padding: "1rem", borderRadius: 8, flex: 1, fontWeight: '700' }}
                   >
                     PK (Player Kill)
                   </button>
-                  <button 
+                  <button
                     onClick={() => {
                       setParsedData(prev => ({ ...prev, deathType: 'CK' }));
                       setStep(2);
-                    }} 
+                    }}
                     style={{ background: "#e74c3c", color: "white", border: "none", padding: "1rem", borderRadius: 8, flex: 1, fontWeight: '700' }}
                   >
                     CK (Character Kill)
@@ -1040,95 +1130,95 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
               <div>
                 <p style={{ color: "#cbd5e1", margin: "0 0 1rem" }}>Review the data identified:</p>
                 <div style={{ background: '#0f172a', padding: '0.8rem', borderRadius: '4px', fontSize: '0.85rem', color: '#94a3b8', marginBottom: '1rem' }}>
-                    {parsedData && Object.keys(parsedData).length > 0 ? (
-                        <ul style={{ margin: 0, paddingLeft: '20px' }}>
-                            {parsedData.decedentName && <li><strong>Name:</strong> {parsedData.decedentName} {parsedData.decedentOOC ? `((${parsedData.decedentOOC}))` : ''}</li>}
-                            {parsedData.sex && <li><strong>Sex:</strong> {parsedData.sex}</li>}
-                            {parsedData.dnaProfile && <li><strong>DNA:</strong> {parsedData.dnaProfile}</li>}
-                            {parsedData.caseNumber && <li><strong>Case #:</strong> {parsedData.caseNumber}</li>}
-                            {parsedData.placeOfDeath && <li><strong>Location:</strong> {parsedData.placeOfDeath}</li>}
-                            {parsedData.dateTime && <li><strong>Time:</strong> {parsedData.dateTime}</li>}
-                            {parsedData.bacLevel && <li><strong>BAC:</strong> {parsedData.bacLevel}</li>}
-                            {parsedData.narcoticTraces && <li><strong>Narcotics:</strong> {parsedData.narcoticTraces}</li>}
-                            {parsedData.externalExamination && <li><strong>External Exam:</strong> Extracted</li>}
-                            {parsedData.casings && <li><strong>Casings:</strong> {parsedData.casings.length} found</li>}
-                            {parsedData.anatomicSummaryListItems && <li><strong>Findings:</strong> {parsedData.anatomicSummaryListItems.length} items found</li>}
-                            {parsedData.adminNote && (
-                                <li style={{ 
-                                    marginTop: '8px', 
-                                    padding: '8px', 
-                                    background: 'rgba(245, 158, 11, 0.1)', 
-                                    border: '1px solid #f59e0b', 
-                                    borderRadius: '4px',
-                                    color: '#fcd34d',
-                                    listStyle: 'none',
-                                    marginLeft: '-20px'
-                                }}>
-                                    <i className="fas fa-sticky-note me-2"></i>
-                                    <strong>ADMIN NOTE:</strong> {parsedData.adminNote}
-                                </li>
-                            )}
-                        </ul>
-                    ) : (
-                        <p style={{ color: '#ef4444', margin: 0 }}>No valid data could be identified. Please contact Alyson Frost for assistance.</p>
-                    )}
+                  {parsedData && Object.keys(parsedData).length > 0 ? (
+                    <ul style={{ margin: 0, paddingLeft: '20px' }}>
+                      {parsedData.decedentName && <li><strong>Name:</strong> {parsedData.decedentName} {parsedData.decedentOOC ? `((${parsedData.decedentOOC}))` : ''}</li>}
+                      {parsedData.sex && <li><strong>Sex:</strong> {parsedData.sex}</li>}
+                      {parsedData.dnaProfile && <li><strong>DNA:</strong> {parsedData.dnaProfile}</li>}
+                      {parsedData.caseNumber && <li><strong>Case #:</strong> {parsedData.caseNumber}</li>}
+                      {parsedData.placeOfDeath && <li><strong>Location:</strong> {parsedData.placeOfDeath}</li>}
+                      {parsedData.dateTime && <li><strong>Time:</strong> {parsedData.dateTime}</li>}
+                      {parsedData.bacLevel && <li><strong>BAC:</strong> {parsedData.bacLevel}</li>}
+                      {parsedData.narcoticTraces && <li><strong>Narcotics:</strong> {parsedData.narcoticTraces}</li>}
+                      {parsedData.externalExamination && <li><strong>External Exam:</strong> Extracted</li>}
+                      {parsedData.casings && <li><strong>Casings:</strong> {parsedData.casings.length} found</li>}
+                      {parsedData.anatomicSummaryListItems && <li><strong>Findings:</strong> {parsedData.anatomicSummaryListItems.length} items found</li>}
+                      {parsedData.adminNote && (
+                        <li style={{
+                          marginTop: '8px',
+                          padding: '8px',
+                          background: 'rgba(245, 158, 11, 0.1)',
+                          border: '1px solid #f59e0b',
+                          borderRadius: '4px',
+                          color: '#fcd34d',
+                          listStyle: 'none',
+                          marginLeft: '-20px'
+                        }}>
+                          <i className="fas fa-sticky-note me-2"></i>
+                          <strong>ADMIN NOTE:</strong> {parsedData.adminNote}
+                        </li>
+                      )}
+                    </ul>
+                  ) : (
+                    <p style={{ color: '#ef4444', margin: 0 }}>No valid data could be identified. Please contact Alyson Frost for assistance.</p>
+                  )}
                 </div>
-                
+
                 {parsedData && parsedData.deathType === 'PK' && (
-                    <div style={{ background: 'rgba(52, 152, 219, 0.2)', border: '1px solid #3498db', padding: '0.8rem', borderRadius: '4px', fontSize: '0.85rem', color: '#e2e8f0', marginBottom: '1rem' }}>
-                        <i className="fas fa-info-circle me-2 text-info"></i>
-                        <strong>PK Detected:</strong> You only need to fill out the <strong>Medical Examiner Synopsis</strong> for this report.
-                    </div>
+                  <div style={{ background: 'rgba(52, 152, 219, 0.2)', border: '1px solid #3498db', padding: '0.8rem', borderRadius: '4px', fontSize: '0.85rem', color: '#e2e8f0', marginBottom: '1rem' }}>
+                    <i className="fas fa-info-circle me-2 text-info"></i>
+                    <strong>PK Detected:</strong> You only need to fill out the <strong>Medical Examiner Synopsis</strong> for this report.
+                  </div>
                 )}
 
                 {parsedData && parsedData.deathType === 'CK' && (
-                    <div style={{ background: 'rgba(231, 76, 60, 0.2)', border: '1px solid #e74c3c', padding: '0.8rem', borderRadius: '4px', fontSize: '0.85rem', color: '#e2e8f0', marginBottom: '1rem' }}>
-                        <i className="fas fa-exclamation-circle me-2 text-danger"></i>
-                        <strong>CK Detected:</strong> This report requires <strong>further detail</strong> and a comprehensive analysis.
-                    </div>
+                  <div style={{ background: 'rgba(231, 76, 60, 0.2)', border: '1px solid #e74c3c', padding: '0.8rem', borderRadius: '4px', fontSize: '0.85rem', color: '#e2e8f0', marginBottom: '1rem' }}>
+                    <i className="fas fa-exclamation-circle me-2 text-danger"></i>
+                    <strong>CK Detected:</strong> This report requires <strong>further detail</strong> and a comprehensive analysis.
+                  </div>
                 )}
 
                 {(!parsedData.anatomicSummaryListItems || parsedData.anatomicSummaryListItems.length === 0) && (
-                    <div style={{ 
-                        background: 'rgba(239, 68, 68, 0.2)', 
-                        border: '1px solid #ef4444', 
-                        padding: '0.8rem', 
-                        borderRadius: '4px', 
-                        fontSize: '0.85rem', 
-                        color: '#fca5a5', 
-                        marginBottom: '1rem' 
-                    }}>
-                        <i className="fas fa-skull-crossbones me-2"></i>
-                        <strong>MISSING: Anatomic Summary</strong> - No findings were identified from the morgue record. You MUST manually input these or use the Autopsy Diagram tool later.
-                    </div>
+                  <div style={{
+                    background: 'rgba(239, 68, 68, 0.2)',
+                    border: '1px solid #ef4444',
+                    padding: '0.8rem',
+                    borderRadius: '4px',
+                    fontSize: '0.85rem',
+                    color: '#fca5a5',
+                    marginBottom: '1rem'
+                  }}>
+                    <i className="fas fa-skull-crossbones me-2"></i>
+                    <strong>MISSING: Anatomic Summary</strong> - No findings were identified from the morgue record. You MUST manually input these or use the Autopsy Diagram tool later.
+                  </div>
                 )}
 
                 <div style={{ background: '#3d301a', border: '1px solid #f59e0b', padding: '0.8rem', borderRadius: '4px', fontSize: '0.8rem', color: '#fcd34d', marginBottom: '1rem' }}>
-                    <i className="fas fa-exclamation-triangle" style={{ marginRight: '6px' }}></i>
-                    <strong>Manual Action Required:</strong>
-                    <ul style={{ margin: '4px 0 0', paddingLeft: '20px' }}>
-                        <li>Review the parsed data for accuracy</li>
-                        <li style={{ 
-                            color: (!parsedData.anatomicSummaryListItems || parsedData.anatomicSummaryListItems.length === 0) ? '#ef4444' : 'inherit',
-                            fontWeight: (!parsedData.anatomicSummaryListItems || parsedData.anatomicSummaryListItems.length === 0) ? '700' : '400'
-                        }}>
-                            {!parsedData.anatomicSummaryListItems || parsedData.anatomicSummaryListItems.length === 0 
-                                ? 'Add Anatomic Summary (REQUIRED - Currently Missing!)' 
-                                : 'Verify Anatomic Summary findings'}
-                        </li>
-                        <li>Add Cause of Death (Required)</li>
-                        <li>Add Manner of Death & How Injury Occurred</li>
-                        <li>Summarize the Medical Examiner&apos;s Opinion (Synopsis)</li>
-                    </ul>
+                  <i className="fas fa-exclamation-triangle" style={{ marginRight: '6px' }}></i>
+                  <strong>Manual Action Required:</strong>
+                  <ul style={{ margin: '4px 0 0', paddingLeft: '20px' }}>
+                    <li>Review the parsed data for accuracy</li>
+                    <li style={{
+                      color: (!parsedData.anatomicSummaryListItems || parsedData.anatomicSummaryListItems.length === 0) ? '#ef4444' : 'inherit',
+                      fontWeight: (!parsedData.anatomicSummaryListItems || parsedData.anatomicSummaryListItems.length === 0) ? '700' : '400'
+                    }}>
+                      {!parsedData.anatomicSummaryListItems || parsedData.anatomicSummaryListItems.length === 0
+                        ? 'Add Anatomic Summary (REQUIRED - Currently Missing!)'
+                        : 'Verify Anatomic Summary findings'}
+                    </li>
+                    <li>Add Cause of Death (Required)</li>
+                    <li>Add Manner of Death & How Injury Occurred</li>
+                    <li>Summarize the Medical Examiner&apos;s Opinion (Synopsis)</li>
+                  </ul>
                 </div>
 
                 <div style={{ display: 'flex', gap: '1rem' }}>
-                    <button 
-                        onClick={handleApply} 
-                        disabled={!parsedData || Object.keys(parsedData).length === 0}
-                        style={{ background: "#10b981", color: "white", border: "none", padding: "0.8rem 1.5rem", borderRadius: 8, flex: 2, opacity: (!parsedData || Object.keys(parsedData).length === 0) ? 0.5 : 1 }}
-                    >Apply to Form</button>
-                    <button onClick={() => setStep(0)} style={{ background: "#475569", color: "white", border: "none", padding: "0.8rem 1.5rem", borderRadius: 8, flex: 1 }}>Back</button>
+                  <button
+                    onClick={handleApply}
+                    disabled={!parsedData || Object.keys(parsedData).length === 0}
+                    style={{ background: "#10b981", color: "white", border: "none", padding: "0.8rem 1.5rem", borderRadius: 8, flex: 2, opacity: (!parsedData || Object.keys(parsedData).length === 0) ? 0.5 : 1 }}
+                  >Apply to Form</button>
+                  <button onClick={() => setStep(0)} style={{ background: "#475569", color: "white", border: "none", padding: "0.8rem 1.5rem", borderRadius: 8, flex: 1 }}>Back</button>
                 </div>
               </div>
             )}
@@ -1147,11 +1237,11 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
       // Helper to extract OOC names from Mass Fatality BBCode
       const extractMassFatalityOoc = (bbCode) => {
         if (!bbCode || typeof bbCode !== 'string') return [];
-        
+
         // Look for OOC names in patterns like "(( Name ))" in the BBCode
         const oocMatches = bbCode.match(/\(\(\s*([^)]+)\s*\)\)/g);
         if (!oocMatches) return [];
-        
+
         return oocMatches
           .map(match => match.replace(/\(\(\s*|\s*\)\)/g, '').trim())
           .filter((name) => {
@@ -1173,7 +1263,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
       const attachedReports = formValues.additionalReports || [];
 
       return (
-        <div 
+        <div
           data-tour-id={field.id}
           data-tour-name={field.name}
           data-tour-type={field.type}
@@ -1203,21 +1293,21 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
               <ul style={{ margin: 0, paddingLeft: '20px', color: '#34d399', fontSize: '0.9rem' }}>
                 {attachedReports.map((report, index) => {
                   let displayTitle = report.originalKey || `Attached Report ${index + 1}`;
-                  
+
                   // Check if this is a Mass Fatality type report
                   const isMassFatality = report.formId && (
                     report.formId === 'mass-fatality' ||
                     report.formId === 'mass-ftality-test' ||
                     (typeof report.formId === 'string' && report.formId.toLowerCase().includes('mass'))
                   );
-                  
+
                   if (isMassFatality && report.bbCode) {
                     const oocNames = extractMassFatalityOoc(report.bbCode);
                     if (oocNames.length > 0) {
                       displayTitle = `${report.originalKey} [${oocNames.join(', ')}]`;
                     }
                   }
-                  
+
                   return (
                     <li key={index}>{displayTitle}</li>
                   );
@@ -1274,27 +1364,27 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
       const removeDecedent = useCallback((indexToRemove) => {
         const updatedList = decedentList.filter((_, idx) => idx !== indexToRemove);
         handleChange(field.name, updatedList);
-        
+
         // Adjust active index if we removed the active one or an earlier one
         if (indexToRemove <= activeDecedentIndex) {
-            setActiveDecedentIndex(Math.max(0, activeDecedentIndex - 1));
+          setActiveDecedentIndex(Math.max(0, activeDecedentIndex - 1));
         }
       }, [field.name, decedentList, handleChange, activeDecedentIndex]);
 
       return (
-        <div 
-            data-tour-id={field.id}
-            data-tour-name={field.name}
-            data-tour-type={field.type}
-            style={{ margin: "0 8px 1.5rem", width: "calc(100% - 16px)", boxSizing: "border-box" }}
+        <div
+          data-tour-id={field.id}
+          data-tour-name={field.name}
+          data-tour-type={field.type}
+          style={{ margin: "0 8px 1.5rem", width: "calc(100% - 16px)", boxSizing: "border-box" }}
         >
           <label style={{ ...labelStyle, marginBottom: '1rem' }}>{field.label || "Decedents"}</label>
-          
-          <div style={{ 
-              display: 'flex', 
-              flexWrap: 'wrap', 
-              gap: '4px', 
-              marginBottom: '0' 
+
+          <div style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '4px',
+            marginBottom: '0'
           }}>
             {decedentList.map((item, index) => (
               <button
@@ -1320,8 +1410,8 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
                 }}
               >
                 <i className="fas fa-user" style={{ fontSize: '0.8rem', opacity: 0.7 }}></i>
-                {(item?.decedentName && item?.decedentOOC) 
-                  ? `${item.decedentName} - ${item.decedentOOC}` 
+                {(item?.decedentName && item?.decedentOOC)
+                  ? `${item.decedentName} - ${item.decedentOOC}`
                   : (item?.decedentName || item?.decedentOOC || `Decedent #${index + 1}`)}
               </button>
             ))}
@@ -1362,19 +1452,19 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
               isUploadingMapImage={isUploadingMapImage}
             />
           ) : (
-            <div style={{ 
-                padding: '3rem', 
-                background: '#162032', 
-                borderRadius: 8, 
-                border: '2px dashed #334155', 
-                textAlign: 'center',
-                color: '#94a3b8'
+            <div style={{
+              padding: '3rem',
+              background: '#162032',
+              borderRadius: 8,
+              border: '2px dashed #334155',
+              textAlign: 'center',
+              color: '#94a3b8'
             }}>
-                <i className="fas fa-users-slash" style={{ fontSize: '3rem', marginBottom: '1rem', opacity: 0.3 }}></i>
-                <p>No decedents added yet.</p>
-                <button onClick={addDecedent} className="btn btn-success">
-                    <i className="fas fa-plus"></i> Add First Decedent
-                </button>
+              <i className="fas fa-users-slash" style={{ fontSize: '3rem', marginBottom: '1rem', opacity: 0.3 }}></i>
+              <p>No decedents added yet.</p>
+              <button onClick={addDecedent} className="btn btn-success">
+                <i className="fas fa-plus"></i> Add First Decedent
+              </button>
             </div>
           )}
         </div>
@@ -1430,20 +1520,20 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
     }
     case "character_selector":
       return (
-          <div style={{ ...fieldWrapperStyle, display: "inline-block" }}>
-              <CharacterSelector
-                  label={field.label}
-                  onCharacterSelect={(character) => handleChange(field.name, character ? character.fullName : '')}
-                  forceDropdown={true}
-              />
-          </div>
+        <div style={{ ...fieldWrapperStyle, display: "inline-block" }}>
+          <CharacterSelector
+            label={field.label}
+            onCharacterSelect={(character) => handleChange(field.name, character ? character.fullName : '')}
+            forceDropdown={true}
+          />
+        </div>
       );
     case "medicine_block":
       return (
         <div style={{ ...fieldWrapperStyle, padding: '1rem', border: '1px solid #334155', borderRadius: '8px', background: '#162032' }}>
           <h5 style={{ color: '#a78bfa', marginBottom: '1rem' }}>{field.label}  </h5>
-          You MUST document the medicines prescribed and upload proof of prescription images. Failure to do so may result in disciplinary action. 
-          
+          You MUST document the medicines prescribed and upload proof of prescription images. Failure to do so may result in disciplinary action.
+
           <label style={{ ...labelStyle, fontSize: '0.9rem' }}>Medicine Prescribed</label>
           <textarea
             name={`${field.name}_prescribed`}
@@ -1475,8 +1565,8 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
     case "input":
     default:
       return (
-        <div 
-          data-tour-id={field.id} 
+        <div
+          data-tour-id={field.id}
           data-tour-name={field.name}
           data-tour-type={field.type}
           style={{ ...fieldWrapperStyle, display: "inline-block" }}

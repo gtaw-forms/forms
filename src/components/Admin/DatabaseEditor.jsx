@@ -4,7 +4,7 @@ import BaseModal from '../Modals/BaseModal';
 import { ref, get, update, set, runTransaction } from 'firebase/database';
 import { database } from '../../firebase';
 
-import { logAdminAction, getUserContext } from '../../utils/logging';
+import { logAdminAction, getUserContext, logDataVersionBump } from '../../utils/logging';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 
 const versionToNameMap = new Map([
@@ -308,7 +308,8 @@ const DatabaseEditor = ({ showNotification, currentUser: propCurrentUser, gtawUs
             // Bump global version
             const versionRef = ref(database, 'appMetadata/selectOptionsDataVersion');
             await runTransaction(versionRef, (currentVersion) => (currentVersion || 0) + 1);
-            
+            logDataVersionBump('appMetadata/selectOptionsDataVersion', 'DatabaseEditor', 'Added option: ' + newOptionValue);
+
             showNotification('Option added successfully!', 'check-circle');
             
             setCurrentOptions(updatedOptions);
@@ -348,7 +349,8 @@ const DatabaseEditor = ({ showNotification, currentUser: propCurrentUser, gtawUs
             // Bump global version
             const versionRef = ref(database, 'appMetadata/selectOptionsDataVersion');
             await runTransaction(versionRef, (currentVersion) => (currentVersion || 0) + 1);
-            
+            logDataVersionBump('appMetadata/selectOptionsDataVersion', 'DatabaseEditor', 'Deleted option');
+
             showNotification('Option deleted successfully!', 'check-circle');
             
             // Refresh the list in the UI
@@ -518,6 +520,7 @@ const DatabaseEditor = ({ showNotification, currentUser: propCurrentUser, gtawUs
 
             const versionRef = ref(database, 'appMetadata/selectOptionsDataVersion');
             await runTransaction(versionRef, (v) => (v || 0) + 1);
+            logDataVersionBump('appMetadata/selectOptionsDataVersion', 'DatabaseEditor', 'Bulk delete unused options');
 
             logAdminAction(
                 currentUser?.email || gtawUsername,

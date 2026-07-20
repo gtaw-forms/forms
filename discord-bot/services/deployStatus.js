@@ -67,14 +67,6 @@ export async function markReportComplete(db, authorId, key, label, type, resultU
 
         console.log(`[AUTO] ${key} marked as COMPLETED (hasdeployed=${hasdeployed}), removing from queue.`);
 
-        await sendWebhook(null, {
-            title: ' Report Complete — Removed from Queue',
-            description: `**Report:** ${label}\n**Key:** \`${key}\`\n**Type:** ${type}${resultUrl ? `\n**URL:** ${resultUrl}` : ''}\n\nSuccessfully marked as \`hasdeployed: true\` in Firebase and removed from the deploy queue.`,
-            color: 0x28a745,
-            footer: { text: 'PHMC Bot — Auto Deploy' },
-            timestamp: new Date().toISOString(),
-        });
-
         return true;
     } catch (err) {
         console.error(`[AUTO] ${key} FAILED to mark as completed: ${err.message}`);

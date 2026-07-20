@@ -150,6 +150,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
     const [lsccData, setLsccData] = useState({}); // New state for LSCC data
     const [verifiedAdmins, setVerifiedAdmins] = useState({}); // New state for verified admins
     const [hasFirebaseError, setHasFirebaseError] = useState(false);
+    const [morgueRecordsError, setMorgueRecordsError] = useState(null);
 
     // Segmented cache for fetched data
     const dataCache = useRef({});
@@ -306,6 +307,8 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
 
     // Lazy-load morgue records on demand (not fetched during initial app load)
     const loadMorgueRecords = useCallback(async () => {
+        setMorgueRecordsError(null); // Clear any previous error
+
         // Already loaded — return cached data
         if (morgueRecordsLoadedRef.current && dataCache.current[CACHE_SEGMENTS.MORGUE_RECORDS]) {
             return dataCache.current[CACHE_SEGMENTS.MORGUE_RECORDS];
@@ -388,6 +391,17 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
             }
         } catch (error) {
             console.error('[DataContext] Failed to fetch morgue records via Cloud Function:', error);
+
+            // Detect Firebase auth failures so the UI can show a meaningful error
+            if (error.code === 'permission-denied' ||
+                error.message?.includes('unauthenticated') ||
+                error.message?.includes('UNAUTHENTICATED') ||
+                error.message?.includes('auth/')) {
+                setMorgueRecordsError('auth_failed');
+            } else {
+                setMorgueRecordsError('fetch_failed');
+            }
+
             return null;
         }
     }, [updateCacheSegment, webhooks, isAuthenticated, user]);
@@ -1177,6 +1191,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
         sendDataRequestLog: webhooks.sendDataRequestLog,
         lsccData,
         morgueRecords,
+        morgueRecordsError,
         loadMorgueRecords,
         removeMorgueRecord,
         hasFirebaseError,

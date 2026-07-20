@@ -1,4 +1,4 @@
-import { logAdminAction, getUserContext } from '../../utils/logging';
+import { logAdminAction, getUserContext, logDataVersionBump } from '../../utils/logging';
 import React, { useState, useEffect } from 'react';
 import { database } from '../../firebase';
 import { ref, get, set, runTransaction } from 'firebase/database';
@@ -56,6 +56,7 @@ const LsccEditModal = ({ show, onHide, item, onSave, categories, gtawUser, gtawU
       // Bump LSCC version to update client caches
       const metadataRef = ref(database, 'appMetadata/lsccDataVersion');
       await runTransaction(metadataRef, (v) => (v || 0) + 1);
+      logDataVersionBump('appMetadata/lsccDataVersion', 'LsccEditModal', (isEditing ? 'Edited' : 'Added') + ' protocol: ' + (savedItem?.name || ''));
 
       const { userAgent, timeZone } = getUserContext();
       logAdminAction(gtawUsername, isEditing ? 'Edited LSCC Protocol' : 'Added LSCC Protocol', `Protocol: ${savedItem.name}`, 'LSCC Management', userAgent, timeZone, gtawUsername, gtawUser);

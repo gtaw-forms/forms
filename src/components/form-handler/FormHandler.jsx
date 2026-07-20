@@ -18,7 +18,7 @@ import FormQuickLinks from './FormQuickLinks';
 import { validateForm, evaluateFieldVisibility } from '../../utils/formValidation';
 import { triggerWebhookProxy } from '../../services/firebaseFunctions';
 import { database } from '../../firebase';
-import { ref, onValue } from 'firebase/database';
+import { ref, onValue, get } from 'firebase/database';
 import { useInactivityReload } from '../../hooks/useInactivityReload';
 import { cleanRankText } from '../../utils/textUtils';
 import { STORAGE_KEYS } from '../../services/gtaWorldAuth';
@@ -26,7 +26,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useConsent, DEPLOY_TRACKED_FORMS } from '../../hooks/useConsent';
 
 // Must match discord-bot/services/deployState.js DEFER_MS
-const QUEUE_DELAY_MIN = 2;
+const QUEUE_DELAY_MIN = 5;
 import BotDeployOptInModal from '../Modals/BotDeployOptInModal';
 import phmcLogo from '../../assets/phmc.png';
 import { decedentItemSchema } from '../../formSchemas/decedentSchema';
@@ -149,8 +149,6 @@ export const FormHandler = () => {
     formsData,
     hasFirebaseError,
     factionsData,
-    pendingRefreshInfo,
-    updateNow,
     isLoadingData,
   } = useData();
 
@@ -184,13 +182,12 @@ export const FormHandler = () => {
     consent: botConsent,
     saveAllConsent: saveBotConsent,
     setConsent: setBotConsent,
-    isLoading: consentLoading,
-    hasConsentRecord,
+    hasSavedConsent,
+    consentLoaded,
   } = useConsent();
   const [showConsentModal, setShowConsentModal] = useState(false);
-
-  // Track whether we've auto-prompted this session (sessionStorage)
-  // const consentPromptedThisSession = sessionStorage.getItem('consentPrompted') === 'true';
+  const consentJustSaved = useRef(false); // Prevents modal re-trigger right after save
+  const pendingSaveAfterConsent = useRef(false); // Re-trigger save once consent modal completes
 
   // Auto-show assigned autopsies modal when the autopsy form is selected
   useEffect(() => {
@@ -202,27 +199,25 @@ export const FormHandler = () => {
   }, [selectedForm?.firebaseKey]);
 
   // ── Consent modal auto-prompt ──
-  // Shows when a deploy-tracked form is selected and no consent record exists.
-  // Disabled for now — accessible only via sidebar "Bot Consent Settings" button.
-  // Uncomment to re-enable:
-  // ── Consent modal auto-prompt ──
-
+  // Only shows on first visit (never saved preferences). Once the user has
+  // saved their choices, trust their decision — no reminders on form switch.
+  // The modal is unskippable — must navigate all sections and save to close.
   const selectedFormFirebaseKey = selectedForm?.firebaseKey;
   useEffect(() => {
-    if (!consentLoading && selectedFormFirebaseKey && DEPLOY_TRACKED_FORMS.includes(selectedFormFirebaseKey)) {
-      if (!hasConsentRecord) {
+    if (!consentLoaded) return;
+    // Skip modal on localhost — no Firebase Auth, can't persist consent across refreshes
+    if (window.location.hostname === 'localhost') return;
+    // Don't re-trigger right after user just saved
+    if (consentJustSaved.current) {
+      consentJustSaved.current = false;
+      return;
+    }
+    if (selectedFormFirebaseKey && DEPLOY_TRACKED_FORMS.includes(selectedFormFirebaseKey)) {
+      if (!hasSavedConsent) {
         setShowConsentModal(true);
       }
     }
-  }, [consentLoading, selectedFormFirebaseKey, hasConsentRecord]);
-  useEffect(() => {
-  console.log('[Consent] Check:', { selectedFormFirebaseKey, consentLoading, hasConsentRecord });
-  if (!consentLoading && selectedFormFirebaseKey && DEPLOY_TRACKED_FORMS.includes(selectedFormFirebaseKey)) {
-    if (!hasConsentRecord) {
-      setShowConsentModal(true);
-    }
-  }
-}, [consentLoading, selectedFormFirebaseKey, hasConsentRecord]);
+  }, [selectedFormFirebaseKey, botConsent, hasSavedConsent, consentLoaded]);
 
     // ── First-visit auto-prompt ──
   // Shows the consent modal on mount if authenticated with no consent record yet.
@@ -243,7 +238,10 @@ export const FormHandler = () => {
   const isFormOptedIn = useCallback((formId) => {
     if (!formId) return false;
     if (!DEPLOY_TRACKED_FORMS.includes(formId)) return false;
-    if (hasConsentRecord && formId in (botConsent || {})) {
+    // Wait for consent data to load before making decisions
+    if (!consentLoaded) return false;
+    // Check Firebase consent record first (populated by useConsent hook)
+    if (formId in (botConsent || {})) {
       return botConsent[formId] === true;
     }
     // Fallback: legacy localStorage for backward compatibility
@@ -252,7 +250,10 @@ export const FormHandler = () => {
     } catch {
       return false;
     }
-  }, [botConsent, hasConsentRecord]);
+  }, [botConsent, consentLoaded]);
+
+  // One-shot consent diagnostic — logs only when the button decision changes
+  const lastConsentLog = useRef('');
 
   // Memos
   const finalSelectOptions = useMemo(() => {
@@ -372,20 +373,7 @@ export const FormHandler = () => {
     return { pct: total > 0 ? Math.round((filled / total) * 100) : 0, total, filled, decedentName };
   }, [selectedForm, formValues]);
 
-  const [countdownStr, setCountdownStr] = useState('');
-  useEffect(() => {
-    if (!pendingRefreshInfo) { setCountdownStr(''); return; }
-    const tick = () => {
-      const remaining = Math.max(0, pendingRefreshInfo.expiresAt - Date.now());
-      if (remaining <= 0) { setCountdownStr(''); return; }
-      const mins = Math.floor(remaining / 60000);
-      const secs = Math.floor((remaining % 60000) / 1000);
-      setCountdownStr(`${mins}:${String(secs).padStart(2, '0')}`);
-    };
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, [pendingRefreshInfo]);
+  // Countdown banner removed — auto-refresh happens silently in background after 5min debounce
 
   const { generatedBBCode, generatedTitle, showBBCode, setShowBBCode, generateBBCode /*, limitWarning */ } = useBbcodeGenerator(
     selectedForm,
@@ -681,6 +669,27 @@ const handleClearForm = useCallback(() => {
       showNotification('Generate BBCode for this form first! The current BBCode is from a different form.', 'error', 8000);
       return;
     }
+    // ── Consent gate: require saved preferences before deploy-tracked save ──
+    // Prevents the race where a user saves a report, bot queues it, and user
+    // then opts out after it's already in the queue.
+    const isDeployTrackedForm = selectedForm?.firebaseKey && DEPLOY_TRACKED_FORMS.includes(selectedForm.firebaseKey);
+    if (isDeployTrackedForm && consentLoaded && firebaseUid && !pendingSaveAfterConsent.current) {
+      try {
+        const consentSnap = await get(ref(database, `user-consent/${firebaseUid}`));
+        const consentData = consentSnap.val();
+        const hasAnyConsentData = consentData !== null && typeof consentData === 'object' && Object.keys(consentData).length > 0;
+        if (!hasAnyConsentData) {
+          pendingSaveAfterConsent.current = true;
+          setShowConsentModal(true);
+          showNotification('Set your auto-deploy preferences first.', 'info', 8000);
+          return;
+        }
+      } catch {
+        // Firebase read failed — proceed without gating to avoid blocking saves
+        console.warn('[FormHandler] Consent check failed (Firebase read error), proceeding with save.');
+      }
+    }
+
     let bbcodeToUse = generatedBBCode;
     if (!bbcodeToUse) {
       // Auto-generate BBCode if not already generated, so Save & Queue works in one click
@@ -694,8 +703,29 @@ const handleClearForm = useCallback(() => {
     }
     {
       const isCoronerEmail = selectedForm?.id === 'coroner_email' || selectedForm?.name === 'Coroner Email';
+
+      // Coroner emails require at least one attached report
+      if (isCoronerEmail) {
+        const hasReports = Array.isArray(formValues.additionalReports) && formValues.additionalReports.length > 0;
+        if (!hasReports) {
+          showNotification('Please attach at least one report using the "Attach Reports" button before saving.', 'error', 8000);
+          return;
+        }
+      }
+
+      // Medical record forms require a patient name for reliable forum search
+      const MEDICAL_FORM_IDS = ['patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical', 'session_notes', 'intensive_treatment', 'psych_eval', 'testing-compact-mode'];
+      const isMedicalRecord = selectedForm?.firebaseKey && MEDICAL_FORM_IDS.includes(selectedForm.firebaseKey);
+      if (isMedicalRecord) {
+        const patientName = formValues.decedentName || formValues.decedentname || formValues.patientName || '';
+        if (!patientName.trim()) {
+          showNotification('Please enter a Patient Name before saving. This is used to find the correct thread on the forum.', 'error', 8000);
+          return;
+        }
+      }
+
       const bbcodeToSave = Array.isArray(bbcodeToUse) ? bbcodeToUse.join('\n\n[PART_BREAK]\n\n') : bbcodeToUse;
-      
+
       const saveResult = await saveNewReport(selectedForm, formValues, generatedTitle, bbcodeToSave, { silent: true });
 
       let finalNotificationMessage = '';
@@ -704,15 +734,21 @@ const handleClearForm = useCallback(() => {
       let notificationDuration = undefined;
 
       if (saveResult?.success) {
-        finalNotificationMessage = `Report "${generatedTitle}" saved!`;
+        const savedTitle = generatedTitle || saveResult.originalKey || 'Report';
+        finalNotificationMessage = `Report "${savedTitle}" saved!`;
 
         // ── Watch for bot deploy status updates ──
         const isDeployTracked = selectedForm?.firebaseKey && DEPLOY_TRACKED_FORMS.includes(selectedForm.firebaseKey);
         const formOptedIn = isFormOptedIn(selectedForm?.firebaseKey);
+        const willAutoEmail = (selectedForm?.firebaseKey === 'coroner-report' && (formValues.ReportRequested === true || formValues.ReportRequested === 'true')) ||
+                              (selectedForm?.firebaseKey === 'mass-ftality-test' && formValues.requestingOfficer);
 
         if (isDeployTracked && formOptedIn && saveResult.reportPath) {
           const statusRef = ref(database, saveResult.reportPath);
-          const notifIdRef = { current: showNotification('📥 In Queue — bot will deploy shortly', 'spinner fa-spin', 0) };
+          const queueMsg = willAutoEmail
+            ? '📥 In Queue — coroner email will be sent automatically when posted'
+            : '📥 In Queue — bot will deploy shortly';
+          const notifIdRef = { current: showNotification(queueMsg, 'spinner fa-spin', 0) };
 
           const STATUS_MESSAGES = {
             queued:          { icon: '⏳', text: 'Report queued — will deploy in a few min. Re-save to make edits.', color: '#ffc107' },
@@ -743,7 +779,7 @@ const handleClearForm = useCallback(() => {
           setTimeout(() => {
             try { unsubscribe(); } catch {}
             removeNotification(notifIdRef.current);
-          }, 5 * 60 * 1000);
+          }, 15 * 1000);
         }
 
         if (isCoronerEmail) {
@@ -788,7 +824,7 @@ const handleClearForm = useCallback(() => {
       
       showNotification(finalNotificationMessage, finalNotificationType, notificationDuration, { actions: finalNotificationOptions });
     }
-  }, [generatedBBCode, selectedForm, formValues, generatedTitle, saveNewReport, showNotification, handleClearForm, removeNotification]);
+  }, [generatedBBCode, selectedForm, formValues, generatedTitle, saveNewReport, showNotification, handleClearForm, removeNotification, firebaseUid, consentLoaded]);
 
 
 
@@ -1104,6 +1140,12 @@ const handleClearForm = useCallback(() => {
           }
       }
 
+      // Hide Coroner Email from sidebar only when ALL source forms + email are opted in
+      if (form.firebaseKey === 'coroner_email' && isFormOptedIn('coroner_email') && isFormOptedIn('coroner-report') && isFormOptedIn('mass-ftality-test')) {
+          shouldDisplay = false;
+          reason = 'Auto-generated by bot — no manual save needed';
+      }
+
       if (matchesSearchTerm && shouldDisplay) {
         const categoryName = form.category || "Uncategorized";
         if (!categoriesMap[categoryName]) {
@@ -1143,7 +1185,7 @@ const handleClearForm = useCallback(() => {
     });
 
     return [sortedGroupedForms, tempNotDisplayedFormsDetails];
-  }, [formsData, searchTerm, isAuthenticated, isPhmcMember, isDevelopment, user, factionData]);
+  }, [formsData, searchTerm, isAuthenticated, isPhmcMember, isDevelopment, user, factionData, botConsent, consentLoaded]);
 
   useEffect(() => {
     const updateUtcTime = () => {
@@ -1467,6 +1509,44 @@ const handleClearForm = useCallback(() => {
     Click &quot;Generate BBCode&quot; to preview
   </div>
 )}
+          {(() => {
+            const MEDICAL_FORM_IDS = ['patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical', 'session_notes', 'intensive_treatment', 'psych_eval', 'testing-compact-mode'];
+            if (selectedForm?.firebaseKey && MEDICAL_FORM_IDS.includes(selectedForm.firebaseKey) && botConsent?.[selectedForm.firebaseKey]) {
+              return (
+                <div style={{ marginBottom: 8 }}>
+                  <label style={{ fontSize: '0.8rem', color: '#94a3b8', display: 'block', marginBottom: 4 }}>
+                    <i className="fas fa-user me-1" style={{ color: '#6366f1' }}></i>
+                    Patient Name <span style={{ color: '#f87171' }}>*</span>
+                  </label>
+                  <div style={{ marginBottom: 6, display: 'flex', alignItems: 'flex-start', gap: 6, padding: '6px 10px', background: 'rgba(99, 102, 241, 0.1)', border: '1px solid rgba(99, 102, 241, 0.25)', borderRadius: 6, fontSize: '0.78rem', color: '#a5b4fc', lineHeight: 1.4 }}>
+                      <i className="fas fa-info-circle" style={{ fontSize: '0.85rem', marginTop: 1, flexShrink: 0 }}></i>
+                      <span>If you don't know the patient's ID, leave it blank — the bot will automatically find the correct thread or create one.</span>
+                    </div>
+                  {!(formValues.decedentName || formValues.patientName) && (
+                    <div style={{ marginBottom: 6, padding: '6px 10px', background: 'rgba(220, 38, 38, 0.15)', border: '1px solid rgba(220, 38, 38, 0.4)', borderRadius: 6, fontSize: '0.8rem', color: '#fca5a5', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <i className="fas fa-exclamation-triangle"></i>
+                      <span><strong>Required:</strong> Enter a patient name before saving — the bot needs this to find the correct thread on the forum.</span>
+                    </div>
+                  )}
+                  <input
+                    type="text"
+                    placeholder="Enter patient name for forum search..."
+                    value={formValues.decedentName || formValues.patientName || ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setFormValues(prev => ({ ...prev, decedentName: val, patientName: val }));
+                    }}
+                    style={{
+                      width: '100%', padding: '8px 10px', borderRadius: 8, border: !(formValues.decedentName || formValues.patientName) ? '1px solid #dc3545' : '1px solid #3d4166',
+                      background: '#0f172a', color: '#e2e8f0', fontSize: '0.85rem', outline: 'none',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                </div>
+              );
+            }
+            return null;
+          })()}
           <div style={{ display: 'flex', gap: 8, width: '100%' }}>
             <button
               onClick={() => {
@@ -1492,6 +1572,11 @@ const handleClearForm = useCallback(() => {
               {(() => {
                 const isDeployTracked = selectedForm?.firebaseKey && DEPLOY_TRACKED_FORMS.includes(selectedForm.firebaseKey);
                 const optedIn = isFormOptedIn(selectedForm?.firebaseKey);
+                const logKey = 'deploy-btn|' + selectedForm?.firebaseKey + '|' + isDeployTracked + '|' + optedIn + '|' + (!!generatedBBCode);
+                if (logKey !== lastConsentLog.current) {
+                  lastConsentLog.current = logKey;
+                  console.log('[Consent] Button state:', { formKey: selectedForm?.firebaseKey, isDeployTracked, optedIn, hasBbcode: !!generatedBBCode });
+                }
                 if (isDeployTracked && optedIn) return <><i className="fas fa-cloud-upload-alt me-1"></i> Save and Queue</>;
                 if (Array.isArray(generatedBBCode)) return `Copy Part 1 + Save (${generatedBBCode.length} Parts)`;
                 return generatedBBCode ? <><i className="fas fa-copy me-1"></i> Save</> : 'No BBCode Yet';
@@ -1648,9 +1733,11 @@ const handleClearForm = useCallback(() => {
           color: '#94a3b8'
         }}></i>
       )}
-      {selectedForm?.category === 'DMEC' 
-        ? (generatedTitle || "No Title Generated") 
-        : "Please add this to the patient's thread, if one is missing, kindly make one"}
+      {selectedForm?.category === 'DMEC'
+        ? (generatedTitle || "No Title Generated")
+        : (selectedForm?.firebaseKey && DEPLOY_TRACKED_FORMS.includes(selectedForm.firebaseKey) && isFormOptedIn(selectedForm?.firebaseKey))
+          ? (generatedTitle || "Auto-deployed by bot")
+          : "Please add this to the patient's thread, if one is missing, kindly make one"}
     </div>
     </>})()}
 
@@ -1832,11 +1919,21 @@ ${morgue.tattoos}
       {/* ── Bot Deploy Consent Modal ── */}
       <BotDeployOptInModal
         show={showConsentModal}
-        onClose={() => setShowConsentModal(false)}
+        onClose={() => {
+          consentJustSaved.current = true;
+          setShowConsentModal(false);
+          // If save was pending before consent modal, retry it now
+          if (pendingSaveAfterConsent.current) {
+            pendingSaveAfterConsent.current = false;
+            // Fire at next tick so Firebase write + React state settle
+            setTimeout(() => copyAndSaveReport(), 0);
+          }
+        }}
         consent={botConsent}
         saveAllConsent={saveBotConsent}
         setConsent={setBotConsent}
-        isLoading={consentLoading}
+        isLoading={false}
+        displayName={characterName}
       />
 
       {/* Global Image Previewer */}
@@ -1868,13 +1965,7 @@ ${morgue.tattoos}
         </div>
       )}
 
-      {pendingRefreshInfo && countdownStr && (
-        <div style={{ position: 'fixed', bottom: 90, right: 20, zIndex: 9999, display: 'flex', alignItems: 'center', gap: 10, background: '#1a1a2e', border: '1px solid #60a5fa', borderRadius: 12, padding: '10px 16px', boxShadow: '0 8px 32px rgba(0,0,0,0.5)', fontSize: '0.8rem', color: '#e2e8f0' }}>
-          <i className="fas fa-sync-alt fa-spin" style={{ color: '#60a5fa', fontSize: '0.9rem' }}></i>
-          <span>Update in <strong>{countdownStr}</strong></span>
-          <button onClick={updateNow} style={{ background: '#3b82f6', border: 'none', color: '#fff', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', fontWeight: 600, fontSize: '0.75rem', whiteSpace: 'nowrap' }}>Update Now</button>
-        </div>
-      )}
+      {/* Countdown banner removed — auto-refresh happens silently in background after 5min debounce */}
 
     </div>
   );

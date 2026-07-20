@@ -11,6 +11,104 @@ const AssignedAutopsiesModal = ({ show, onClose, onLoadCase }) => {
 
     useEffect(() => {
         if (!show) return;
+
+        const isLocalHost = window.location.hostname === 'localhost';
+
+        if (isLocalHost) {
+            // ── DEV MODE: Mock autopsies for local testing ──
+            const mockData = [
+                {
+                    id: 'dev-mock-01',
+                    name: 'Marcus Johnson',
+                    oocName: 'DevTest_Player',
+                    faction: 'LSPD',
+                    assignedTo: 'Dr. Alyson Frost',
+                    topicUrl: null,
+                    caseUrl: null,
+                    detectedAt: new Date(Date.now() - 60000).toISOString(),
+                    parsed: {
+                        requesterName: 'Sgt. Riley',
+                        placeOfDeath: 'Davis Avenue',
+                        deathType: 'PK',
+                        dateOfDeath: '10/JUL/2026',
+                        timeOfDeath: '22:45',
+                    },
+                },
+                {
+                    id: 'dev-mock-02',
+                    name: 'Sarah Chen',
+                    oocName: 'AnotherDev',
+                    faction: 'LSSD',
+                    assignedTo: 'Dr. Marcus Reed',
+                    topicUrl: 'https://forum.gta.world/index.php?/topic/99999-mock/',
+                    caseUrl: 'https://forum.gta.world/index.php?/topic/100000-mock-case/',
+                    detectedAt: new Date(Date.now() - 120000).toISOString(),
+                    parsed: {
+                        requesterName: 'Deputy Williams',
+                        placeOfDeath: 'Paleto Bay',
+                        deathType: 'CK',
+                        dateOfDeath: '09/JUL/2026',
+                        timeOfDeath: '03:15',
+                    },
+                },
+                {
+                    id: 'dev-mock-03',
+                    name: 'James Smith',
+                    oocName: 'ThirdTester',
+                    faction: 'SADCR',
+                    assignedTo: 'Dr. Emily Hart',
+                    topicUrl: 'https://forum.gta.world/index.php?/topic/100001-mock-request/',
+                    caseUrl: null,
+                    detectedAt: new Date(Date.now() - 180000).toISOString(),
+                    parsed: {
+                        requesterName: 'CO Martinez',
+                        placeOfDeath: 'Bolingbroke Penitentiary',
+                        deathType: 'PK',
+                        dateOfDeath: '08/JUL/2026',
+                        timeOfDeath: '14:30',
+                    },
+                },
+                {
+                    id: 'dev-mock-04',
+                    name: 'Elena Rodriguez',
+                    oocName: 'FourthTester',
+                    faction: 'LSPD',
+                    assignedTo: 'Dr. Alyson Frost',
+                    topicUrl: null,
+                    caseUrl: null,
+                    detectedAt: new Date(Date.now() - 3600000).toISOString(),
+                    parsed: {
+                        requesterName: 'Officer Blake',
+                        placeOfDeath: 'Rockford Hills',
+                        deathType: 'PK',
+                        dateOfDeath: '07/JUL/2026',
+                        timeOfDeath: '19:50',
+                    },
+                },
+                {
+                    id: 'dev-mock-05',
+                    name: 'Test Non-Morgue',
+                    oocName: 'NoMatchUser',
+                    faction: 'DAO',
+                    assignedTo: 'Dr. Sarah Mitchell',
+                    topicUrl: null,
+                    caseUrl: null,
+                    detectedAt: new Date().toISOString(),
+                    parsed: {
+                        requesterName: 'Agent Cross',
+                        placeOfDeath: 'Sandy Shores',
+                        deathType: 'PK',
+                        dateOfDeath: '11/JUL/2026',
+                        timeOfDeath: '08:00',
+                    },
+                },
+            ];
+            console.log('[AssignedModal] DEV MODE — loaded ' + mockData.length + ' mock autopsies');
+            setAssignments(mockData);
+            return;
+        }
+
+        // ── PRODUCTION: Read from Firebase ──
         const r = ref(database, 'autopsy-requested');
         const unsub = onValue(r, (snap) => {
             const data = snap.val();
@@ -28,32 +126,36 @@ const AssignedAutopsiesModal = ({ show, onClose, onLoadCase }) => {
                     .sort((a, b) => (b.detectedAt || '').localeCompare(a.detectedAt || ''))
                     .forEach(e => list.push(e));
             }
-            // Inject a fake dev-only entry on localhost for testing the "no morgue" error state
-            const isLocalHost = window.location.hostname === 'localhost';
-            if (isLocalHost) {
-                list.unshift({
-                    id: 'dev-test-no-morgue',
-                    name: 'John Doe',
-                    oocName: 'Dev Test User',
-                    faction: 'LSPD',
-                    assignedTo: 'Dev Bot',
-                    topicUrl: null,
-                    caseUrl: null,
-                    detectedAt: new Date().toISOString(),
-                    parsed: { requesterName: 'Dev Officer', placeOfDeath: 'Test Street', deathType: 'PK', dateOfDeath: '13/JUN/2026', timeOfDeath: '23:10' },
-                });
-            }
             setAssignments(list);
         });
         return () => unsub();
     }, [show]);
+
+    const isLocalHost = window.location.hostname === 'localhost';
+
+    // Parse "HH:MM" to total minutes for time proximity scoring
+    const parseTimeToMinutes = (t) => {
+        if (!t) return null;
+        const m = t.match(/^(\d{1,2}):(\d{2})/);
+        return m ? parseInt(m[1], 10) * 60 + parseInt(m[2], 10) : null;
+    };
+
+    // Mock morgue records for localhost testing
+    const mockMorgueRecords = [
+        { caseId: 'MOCK-2026-001', name: 'Marcus Johnson', causeOfDeath: 'Gunshot wound to the chest', location: 'Davis Avenue', timeOfDeath: '10/JUL/2026 22:45' },
+        { caseId: 'MOCK-2026-002', name: 'Sarah Chen', causeOfDeath: 'Blunt force trauma', location: 'Paleto Bay', timeOfDeath: '09/JUL/2026 03:15' },
+        { caseId: 'MOCK-2026-003', name: 'James Smith', causeOfDeath: 'Asphyxiation', location: 'Bolingbroke Penitentiary', timeOfDeath: '08/JUL/2026 14:30' },
+        { caseId: 'MOCK-2026-004', name: 'Elena Rodriguez', causeOfDeath: 'Stab wound', location: 'Rockford Hills', timeOfDeath: '07/JUL/2026 19:50' },
+    ];
 
     const handleLoad = async (entry) => {
         setLoadingCase(entry.id);
         // Clear any previous error for this entry
         setMorgueErrors(prev => { const n = new Set(prev); n.delete(entry.id); return n; });
         try {
-            const result = await triggerGetMorgueRecords();
+            const result = isLocalHost
+                ? { records: mockMorgueRecords }
+                : await triggerGetMorgueRecords();
             const records = result?.records || [];
             const terms = [entry.oocName.toLowerCase(), entry.name.toLowerCase()].filter(Boolean);
             let bestMatch = null;
@@ -77,8 +179,18 @@ const AssignedAutopsiesModal = ({ show, onClose, onLoadCase }) => {
                     const loc = (rec.location || '').toLowerCase();
                     if (cause.includes('death reason missing') || (cause.includes('missing') && cause.includes('ck'))) s -= 200;
                     if (loc.includes('location unknown') || loc === 'unknown') s -= 100;
-                    if (parsedLoc && (loc.includes(parsedLoc.slice(0, 10)) || parsedLoc.split(',')[0].trim() && loc.includes(parsedLoc.split(',')[0].trim().toLowerCase()))) s += 50;
-                    // Date match: check if day and year from parsed date appear in timeOfDeath
+                    if (parsedLoc) {
+                        // Exact location substring match (parsed location is a street address)
+                        if (loc.includes(parsedLoc.slice(0, 10)) || (parsedLoc.split(',')[0].trim() && loc.includes(parsedLoc.split(',')[0].trim().toLowerCase()))) s += 50;
+                        // Reverse match: check if stored location terms appear in parsed location
+                        else {
+                            const parsedTerms = parsedLoc.split(/[,;\s]+/).filter(Boolean);
+                            const locTerms = loc.split(/[,;\s-]+/).filter(t => t.length > 3); // skip short words
+                            const overlap = locTerms.some(lt => parsedTerms.includes(lt));
+                            if (overlap) s += 50;
+                        }
+                    }
+                    // Date + time proximity scoring
                     if (parsedDate) {
                         const dm = parsedDate.match(/(\d{1,2})\/([a-z]+)\/(\d{4})/i);
                         if (dm) {
@@ -86,8 +198,23 @@ const AssignedAutopsiesModal = ({ show, onClose, onLoadCase }) => {
                             const year = dm[3];
                             const mAbbr = dm[2].toLowerCase().substring(0, 3);
                             const rt = (rec.timeOfDeath || '').toLowerCase();
-                            // Match: same day + same year + abbreviated month appears in the date portion
-                            if (rt.includes(day) && rt.includes(year) && rt.includes(mAbbr)) s += 300;
+                            // Same day/month/year = strong base match
+                            if (rt.includes(day) && rt.includes(year) && rt.includes(mAbbr)) {
+                                s += 300;
+                                // Time proximity bonus: prefer records where time of day is close
+                                const parsedTime = (p.timeOfDeath || '').trim();
+                                if (parsedTime && rt.includes(' ')) {
+                                    const recTimePart = rt.split(' ')[1] || ''; // "22:45" from "10/JUL/2026 22:45"
+                                    const parsedMins = parseTimeToMinutes(parsedTime);
+                                    const recMins = parseTimeToMinutes(recTimePart);
+                                    if (parsedMins !== null && recMins !== null) {
+                                        const diff = Math.abs(parsedMins - recMins);
+                                        if (diff <= 15) s += 200;      // Within 15 min = very likely match
+                                        else if (diff <= 60) s += 100;  // Within 1 hour
+                                        else if (diff <= 180) s += 50;  // Within 3 hours
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -171,7 +298,7 @@ const AssignedAutopsiesModal = ({ show, onClose, onLoadCase }) => {
                                                 <i className="fas fa-folder me-1"></i>Case File
                                             </a>
                                         )}
-                                        {morgueErrors.has(a.id) || a.id === 'dev-test-no-morgue' ? (
+                                        {morgueErrors.has(a.id) ? (
                                             <div style={{ marginLeft: 'auto', color: '#f87171', fontSize: '0.75rem', textAlign: 'right', maxWidth: 200 }}>
                                                 <i className="fas fa-exclamation-triangle me-1"></i>This body isn't in the morgue yet — Notify Alyson Frost.
                                             </div>

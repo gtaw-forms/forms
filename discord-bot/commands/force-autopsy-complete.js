@@ -1,11 +1,12 @@
 import { SlashCommandBuilder, EmbedBuilder, MessageFlags } from 'discord.js';
+import { clearAssignment } from '../services/autopsyRotation.js';
 
 export const data = new SlashCommandBuilder()
     .setName('force-autopsy-complete')
     .setDescription('Force-mark an autopsy-requested entry as completed (owner only)')
     .addStringOption(opt =>
-        opt.setName('ooc')
-            .setDescription('OOC name to mark as completed')
+        opt.setName('name')
+            .setDescription('Name (IC or OOC) of the decedent to search')
             .setRequired(true))
     .addStringOption(opt =>
         opt.setName('status')
@@ -25,7 +26,7 @@ export async function execute(interaction) {
 
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-    const ooc = interaction.options.getString('ooc').trim();
+    const searchName = interaction.options.getString('name').trim();
     const status = interaction.options.getString('status') || 'completed';
 
     try {
@@ -57,12 +58,18 @@ export async function execute(interaction) {
         }
         const db = admin.database();
 
-        // Look up the entry
-        const snap = await db.ref('autopsy-requested').orderByChild('oocName').equalTo(ooc).once('value');
+        // Look up the entry — try OOC name first, then IC name
+        let snap = await db.ref('autopsy-requested').orderByChild('oocName').equalTo(searchName).once('value');
+
+        if (!snap.exists()) {
+            console.log('[CMD] force-autopsy-complete: OOC name not found, trying IC name: "' + searchName + '"');
+            snap = await db.ref('autopsy-requested').orderByChild('name').equalTo(searchName).once('value');
+        }
 
         if (!snap.exists()) {
             await interaction.editReply({
-                content: 'No autopsy-requested entry found with OOC name: **' + ooc + '**',
+                content: 'No autopsy-requested entry found with name: **' + searchName + '**\n\n'
+                    + 'Searched by both OOC name and IC name. Ensure the name matches exactly how it appears in Firebase.',
             });
             return;
         }
@@ -80,6 +87,12 @@ export async function execute(interaction) {
                     completedAt: new Date().toISOString(),
                     completedBy: 'force-autopsy-complete (owner: ' + interaction.user.tag + ')',
                 });
+                // Decrement the ME's active case count in the rotation tracker
+                if (entry.assignedTo) {
+                    clearAssignment(db, entry.assignedTo, key).catch(err => {
+                        console.warn(`[CMD] force-autopsy-complete: rotation tracking error: ${err.message}`);
+                    });
+                }
                 details.push((alreadyDone ? '🔄 Re-marked' : '✅ Marked') + ' #' + key + ' (' + (entry.title || '') + ')');
             } else if (status === 'failed') {
                 child.ref.update({

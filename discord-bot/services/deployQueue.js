@@ -7,7 +7,7 @@
  */
 
 import { getForumClient } from './forumClient.js';
-import { logFnCall, sendWebhook } from './deployLogger.js';
+import { logFnCall, sendWebhook, DeployProgressEmbed } from './deployLogger.js';
 import { state, C } from './deployState.js';
 import { checkUserConsent, skipDueToConsent } from './deployConsent.js';
 import { setDeployStatus } from './deployStatus.js';
@@ -82,7 +82,7 @@ export async function setMaintenanceMode(enabled, db) {
                     const formId = reportData.formId;
                     if (formId === 'coroner_email') consentGateAndEnqueue('pm', item, formId);
                     else if (['death_record', 'mass-ftality-test', 'coroner-report'].includes(formId)) consentGateAndEnqueue('topic', item, formId);
-                    else if (formId === 'patient_notes') consentGateAndEnqueue('medical-record', item, formId);
+                    else if (['patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical', 'session_notes', 'intensive_treatment', 'psych_eval', 'testing-compact-mode'].includes(formId)) consentGateAndEnqueue('medical-record', item, formId);
                     else if (formId === 'autopsy') consentGateAndEnqueue('autopsy-reply', item, formId);
                     requeued++;
                 });
@@ -160,13 +160,7 @@ export async function enqueue(type, data) {
         } else if (type === 'autopsy-reply') {
             queueDetail = `\n**Forum:** Case Management (reply)`;
         }
-        sendWebhook(null, {
-            title: ' Report Queued',
-            description: `**${label}**\n\`${firebaseKey}\`${queueDetail}\nDelaying ~${Math.round(C.DEFER_MS / 60000)} min for potential corrections.\nDeploy scheduled around **${deployTime}**.`,
-            color: 0xffc107,
-            footer: { text: 'PHMC Bot — Auto Deploy' },
-            timestamp: new Date().toISOString(),
-        });
+        // (no standalone webhook — the progress embed below covers queue status)
 
         // Write user-facing status so the web app shows a clear notification
         const minutes = Math.round(C.DEFER_MS / 60000);
@@ -174,13 +168,26 @@ export async function enqueue(type, data) {
         setDeployStatus(data.db || state.dbRef, data.authorId, data.key, 'queued', msg).catch(() => {});
     }
 
+    // Post a unified progress embed (will be edited by the deploy handler later)
+    let progressMessageId = null;
+    try {
+        const embed = new DeployProgressEmbed(state.discordClient, process.env.BOT_LOG_CHANNEL_ID);
+        const minutes = Math.round(C.DEFER_MS / 60000);
+        await embed.start(`Queued: ${label} — deploys ~${deployTime} (${minutes} min)`);
+        progressMessageId = embed.messageId;
+    } catch (e) { /* progress embed is optional */ }
+
     const timer = setTimeout(async () => {
         state.pendingDeployments.delete(entityKey);
+        if (progressMessageId) {
+            data._progressMessageId = progressMessageId;
+            data._progressChannelId = process.env.BOT_LOG_CHANNEL_ID;
+        }
         const runDeploy = await getRunDeploy();
         runDeploy(type, data);
     }, C.DEFER_MS);
 
-    state.pendingDeployments.set(entityKey, { timer, type, data, label, fireTime });
+    state.pendingDeployments.set(entityKey, { timer, type, data, label, fireTime, progressMessageId });
 }
 
 export async function skipReport(entityKey, skippedBy = 'unknown') {
@@ -198,7 +205,7 @@ export async function skipReport(entityKey, skippedBy = 'unknown') {
         if (reportKey && state.knownReportKeys) state.knownReportKeys.delete(reportKey);
         if (authorId && reportKey && state.dbRef) {
             try {
-                await state.dbRef.ref(`scheduledReports/${authorId}/${reportKey}`).update({
+                await state.dbRef.child(`scheduledReports/${authorId}/${reportKey}`).update({
                     hasdeployed: true,
                     deployStatus: 'skipped_manual',
                     deployMessage: `Skipped by ${skippedBy} via /report-skip at ${new Date().toISOString()}`,
@@ -215,10 +222,10 @@ export async function skipReport(entityKey, skippedBy = 'unknown') {
         label = reportKey;
         if (state.dbRef) {
             try {
-                const snap = await state.dbRef.ref(`scheduledReports/${authorId}/${reportKey}`).once('value');
+                const snap = await state.dbRef.child(`scheduledReports/${authorId}/${reportKey}`).once('value');
                 const report = snap.val();
                 label = report?.originalKey || reportKey;
-                await state.dbRef.ref(`scheduledReports/${authorId}/${reportKey}`).update({
+                await state.dbRef.child(`scheduledReports/${authorId}/${reportKey}`).update({
                     hasdeployed: true,
                     deployStatus: 'skipped_manual',
                     deployMessage: `Skipped by ${skippedBy} via /report-skip at ${new Date().toISOString()}`,
@@ -264,7 +271,7 @@ export function getQueuedDeployments() {
         const remaining = Math.max(0, Math.round((entry.fireTime - now) / 1000));
         const formId = entry.data.report?.formId || '';
         let forumLabel;
-        if (formId === 'patient_notes') forumLabel = 'Medical Records';
+        if (['patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical', 'session_notes', 'intensive_treatment', 'psych_eval', 'testing-compact-mode'].includes(formId)) forumLabel = 'Medical Records';
         else if (entry.type === 'topic' || entry.type === 'medical-record') {
             const MAP = { 'coroner-report': 'Coroner Reports', 'death_record': 'Death Records', 'mass-ftality-test': 'Mass Fatality', 'autopsy': 'Autopsy' };
             forumLabel = MAP[formId] || 'PHMC Forum';
@@ -273,7 +280,8 @@ export function getQueuedDeployments() {
             const d = entry.data.report?.data || {};
             const rawDept = d.department || '';
             const deptStr = (typeof rawDept === 'object' ? (rawDept.label || rawDept.value || '') : String(rawDept)).toLowerCase();
-            if (deptStr.includes('sadcr') || deptStr.includes('corrections')) forumLabel = 'SADCR';
+            if (deptStr.includes('dao') || deptStr.includes('atlantic') || deptStr.includes('district attorney')) forumLabel = 'DAO';
+            else if (deptStr.includes('sadcr') || deptStr.includes('corrections')) forumLabel = 'SADCR';
             else if (deptStr.includes('lssd') || deptStr.includes('sheriff')) forumLabel = 'LSSD';
             else forumLabel = 'LSPD';
         }
@@ -289,7 +297,7 @@ export function getQueuedDeployments() {
 export async function getStuckReports() {
     logFnCall('deployQueue', 'getStuckReports', 'Getting stuck reports');
     if (!state.dbRef) return [];
-    const snap = await state.dbRef.ref('scheduledReports').once('value');
+    const snap = await state.dbRef.child('scheduledReports').once('value');
     if (!snap.exists()) return [];
     const stuck = [];
     snap.forEach((authorSnap) => {

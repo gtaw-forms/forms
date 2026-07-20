@@ -58,6 +58,10 @@ function sadcrUrl()   { return process.env.FORUM_SADCR_URL || 'http://sadcr.gta.
 function sadcrUser()  { return process.env.FORUM_SADCR_USERNAME; }
 function sadcrPass()  { return process.env.FORUM_SADCR_PASSWORD; }
 
+function daoUrl()     { return process.env.FORUM_DAO_URL || 'https://lsda.gta.world'; }
+function daoUser()    { return process.env.FORUM_DAO_USERNAME; }
+function daoPass()    { return process.env.FORUM_DAO_PASSWORD; }
+
 // ── Firebase Queries ──
 
 /**
@@ -380,7 +384,9 @@ async function main() {
 
     // Resolve forum URL from flag
     let forumUrl;
-    if (forumArg === 'lssd') {
+    if (forumArg === 'dao') {
+        forumUrl = daoUrl();
+    } else if (forumArg === 'lssd') {
         forumUrl = lssdUrl();
     } else if (forumArg === 'lspd') {
         forumUrl = lspdUrl();

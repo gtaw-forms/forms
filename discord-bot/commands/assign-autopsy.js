@@ -2,6 +2,7 @@ import { SlashCommandBuilder, EmbedBuilder, MessageFlags } from 'discord.js';
 import firebase from '../services/firebase.js';
 import { getForumClient } from '../services/forumClient.js';
 import { parseAutopsyRequestBbcode } from '../services/autopsyRequestMonitor.js';
+import { recordAssignment } from '../services/autopsyRotation.js';
 
 export const data = new SlashCommandBuilder()
     .setName('assign-autopsy')
@@ -189,11 +190,14 @@ export async function execute(interaction) {
         // Store in Firebase (entry object was built earlier)
         entry.caseUrl = caseUrl;
         entry.topicId = topicIdNum;
+        entry.caseTopicId = topicIdNum;
         await db.ref(`autopsy-requested/${topicIdNum}`).set(entry);
 
-        // Increment round-robin index
-        const idxSnap = await db.ref('autopsy-requests/lastAssignedIndex').once('value');
-        await db.ref('autopsy-requests/lastAssignedIndex').set((idxSnap.val() || 0) + 1);
+        // Record assignment in the rotation tracker (for active case counts, recency)
+        // Does NOT advance rotation position — manual assignments don't skip the next in line
+        await recordAssignment(db, meName, topicIdNum, caseNum).catch(err => {
+            console.warn(`[ASSIGN] Failed to record assignment in rotation: ${err.message}`);
+        });
 
         const embed = new EmbedBuilder()
             .setColor(0x9b59b6)

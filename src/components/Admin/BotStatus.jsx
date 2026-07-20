@@ -16,12 +16,22 @@ const DEPLOY_STATUS_LABELS = {
 };
 
 const FORM_LABELS = {
-    coroner_email:   'Coroner Email',
-    coroner_report:  'Coroner Report',
-    death_record:    'Death Record',
-    patient_notes:   'Medical Record',
-    autopsy:         'Autopsy',
-    'mass-ftality-test': 'Mass Fatality',
+    // Coroners
+    coroner_email:        'Coroner Email',
+    coroner_report:       'Coroner Report',
+    death_record:         'Death Record',
+    autopsy:              'Autopsy',
+    'mass-ftality-test':  'Mass Fatality',
+    // Clinical Department
+    patient_notes:        'Patient Notes',
+    er_protocol:          'ER Protocol',
+    physical_evaluation:  'Physical Evaluation',
+    'staff-patient-file': 'Patient File',
+    surgical:             'Surgical',
+    // Mental Health
+    session_notes:        'Session Notes - Consultation',
+    intensive_treatment:  'Intensive Treatment Certification',
+    psych_eval:           'Psych Eval',
 };
 
 function getTimeAgo(isoString) {

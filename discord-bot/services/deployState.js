@@ -38,7 +38,7 @@ export const state = {
 };
 
 export const C = {
-    DEFER_MS: 2 * 60 * 1000,
+    DEFER_MS: 2.5 * 60 * 1000,
     RETRY_DELAY_MS: 6 * 60 * 60 * 1000,
     RETRY_CHECK_INTERVAL_MS: 30 * 60 * 1000,
     MAX_RETRIES: 3,

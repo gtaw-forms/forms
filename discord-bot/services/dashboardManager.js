@@ -304,7 +304,7 @@ function buildDashboardEmbed(data) {
         const statusIcon = am.lastCheckTime === null ? '⏳' : am.lastCheckSuccess ? '✅' : '❌';
         taskLines.push(
             `${statusIcon} **Autopsy Monitor** — every ${intervalMin}min (f=265)\n` +
-            `└ LSPD: ${am.lspdCount ?? '?'} | LSSD: ${am.lssdCount ?? '?'} — last check: ${lastCheck}`
+            `└ LSPD: ${am.lspdCount ?? '?'} requests | LSSD: ${am.lssdCount ?? '?'} requests — last check: ${lastCheck}`
         );
     } else {
         taskLines.push('⏹️ **Autopsy Monitor** — inactive');
@@ -355,7 +355,12 @@ function buildRefreshRow() {
                 .setCustomId('dashboard_refresh')
                 .setLabel('Refresh Now')
                 .setEmoji('🔄')
-                .setStyle(ButtonStyle.Secondary)
+                .setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder()
+                .setCustomId('dashboard_restart')
+                .setLabel('Restart Bot')
+                .setEmoji('🔁')
+                .setStyle(ButtonStyle.Danger)
         );
 }
 
@@ -499,6 +504,41 @@ export async function handleDashboardRefresh(interaction) {
     } catch (err) {
         console.error('[DASHBOARD] Refresh error:', err.message);
         await interaction.editReply({ content: '⏳ Refresh triggered, please wait for the next auto-refresh cycle.' });
+    }
+
+    return true;
+}
+
+/**
+ * Handle the "Restart Bot" button — gracefully restarts the bot process.
+ * Designed for PM2-managed processes which auto-restart on exit.
+ */
+export async function handleDashboardRestart(interaction) {
+    if (!interaction.isButton() || interaction.customId !== 'dashboard_restart') return false;
+
+    await interaction.deferReply({ ephemeral: true });
+
+    try {
+        const db = firebase.db;
+        if (!db) {
+            await interaction.editReply({ content: '[ERR] Firebase not ready yet, please try again in a moment.' });
+            return true;
+        }
+
+        // Post confirmation message, then restart
+        await interaction.editReply({ content: '🔁 Restarting bot... Dashboard will return in a few seconds.' });
+
+        console.log('[DASHBOARD] Restart triggered via dashboard button by ' + interaction.user.tag);
+
+        // Brief delay so the ephemeral reply lands before the process dies
+        setTimeout(() => {
+            console.log('[DASHBOARD] Initiating PM2 restart (process.exit)...');
+            process.exit(0);
+        }, 1500);
+    } catch (err) {
+        console.error('[DASHBOARD] Restart error:', err.message);
+        // If defer failed, try direct reply
+        try { await interaction.editReply({ content: '[ERR] Failed to restart: ' + err.message }); } catch { /* ignore */ }
     }
 
     return true;

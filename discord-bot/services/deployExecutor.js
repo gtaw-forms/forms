@@ -7,11 +7,25 @@ import { getForumClient } from './forumClient.js';
 import { logFnCall, sendWebhook } from './deployLogger.js';
 import { state, C } from './deployState.js';
 import { requeueReport } from './deployRetry.js';
+import { checkUserConsent, skipDueToConsent } from './deployConsent.js';
 
-// Lazy import handlers to avoid circular deps (handlers import deployQueue, which imports us)
+// Lazy import handlers from the dedicated handler modules
 let _handlers = null;
 async function getHandlers() {
-    if (!_handlers) _handlers = await import('./autoDeploy.js');
+    if (!_handlers) {
+        const [pm, topic, med, autopsy] = await Promise.all([
+            import('./deployPM.js'),
+            import('./deployTopic.js'),
+            import('./deployMedicalRecord.js'),
+            import('./deployAutopsyReply.js'),
+        ]);
+        _handlers = {
+            handlePM: pm.handlePM,
+            handleTopic: topic.handleTopic,
+            handleMedicalRecord: med.handleMedicalRecord,
+            handleAutopsyReply: autopsy.handleAutopsyReply,
+        };
+    }
     return _handlers;
 }
 
@@ -33,6 +47,31 @@ export async function runDeploy(type, data) {
     }
 
     const label = data.report?.originalKey || data.key;
+
+    // ── Consent re-check ──
+    // User may have opted out since the report was queued (or never set preferences).
+    // If consent was revoked, skip the deploy and mark it in Firebase.
+    const formId = data.report?.formId;
+    if (formId) {
+        const consented = await checkUserConsent(data.db, data.authorId, formId);
+        if (!consented) {
+            console.log(`[AUTO] ${label} skipped — user has not consented to ${formId}`);
+
+            // Update progress embed if one exists
+            if (data._progressMessageId && state.discordClient) {
+                try {
+                    const channel = await state.discordClient.channels.fetch(data._progressChannelId);
+                    const msg = await channel.messages.fetch(data._progressMessageId);
+                    await msg.edit({ content: `[SKIPPED] ${label} — user revoked consent for ${formId}`, embeds: [], components: [] });
+                } catch { /* progress embed is optional */ }
+            }
+
+            await skipDueToConsent(data.db, data.authorId, data.key, formId, label);
+            state.processing = false;
+            return;
+        }
+    }
+
     const d = data.report?.data || {};
 
     // Determine forum label based on deploy type
@@ -45,37 +84,20 @@ export async function runDeploy(type, data) {
     } else {
         const rawDept = d.department || '';
         const deptStr = (typeof rawDept === 'object' ? (rawDept.label || rawDept.value || '') : String(rawDept)).toLowerCase();
-        if (deptStr.includes('sadcr')) forumLabel = 'SADCR';
+        if (deptStr.includes('dao') || deptStr.includes('atlantic') || deptStr.includes('district attorney')) forumLabel = 'DAO';
+        else if (deptStr.includes('sadcr')) forumLabel = 'SADCR';
         else if (deptStr.includes('lssd') || deptStr.includes('sheriff')) forumLabel = 'LSSD';
         else forumLabel = 'LSPD';
         console.log(`[AUTO] PM forum resolved: "${forumLabel}" from department "${rawDept}"`);
     }
     state.currentProcessing = { label, type, forum: forumLabel };
 
-    let deployDetail = '\n**Sending to:** ' + forumLabel;
-    if (type === 'pm') {
-        const recipient = d.requestingOfficer || d.requesting_officer || d.officerName || d.recipient || 'Unknown';
-        deployDetail += '\n**Recipient:** ' + recipient;
-    } else if (type === 'topic') {
-        const fInfo = getForumClient().constructor.FORUM_MAP[data.report?.formId];
-        if (fInfo) deployDetail += '\n**Forum:** ' + fInfo.name;
-    } else if (type === 'autopsy-reply') {
-        deployDetail += '\n**Forum:** Case Management (reply)';
-    }
-
     console.log('[AUTO] Deploying ' + label + ' (' + data.key + ') to ' + forumLabel + '...');
-    await sendWebhook(null, {
-        title: ' Deploying Report',
-        description: '**' + label + '**\n`' + data.key + '`' + deployDetail,
-        color: 0x007bff,
-        footer: { text: 'PHMC Bot — Auto Deploy' },
-        timestamp: new Date().toISOString(),
-    });
 
     try {
-        // Timeout guard: warn at 3 min, abort at 10 min
+        // Timeout guard: warn at 1 min, abort at 10 min
         const slowWarning = setTimeout(() => {
-            console.warn('[AUTO] ' + data.key + ' deploy taking longer than usual (>3 min)');
+            console.warn('[AUTO] ' + data.key + ' deploy taking longer than usual (>1 min)');
             sendWebhook(null, {
                 title: ' Forum Slow to Respond',
                 description: '**Key:** `' + data.key + '`\n**Type:** ' + type + '\n**Report:** ' + label,
@@ -83,7 +105,7 @@ export async function runDeploy(type, data) {
                 footer: { text: 'PHMC Bot — Auto Deploy' },
                 timestamp: new Date().toISOString(),
             });
-        }, 3 * 60 * 1000);
+        }, 1 * 60 * 1000);
 
         const timeout = setTimeout(() => {
             clearTimeout(slowWarning);

@@ -88,6 +88,15 @@ async function registerCommands() {
     const assignAutopsy = await import('./commands/assign-autopsy.js');
     const testAutopsy = await import('./commands/test-autopsy.js');
     const forceAutopsyComplete = await import('./commands/force-autopsy-complete.js');
+    const autopsySkip = await import('./commands/autopsy-skip.js');
+    const rotationList = await import('./commands/rotation-list.js');
+    const rotationSet = await import('./commands/rotation-set.js');
+    const massAutopsy = await import('./commands/mass-autopsy.js');
+    const meDiscord = await import('./commands/set-me-discord.js');
+    const testNotify = await import('./commands/test-autopsy-notify.js');
+    const patientSearch = await import('./commands/patient-search.js');
+    const fixAutopsy = await import('./commands/fix-autopsy.js');
+    const groupMorgueCheck = await import('./commands/group-morgue-check.js');
     const commands = [
         morgue.data.toJSON(),
         card.data.toJSON(),
@@ -110,6 +119,14 @@ async function registerCommands() {
         assignAutopsy.data.toJSON(),
         testAutopsy.data.toJSON(),
         forceAutopsyComplete.data.toJSON(),
+        rotationList.data.toJSON(),
+        rotationSet.data.toJSON(),
+        massAutopsy.data.toJSON(),
+        meDiscord.data.toJSON(),
+        fixAutopsy.data.toJSON(),
+        testNotify.data.toJSON(),
+        patientSearch.data.toJSON(),
+        groupMorgueCheck.data.toJSON(),
     ];
 
     const rest = new REST({ version: '10' }).setToken(token);
@@ -159,6 +176,10 @@ client.once('clientReady', async () => {
     const RECOMMENDED_ENV = [
         'FORUM_LSPD_URL', 'FORUM_LSPD_USERNAME', 'FORUM_LSPD_PASSWORD',
         'FORUM_LSSD_URL', 'FORUM_LSSD_USERNAME', 'FORUM_LSSD_PASSWORD',
+        'FORUM_SADCR_URL', 'FORUM_SADCR_USERNAME', 'FORUM_SADCR_PASSWORD',
+        'FORUM_DAO_URL', 'FORUM_DAO_USERNAME', 'FORUM_DAO_PASSWORD',
+        'CORONER_EMAIL_DRY_RUN', 'CORONER_EMAIL_ALLOWED',
+        'MEDICAL_RECORD_DRY_RUN', 'MEDICAL_RECORD_ALLOWED',
     ];
     for (const key of REQUIRED_ENV) {
         if (!process.env[key]) console.warn(`[BOT] ⚠️ Missing required env var: ${key}`);
@@ -174,7 +195,7 @@ client.once('clientReady', async () => {
     // ── Log startup to the log channel ──
     sendLogMessage(null, {
         title: 'Bot Online',
-        description: `Logged in as **${client.user.tag}**\nServers: ${client.guilds.cache.size}\nCommands registered.`,
+        description: `Logged in as **${client.user.tag}**\nServers: ${client.guilds.cache.size}\nCommands registered.\nAuto-deploy listener active.`,
         color: 0x28a745,
         footer: { text: new Date().toLocaleString() },
     });
@@ -251,6 +272,13 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.isButton() && interaction.customId === 'dashboard_refresh') {
         const { handleDashboardRefresh } = await import('./services/dashboardManager.js');
         await handleDashboardRefresh(interaction);
+        return;
+    }
+
+    // Handle dashboard restart button
+    if (interaction.isButton() && interaction.customId === 'dashboard_restart') {
+        const { handleDashboardRestart } = await import('./services/dashboardManager.js');
+        await handleDashboardRestart(interaction);
         return;
     }
 
@@ -513,6 +541,31 @@ async function start() {
 
     const forceAutopsyCompleteCmd = await import('./commands/force-autopsy-complete.js');
     client.commands.set(forceAutopsyCompleteCmd.data.name, { execute: forceAutopsyCompleteCmd.execute });
+    const autopsySkipCmd = await import('./commands/autopsy-skip.js');
+    client.commands.set(autopsySkipCmd.data.name, { execute: autopsySkipCmd.execute });
+    const fixAutopsyCmd = await import('./commands/fix-autopsy.js');
+    client.commands.set(fixAutopsyCmd.data.name, { execute: fixAutopsyCmd.execute });
+
+    const rotationListCmd = await import('./commands/rotation-list.js');
+    client.commands.set(rotationListCmd.data.name, { execute: rotationListCmd.execute });
+
+    const rotationSetCmd = await import('./commands/rotation-set.js');
+    client.commands.set(rotationSetCmd.data.name, { execute: rotationSetCmd.execute });
+
+    const patientSearchCmd = await import('./commands/patient-search.js');
+    client.commands.set(patientSearchCmd.data.name, { execute: patientSearchCmd.execute });
+
+    const massAutopsyCmd = await import('./commands/mass-autopsy.js');
+    client.commands.set(massAutopsyCmd.data.name, { execute: massAutopsyCmd.execute });
+
+    const meDiscordCmd = await import('./commands/set-me-discord.js');
+    client.commands.set(meDiscordCmd.data.name, { execute: meDiscordCmd.execute });
+
+    const testNotifyCmd = await import('./commands/test-autopsy-notify.js');
+    client.commands.set(testNotifyCmd.data.name, { execute: testNotifyCmd.execute });
+
+    const groupMorgueCheckCmd = await import('./commands/group-morgue-check.js');
+    client.commands.set(groupMorgueCheckCmd.data.name, { execute: groupMorgueCheckCmd.execute });
 
     console.log('[BOT] 🔌 Connecting to Discord...');
     await client.login(token);

@@ -9,10 +9,11 @@ import SidebarNav from '../UI/SidebarNav';
 import * as Sentry from "@sentry/react";
 import { reportLogicalError } from '../../utils/logging';
 import { triggerWebhookProxy } from '../../services/firebaseFunctions';
+import { tryRestoreFirebaseAuth } from '../../services/gtaWorldAuth';
 
 const MorgueLookup = () => {
-    const { morgueRecords, factionsData, isLoadingData, loadMorgueRecords } = useData();
-    const { isPhmcMember, user: firebaseUser } = useAuth();
+    const { morgueRecords, morgueRecordsError, factionsData, isLoadingData, loadMorgueRecords } = useData();
+    const { isPhmcMember, user: firebaseUser, logout } = useAuth();
     const { user: gtawUser, isAuthenticated } = useGtaWorldAuth();
     const { showNotification } = useNotification();
     const [searchTerm, setSearchTerm] = useState('');
@@ -23,6 +24,15 @@ const MorgueLookup = () => {
     const [devAccessOverride, setDevAccessOverride] = useState(null); // 'employee', 'denied'
     const [filterByCK, setFilterByCK] = useState(false);
     const isLocalHost = window.location.hostname === 'localhost';
+
+    // Lazy-loading state: tracks the initial fetch of morgue records so we can
+    // show a proper loading spinner instead of "No records found" while the
+    // Firebase function call or IndexedDB cache read is in progress.
+    const [isMorgueLoading, setIsMorgueLoading] = useState(true);
+
+    // Tracks user-initiated retry attempts so the loading message changes
+    // from "Synchronizing..." to "Re-attempting..." after an auth failure.
+    const [retryAttempt, setRetryAttempt] = useState(0);
     
     // Pagination state
     const [currentPage, setCurrentPage] = useState(1);
@@ -274,12 +284,24 @@ const MorgueLookup = () => {
         }
     }, [hasAccess, isAuthenticated, gtawUser]);
 
-    // Lazy-load morgue records on mount (not fetched during initial app load)
+    // Lazy-load morgue records on mount (not fetched during initial app load).
+    // Track loading state locally so we show a spinner while the Firebase function
+    // or IndexedDB cache read is in progress.
     useEffect(() => {
         if (hasAccess) {
-            loadMorgueRecords();
+            setIsMorgueLoading(true);
+            loadMorgueRecords().finally(() => setIsMorgueLoading(false));
         }
     }, [hasAccess, loadMorgueRecords]);
+
+    // Fallback: if records arrive before the promise above settles (e.g. from
+    // IndexedDB cache), clear the loading state immediately.
+    useEffect(() => {
+        if (morgueRecords && morgueRecords.length > 0) {
+            setIsMorgueLoading(false);
+            setRetryAttempt(0);
+        }
+    }, [morgueRecords]);
 
     const handleRequestUpdate = useCallback(async () => {
         const payload = {
@@ -322,9 +344,19 @@ const MorgueLookup = () => {
                 
                 {userDisplayInfo && (
                     <div className="morgue-user-welcome mb-4 p-3 rounded bg-dark bg-opacity-25 border border-secondary border-opacity-50">
-                        <div className="small opacity-75 text-uppercase fw-bold mb-1" style={{ fontSize: '0.65rem', letterSpacing: '1px', color: '#3498db' }}>Welcome Back</div>
-                        <div className="fw-bold text-white mb-1" style={{ fontSize: '1.05rem' }}>{userDisplayInfo.name}</div>
-                        <div className="small opacity-75" style={{ fontSize: '0.8rem', fontStyle: 'italic' }}>{userDisplayInfo.dept}</div>
+                        <div className="d-flex justify-content-between align-items-start">
+                            <div>
+                                <div className="small opacity-75 text-uppercase fw-bold mb-1" style={{ fontSize: '0.65rem', letterSpacing: '1px', color: '#3498db' }}>Welcome Back</div>
+                                <div className="fw-bold text-white mb-1" style={{ fontSize: '1.05rem' }}>{userDisplayInfo.name}</div>
+                                <div className="small opacity-75" style={{ fontSize: '0.8rem', fontStyle: 'italic' }}>{userDisplayInfo.dept}</div>
+                            </div>
+                            <button onClick={() => { logout(); window.location.href = '/forms/'; }}
+                                className="btn btn-outline-light btn-sm"
+                                title="Log out"
+                                style={{ fontSize: '0.75rem', padding: '3px 10px' }}>
+                                <i className="fas fa-sign-out-alt me-1"></i>Logout
+                            </button>
+                        </div>
                     </div>
                 )}
 
@@ -423,11 +455,17 @@ const MorgueLookup = () => {
                             >
                                 Simulate Employee
                             </button>
-                            <button 
+                            <button
                                 className={`btn btn-sm ${devAccessOverride === 'denied' ? 'btn-danger' : 'btn-outline-danger text-light'}`}
                                 onClick={() => setDevAccessOverride(devAccessOverride === 'denied' ? null : 'denied')}
                             >
                                 Simulate Denied
+                            </button>
+                            <button
+                                className={`btn btn-sm ${devAccessOverride === 'auth_failed' ? 'btn-warning' : 'btn-outline-warning text-light'}`}
+                                onClick={() => setDevAccessOverride(devAccessOverride === 'auth_failed' ? null : 'auth_failed')}
+                            >
+                                Simulate Auth Failed
                             </button>
                         </div>
                         {devAccessOverride && (
@@ -526,10 +564,55 @@ const MorgueLookup = () => {
                 )}
 
                 <div className="morgue-table-container">
-                    {isLoadingData ? (
+                    {isLoadingData || isMorgueLoading ? (
                         <div className="text-center p-5">
                             <i className="fas fa-circle-notch fa-spin fa-3x mb-3 text-primary"></i>
-                            <p className="text-muted">Synchronizing with Morgue Database...</p>
+                            {retryAttempt > 0 ? (
+                                <p>Re-attempting to fetch morgue records, this will take a few moments...</p>
+                            ) : (
+                                <p>Synchronizing with Morgue Database...</p>
+                            )}
+                            {isMorgueLoading && !isLoadingData && (
+                                <p className="small mt-2" style={{ opacity: 0.7 }}>
+                                    <i className="fas fa-cloud-download-alt me-1"></i>
+                                    {retryAttempt > 0
+                                        ? 'This is a diagnostic retry. If it persists, the issue will be logged for review.'
+                                        : 'Fetching latest records from server, this may take a few seconds. If this takes longer than 15 seconds, please refresh or contact Fr0styDev on Discord for assistance.'}
+                                </p>
+                            )}
+                        </div>
+                    ) : morgueRecordsError === 'auth_failed' || (isLocalHost && devAccessOverride === 'auth_failed') ? (
+                        <div className="text-center p-5 mt-5">
+                            <div className="mb-4">
+                                <i className="fas fa-exclamation-triangle fa-4x text-warning opacity-75"></i>
+                            </div>
+                            <h3 className="fw-bold">Firebase Authentication Error</h3>
+                            <p className="morgue-text-muted mx-auto" style={{ maxWidth: '500px' }}>
+                                Your Firebase session could not be established even though your
+                                GTA World login succeeded. This is usually caused by a temporary
+                                network issue or a browser extension blocking Google services.
+                            </p>
+                            <div className="mt-4 d-flex gap-3 justify-content-center">
+                                <button className="btn btn-primary" onClick={async () => {
+                                    const attemptNum = retryAttempt + 1;
+                                    setRetryAttempt(attemptNum);
+                                    console.log('[MorgueLookup] User initiated retry after auth_failed error (attempt #' + attemptNum + ')');
+                                    Sentry.addBreadcrumb({
+                                        category: 'morgue',
+                                        message: 'Retrying morgue load after auth_failed error',
+                                        data: { attempt: attemptNum },
+                                        level: 'info'
+                                    });
+                                    setIsMorgueLoading(true);
+                                    await loadMorgueRecords();
+                                    setIsMorgueLoading(false);
+                                }}>
+                                    <i className="fas fa-redo me-2"></i>Retry
+                                </button>
+                                <button className="btn btn-outline-light" onClick={() => window.location.reload()}>
+                                    <i className="fas fa-sync me-2"></i>Refresh Page
+                                </button>
+                            </div>
                         </div>
                     ) : !hasAccess ? (
                         <div className="text-center p-5 mt-5">

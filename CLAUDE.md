@@ -1,102 +1,156 @@
 # PHMC Forms — Project Guide
 
-## Key Rules
+## Deploy Matrix
 
-- After editing any bot file, upload to VPS via `scp` (pscp on Windows) and write to `discord-bot/changelog.md`. Then ask the user to restart via Discord `#dashboard`.
-- Files to upload: `pscp -pw PASSWORD local/path/file.js root@88.208.243.254:/opt/phmc-bot/discord-bot/path/file.js`
-- New files: `morgue-api.js`, `morgue-api-README.md` — upload to `/opt/phmc-bot/discord-bot/`
-- After uploading `morgue-api.js`, SSH in and run: `cd /opt/phmc-bot/discord-bot && npm install express && pm2 start morgue-api.js --name morgue-api`
-- `.env`, `firebase-admin-key.json`, and `*credentials.md` contain secrets — never commit or read aloud. Upload via `gcloud compute scp` when the user provides them.
-- `/functions` and `/discord-bot` are `.gitignored` — prompt the user for context if needed.
-- No emojis unless explicitly prompted. They break on PowerShell re-save (UTF-8 BOM corruption). Use plain text fallbacks like `[OK]`, `[WARN]`, `[ERR]`, `[DONE]` instead.
+What changed determines what needs deploying and who does it:
 
-## VPS
+| Changed files | Deploy action | Who runs it |
+|---|---|---|
+| `discord-bot/*.js` (services, commands) | SCP to VPS + `pm2 restart phmc-bot` | Claude (Bash tool — try SCP/SSH directly first) |
+| `discord-bot/morgue-api.js` | SCP to VPS + `pm2 restart morgue-api` | Claude |
+| `discord-bot/.env` | SCP to VPS + `pm2 restart phmc-bot` | Claude |
+| `src/*` (web app components, hooks) | `npm run build && node tools/deploy.js` | User runs locally |
+| `functions/*` (Cloud Functions code) | `firebase deploy --only functions` | Claude (try Bash tool first) |
+| `functions/database.rules.json` | `firebase deploy --only database` | User (Firebase CLI auth required) |
+| `src/*` + production push | `npm run build && node tools/deploy.js` | User only — may want extra testing first |
 
+**When multiple layers change** (e.g., bot + web app), both changelogs must be updated:
+- `changelog.md` (root — web app changes)
+- `discord-bot/changelog.md` (bot changes)
 
-### Bot Commands
+**Localhost dev** — the user runs a Vite dev server on localhost while working. Web app changes are hot-reloaded immediately. Only push to production (`npm run build && node tools/deploy.js`) when asked.
 
-```bash
-# SSH
-ssh root@88.208.243.254
+SSH key is at `~/.ssh/phmc_vps` — try SCP/SSH via the Bash tool first. If the sandbox blocks interactive auth, tell the user to prefix the command with `! `:
 
-# Upload a file
-scp discord-bot/path/to/file.js root@88.208.243.254:/opt/phmc-bot/discord-bot/path/to/file.js
-
-# View logs
-ssh root@88.208.243.254 "pm2 logs phmc-bot --lines 50"
-
-# Restart bot
-ssh root@88.208.243.254 "cd /opt/phmc-bot/discord-bot && pm2 restart phmc-bot"
-
-# Check status
-ssh root@88.208.243.254 "pm2 status phmc-bot"
-
-# Monitor in real-time
-ssh root@88.208.243.254 "pm2 logs phmc-bot"
-
-# Morgue REST API
-ssh root@88.208.243.254 "cd /opt/phmc-bot/discord-bot && pm2 start morgue-api.js --name morgue-api"
-ssh root@88.208.243.254 "cd /opt/phmc-bot/discord-bot && pm2 restart morgue-api"
-ssh root@88.208.243.254 "pm2 logs morgue-api --lines 50"
+```
+! scp -i ~/.ssh/phmc_vps discord-bot/path/file.js root@88.208.243.254:/opt/phmc-bot/discord-bot/path/file.js
 ```
 
-### Web App Deploy
+## Bash Sandbox Quirks
+
+The Bash tool sometimes hangs on long-running commands (e.g. `firebase deploy`, `npm build`, SSH sessions). If a command doesn't return within ~30 seconds, prompt the user to run it themselves by prefixing with `! `:
+
+> `! firebase deploy --only functions`
+
+This sends the command through the user's local terminal instead of the sandboxed Bash tool. SCP/SSH one-liners usually work fine; the hang is most common with interactive CLI tools and long-running builds.
+
+## VPS Commands
 
 ```bash
-npm run build && node tools/deploy.js
+# ── File Transfer ──
+scp -i ~/.ssh/phmc_vps discord-bot/path/to/file.js root@88.208.243.254:/opt/phmc-bot/discord-bot/path/to/file.js
+
+# ── Bot Management ──
+ssh -i ~/.ssh/phmc_vps root@88.208.243.254 "cd /opt/phmc-bot/discord-bot && pm2 restart phmc-bot"
+ssh -i ~/.ssh/phmc_vps root@88.208.243.254 "pm2 status"
+ssh -i ~/.ssh/phmc_vps root@88.208.243.254 "pm2 logs phmc-bot --lines 50 --out"
+ssh -i ~/.ssh/phmc_vps root@88.208.243.254 "pm2 logs phmc-bot --lines 50 --err"
+
+# ── Morgue API ──
+ssh -i ~/.ssh/phmc_vps root@88.208.243.254 "cd /opt/phmc-bot/discord-bot && pm2 restart morgue-api"
+ssh -i ~/.ssh/phmc_vps root@88.208.243.254 "pm2 logs morgue-api --lines 50"
+ssh -i ~/.ssh/phmc_vps root@88.208.243.254 "curl http://localhost:3001/api/health"
+
+# ── Combined Logs (realtime) ──
+ssh -i ~/.ssh/phmc_vps root@88.208.243.254 "pm2 logs"
 ```
 
 ## Project Structure
 
 ```
-src/components/
-├── Admin/        # Admin tools (morgue, CKs, webhooks, LSCC, factions)
-├── Auth/         # GTA World OAuth, email login
-├── ems-dashboard/# EMS protocols & dashboard
-├── form-handler/ # Form processing & BBCode rendering (core)
-├── Modals/       # Map, bug report, consent modal
-└── UI/           # Sidebar nav, morgue lookup, notifications
-
-src/hooks/
-├── useConsent.js        # Per-form-type bot deploy consent (Firebase)
-├── useFormSaver.js      # Save reports to Firebase
-├── useBbcodeGenerator.js# BBCode generation from form templates
-├── useGtaWorldAuth.js   # GTA World OAuth
-└── ...other hooks
-
-discord-bot/services/
-├── autoDeploy.js           # Facade — imports + re-exports from deploy modules
-├── forumClient.js          # Playwright browser automation
-├── deathRecordDraft.js     # Death record draft approval workflow
-├── autopsyRequestMonitor.js# Checks forum f=265 for autopsy requests
-├── dashboardManager.js     # System status dashboard embed
-├── queueDashboard.js       # Lightweight deploy queue embed
-├── deployPMs.js            # Standalone PM deployer
-├── systemMonitor.js        # 60-min health cycle checks
-├── logChannel.js           # Bot-spam channel notifications
-├── firebase.js             # Firebase Admin SDK singleton
-├── logger.js               # File logger
-├── deployLogger.js         # logFnCall, sendWebhook, logStep (standardized logging)
-├── deployState.js          # Shared state + constants for deploy sub-modules
-├── deployStatus.js         # markDeployed, setDeployStatus, markReportComplete
-├── deployConsent.js        # checkUserConsent, skipDueToConsent
-├── deployQueue.js          # enqueue, skipReport, isMaintenanceMode, getQueuedDeployments
-├── deployRetry.js          # backfillRetryQueue, checkRetryQueue, requeueReport
-├── deployExecutor.js       # runDeploy (sequential gate + timeout guard)
-├── deployLssd.js           # crosspostAutopsyToLssd (LSSD forum cross-post)
-└── deployInteraction.js    # resolveAutopsyTopic (interactive topic picker + completion)
+src/
+├── components/
+│   ├── Admin/          # Admin tools: morgue manager, CK viewer, webhooks,
+│   │                   #   form editor, faction data, LSCC, database editor,
+│   │                   #   bot status dashboard
+│   ├── Auth/           # GTA World OAuth, email login, login splash
+│   ├── ems-dashboard/  # EMS protocols, shift dashboard
+│   ├── form-handler/   # Form rendering, BBCode generation, save flow,
+│   │                   #   CK viewer, quick links (core feature)
+│   ├── Modals/         # Map, bug report, bot deploy consent,
+│   │                   #   assigned autopsies, employee credentials
+│   └── UI/             # Sidebar nav, morgue lookup, notifications
+├── hooks/
+│   ├── useConsent.js           # Bot deploy consent per form type
+│   ├── useFormSaver.js         # Save reports to Firebase (+ deploy routing)
+│   ├── useBbcodeGenerator.js   # BBCode from form templates
+│   ├── useGtaWorldAuth.js      # GTA World OAuth flow
+│   ├── useReportLoader.js      # Load saved reports from Firebase
+│   ├── useReportActions.js     # Delete / manage saved reports
+│   ├── useReportAttachment.js  # Attach reports to coroner email
+│   └── useInactivityReload.js  # Auto-reload after idle timeout
+├── contexts/
+│   ├── DataContext.jsx         # Firebase data cache + lazy morgue loading
+│   ├── AuthContext.jsx         # Firebase Auth state
+│   ├── GtaWorldAuthContext.jsx # GTA World OAuth + faction membership
+│   ├── ModalProvider.jsx       # Image preview modal state
+│   └── NotificationContext.jsx # Toast notification system
+├── services/
+│   └── firebaseFunctions.js    # Callable function wrappers
+├── utils/
+│   ├── logging.js              # Discord error webhooks, admin logging
+│   ├── identityUtils.js        # Character name/ID helpers
+│   ├── morgue.js               # Morgue record parser + BBCode generator
+│   └── ...more utilities
+├── firebase.js                 # Firebase SDK init
+└── App.jsx                     # Route definitions + service worker
 
 discord-bot/
-├── index.js                # Discord bot entry
-├── morgue-api.js           # Standalone REST API for morgue records (Express)
+├── index.js                    # Bot entry point + slash command registration
+├── morgue-api.js               # Standalone Express REST API for morgue records
+├── services/
+│   ├── autoDeploy.js           # Listener facade + startup orchestration
+│   ├── forumClient.js          # Playwright browser automation (phpBB)
+│   ├── deployConsent.js        # checkUserConsent, skipDueToConsent
+│   ├── deployQueue.js          # enqueue, skipReport, maintenance mode
+│   ├── deployExecutor.js       # runDeploy (sequential gate + consent re-check)
+│   ├── deployStatus.js         # markDeployed, setDeployStatus
+│   ├── deployRetry.js          # retry queue management
+│   ├── deployLogger.js         # logFnCall, sendWebhook, DeployProgressEmbed
+│   ├── deployState.js          # Shared state + constants
+│   ├── deployPM.js             # Forum PM handler (LSPD/LSSD/SADCR/DAO)
+│   ├── deployTopic.js          # Forum topic poster
+│   ├── deployMedicalRecord.js  # Patient notes / medical record reply
+│   ├── deployAutopsyReply.js   # Autopsy completion + case mgmt reply
+│   ├── deployCoronerEmail.js   # Auto-generated coroner email PM
+│   ├── deployLssd.js           # LSSD forum cross-post
+│   ├── deployLspd.js           # LSPD forum cross-post
+│   ├── deployInteraction.js    # Interactive topic picker
+│   ├── deployTest.js           # Dry-run / test helpers
+│   ├── autopsyRequestMonitor.js# Forum f=265 scanner
+│   ├── autopsyRotation.js      # ME round-robin assignment
+│   ├── deathRecordDraft.js     # CK listener + death record drafting
+│   ├── dashboardManager.js     # System status embed
+│   ├── queueDashboard.js       # Deploy queue embed
+│   ├── systemMonitor.js        # 60-min health checks
+│   ├── logChannel.js           # bot-spam channel notifications
+│   ├── firebase.js             # Firebase Admin singleton
+│   ├── logger.js               # File logger (log.txt rotation)
+│   └── meDiscordNotify.js      # Discord PM notifications for MEs
+├── commands/                   # Slash commands (auto-registered on restart)
+├── templates/                  # BBCode templates (e.g. Coroner-Email.json)
+└── scripts/                    # Utility scripts
+
+functions/                      # Firebase Cloud Functions (Node 20)
+├── index.js                    # Export aggregator
+├── src/
+│   ├── auth/                   # GTA World OAuth, token exchange
+│   ├── webhooks/               # Discord webhook proxy
+│   ├── maintenance/            # Daily tasks, faction sync
+│   ├── utils/                  # Media proxy, helpers
+│   └── reports/                # Report management (legacy)
+└── database.rules.json         # Firebase RTDB security rules
+
+tools/                          # Misc scripts (some stale — user tinkers here)
 ```
 
 ## Bot Auto-Deploy System
 
 - Listens on `scheduledReports` in Firebase RTDB
 - Routes: `coroner_email` → PM (LSPD/LSSD/SADCR), others → PHMC forum topic, `autopsy` → Case Management reply (f=266)
-- Checks `user-consent/<uid>/<formId>` before deploying (skips if false)
-- Retries failed deploys up to 3 times (6h intervals)
+- Checks `user-consent/<uid>/<formId>` before deploying (skips if false). Consent default = deploy when no preferences exist.
+- Consent is re-checked at deploy-time (not just queue-time) — opting out during the 2.5-min defer window is respected.
+- Retries failed deploys up to 3 times (6h intervals). Retry path also re-checks consent.
 - Dry-run flags: `DRY_POST`, `DRY_REPLY`, `AUTOPSY_DRY_RUN` (all default true in .env)
 
 ## Autopsy System
@@ -115,6 +169,17 @@ discord-bot/
 **Web App:** Assigned Autopsies modal auto-opens on autopsy form. Load Case fills from parsed data + morgue record. Completed cases filtered out.
 
 **LOA System:** `autopsy-requests/loa/<username>` in Firebase. Excluded from assignment pool. Dashboard shows ME assignments.
+
+## Consent System
+
+Users set per-form-type auto-deploy preferences via a multi-step modal (BotDeployOptInModal). Stored at `user-consent/<uid>/<formId>` in Firebase as booleans.
+
+- **Default (no data):** deploy allowed (backward compat — user hasn't chosen yet)
+- **Opted in (`true`):** report saves to `scheduledReports` → bot deploys
+- **Opted out (`false`):** report saves to `newSavedReports` → bot ignores
+- **First-time gate:** if user clicks "Save and Queue" without ever setting preferences, the consent modal opens first and must be completed before the save proceeds. After saving preferences, the save re-triggers automatically.
+- **Bot re-check:** even after queuing, the bot re-reads consent at deploy-time. Opting out during the 2.5-min window cancels the deploy.
+- Autopsy consent is force-enabled (cannot be disabled in the modal).
 
 ## Morgue REST API
 
@@ -142,6 +207,9 @@ Add to `MORGUE_API_KEYS` in `.env`, then `pm2 restart morgue-api`.
 ## Code Conventions
 
 - No `text-muted` — use `var(--text-muted)` on a custom class instead.
+- No emojis in code — they break on PowerShell re-save (UTF-8 BOM corruption). Use `[OK]`, `[WARN]`, `[ERR]`, `[DONE]` instead.
 - Firebase rules: `".read": true, ".write": "auth != null"` at root.
 - Forms stored in Firebase as BBCode templates (JSON schema).
 - Bot forum client uses Playwright with stealth plugin — must NOT include `--disable-web-security` or `bypassCSP: true`.
+- Secrets (`.env`, `firebase-admin-key.json`, `*credentials.md`) are never committed or read aloud.
+Exce

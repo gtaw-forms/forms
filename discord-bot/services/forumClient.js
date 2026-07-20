@@ -7,7 +7,38 @@ import { fileURLToPath } from 'url';
 chromium.use(StealthPlugin());
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const SESSION_FILE = resolve(__dirname, '..', 'forum-session.json');
+const DEFAULT_SESSION_FILE = resolve(__dirname, '..', 'forum-session.json');
+
+/**
+ * Module-level shared browser process. All ForumClient instances share the
+ * same Chromium process but get their own browser context (isolated cookies,
+ * localStorage, Cloudflare state) and session file.
+ */
+let _sharedBrowser = null;
+let _browserInitPromise = null;
+
+async function getSharedBrowser() {
+    if (_sharedBrowser) return _sharedBrowser;
+    if (_browserInitPromise) return _browserInitPromise;
+    _browserInitPromise = (async () => {
+        const browser = await chromium.launch({
+            headless: process.env.HEADLESS !== 'false',
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-blink-features=AutomationControlled',
+                '--disable-features=IsolateOrigins,site-per-process',
+                '--no-first-run',
+                '--no-default-browser-check',
+                '--disable-popup-blocking',
+                '--disable-gpu',
+            ],
+        });
+        _sharedBrowser = browser;
+        return browser;
+    })();
+    return _browserInitPromise;
+}
 
 /**
  * Send a DM to the bot owner via Discord REST API.
@@ -38,12 +69,22 @@ async function notifyOwner(message) {
 }
 
 class ForumClient {
-    constructor() {
-        this.browser = null;
+    /**
+     * @param {object} [opts]
+     * @param {string} [opts.sessionFile]  — Path to session file for this instance.
+     *        Defaults to the shared forum-session.json. Isolated clients (LSSD, DM, etc.)
+     *        use their own file so sessions don't conflict.
+     * @param {boolean} [opts.isIsolated]  — When true, this instance does not participate
+     *        in the global singleton lock; it has its own independent mutex.
+     */
+    constructor(opts = {}) {
         this.context = null;
         this.page = null;
         this._lock = Promise.resolve();
         this._lockOwner = null;
+        this.sessionFile = opts.sessionFile || DEFAULT_SESSION_FILE;
+        this.isIsolated = opts.isIsolated || false;
+        this._sessionDir = opts.sessionDir || __dirname;
     }
 
     /**
@@ -85,22 +126,9 @@ class ForumClient {
     // ── Browser lifecycle ──
 
     async ensureBrowser() {
-        if (this.browser && this.context) return;
+        if (this.context && this.page) return;
 
-
-        this.browser = await chromium.launch({
-            headless: this.headless,
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-blink-features=AutomationControlled',
-                '--disable-features=IsolateOrigins,site-per-process',
-                '--no-first-run',
-                '--no-default-browser-check',
-                '--disable-popup-blocking',
-                '--disable-gpu',
-            ],
-        });
+        const browser = await getSharedBrowser();
 
         const opts = {
             viewport: { width: 1280, height: 900 },
@@ -110,12 +138,12 @@ class ForumClient {
             ignoreHTTPSErrors: true,
             bypassCSP: false,
         };
-        if (existsSync(SESSION_FILE)) {
-            console.log('[FORUM] 📂 Loading stored session');
-            opts.storageState = SESSION_FILE;
+        if (existsSync(this.sessionFile)) {
+            console.log('[FORUM] 📂 Loading stored session from ' + this.sessionFile);
+            opts.storageState = this.sessionFile;
         }
 
-        this.context = await this.browser.newContext(opts);
+        this.context = await browser.newContext(opts);
         this.page = await this.context.newPage();
 
         // Remove webdriver property to avoid detection
@@ -176,12 +204,29 @@ class ForumClient {
     async saveSession() {
         if (!this.context) return;
         const state = await this.context.storageState();
-        writeFileSync(SESSION_FILE, JSON.stringify(state, null, 2), 'utf-8');
-        console.log(`[FORUM] 💾 Session saved to ${SESSION_FILE}`);
+        writeFileSync(this.sessionFile, JSON.stringify(state, null, 2), 'utf-8');
+        console.log(`[FORUM] 💾 Session saved to ${this.sessionFile}`);
     }
 
     hasSession() {
-        return existsSync(SESSION_FILE);
+        return existsSync(this.sessionFile);
+    }
+
+    /**
+     * Close this instance's browser context and page, releasing resources.
+     * Does NOT close the shared browser process — other instances still use it.
+     * Call when an isolated client is done (LSSD/DM temp clients).
+     */
+    async close() {
+        // Brief delay to let any in-flight health check page creation finish
+        // its stealth plugin hooks before we tear down this context.
+        await new Promise(r => setTimeout(r, 1000));
+        try {
+            if (this.page) await this.page.close().catch(() => {});
+            if (this.context) await this.context.close().catch(() => {});
+        } catch { /* best effort */ }
+        this.page = null;
+        this.context = null;
     }
 
     /**
@@ -437,9 +482,81 @@ class ForumClient {
             throw new Error(result.reason);
         }
 
-        await this.page.waitForTimeout(5000);
+        await this.page.waitForTimeout(3000);
+        // Wait for post-submit navigation — Cloudflare or slow phpBB needs time
+        try {
+            await this.page.waitForLoadState('networkidle', { timeout: 25000 });
+        } catch {
+            console.log('[FORUM] ⏳ Network did not reach idle after topic submit — checking URL anyway');
+        }
+        await this.page.waitForTimeout(2000);
         url = this.page.url();
         ok = url.includes('viewtopic.php');
+
+        // Handle phpBB preview: still on posting.php after submit
+        if (!ok && url.includes('posting.php')) {
+            console.log(`[FORUM] 🔄 Topic preview detected — re-submitting...`);
+
+            // Try clicking submit again
+            try {
+                await this.page.evaluate(() => {
+                    const form = document.querySelector('form[action*="posting.php"]');
+                    if (!form) return false;
+                    const btn = form.querySelector(
+                        'input[type="submit"][name="post"], ' +
+                        'button[type="submit"][name="post"]'
+                    );
+                    if (!btn) return false;
+                    btn.click();
+                    return true;
+                });
+                await Promise.race([
+                    this.page.waitForNavigation({ timeout: 20000 }),
+                    this.page.waitForTimeout(20000),
+                ]);
+            } catch {}
+            url = this.page.url();
+            ok = url.includes('viewtopic.php');
+
+            // If still on posting, try alternative selectors
+            if (!ok && url.includes('posting.php')) {
+                console.log(`[FORUM] 🔄 Topic still on posting page — trying alternative selectors...`);
+                try {
+                    await this.page.evaluate(() => {
+                        const btn =
+                            document.querySelector('#postform input[type="submit"][name="post"]') ||
+                            document.querySelector('input[type="submit"][value="Submit"]') ||
+                            document.querySelector('input[type="submit"][accesskey="s"]') ||
+                            document.querySelector('button[type="submit"][name="post"]') ||
+                            document.querySelector('input[name="post"][tabindex]');
+                        if (btn) { btn.click(); return true; }
+                        const form = document.querySelector('form[action*="posting.php"]');
+                        if (form) { form.submit(); }
+                        return false;
+                    });
+                    await Promise.race([
+                        this.page.waitForNavigation({ timeout: 20000 }),
+                        this.page.waitForTimeout(20000),
+                    ]);
+                } catch {}
+                url = this.page.url();
+                ok = url.includes('viewtopic.php');
+            }
+
+            // Final check: look for success text
+            if (!ok) {
+                try { await this.page.waitForTimeout(10000); } catch {}
+                url = this.page.url();
+                ok = url.includes('viewtopic.php');
+                if (!ok) {
+                    const pageText = await this.page.evaluate(() => document.body.innerText || '').catch(() => '');
+                    if (pageText.includes('posted successfully') || pageText.includes('Your message has been sent') || pageText.includes('has been submitted')) {
+                        console.log(`[FORUM] ✅ Topic page content indicates success despite URL`);
+                        ok = true;
+                    }
+                }
+            }
+        }
 
         } finally { lock.release(); }
         return {
@@ -451,7 +568,7 @@ class ForumClient {
 
     // ── Private Message ──
 
-    async sendPM(recipient, subject, bbCode, { baseUrl: baseUrlOverride } = {}) {
+    async sendPM(recipient, subject, bbCode, { baseUrl: baseUrlOverride, dryRun = false } = {}) {
         const lock = await this._acquire('sendPM');
         let ok;
         let finalUrl;
@@ -477,11 +594,9 @@ class ForumClient {
         const pageTitle = await this.page.title().catch(() => '(no title)');
         console.log(`[FORUM] 🔍 PM page: ${pageTitle} — ${pageUrl}`);
 
-        // Ensure recipient is filled
-        await this.page.evaluate((r) => {
-            const el = document.querySelector('input[name="username_list"]');
-            if (el && !el.value) { el.value = r; el.dispatchEvent(new Event('input', { bubbles: true })); }
-        }, recipient);
+        // Recipient is set via the URL parameter username_list=Name above,
+        // which phpBB handles server-side. Most themes don't render a visible
+        // username_list input on the page — so we skip any DOM manipulation here.
 
         // Fill subject
         await this.page.evaluate((s) => {
@@ -499,15 +614,26 @@ class ForumClient {
         }, bbCode);
 
         if (!msgOk) {
-            console.error(`[FORUM] ❌ No message textarea or editor found — dumping page state`);
-            const pageHtml = await this.page.evaluate(() => document.body?.innerHTML?.slice(0, 3000) || '(no body)').catch(() => '(error reading HTML)');
-            console.log(`[FORUM] 🔍 HTML snippet:`);
-            console.log(pageHtml.slice(0, 2000));
-            throw new Error('No message textarea or editor found on PM compose page');
+            console.error(`[FORUM] ❌ No message textarea or editor found — dumping full page HTML`);
+            const fullHtml = await this.page.evaluate(() => document.documentElement?.outerHTML || '(no html)').catch(() => '(error)');
+            const snippet = fullHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 300).trim();
+            const debugPath = resolve(__dirname, '..', 'debug-pm-page.html');
+            writeFileSync(debugPath, fullHtml, 'utf-8');
+            console.log(`[FORUM] 🔍 Page text snippet: "${snippet}..."`);
+            console.log(`[FORUM] 🔍 Page URL: ${this.page.url()}`);
+            const pageTitle = await this.page.title().catch(() => '(no title)');
+            console.log(`[FORUM] 🔍 Page title: "${pageTitle}"`);
+            console.log(`[FORUM] 💾 Full HTML saved to ${debugPath}`);
+            throw new Error(`No message textarea or editor found on PM compose page. Page: "${pageTitle}" — URL: ${this.page.url()} — HTML saved to debug-pm-page.html`);
         }
 
         console.log(`[FORUM] ✅ Form filled (${bbCode.length} chars)`);
         await this.page.waitForTimeout(1000);
+
+        if (dryRun) {
+            console.log(`[FORUM] 🏜️ DRY RUN — form filled but not submitted. Set dryRun=false to enable.`);
+            return { ok: true, url: composeUrl, dryRun: true };
+        }
 
         // Submit
         console.log(`[FORUM] 📤 Submitting PM form...`);
@@ -535,6 +661,13 @@ class ForumClient {
         }
 
         await this.page.waitForTimeout(3000);
+        // Wait for post-submit navigation — Cloudflare / slow phpBB needs time
+        try {
+            await this.page.waitForLoadState('networkidle', { timeout: 25000 });
+        } catch {
+            console.log('[FORUM] ⏳ Network did not reach idle after PM submit — checking URL anyway');
+        }
+        await this.page.waitForTimeout(2000);
         finalUrl = this.page.url();
         ok = finalUrl.includes('&msg=') || finalUrl.includes('mode=view') || !finalUrl.includes('mode=compose');
 
@@ -542,38 +675,49 @@ class ForumClient {
         // phpBB shows a preview page before the actual send.
         // If we're still on compose with action=post, look for a preview box and re-submit.
         if (!ok && finalUrl.includes('action=post')) {
-            const hasPreview = await this.page.evaluate(() => {
-                // phpBB shows a preview box or a second submit form
-                return !!(
-                    document.getElementById('preview') ||
-                    document.querySelector('.postbody, .pm_preview, .preview') ||
-                    document.querySelector('input[type="submit"][name="post"][accesskey="s"]')
-                );
-            }).catch(() => false);
-
-            if (hasPreview) {
-                console.log(`[FORUM] 🔄 Preview detected — clicking final Submit...`);
+            // Check for error messages on the page before assuming it's a clean preview
+            const errorText = await this.page.evaluate(() => {
+                const errEl = document.querySelector('.error, .notification.error, .alert-error');
+                return errEl ? errEl.textContent.trim() : null;
+            }).catch(() => null);
+            if (errorText) {
+                console.warn(`[FORUM] ⚠️ PM form has error: "${errorText}" — will retry submit`);
+                // Playwright evaluate only accepts ONE argument. Pass object for multiple values.
+                await this.page.evaluate(({ subj }) => {
+                    const subjEl = document.querySelector('input[name="subject"]');
+                    if (subjEl) { subjEl.dispatchEvent(new Event('input', { bubbles: true })); }
+                }, { subj: subject });
                 await this.page.waitForTimeout(1000);
+            } else {
+                console.log(`[FORUM] 🔄 Preview detected — clicking final Submit...`);
+            }
 
-                const previewResult = await this.page.evaluate(() => {
-                    // Try to find the actual submit on the preview page
-                    const form = document.querySelector('form[action*="ucp.php"]');
-                    if (!form) return { ok: false, reason: 'No form on preview' };
-                    const btn = form.querySelector(
-                        'input[type="submit"][name="post"][accesskey="s"], ' +
-                        'input[type="submit"][value="Submit"], ' +
-                        'button[type="submit"][name="post"]'
-                    );
-                    if (!btn) return { ok: false, reason: 'No submit button on preview' };
-                    btn.click();
-                    return { ok: true };
-                });
+            await this.page.waitForTimeout(1000);
 
-                if (!previewResult.ok) {
-                    console.log(`[FORUM] ❌ Preview submit: ${previewResult.reason}`);
-                } else {
-                    await this.page.waitForTimeout(5000);
+            const previewResult = await this.page.evaluate(() => {
+                // Try to find the actual submit on the preview page
+                const form = document.querySelector('form[action*="ucp.php"]');
+                if (!form) return { ok: false, reason: 'No form on preview' };
+                const btn = form.querySelector(
+                    'input[type="submit"][name="post"][accesskey="s"], ' +
+                    'input[type="submit"][value="Submit"], ' +
+                    'button[type="submit"][name="post"]'
+                );
+                if (!btn) return { ok: false, reason: 'No submit button on preview' };
+                btn.click();
+                return { ok: true };
+            });
+
+            if (!previewResult.ok) {
+                console.log(`[FORUM] ❌ Preview submit: ${previewResult.reason}`);
+            } else {
+                // Wait for navigation after preview submit
+                try {
+                    await this.page.waitForLoadState('networkidle', { timeout: 25000 });
+                } catch {
+                    console.log('[FORUM] ⏳ Network did not reach idle after preview submit');
                 }
+                await this.page.waitForTimeout(3000);
             }
 
             // Re-check URL after preview submit
@@ -594,6 +738,17 @@ class ForumClient {
             if (successText) {
                 console.log(`[FORUM] ✅ Found "${successText}" on page — marking as sent`);
                 ok = true;
+            }
+
+            // Also check for error messages and log them clearly
+            if (!ok) {
+                const errMsg = await this.page.evaluate(() => {
+                    const errEl = document.querySelector('.error, .notification.error');
+                    return errEl ? errEl.textContent.trim() : null;
+                }).catch(() => null);
+                if (errMsg) {
+                    console.warn(`[FORUM] ❌ PM error detected: "${errMsg}"`);
+                }
             }
         }
 
@@ -628,10 +783,11 @@ class ForumClient {
      */
     async searchForPatientTopic(patientID) {
         const lock = await this._acquire('searchForPatientTopic');
+        let result = { topicId: null, title: null };
         try {
         await this.ensureBrowser();
 
-        const searchUrl = `https://phmc.gta.world/search.php?keywords=${encodeURIComponent(patientID)}&fid[]=97&sf=firstpost`;
+        const searchUrl = `https://phmc.gta.world/search.php?keywords=${encodeURIComponent(patientID)}&fid[]=97&sf=all`;
         console.log(`[FORUM] 🔍 Searching for patientID "${patientID}"...`);
         console.log(`[FORUM] 🌐 ${searchUrl}`);
 
@@ -649,11 +805,11 @@ class ForumClient {
 
         if (noResults) {
             console.log(`[FORUM] 📭 No existing thread found for patientID "${patientID}"`);
-            return { topicId: null, title: null };
+            return result;
         }
 
         // Parse the first result link — phpBB search results link to viewtopic.php?t=XXXXX
-        const result = await this.page.evaluate((searchId) => {
+        result = await this.page.evaluate((searchId) => {
             // Look for topic links in results — they point to viewtopic.php?t=XXXXX
             const links = document.querySelectorAll('a[href*="viewtopic.php"]');
             for (const link of links) {
@@ -667,12 +823,18 @@ class ForumClient {
                     }
                 }
             }
-            // Fallback: return first topic link even if title doesn't match
+            // Fallback: return first topic link ONLY if title partially matches search term
+            const searchLower = searchId.toLowerCase();
             for (const link of links) {
                 const href = link.getAttribute('href') || '';
                 const match = href.match(/[?&]t=(\d+)/);
                 if (match) {
-                    return { topicId: parseInt(match[1], 10), title: link.textContent?.trim() || null };
+                    const title = (link.textContent?.trim() || '').toLowerCase();
+                    // Only accept if title contains at least a word from the search term
+                    const searchWords = searchLower.split(/\s+/).filter(w => w.length > 2);
+                    if (searchWords.length === 0 || searchWords.some(w => title.includes(w))) {
+                        return { topicId: parseInt(match[1], 10), title: link.textContent?.trim() || null };
+                    }
                 }
             }
             return { topicId: null, title: null };
@@ -926,17 +1088,49 @@ class ForumClient {
         console.log(`[FORUM] 📝 Replying to topic #${topicId} (f=${forumId})...`);
         console.log(`[FORUM] 🌐 ${replyUrl}`);
 
-        await this.page.goto(replyUrl, { waitUntil: 'networkidle', timeout: 180000 });
+        // Wrap navigation in try/catch: phpBB redirects (e.g. to a login page or
+        // error page) can abort the original navigation with ERR_ABORTED.
+        // When that happens, the page still lands on the redirect target — we just
+        // need to let it settle and check where we ended up.
+        try {
+            await this.page.goto(replyUrl, { waitUntil: 'networkidle', timeout: 180000 });
+        } catch (navErr) {
+            console.log(`[FORUM] ⚠️ Navigation aborted (${navErr.message?.slice(0, 80) || 'unknown'}) — checking where we landed...`);
+            await this.page.waitForTimeout(3000);
+        }
         await this.page.waitForTimeout(2000);
 
         const pageUrl = this.page.url();
-        const pageTitle = await this.page.title().catch(() => '(no title)');
+        let pageTitle = await this.page.title().catch(() => '(no title)');
         console.log(`[FORUM] 🔍 Reply page: "${pageTitle}" — ${pageUrl}`);
 
-        // Check if the topic exists / we can access it
-        if (pageUrl.includes('mode=login') || pageUrl.includes('mode=post')) {
-            console.error(`[FORUM] ❌ Cannot reply — redirected to "${pageUrl}"`);
-            return { ok: false, url: pageUrl, reason: 'Redirected away from reply page' };
+        // Check if we got a login page (session expired) — phpBB may show a login
+        // form on the same reply URL without redirecting, so check title too.
+        if (pageUrl.includes('mode=login') || pageUrl.includes('mode=post') || pageTitle.toLowerCase().includes('login')) {
+            console.log(`[FORUM] ⚠️ Login page detected — session expired, logging in directly...`);
+            await this.page.fill('input[name="username"]', this.username, { timeout: 10000 });
+            await this.page.fill('input[name="password"]', this.password, { timeout: 10000 });
+            await this.page.evaluate(() => {
+                const btn = document.querySelector('input[type="submit"]') || document.querySelector('button[type="submit"]');
+                if (btn) btn.click();
+            });
+            await this.page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
+            await this.page.waitForTimeout(3000);
+            await this.saveSession();
+
+            // Re-navigate to the reply page now that we're authenticated
+            console.log(`[FORUM] 🔄 Re-navigating to reply page after re-login...`);
+            await this.page.goto(replyUrl, { waitUntil: 'networkidle', timeout: 180000 });
+            await this.page.waitForTimeout(3000);
+            pageTitle = await this.page.title().catch(() => '(no title)');
+            console.log(`[FORUM] 🔍 After re-login — page title: "${pageTitle}", URL: ${this.page.url()}`);
+
+            // Still check if we ended up on a login page
+            const afterLoginUrl = this.page.url();
+            if (afterLoginUrl.includes('mode=login') || afterLoginUrl.includes('mode=post') || pageTitle.toLowerCase().includes('login')) {
+                console.error(`[FORUM] ❌ Still on login page after re-auth — cannot reply`);
+                return { ok: false, url: afterLoginUrl, reason: 'Redirected to login' };
+            }
         }
 
         // Fill the message body
@@ -981,6 +1175,14 @@ class ForumClient {
         }
 
         await this.page.waitForTimeout(3000);
+        // Wait for any post-submit navigation to complete — Cloudflare challenges
+        // or slow forum responses can take much longer than the initial 3s.
+        try {
+            await this.page.waitForLoadState('networkidle', { timeout: 25000 });
+        } catch {
+            console.log('[FORUM] ⏳ Network did not reach idle after reply submit — checking URL anyway');
+        }
+        await this.page.waitForTimeout(2000);
         finalUrl = this.page.url();
 
         // Handle phpBB preview: if still on posting page after submit, click the real Submit button
@@ -1042,6 +1244,11 @@ class ForumClient {
 
             // Strategy 3: If still on posting.php, check page for success indicators
             if (!finalUrl.includes('viewtopic.php') && !finalUrl.includes('p=')) {
+                // Wait a bit longer — Cloudflare challenges or slow rendering may
+                // delay the redirect. Give it 10 more seconds before checking.
+                try { await this.page.waitForTimeout(10000); } catch {}
+                finalUrl = this.page.url();
+
                 const pageText = await this.page.evaluate(() => document.body.innerText || '').catch(() => '');
                 if (pageText.includes('posted successfully') || pageText.includes('Your message has been sent') || pageText.includes('has been submitted')) {
                     console.log(`[FORUM] ✅ Page content indicates success despite URL`);
@@ -1051,6 +1258,12 @@ class ForumClient {
         }
 
         ok = ok || finalUrl.includes('viewtopic.php') || finalUrl.includes('p=');
+        if (!ok) {
+            // Dump full page HTML for debugging submit failures (no truncation)
+            const pageHtml = await this.page.content().catch(() => '(unable to capture page content)');
+            const dumpPath = resolve(this._sessionDir, 'debug-reply-page.html');
+            try { writeFileSync(dumpPath, pageHtml, 'utf-8'); console.log(`[FORUM] 💾 Full page HTML saved to ${dumpPath} for debugging`); } catch (e) {}
+        }
         console.log(`[FORUM] 📬 Reply ${ok ? '✅ Posted' : '⚠️ Unknown'} — ${finalUrl}`);
         } finally { lock.release(); }
 
@@ -1252,44 +1465,129 @@ class ForumClient {
      * @param {object} [options]
      * @param {string} [options.baseUrl] - Forum base URL
      * @param {string[]} [options.exclude] - Usernames to exclude from results
+     * @param {boolean} [options.paginate=false] - If true, scrape all pages via start=N param
      * @returns {Promise<Array<{name: string, userId: string|null}>>}
      */
-    async getGroupMembers(groupId, { baseUrl, exclude = [] } = {}) {
+    async getGroupMembers(groupId, { baseUrl, exclude = [], paginate = false } = {}) {
         const lock = await this._acquire('getGroupMembers');
         try {
             await this.ensureBrowser();
             const domain = baseUrl || this.baseUrl;
-            const url = `${domain}/memberlist.php?mode=group&g=${groupId}`;
-            console.log(`[FORUM] 👥 Fetching group members for g=${groupId}...`);
-            await this.page.goto(url, { waitUntil: 'networkidle', timeout: 180000 });
-            await this.page.waitForTimeout(2000);
+            const PAGE_SIZE = 25; // phpBB default page size for memberlist
+            const allMembers = [];
+            const seen = new Set();
+            let start = 0;
+            let isLastPage = false;
 
-            const members = await this.page.evaluate(() => {
+            while (!isLastPage) {
+                const url = `${domain}/memberlist.php?mode=group&g=${groupId}&start=${start}`;
+                console.log(`[FORUM] Fetching group members for g=${groupId} (start=${start})...`);
+                await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+                await this.page.waitForTimeout(500);
+
+                const pageMembers = await this.page.evaluate(() => {
+                    const results = [];
+                    const links = document.querySelectorAll('a.username, a.username-coloured');
+                    links.forEach((link) => {
+                        const name = link.textContent?.trim();
+                        const href = link.getAttribute('href') || '';
+                        const uMatch = href.match(/[?&]u=(\d+)/);
+                        const userId = uMatch ? uMatch[1] : null;
+                        if (name) results.push({ name, userId });
+                    });
+                    return results;
+                }).catch(() => []);
+
+                // Deduplicate across pages and filter exclusions
+                let pageNewCount = 0;
+                for (const m of pageMembers) {
+                    if (!m.name || seen.has(m.name)) continue;
+                    if (exclude.some((e) => m.name.toLowerCase() === e.toLowerCase())) continue;
+                    seen.add(m.name);
+                    allMembers.push(m);
+                    pageNewCount++;
+                }
+
+                console.log(`[FORUM] Page start=${start}: ${pageNewCount} new members (${pageMembers.length} on page)`);
+
+                // Detect last page: if fewer members than page size OR no pagination at all
+                if (!paginate || pageMembers.length < PAGE_SIZE) {
+                    isLastPage = true;
+                } else {
+                    start += PAGE_SIZE;
+                }
+            }
+
+            console.log(`[FORUM] Found ${allMembers.length} total group members for g=${groupId}${paginate ? ' (all pages)' : ''}`);
+            return allMembers;
+        } finally {
+            lock.release();
+        }
+    }
+
+    // ── Private Message Inbox ──
+
+    /**
+     * Fetch private messages from the PHMC forum inbox.
+     * Returns an array of { msgId, subject, sender, date, isNew }.
+     * Used for passive PM monitoring (confidential autopsy requests, etc.).
+     */
+    async getPrivateMessages({ baseUrl } = {}) {
+        const lock = await this._acquire('getPrivateMessages');
+        try {
+            await this.ensureBrowser();
+            const domain = baseUrl || this.baseUrl;
+            const url = `${domain}/ucp.php?i=pm&folder=inbox`;
+            await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+            await this.page.waitForTimeout(3000);
+
+            const pageUrl = this.page.url();
+            const pageTitle = await this.page.title().catch(() => '');
+            if (pageUrl.includes('mode=login') || pageTitle.toLowerCase().includes('login')) {
+                console.log('[FORUM] PM inbox — session expired (no action taken)');
+                return []; // Skip this cycle, try again next time
+            }
+
+            // Debug: check actual page state
+            // Parse PMs: find all links to PM view pages and their context
+            const pms = await this.page.evaluate(() => {
                 const results = [];
-                const links = document.querySelectorAll('a.username, a.username-coloured');
+                const links = document.querySelectorAll('a[href*="i=pm&mode=view"], a[href*="pm&f="]');
                 links.forEach((link) => {
-                    const name = link.textContent?.trim();
+                    const subject = (link.textContent || '').trim();
                     const href = link.getAttribute('href') || '';
-                    const uMatch = href.match(/[?&]u=(\d+)/);
-                    const userId = uMatch ? uMatch[1] : null;
-                    if (name) results.push({ name, userId });
+                    const msgMatch = href.match(/[?&]p=(\d+)/) || href.match(/[?&]pm=(\d+)/);
+                    const msgId = msgMatch ? msgMatch[1] : '';
+
+                    if (!msgId || !subject) return;
+
+                    // Walk up to find the containing row, then find the sender
+                    let row = link.closest('tr, li, div.pm-item, .pm, .message, [class*="pm"]');
+                    let sender = '';
+                    let date = '';
+                    let isNew = false;
+
+                    if (row) {
+                        const senderLink = row.querySelector('a.username, a.username-coloured, [class*="username"]');
+                        if (senderLink) sender = (senderLink.textContent || '').trim();
+
+                        // Find date - look for text containing time patterns
+                        const allText = row.textContent || '';
+                        const dateMatch = allText.match(/\d{1,2}\s+\w+\s+\d{4}/);
+                        if (dateMatch) date = dateMatch[0];
+
+                        isNew = row.classList.contains('pm_unread') ||
+                                !!row.querySelector('strong') ||
+                                row.innerHTML.includes('pm_unread');
+                    }
+
+                    results.push({ msgId, subject, sender, date, isNew });
                 });
                 return results;
-            }).catch(() => []);
-
-            console.log(`[FORUM] 👥 Group members: [${members.map(m => `"${m.name}"`).join(', ')}]`);
-
-            // Deduplicate and filter exclusions
-            const seen = new Set();
-            const filtered = members.filter(({ name }) => {
-                if (!name || seen.has(name)) return false;
-                if (exclude.some((e) => name.toLowerCase() === e.toLowerCase())) return false;
-                seen.add(name);
-                return true;
             });
 
-            console.log(`[FORUM] 👥 Found ${filtered.length} group members (${members.length} total, ${exclude.length} excluded)`);
-            return filtered;
+            console.log('[FORUM] Found ' + pms.length + ' PM(s) in inbox');
+            return pms;
         } finally {
             lock.release();
         }
@@ -1496,7 +1794,14 @@ class ForumClient {
         'death_record':      { forumId: 404, name: 'Death Records', url: 'https://phmc.gta.world/posting.php?mode=post&f=404' },
         'mass-ftality-test': { forumId: 267, name: 'Mass Fatality Reports', url: 'https://phmc.gta.world/posting.php?mode=post&f=267' },
         'autopsy':           { forumId: 267, name: 'Autopsy Requests', url: 'https://phmc.gta.world/posting.php?mode=post&f=267' },
-        'patient_notes':     { forumId: 97,  name: 'Medical Records', url: 'https://phmc.gta.world/posting.php?mode=post&f=97' },
+        'patient_notes':         { forumId: 97, name: 'Medical Records', url: 'https://phmc.gta.world/posting.php?mode=post&f=97' },
+        'er_protocol':           { forumId: 97, name: 'Medical Records', url: 'https://phmc.gta.world/posting.php?mode=post&f=97' },
+        'physical_evaluation':   { forumId: 97, name: 'Medical Records', url: 'https://phmc.gta.world/posting.php?mode=post&f=97' },
+        'staff-patient-file':    { forumId: 97, name: 'Medical Records', url: 'https://phmc.gta.world/posting.php?mode=post&f=97' },
+        'surgical':              { forumId: 97, name: 'Medical Records', url: 'https://phmc.gta.world/posting.php?mode=post&f=97' },
+        'session_notes':         { forumId: 97, name: 'Medical Records', url: 'https://phmc.gta.world/posting.php?mode=post&f=97' },
+        'intensive_treatment':   { forumId: 97, name: 'Medical Records', url: 'https://phmc.gta.world/posting.php?mode=post&f=97' },
+        'psych_eval':            { forumId: 97, name: 'Medical Records', url: 'https://phmc.gta.world/posting.php?mode=post&f=97' },
     };
 
     static resolveForumId(formId, formName) {
@@ -1579,11 +1884,33 @@ class ForumClient {
     }
 }
 
-// Singleton
-let instance = null;
+// Singleton — the default shared client (PHMC forum)
+let _defaultInstance = null;
 export function getForumClient() {
-    if (!instance) instance = new ForumClient();
-    return instance;
+    if (!_defaultInstance) _defaultInstance = new ForumClient();
+    return _defaultInstance;
+}
+
+/**
+ * Create a new isolated ForumClient with its own browser context, page, and
+ * session file. Used for cross-forum operations (LSSD, LSPD, DM) so they
+ * don't share session state with the main PHMC client.
+ *
+ * Each isolated client:
+ * - Shares the same Chromium browser process (lightweight)
+ * - Has its own browser context (separate cookies, localStorage, Cloudflare state)
+ * - Has its own session file on disk
+ * - Has its own mutex lock (operations on different clients run in parallel)
+ *
+ * @param {string} name  — short identifier used for the session filename
+ * @returns {ForumClient}
+ */
+export function createIsolatedClient(name = 'isolated') {
+    return new ForumClient({
+        sessionFile: resolve(__dirname, '..', `forum-session-${name}.json`),
+        isIsolated: true,
+        sessionDir: __dirname,
+    });
 }
 
 export default ForumClient;

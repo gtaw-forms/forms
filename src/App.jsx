@@ -1,6 +1,7 @@
 import React, { useState, lazy, Suspense, useEffect } from 'react';
 import { HashRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import { useNotification } from './contexts/NotificationContext.jsx';
+import { useAuth } from './contexts/AuthContext.jsx';
 import { FormProvider } from './contexts/FormContext.jsx';
 import * as Sentry from "@sentry/react";
 import { sendDiscordErrorWebhook } from './utils/logging';
@@ -13,6 +14,33 @@ import ProtectedRoute from './components/Auth/ProtectedRoute.jsx';
 import RequireAuth from './components/Auth/RequireAuth.jsx';
 import Admin from './components/Admin/Admin.jsx';
 import DiscordNameCheck from './components/Auth/DiscordNameCheck.jsx';
+
+function SessionExpiredBanner() {
+    const { sessionExpired, dismissSessionExpiry, logout } = useAuth();
+    if (!sessionExpired) return null;
+    return (
+        <div style={{
+            position: 'fixed', top: 0, left: 0, right: 0, zIndex: 99999,
+            background: '#dc3545', color: '#fff', padding: '14px 24px',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16,
+            fontFamily: 'Arial, sans-serif', fontSize: '15px', fontWeight: 600,
+            boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+        }}>
+            <i className="fas fa-exclamation-triangle" style={{ fontSize: 20 }}></i>
+            Your session has expired — please reload the page to re-authenticate
+            <button onClick={() => { dismissSessionExpiry(); logout(); window.location.reload(); }}
+                style={{ background: '#fff', color: '#dc3545', border: 'none',
+                    borderRadius: 6, padding: '8px 20px', fontWeight: 700, cursor: 'pointer', fontSize: '14px' }}>
+                Reload Now
+            </button>
+            <button onClick={dismissSessionExpiry}
+                style={{ background: 'transparent', color: '#ffc0c0', border: '1px solid #ffc0c0',
+                    borderRadius: 6, padding: '8px 16px', cursor: 'pointer', fontSize: '14px' }}>
+                Dismiss
+            </button>
+        </div>
+    );
+}
 
 // Lazy load non-critical components
 const GtaLogin = lazy(() => import('./components/Auth/GtaLogin.jsx'));
@@ -91,8 +119,9 @@ function App() {
         return () => navigator.serviceWorker.removeEventListener('message', handler);
     }, []);
 
-    // PRESENCE TRACKING — active user count via onDisconnect
+    // PRESENCE TRACKING — active user count via onDisconnect (skipped on localhost, no auth)
     useEffect(() => {
+        if (window.location.hostname === 'localhost') return;
         const sessionId = crypto.randomUUID();
         const connectedRef = ref(database, '.info/connected');
         const presenceRef = ref(database, `presence/${sessionId}`);
@@ -110,8 +139,9 @@ function App() {
         return () => unsub();
     }, []);
 
-    // DAILY VISITOR TRACKING — persists after tab close for admin counts
+    // DAILY VISITOR TRACKING — persists after tab close for admin counts (skipped on localhost, no auth)
     useEffect(() => {
+        if (window.location.hostname === 'localhost') return;
         const today = new Date().toISOString().split('T')[0];
         const sessionId = crypto.randomUUID();
         const visitorRef = ref(database, `analytics/visitors/${today}/${sessionId}`);
@@ -183,6 +213,7 @@ function App() {
             }}
         >
             <FormProvider formData={formData} setFormData={setFormData} setLastWebhookIdentifier={setLastWebhookIdentifier} showNotification={showNotification}>
+                <SessionExpiredBanner />
                 <Router>
                     <DiscordNameCheck>
                             <Suspense fallback={<LoadingFallback />}>

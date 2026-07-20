@@ -13,7 +13,7 @@
 
 import firebase from './firebase.js';
 import { logFnCall, sendWebhook } from './deployLogger.js';
-import { handleAutopsyReply } from './autoDeploy.js';
+import { handleAutopsyReply } from './deployAutopsyReply.js';
 import { getForumClient } from './forumClient.js';
 import { state } from './deployState.js';
 

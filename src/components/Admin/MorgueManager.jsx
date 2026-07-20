@@ -3,9 +3,10 @@ import { Form, Button, Table, Card, Tabs, Tab, Spinner, InputGroup, Modal } from
 import { ref, update, set, runTransaction } from 'firebase/database';
 import { database } from '../../firebase';
 import { parseBulkMorgueRecords } from '../../utils/morgue';
+import { logDataVersionBump } from '../../utils/logging';
 import { useDropzone } from 'react-dropzone';
 import { useData } from '../../contexts/DataContext';
-import { triggerDeleteMorgueRecord, triggerPurgeMorgueRecords } from '../../services/firebaseFunctions';
+import { triggerDeleteMorgueRecord, triggerPurgeMorgueRecords, triggerSyncMorgueFile } from '../../services/firebaseFunctions';
 
 const MorgueManager = ({ showNotification }) => {
     const { morgueRecords, loadMorgueRecords, removeMorgueRecord } = useData();
@@ -15,6 +16,7 @@ const MorgueManager = ({ showNotification }) => {
         try {
             const versionRef = ref(database, 'appMetadata/morgueDataVersion');
             await runTransaction(versionRef, (current) => (current || 0) + 1);
+            logDataVersionBump('appMetadata/morgueDataVersion', 'MorgueManager', 'Morgue data changed');
         } catch (error) {
             console.warn('Failed to bump morgue data version:', error);
         }
@@ -152,7 +154,8 @@ const MorgueManager = ({ showNotification }) => {
 
             await update(ref(database), updates);
             await bumpMorgueVersion();
-            
+            triggerSyncMorgueFile().catch(err => console.warn('[MORGUE] VPS sync error:', err.message));
+
             const message = updatedCount > 0 
                 ? `Processed ${parsedRecords.length} records: ${newCount} new, ${updatedCount} updated. Admin Notes preserved.`
                 : `Successfully uploaded ${newCount} new records.`;
@@ -376,6 +379,7 @@ const MorgueManager = ({ showNotification }) => {
             };
             await set(ref(database, `morgue-records/${key}`), record);
             await bumpMorgueVersion();
+            triggerSyncMorgueFile().catch(err => console.warn('[MORGUE] VPS sync error:', err.message));
             showNotification(`Manual entry saved for ${record.name}.`, 'success');
             setManualRecord({ ...emptyManualRecord });
             setActiveTab('manage');

@@ -19,7 +19,8 @@ import {
     isFactionMember as checkIsFactionMember,
     isGtawStaff,
     checkFactionMembershipInDb,
-    validateStoredSession
+    validateStoredSession,
+    tryRestoreFirebaseAuth
 } from '../services/gtaWorldAuth';
 
 const GtaWorldAuthContext = createContext(null);
@@ -260,7 +261,6 @@ export const GtaWorldAuthProvider = ({ children }) => {
             window.history.replaceState({}, document.title, newUrl);
             
             processCallback(code, state).then(async ({ userData, returnPath }) => {
-                console.log('✅ [GtaWorldAuthContext] Background login successful.');
 
                 const storedData = JSON.parse(storedOAuthData || '{}');
                 const userRole = storedData.role || 'employee';
@@ -270,10 +270,32 @@ export const GtaWorldAuthProvider = ({ children }) => {
                     const loadingNotifId = showNotification('Fetching Employee Credentials...', 'spinner fa-spin', 0);
                     console.warn('⚠️ [GtaWorldAuthContext] Performing faction sync for employee...');
                     try {
-                        // Wait for Firebase Auth JWT to finish provisioning
-                        for (let i = 0; i < 30; i++) {
-                            if (auth.currentUser) break;
-                            await new Promise(r => setTimeout(r, 200));
+                        // Wait for Firebase Auth JWT to finish provisioning using
+                        // an onAuthStateChanged listener (not polling). This correctly
+                        // resolves even if signInWithCustomToken completes asynchronously.
+                        const waitForFirebaseAuth = (timeoutMs = 10000) => new Promise((resolve, reject) => {
+                            if (auth.currentUser) return resolve(auth.currentUser);
+                            const timeout = setTimeout(() => {
+                                unsubscribe();
+                                reject(new Error('Firebase auth did not become available within timeout'));
+                            }, timeoutMs);
+                            const unsubscribe = auth.onAuthStateChanged(user => {
+                                clearTimeout(timeout);
+                                unsubscribe();
+                                if (user) resolve(user);
+                                else reject(new Error('Firebase auth state is null after signIn'));
+                            });
+                        });
+
+                        try {
+                            await waitForFirebaseAuth(10000);
+                        } catch (fbAuthTimeout) {
+                            console.warn('[GtaWorldAuthContext] Firebase auth did not become available:', fbAuthTimeout.message);
+                            // Attempt silent recovery using stored access token
+                            const restored = await tryRestoreFirebaseAuth();
+                            if (!restored) {
+                                console.warn('[GtaWorldAuthContext] Proceeding with faction sync despite no Firebase auth');
+                            }
                         }
                         const triggerSync = httpsCallable(functions, 'triggerFactionSync');
                         await triggerSync();
@@ -388,6 +410,24 @@ export const GtaWorldAuthProvider = ({ children }) => {
                 const cleanHash = window.location.hash.split('?')[0];
                 const newUrl = window.location.pathname + cleanHash;
                 window.history.replaceState({}, document.title, newUrl);
+            }
+
+            // Session recovery: if we have stored user data but no Firebase auth,
+            // attempt silent re-authentication so Firebase-backed features work
+            // without the user having to log out and back in.
+            if (user && !auth.currentUser && !isGoogleAdmin && !isStaff) {
+                console.log('[GtaWorldAuthContext] Stored session found but no Firebase auth. Attempting recovery...');
+                tryRestoreFirebaseAuth().then(restored => {
+                    if (restored) {
+                        console.log('[GtaWorldAuthContext] Firebase auth recovered. Re-running faction sync.');
+                        const syncFn = httpsCallable(functions, 'triggerFactionSync');
+                        syncFn().catch(err => {
+                            if (err.code !== 'permission-denied') {
+                                console.error('[GtaWorldAuthContext] Recovery sync failed:', err);
+                            }
+                        });
+                    }
+                });
             }
         }
     }, [processCallback, getIsInactivityWarningTriggered, firebaseIsPhmcMember, authLoading, user]);
