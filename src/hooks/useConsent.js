@@ -1,61 +1,97 @@
-/**
- * useConsent — per-form-type consent for bot auto-deploy.
- *
- * Reads/writes user consent from Firebase `user-consent/<uid>/<formId>`.
- * Falls back to the legacy localStorage flag when no Firebase record exists.
- * Sends a Discord webhook on consent changes for usability monitoring.
- */
-
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { database } from '../firebase';
-import { ref, onValue, set } from 'firebase/database';
+import { ref, get, set } from 'firebase/database';
 import { useAuth } from '../contexts/AuthContext';
-import { triggerWebhookProxy } from '../services/firebaseFunctions';
-import { getCharacterName } from '../utils/identityUtils';
-import { getCurrentUser } from '../services/gtaWorldAuth';
 
-// Mirror of the list in useFormSaver.js — source of truth for which forms are deploy-tracked
+// Complete list of deploy-tracked forms.
+// Clinical Department and Mental Health forms beyond patient_notes are disabled
+// pending further development.
 export const DEPLOY_TRACKED_FORMS = [
+    // Coroners
     'coroner-report',
     'coroner_email',
     'death_record',
     'autopsy',
     'mass-ftality-test',
+    // Clinical Department
+    'patient_notes',
+    'er_protocol',
+    'physical_evaluation',
+    'staff-patient-file',
+    'surgical',
+    'testing-compact-mode',
+    // Mental Health
+    'session_notes',
+    'intensive_treatment',
+    'psych_eval',
 ];
 
 export const FORM_LABELS = {
-    coroner_email:      'Coroner Email (PM)',
-    'coroner-report':   'Coroner Report',
-    death_record:       'Death Record',
-    autopsy:            'Autopsy',
-    'mass-ftality-test':'Mass Fatality',
+    // Coroners
+    coroner_email:        'Coroner Email (PM)',
+    'coroner-report':     'Coroner Report',
+    death_record:         'Death Record',
+    autopsy:              'Autopsy',
+    'mass-ftality-test':  'Mass Fatality',
+    // Clinical Department
+    patient_notes:          'Patient Notes',
+    er_protocol:            'ER Protocol',
+    physical_evaluation:    'Physical Evaluation',
+    'staff-patient-file':   'Staff-Patient File',
+    surgical:               'Surgical',
+    'testing-compact-mode': 'General Consultation',
+    // Mental Health
+    session_notes:        'Session Notes',
+    intensive_treatment:  'Intensive Treatment',
+    psych_eval:           'Psych Evaluation',
 };
 
-/** Section grouping for the consent modal UI */
+/** Section grouping for the consent modal UI (multi-step wizard) */
 export const FORM_SECTIONS = {
-    Coroners: [
+    'Coroners': [
         'coroner-report',
         'coroner_email',
         'death_record',
         'mass-ftality-test',
         'autopsy',
     ],
-    'Medical Files': [
-        // Reserved for future medical deploy-tracked forms
+    'Clinical Department': [
+        'patient_notes',
+        'er_protocol',
+        'physical_evaluation',
+        'staff-patient-file',
+        'surgical',
+        'testing-compact-mode',
     ],
     'Mental Health': [
-        // Reserved for future mental-health deploy-tracked forms
+        'session_notes',
+        'intensive_treatment',
+        'psych_eval',
     ],
 };
 
-/** Section icons */
+/** Section icons (Font Awesome classes) */
 export const SECTION_ICONS = {
-    'Coroners':       'fa-skull',
-    'Medical Files':  'fa-notes-medical',
-    'Mental Health':  'fa-brain',
+    'Coroners':            'fa-skull',
+    'Clinical Department': 'fa-notes-medical',
+    'Mental Health':       'fa-brain',
 };
 
 const CONSENT_ROOT = 'user-consent';
+
+/**
+ * Check consent directly from Firebase (no React hook needed).
+ * Used by useFormSaver.js to determine deploy path.
+ */
+export async function checkConsentDirect(uid, formId) {
+    if (!uid) return false;
+    try {
+        const snap = await get(ref(database, `${CONSENT_ROOT}/${uid}/${formId}`));
+        return snap.val() !== false;
+    } catch {
+        return true;
+    }
+}
 
 /**
  * Check the legacy localStorage opt-in (existing users before migration).
@@ -69,211 +105,84 @@ function getLegacyPref() {
 }
 
 /**
- * React hook for reading/writing per-form-type bot deploy consent.
- *
- * @param {boolean} skipFirebaseRead - If true, don't read from Firebase (for cases where
- *   consent is only needed for display, not for routing decisions)
- * @returns {{ consent: object|null, setConsent: function, isLoading: boolean, hasConsentRecord: boolean }}
+A * React hook for reading/writing per-form-type bot deploy consent.
+ * Defaults to true (opted in) for all tracked forms.
  */
-export function useConsent(skipFirebaseRead = false) {
-    const { user: authUser } = useAuth();
-    const uid = authUser?.uid || null;
-    const [consent, setConsentState] = useState(null);
-    const [isLoading, setIsLoading] = useState(true);
-    const [hasConsentRecord, setHasConsentRecord] = useState(false);
-    const prevConsentRef = useRef(null);
+export function useConsent() {
+    const { user } = useAuth();
+    const uid = user?.uid;
+    const [consent, setConsentState] = useState({});
+    const [hasSavedConsent, setHasSavedConsent] = useState(false);
+    const [consentLoaded, setConsentLoaded] = useState(false);
 
     useEffect(() => {
-        if (!uid || skipFirebaseRead) {
-            setConsentState(null);
-            setIsLoading(false);
-            setHasConsentRecord(false);
+        if (!uid) {
+            // No Firebase user (e.g. localhost dev) — use defaults (all opted in)
+            const defaults = {};
+            for (const formId of DEPLOY_TRACKED_FORMS) defaults[formId] = true;
+            console.log('[useConsent] No uid — using defaults:', defaults);
+            setConsentState(defaults);
+            setHasSavedConsent(false);
+            setConsentLoaded(true);
             return;
         }
-
-        setIsLoading(true);
-        const consentRef = ref(database, `${CONSENT_ROOT}/${uid}`);
-
-        const unsubscribe = onValue(consentRef, (snapshot) => {
-            const val = snapshot.val();
-            if (val && typeof val === 'object') {
-                setConsentState(val);
-                setHasConsentRecord(true);
-            } else {
-                setConsentState(null);
-                setHasConsentRecord(false);
+        const r = ref(database, `${CONSENT_ROOT}/${uid}`);
+        get(r).then((snap) => {
+            const raw = snap.val();
+            const hasRealData = raw !== null && Object.keys(raw).length > 0;
+            const data = raw || {};
+            // Fill in defaults: all tracked forms default to true (opt-in)
+            for (const formId of DEPLOY_TRACKED_FORMS) {
+                if (data[formId] === undefined) data[formId] = true;
             }
-            setIsLoading(false);
+            console.log('[useConsent] Loaded from Firebase:', { hasRealData, data });
+            setConsentState(data);
+            setHasSavedConsent(hasRealData);
+            setConsentLoaded(true);
+        }).catch(() => {
+            const defaults = {};
+            for (const formId of DEPLOY_TRACKED_FORMS) defaults[formId] = true;
+            console.log('[useConsent] Firebase read failed — using defaults:', defaults);
+            setConsentState(defaults);
+            setHasSavedConsent(false);
+            setConsentLoaded(true);
         });
+    }, [uid]);
 
-        return () => unsubscribe();
-    }, [uid, skipFirebaseRead]);
-
-    /**
-     * Check if a specific form type has consent.
-     * Returns the Firebase consent value, or falls back to legacy localStorage.
-     *
-     * @param {string} formId - e.g. 'coroner-report'
-     * @returns {boolean}
-     */
-    const checkConsent = useCallback((formId) => {
-        if (consent !== null && formId in consent) {
-            return consent[formId] === true;
+    const setConsent = useCallback(async (formId, value) => {
+        if (!uid) {
+            console.log('[useConsent] No uid (localhost) — skipping Firebase write');
+            setConsentState(prev => ({ ...prev, [formId]: value }));
+            setHasSavedConsent(true);
+            return;
         }
-        // Fall back to legacy localStorage flag for backward compat
-        const legacy = getLegacyPref();
-        if (legacy) return true; // Legacy opt-in means all forms consented
-        return false;
+        await set(ref(database, `${CONSENT_ROOT}/${uid}/${formId}`), value);
+        setConsentState(prev => ({ ...prev, [formId]: value }));
+        setHasSavedConsent(true);
+    }, [uid]);
+
+    const saveAllConsent = useCallback(async (all) => {
+        if (!uid) {
+            // Localhost dev — no Firebase Auth, just update local state
+            console.log('[useConsent] No uid (localhost) — saving to local state only');
+            setConsentState(prev => ({ ...prev, ...all }));
+            setHasSavedConsent(true);
+            return;
+        }
+        // Scope to the user's consent path — NEVER write to the root ref (would wipe the DB)
+        const userConsentRef = ref(database, `${CONSENT_ROOT}/${uid}`);
+        const sanitized = {};
+        for (const [formId, value] of Object.entries(all)) {
+            if (formId) sanitized[formId] = value;
+        }
+        await set(userConsentRef, sanitized);
+        setConsentState(prev => ({ ...prev, ...sanitized }));
+        setHasSavedConsent(true);
+    }, [uid]);
+
+    const getConsent = useCallback((formId) => {
+        return consent[formId] !== false;
     }, [consent]);
 
-    /**
-     * Update consent for a single form type. Writes to Firebase and sends a webhook.
-     *
-     * @param {string} formId
-     * @param {boolean} value
-     */
-    const setConsent = useCallback(async (formId, value) => {
-        if (!uid) return;
-
-        const newConsent = { ...(consent || {}), [formId]: value };
-        setConsentState(newConsent);
-        setHasConsentRecord(true);
-
-        try {
-            await set(ref(database, `${CONSENT_ROOT}/${uid}/${formId}`), value);
-        } catch (err) {
-            console.error('[useConsent] Failed to save consent:', err);
-            // Revert on error
-            setConsentState(prevConsentRef.current || consent);
-            return;
-        }
-
-        prevConsentRef.current = newConsent;
-
-        // Send a Discord webhook for usability monitoring
-        try {
-            const gtaUser = getCurrentUser();
-            const displayName = gtaUser
-                ? (getCharacterName(gtaUser) || gtaUser.username || uid)
-                : uid;
-
-            const label = FORM_LABELS[formId] || formId;
-            const statusEmoji = value ? '✅' : '❌';
-            const statusText = value ? 'Granted' : 'Revoked';
-
-            triggerWebhookProxy('forms', {
-                embeds: [{
-                    title: 'Bot Consent Updated',
-                    color: value ? 0x28a745 : 0xdc3545,
-                    fields: [
-                        { name: 'User', value: displayName, inline: true },
-                        { name: 'Form Type', value: label, inline: true },
-                        { name: 'Consent', value: `${statusEmoji} ${statusText}`, inline: true },
-                    ],
-                    timestamp: new Date().toISOString(),
-                    footer: { text: `UID: ${uid}` },
-                }],
-            }).catch(() => {});
-        } catch {
-            // Webhook is best-effort
-        }
-    }, [uid, consent]);
-
-    /**
-     * Save all form type consents at once (batch from modal).
-     * Sends a single webhook summary.
-     *
-     * @param {object} newConsent - { formId: boolean, ... }
-     */
-    const saveAllConsent = useCallback(async (newConsent) => {
-        if (!uid) return;
-
-        setConsentState(newConsent);
-        setHasConsentRecord(true);
-
-        try {
-            // Write all at once at the user level
-            await set(ref(database, `${CONSENT_ROOT}/${uid}`), newConsent);
-        } catch (err) {
-            console.error('[useConsent] Failed to save consent batch:', err);
-            setConsentState(prevConsentRef.current || consent);
-            return;
-        }
-
-        prevConsentRef.current = newConsent;
-
-        // Send a summary webhook
-        try {
-            const gtaUser = getCurrentUser();
-            const displayName = gtaUser
-                ? (getCharacterName(gtaUser) || gtaUser.username || uid)
-                : uid;
-
-            const granted = Object.entries(newConsent)
-                .filter(([, v]) => v === true)
-                .map(([k]) => FORM_LABELS[k] || k);
-
-            const denied = Object.entries(newConsent)
-                .filter(([, v]) => v === false)
-                .map(([k]) => FORM_LABELS[k] || k);
-
-            const fields = [];
-            if (granted.length > 0) {
-                fields.push({ name: '✅ Opted In', value: granted.join('\n'), inline: false });
-            }
-            if (denied.length > 0) {
-                fields.push({ name: '❌ Opted Out', value: denied.join('\n'), inline: false });
-            }
-
-            triggerWebhookProxy('forms', {
-                embeds: [{
-                    title: 'Bot Consent Preferences Saved',
-                    color: granted.length > 0 ? 0x28a745 : 0xffc107,
-                    fields: [
-                        { name: 'User', value: displayName, inline: true },
-                        ...fields,
-                    ],
-                    timestamp: new Date().toISOString(),
-                    footer: { text: `UID: ${uid}` },
-                }],
-            }).catch(() => {});
-        } catch {
-            // Webhook is best-effort
-        }
-    }, [uid, consent]);
-
-    return {
-        consent,
-        setConsent,
-        saveAllConsent,
-        checkConsent,
-        isLoading,
-        hasConsentRecord,
-    };
-}
-
-/**
- * Non-hook utility: check consent for a specific form from Firebase directly.
- * Used outside React components (e.g. useFormSaver routing functions).
- *
- * @param {string} uid - Firebase Auth UID
- * @param {string} formId - Form type key
- * @returns {Promise<boolean>}
- */
-export async function checkConsentDirect(uid, formId) {
-    if (!uid) {
-        // Fall back to localStorage when no UID
-        return getLegacyPref();
-    }
-    try {
-        const { get, child, ref: dbRef } = await import('firebase/database');
-        const snap = await get(child(dbRef(database), `${CONSENT_ROOT}/${uid}/${formId}`));
-        if (snap.exists()) {
-            return snap.val() === true;
-        }
-    } catch (err) {
-        console.warn('[useConsent] Direct consent read failed:', err.message);
-    }
-    // Fallback: legacy localStorage
-    return getLegacyPref();
+    return { consent, setConsent, saveAllConsent, getConsent, hasSavedConsent, consentLoaded };
 }

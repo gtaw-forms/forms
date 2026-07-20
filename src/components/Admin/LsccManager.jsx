@@ -1,5 +1,5 @@
 // LsccManager.jsx
-import { logAdminAction, getUserContext } from '../../utils/logging';
+import { logAdminAction, getUserContext, logDataVersionBump } from '../../utils/logging';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import React, { useState, useEffect, useCallback } from 'react';
 import { database } from '../../firebase';
@@ -110,6 +110,7 @@ const LsccManager = () => {
     try {
       const metadataRef = ref(database, 'appMetadata/lsccDataVersion');
       await runTransaction(metadataRef, (v) => (v || 0) + 1);
+      logDataVersionBump('appMetadata/lsccDataVersion', 'LsccManager', 'Reordered protocols');
       console.log('Bumped LSCC data version');
     } catch (err) {
       console.error('Failed to bump LSCC version:', err);

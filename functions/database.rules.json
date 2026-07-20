@@ -21,13 +21,13 @@
     },
     "newSavedReports": {
       "$user_id": {
-        ".read": "$user_id === auth.uid",
+        ".read": true,
         ".indexOn": "timestamp"
       }
     },
     "savedReports": {
       "$user_id": {
-        ".read": "$user_id === auth.uid",
+        ".read": true,
         ".indexOn": "timestamp"
       }
     },
@@ -47,7 +47,15 @@
       ".indexOn": "lastUpdated"
     },
     "autopsy-requested": {
-      ".indexOn": ["oocName", "lssdCrosspostStatus", "lssdTopicId"]
+      ".indexOn": ["oocName", "name", "lssdCrosspostStatus", "lssdTopicId", "lspdAck", "lssdAck", "phmcAck"]
+    },
+    "dev-reports": {
+      ".read": true,
+      ".write": true
+    },
+    "dev-reports-bbcode": {
+      ".read": true,
+      ".write": true
     }
   }
 }

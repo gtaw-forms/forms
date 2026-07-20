@@ -1,12 +1,24 @@
 import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, MessageFlags } from 'discord.js';
 import firebase from '../services/firebase.js';
 import { getForumClient } from '../services/forumClient.js';
+import { reassignME } from '../services/autopsyRotation.js';
 
 export const data = new SlashCommandBuilder()
     .setName('reassign-autopsy')
     .setDescription('Reassign autopsy cases via interactive menu');
 
-const ME_NAMES = ['Anne Carter', 'Arthur Blackwood', 'Alyson Frost', 'Sarah Bell', 'Eun Jae'];
+/** Load ME names from the Firebase rotation list */
+async function getMeNames(db) {
+    try {
+        const snap = await db.ref('autopsy-requests/rotation/list').once('value');
+        const list = snap.val();
+        if (Array.isArray(list) && list.length > 0) return list;
+    } catch (e) {
+        console.warn('[CMD] reassign: could not load rotation list:', e.message);
+    }
+    // Fallback
+    return ['Anne Carter', 'Arthur Blackwood', 'Alyson Frost', 'Sarah Bell', 'Eun Jae', 'Edward Baskin'];
+}
 
 export async function execute(interaction) {
     const ownerId = process.env.BOT_OWNER_ID;
@@ -81,12 +93,15 @@ export async function execute(interaction) {
  */
 export async function onCasePick(interaction) {
     const topicId = interaction.values[0];
+    firebase.init();
+    const db = firebase.db;
+    const meNames = await getMeNames(db);
     const row = new ActionRowBuilder()
         .addComponents(
             new StringSelectMenuBuilder()
                 .setCustomId('reassign_me_pick_' + topicId)
                 .setPlaceholder('Select new ME...')
-                .addOptions(ME_NAMES.map(name => ({
+                .addOptions(meNames.map(name => ({
                     label: name,
                     value: name,
                 })))
@@ -128,24 +143,26 @@ export async function onMePick(interaction) {
             return;
         }
 
-        // Search f=266 for the case topic using the request OOC name
-        const client = getForumClient();
-        await client.ensureBrowser();
-        await client.login(process.env.FORUM_USERNAME, process.env.FORUM_PASSWORD, { baseUrl: process.env.FORUM_BASE_URL });
-
-        // Extract OOC name from the request title
-        const oocMatch = (entry.title || '').match(/\(\(\s*(.*?)\s*\)\)/);
+        // Extract OOC name — try caseTitle first, fall back to request title
+        const oocMatch = (entry.caseTitle || entry.title || '').match(/\(\(\s*(.*?)\s*\)\)/);
         const oocName = oocMatch ? oocMatch[1] : null;
 
-        let topicIdNum = null;
-        let oldTitle = null;
+        // Try stored caseTopicId first (most reliable — avoids forum search)
+        let topicIdNum = entry.caseTopicId || null;
+        let oldTitle = entry.caseTitle || null;
 
-        if (oocName) {
-            const caseResults = await client.searchForum(`((${oocName}))`, 266, { baseUrl: process.env.FORUM_BASE_URL });
-            const caseTopic = caseResults.find(t => t.title && t.title.includes('Case'));
-            if (caseTopic) {
-                topicIdNum = caseTopic.topicId;
-                oldTitle = caseTopic.title;
+        // Fall back to forum search if no stored caseTopicId
+        if (!topicIdNum || !oldTitle) {
+            if (oocName) {
+                const searchClient = getForumClient();
+                await searchClient.ensureBrowser();
+                await searchClient.login(process.env.FORUM_USERNAME, process.env.FORUM_PASSWORD, { baseUrl: process.env.FORUM_BASE_URL });
+                const caseResults = await searchClient.searchForum(`((${oocName}))`, 266, { baseUrl: process.env.FORUM_BASE_URL });
+                const caseTopic = caseResults.find(t => t.title && t.title.includes('Case'));
+                if (caseTopic) {
+                    topicIdNum = caseTopic.topicId;
+                    oldTitle = caseTopic.title;
+                }
             }
         }
 
@@ -164,10 +181,20 @@ export async function onMePick(interaction) {
         }
 
         // Update forum
+        const client = getForumClient();
+        await client.ensureBrowser();
+        await client.login(process.env.FORUM_USERNAME, process.env.FORUM_PASSWORD, { baseUrl: process.env.FORUM_BASE_URL });
         await client.editTopicTitle(topicIdNum, 266, newTitle, { baseUrl: process.env.FORUM_BASE_URL });
 
         // Update Firebase
         await db.ref(`autopsy-requested/${topicId}/assignedTo`).set(newME);
+
+        // Update active case counts in the rotation tracker
+        // Handles decrementing old ME and incrementing new ME
+        // Pass null for oldName when it was never assigned (skip decrement)
+        await reassignME(db, entry.assignedTo || null, newME, topicId).catch(err => {
+            console.warn(`[CMD] reassign: rotation tracking error: ${err.message}`);
+        });
 
         const embed = new EmbedBuilder()
             .setColor(0x3498db)

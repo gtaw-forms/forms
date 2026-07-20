@@ -5,6 +5,7 @@ import { functions, auth, database } from '../firebase';
 import * as Sentry from "@sentry/react";
 import { getCharacterID, getCharacterName } from '../utils/identityUtils';
 import { logAuthErrorToDiscord } from '../utils/logging';
+import { withRetry, isRetryableAuthError } from '../utils/retry';
 import { triggerValidateGtaWorldToken, triggerCheckFactionMembership, triggerRefreshGtawUser, triggerWebhookProxy, triggerGetPublicConfig } from './firebaseFunctions';
 
 /**
@@ -240,16 +241,37 @@ export const handleOAuthCallback = async (code, state, onSuccess, onError, onPro
 
             sendLoginWebhook(userData, storedOAuthData.role);
             
-            // Firebase Sign-in
+            // Firebase Sign-in -- MUST succeed before proceeding with the login.
+            // If this fails (e.g. auth/network-request-failed), we abort the entire
+            // login so we never leave the user in a "half-logged-in" state where
+            // GTA OAuth data exists but Firebase Auth is null.
             if (result.firebaseCustomToken) {
                 const currentFirebaseUser = auth.currentUser;
                 const isExistingGoogleAdmin = currentFirebaseUser && !currentFirebaseUser.uid.startsWith('gtaw:');
 
                 if (!isExistingGoogleAdmin) {
-                    signInWithCustomToken(auth, result.firebaseCustomToken).catch(err => {
-                        console.error('[JWT Migration] Firebase Auth failed:', err);
-                        Sentry.captureException(err);
-                    });
+                    try {
+                        await withRetry(
+                            () => signInWithCustomToken(auth, result.firebaseCustomToken),
+                            { maxRetries: 3, baseDelay: 1000, shouldRetry: isRetryableAuthError }
+                        );
+                    } catch (signInError) {
+                        console.error('[JWT Migration] Firebase signInWithCustomToken failed after retries:',
+                            signInError.code || signInError.message);
+                        Sentry.captureException(signInError, {
+                            tags: { auth_step: 'signInWithCustomToken' }
+                        });
+
+                        // Clean up any partial OAuth state so we don't leave stale data
+                        cleanupAuthStorage();
+                        sessionStorage.removeItem(STORAGE_KEYS.OAUTH_STATE);
+                        sessionStorage.removeItem(STORAGE_KEYS.OAUTH_REQUEST_LOCK);
+
+                        if (onError) {
+                            onError(getUserFriendlyFirebaseErrorMessage(signInError));
+                        }
+                        return; // Abort login -- Firebase auth is required
+                    }
                 }
             }
 
@@ -258,14 +280,14 @@ export const handleOAuthCallback = async (code, state, onSuccess, onError, onPro
             const userDataToStore = { ...userData, loginRole: storedOAuthData.role || 'employee' };
             localStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(userDataToStore));
             sessionStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, result.accessToken);
-            
+
             // Persistence: Store token in localStorage for cross-session access (enabled by default)
             localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, result.accessToken);
             localStorage.setItem('phmc_gtaw_oauth_persist_enabled', 'true');
-            
+
             sessionStorage.removeItem(STORAGE_KEYS.OAUTH_STATE);
             sessionStorage.removeItem(STORAGE_KEYS.OAUTH_REQUEST_LOCK);
-            
+
             if (onSuccess) onSuccess(result.userData, storedOAuthData.returnPath);
         } else {
             throw new Error(result.error || 'Token exchange failed');
@@ -279,6 +301,85 @@ export const handleOAuthCallback = async (code, state, onSuccess, onError, onPro
         sessionStorage.removeItem(STORAGE_KEYS.OAUTH_REQUEST_LOCK);
         if (onError) onError(getUserFriendlyErrorMessage(error));
     }
+};
+
+// ---------------------------------------------------------------------------
+// Firebase Auth helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Removes all OAuth-related keys from localStorage and sessionStorage.
+ * Used to clean up partial state when Firebase sign-in fails.
+ */
+const cleanupAuthStorage = () => {
+    Object.values(STORAGE_KEYS).forEach(key => {
+        try { localStorage.removeItem(key); } catch { /* best effort */ }
+        try { sessionStorage.removeItem(key); } catch { /* best effort */ }
+    });
+    try { localStorage.removeItem('phmc_gtaw_oauth_persist_enabled'); } catch { /* best effort */ }
+};
+
+/**
+ * Maps Firebase error codes to user-friendly error messages shown on login failure.
+ */
+const getUserFriendlyFirebaseErrorMessage = (error) => {
+    const code = error?.code || '';
+    const msg = error?.message || '';
+
+    if (code === 'auth/network-request-failed') {
+        return 'Network connection issue. Please check your connection and try again.';
+    }
+    if (code === 'auth/invalid-custom-token') {
+        return 'Authentication session expired. Please log in again.';
+    }
+    if (code === 'auth/custom-token-mismatch') {
+        return 'Authentication session expired. Please log in again.';
+    }
+    if (code === 'auth/user-disabled') {
+        return 'Your account has been disabled. Please contact PHMC Discord support.';
+    }
+    if (code === 'auth/too-many-requests') {
+        return 'Too many login attempts. Please wait a moment before trying again.';
+    }
+    if (code === 'auth/internal-error') {
+        return 'Authentication service error. Please try again.';
+    }
+    // Fall back to existing error message patterns
+    if (msg.includes('timeout')) return 'Authentication timed out. Please try again.';
+    if (msg.includes('network')) return 'Network error. Please check your connection.';
+    if (msg.includes('invalid_request')) return 'Session expired. Please log in again.';
+
+    return 'Authentication failed. Please try again or contact PHMC Discord support.';
+};
+
+/**
+ * Attempts to silently restore Firebase auth when the user has a valid
+ * OAuth session but auth.currentUser is null (e.g., after a transient
+ * network blip during signInWithCustomToken).
+ * Returns true if Firebase auth was restored, false otherwise.
+ */
+export const tryRestoreFirebaseAuth = async () => {
+    // Already authenticated with Firebase -- nothing to do
+    if (auth.currentUser) return true;
+
+    const accessToken = getAccessToken();
+    if (!accessToken) return false;
+
+    try {
+        const result = await triggerRefreshGtawUser({ accessToken });
+        if (result?.firebaseCustomToken) {
+            await withRetry(
+                () => signInWithCustomToken(auth, result.firebaseCustomToken),
+                { maxRetries: 2, baseDelay: 1000, shouldRetry: isRetryableAuthError }
+            );
+            console.log('[GTA Auth] Firebase auth restored via session recovery');
+            return true;
+        }
+    } catch (error) {
+        console.warn('[GTA Auth] Session recovery failed:', error.code || error.message);
+        Sentry.captureException(error, { tags: { auth_step: 'sessionRecovery' } });
+    }
+    return false;
 };
 
 /**
@@ -631,7 +732,21 @@ export const refreshFactionData = async () => {
             throw new Error('Refresh failed: Invalid user data structure');
         }
         if (result.data.firebaseCustomToken && (!auth.currentUser || auth.currentUser.uid.startsWith('gtaw:'))) {
-            signInWithCustomToken(auth, result.data.firebaseCustomToken).catch(() => {});
+            try {
+                await withRetry(
+                    () => signInWithCustomToken(auth, result.data.firebaseCustomToken),
+                    { maxRetries: 2, baseDelay: 1000, shouldRetry: isRetryableAuthError }
+                );
+            } catch (signInError) {
+                // Log but don't throw -- the OAuth token refresh succeeded, we just
+                // couldn't re-establish Firebase auth. This is non-fatal for the
+                // OAuth session; the user's data is still valid.
+                console.warn('[GTA Auth] Firebase re-auth during refresh failed (non-fatal):',
+                    signInError.code || signInError.message);
+                Sentry.captureException(signInError, {
+                    tags: { auth_step: 'refreshFactionData' }
+                });
+            }
         }
         localStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(user));
         return user;

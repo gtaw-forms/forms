@@ -78,7 +78,7 @@ export async function checkRetryQueue() {
     if (!db) return;
 
     try {
-        const snap = await db.ref('retry-queue').once('value');
+        const snap = await db.child('retry-queue').once('value');
         if (!snap.exists()) return;
 
         const now = Date.now();
@@ -98,7 +98,7 @@ export async function checkRetryQueue() {
                 // Retry is due — check max retries
                 if (deployRetries >= C.MAX_RETRIES) {
                     // Mark as permanently failed
-                    db.ref(`scheduledReports/${authorId}/${reportKey}`).update({
+                    db.child(`scheduledReports/${authorId}/${reportKey}`).update({
                         deployStatus: 'failed_permanent',
                         deployMessage: `Failed after ${C.MAX_RETRIES} retries. Manual intervention required.`,
                     }).catch(() => {});
@@ -107,7 +107,7 @@ export async function checkRetryQueue() {
                     return;
                 }
                 // Re-enqueue
-                db.ref(`scheduledReports/${authorId}/${reportKey}`).update({
+                db.child(`scheduledReports/${authorId}/${reportKey}`).update({
                     deployStatus: 'queued',
                     deployCheckedAt: new Date().toISOString(),
                     retryAt: null,

@@ -285,7 +285,6 @@ const formatToNorthAmericanDate = (isoDateTime) => {
       const hasCoronerRank = bbcode.includes('{{coronerRank}}');
       const hasCoronerEmployee = bbcode.includes('{{coronerEmployee}}');
       const hasCoronerBadge = bbcode.includes('{{coronerBadge}}');
-      console.log('[useBbcodeGenerator] Template has coroner placeholders:', { hasCoronerRank, hasCoronerEmployee, hasCoronerBadge });
       
       // Prepare coroner info for decedents generator
       // For local instances, use default template data if not provided
@@ -648,6 +647,14 @@ const formatToNorthAmericanDate = (isoDateTime) => {
           const placeholder = `{{${key}}}`;
           if (!bbcode.includes(placeholder)) return;
           const value = processedFormValues[key];
+
+          // Preserve patientID/PATIENT_ID/patientId placeholder if empty —
+          // the bot fills it later via handleMedicalRecord (auto-assign or extract from topic title).
+          if ((key === 'patientID' || key === 'PATIENT_ID' || key === 'patientId') && (!value || value === '')) {
+              console.log(`[useBbcodeGenerator] Preserving {{${key}}} placeholder (empty) for bot to fill later`);
+              return;
+          }
+
           let replacement = String(value ?? '');
           const field = selectedForm.fields?.find(f => f.name === key);
           
@@ -704,6 +711,10 @@ const formatToNorthAmericanDate = (isoDateTime) => {
 
       bbcode = bbcode.replace(/{{(.+?)}}/g, (match, expr) => {
         const trimmed = expr.trim();
+        // Preserve patientID placeholder for the bot to fill later
+        if ((trimmed === 'patientID' || trimmed === 'PATIENT_ID' || trimmed === 'patientId') && (!ctx[trimmed] || ctx[trimmed] === '')) {
+            return match;
+        }
         if (trimmed.includes(":") && !/[+\-*/()=?<>!&|]/g.test(trimmed)) return trimmed;
         try {
           const fn = new Function('ctx', 'getDepartmentFullName', 'agencyDataStore', 'generateDecedentBBCode', `with (ctx) { return ${trimmed}; }`);

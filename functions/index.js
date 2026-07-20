@@ -243,3 +243,121 @@ export const purgeMorgueRecords = onCall({
         throw new functions.https.HttpsError('internal', `Failed to purge records: ${err.message}`);
     }
 });
+
+/**
+ * Syncs the VPS local morgue data file from Firebase after an admin panel write.
+ * Called by the MorgueManager after any save/delete/upload operation so the
+ * VPS morgue API (which serves all lookups) stays in sync with Firebase.
+ *
+ * Calls the VPS API's /api/morgue/export endpoint, which pulls all records
+ * from Firebase into morgue-data.json on the VPS.
+ */
+export const syncMorgueFile = onCall({
+    region: "europe-west2",
+    cors: [
+        'https://gtaw-forms.github.io',
+        'https://phmc-tools.gta.world',
+        'http://localhost:3000'
+    ]
+}, async (request) => {
+    if (!request.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'Authentication required.');
+    }
+
+    if (!MORGUE_API_KEY) {
+        console.error('[syncMorgueFile] MORGUE_API_KEY environment variable is not set.');
+        throw new functions.https.HttpsError('internal', 'Server configuration error.');
+    }
+
+    console.log('[syncMorgueFile] Syncing VPS local morgue file from Firebase...');
+
+    try {
+        const response = await fetch(`${MORGUE_API_URL}/api/morgue/export`, {
+            method: 'POST',
+            headers: {
+                'x-api-key': MORGUE_API_KEY,
+            },
+        });
+
+        if (!response.ok) {
+            const text = await response.text();
+            console.error(`[syncMorgueFile] VPS API returned ${response.status}: ${text}`);
+            throw new functions.https.HttpsError('internal', `VPS export failed: ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log(`[syncMorgueFile] VPS local file synced — ${data.count || 0} records exported`);
+        return { success: true, count: data.count || 0 };
+    } catch (err) {
+        if (err instanceof functions.https.HttpsError) throw err;
+        console.error('[syncMorgueFile] Error:', err.message);
+        throw new functions.https.HttpsError('internal', `Failed to sync morgue file: ${err.message}`);
+    }
+});
+
+/**
+ * checkOfficerName — Checks a requesting officer name against LSPD/LSSD rosters.
+ * Proxies to the VPS morgue-api's /api/roster/check endpoint.
+ *
+ * Request data: { name: string, department?: string }
+ *   name       — officer name to look up (required)
+ *   department — optional hint ("lspd" or "lssd"). If omitted, both rosters
+ *                are checked and ALL matches are returned.
+ *
+ * Returns (with dept):
+ *   { found: bool, department: string, name: string, altMatch: object|null }
+ *
+ * Returns (auto-detect, no dept):
+ *   { found: bool, count: number, matches: Array<{ name: string, department: string }> }
+ */
+export const checkOfficerName = onCall({
+    region: "europe-west2",
+    cors: [
+        'https://gtaw-forms.github.io',
+        'https://phmc-tools.gta.world',
+        'http://localhost:3000'
+    ]
+}, async (request) => {
+    if (!request.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'Authentication required.');
+    }
+
+    if (!MORGUE_API_KEY) {
+        console.error('[checkOfficerName] MORGUE_API_KEY environment variable is not set.');
+        throw new functions.https.HttpsError('internal', 'Server configuration error.');
+    }
+
+    const { name, department } = request.data || {};
+    if (!name || typeof name !== 'string' || name.trim().length < 2) {
+        throw new functions.https.HttpsError('invalid-argument', 'name is required (min 2 chars)');
+    }
+
+    // Build URL — include dept only if provided and valid
+    const dept = (department || '').toLowerCase().trim();
+    const hasDept = dept === 'lspd' || dept === 'lssd';
+    let url;
+    if (hasDept) {
+        url = `${MORGUE_API_URL}/api/roster/check?name=${encodeURIComponent(name.trim())}&dept=${dept}`;
+    } else {
+        url = `${MORGUE_API_URL}/api/roster/check?name=${encodeURIComponent(name.trim())}`;
+    }
+
+    try {
+        const response = await fetch(url, {
+            headers: { 'x-api-key': MORGUE_API_KEY },
+        });
+
+        if (!response.ok) {
+            const text = await response.text();
+            console.error(`[checkOfficerName] VPS API returned ${response.status}: ${text}`);
+            throw new functions.https.HttpsError('internal', 'Failed to check officer name.');
+        }
+
+        const data = await response.json();
+        return data;
+    } catch (err) {
+        if (err instanceof functions.https.HttpsError) throw err;
+        console.error('[checkOfficerName] Error:', err.message);
+        throw new functions.https.HttpsError('internal', `Failed to check officer name: ${err.message}`);
+    }
+});

@@ -11,18 +11,22 @@ import { checkConsentDirect } from './useConsent';
 
 const isLocalHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
-const deployTrackedForms = ['coroner-report', 'coroner_email', 'death_record', 'autopsy', 'mass-ftality-test'];
+const deployTrackedForms = ['coroner-report', 'coroner_email', 'death_record', 'autopsy', 'mass-ftality-test',
+    'patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical',
+    'session_notes', 'intensive_treatment', 'psych_eval', 'testing-compact-mode'];
 
 export function getReportBasePath(formFirebaseKey, botDeployOptedIn = false) {
   if (deployTrackedForms.includes(formFirebaseKey)) {
-    if (isLocalHost || botDeployOptedIn) return 'scheduledReports';
+    if (isLocalHost) return 'dev-reports'; // Dev sandbox — no auth needed
+    if (botDeployOptedIn) return 'scheduledReports';
   }
   return 'newSavedReports';
 }
 
 export function getBBCodeBasePath(formFirebaseKey, botDeployOptedIn = false) {
   if (deployTrackedForms.includes(formFirebaseKey)) {
-    if (isLocalHost || botDeployOptedIn) return 'scheduledReportsBBCode';
+    if (isLocalHost) return 'dev-reports-bbcode'; // Dev sandbox (separate from report data)
+    if (botDeployOptedIn) return 'scheduledReportsBBCode';
   }
   return 'newSavedReportBBCode';
 }
@@ -196,6 +200,22 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated) => {
             const dateSource = anyDecWithDate?.dateOfDeath || formValues.dateTime;
             const formattedMFDate = formatToNorthAmericanDate(dateSource);
             finalTitle = `[${label}] ${nameSummary} - ${formattedMFDate}`;
+        } else if (['patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical', 'session_notes', 'intensive_treatment', 'psych_eval'].includes(selectedForm.firebaseKey) && !title) {
+            // Medical record fallback title
+            const pName = formValues.decedentName || formValues.patientName || 'Unknown Patient';
+            const pId = formValues.patientID || '';
+            finalTitle = pId ? `Patient #${pId} - ${pName}` : `Patient - ${pName}`;
+        } else if (selectedForm.firebaseKey === 'coroner_email' && !title) {
+            // Only use fallback when saved without BBCode generation (title is empty)
+            const reqOfficer = formValues.requestingOfficer || formValues.requesting_officer || '';
+            const dept = (typeof formValues.department === 'object' ? (formValues.department.label || formValues.department.value) : formValues.department) || '';
+            if (reqOfficer && dept) {
+                finalTitle = `Coroner Email - ${reqOfficer} (${dept})`;
+            } else if (reqOfficer) {
+                finalTitle = `Coroner Email - ${reqOfficer}`;
+            } else {
+                finalTitle = 'Coroner Email';
+            }
         } else if (selectedForm.firebaseKey === 'death_record') { // Handle Death Record title
             const decedentName = formValues.decedentName || 'UNKNOWN';
             const decedentOOC = formValues.decedentOOC || 'N/A';
@@ -286,6 +306,7 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated) => {
             authorName: currentAuthor,
             legacy: false,
             ...(deployTrackedForms.includes(selectedForm.firebaseKey) && { hasdeployed: false }),
+            ...(isLocalHost && { _devMode: true }),
         };
 
         // Add GTAW Auth data if available
@@ -347,7 +368,7 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated) => {
             const promises = [
                 set(reportRef, reportDataToSave),
                 set(bbCodeRef, { bbCode: bbCode }),
-                runTransaction(userReportCountRef, (currentCount) => (currentCount || 0) + 1),
+                ...(!isLocalHost ? [runTransaction(userReportCountRef, (currentCount) => (currentCount || 0) + 1)] : []),
             ];
 
             // Dual-save: when user has consented on live site, also save to newSavedReports
@@ -469,17 +490,47 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated) => {
                 Sentry.captureException(err, { extra: { context: 'saveReport - Webhook' } });
             }
 
-            return { success: true, reportKey: sanitizedKey, authorId: sanitizedAuthorId, reportPath };
+            return { success: true, reportKey: sanitizedKey, authorId: sanitizedAuthorId, reportPath, originalKey: finalTitle };
 
         } catch (error) {
             console.error("Error saving new report to Firebase:", error);
-            Sentry.captureException(error, { extra: { context: 'useFormSaver - saveReport' } });
+            Sentry.captureException(error, {
+                extra: {
+                    context: 'useFormSaver - saveReport',
+                    formId: selectedForm?.firebaseKey,
+                    formName: selectedForm?.name,
+                    reportPath: `${reportBasePath}/${sanitizedAuthorId}/${sanitizedKey}`,
+                    firebaseUid,
+                    hasConsent,
+                    isDeployTracked,
+                    isLocalHost,
+                    userAgent: navigator.userAgent,
+                },
+            });
+            // Fire Discord webhook for save failures (Sentry is returning 404)
+            try {
+                const webhookUrl = import.meta.env.VITE_DEV_WEBHOOK;
+                if (webhookUrl) {
+                    fetch(webhookUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            embeds: [{
+                                title: '❌ Report Save Failed',
+                                description: `**Form:** ${selectedForm?.name || 'Unknown'}\n**Error:** ${error.message || 'Unknown'}\n**Code:** ${error.code || 'N/A'}`,
+                                color: 0xdc3545,
+                                timestamp: new Date().toISOString(),
+                            }],
+                        }),
+                    }).catch(() => {});
+                }
+            } catch {}
             if (!options.silent) {
                 showNotification('Something went wrong while saving the report.', 'error');
             }
             return { success: false, error: error.message };
         }
-    }, [gtaWorldUser, isGtaAuthenticated, showNotification]);
+    }, [gtaWorldUser, isGtaAuthenticated, authUser, showNotification]);
 
     return { saveReport, validateMembership };
 };

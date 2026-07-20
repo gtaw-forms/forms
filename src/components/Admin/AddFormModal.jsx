@@ -5,7 +5,7 @@ import { ref, set, get, update, runTransaction } from "firebase/database";
 import Select from 'react-select';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import { useData } from '../../contexts/DataContext';
-import { logAdminAction, getUserContext } from '../../utils/logging';
+import { logAdminAction, getUserContext, logDataVersionBump } from '../../utils/logging';
 import BulkAddFieldsModal from './BulkAddFieldsModal';
 import {
   DndContext,
@@ -272,6 +272,7 @@ const AddFormModal = ({ show, onClose: onHide, editingForm = null, isDuplicate =
       const metadataRef = ref(database, 'appMetadata/formsDataVersion');
       const newVersion = await runTransaction(metadataRef, (v) => (v || 0) + 1);
       console.log('[saveForm] 3. Version bumped to:', newVersion);
+      logDataVersionBump('appMetadata/formsDataVersion', editingForm ? 'EditForm' : 'AddForm', 'Form: ' + formName);
 
       const { userAgent, timeZone } = getUserContext();
       logAdminAction(gtawUser?.username, editingForm ? 'Edited Form' : 'Created Form', `Form: ${formName}`, 'Form Management', userAgent, timeZone, gtawUser?.username, gtawUser);

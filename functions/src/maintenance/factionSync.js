@@ -13,6 +13,18 @@ export const syncFactionMembers = async (triggerSource = 'scheduled') => {
     console.log(`[Faction Sync] Starting sync. Trigger: ${triggerSource}`);
 
     try {
+        // Throttle: skip if checked within the last hour (unless manual trigger)
+        if (triggerSource !== 'manual') {
+            const metaSnapshot = await db.ref('factions/364/metadata').once('value');
+            const meta = metaSnapshot.val() || {};
+            const lastChecked = meta.lastChecked ? new Date(meta.lastChecked).getTime() : 0;
+            const oneHour = 60 * 60 * 1000;
+            if (Date.now() - lastChecked < oneHour) {
+                console.log(`[Faction Sync] Skipped — last check was ${Math.round((Date.now() - lastChecked) / 1000)}s ago (within 1h throttle window).`);
+                return { success: true, count: meta.statistics?.validRecords || 0, throttled: true };
+            }
+        }
+
         // 1. Get Auth State from DB
         const authSnapshot = await db.ref(AUTH_STATE_PATH).once('value');
         if (!authSnapshot.exists()) {
@@ -93,23 +105,44 @@ export const syncFactionMembers = async (triggerSource = 'scheduled') => {
             throw new Error("No valid members found after transformation.");
         }
 
-        // 6. Save to Database
-        await db.ref(RTDB_PATH).set(membersObject);
+        // 6. Check if data actually changed before writing
+        const existingJson = JSON.stringify(existingData);
+        const newJson = JSON.stringify(membersObject);
+        const dataChanged = existingJson !== newJson;
 
-        // Update Metadata
-        await db.ref('factions/364/metadata').update({
-            lastUpdated: new Date().toISOString(),
-            uploadedBy: `Cloud Function (${triggerSource})`,
-            statistics: {
-                totalRecords: membersData.length,
-                validRecords: count
-            }
-        });
+        if (dataChanged) {
+            await db.ref(RTDB_PATH).set(membersObject);
 
-        // Invalidate Client Cache
-        await db.ref('appMetadata/factionsDataVersion').set(Date.now());
+            // Update Metadata
+            await db.ref('factions/364/metadata').update({
+                lastUpdated: new Date().toISOString(),
+                uploadedBy: `Cloud Function (${triggerSource})`,
+                statistics: {
+                    totalRecords: membersData.length,
+                    validRecords: count
+                }
+            });
 
-        console.log(`[Faction Sync] Successfully synced ${count} members.`);
+            // Invalidate Client Cache — only when data actually changed
+            await db.ref('appMetadata/factionsDataVersion').set(Date.now());
+
+            console.log(`[Faction Sync] Data changed. Synced ${count} members, cache version bumped.`);
+            sendWebhook({
+                embeds: [{
+                    title: 'Data Version Bumped',
+                    description: `**Path:** \`appMetadata/factionsDataVersion\`\n**Source:** Faction Sync (${triggerSource})\n**Members:** ${count}\n**Action:** UCP member data changed`,
+                    color: 0x6366f1,
+                    footer: { text: 'Version Bump Tracker' },
+                    timestamp: new Date().toISOString(),
+                }]
+            }).catch(() => {});
+        } else {
+            console.log(`[Faction Sync] No changes detected (${count} members). Skipping write and cache bump.`);
+            // Still update the metadata timestamp so admins can see the last check time
+            await db.ref('factions/364/metadata').update({
+                lastChecked: new Date().toISOString(),
+            });
+        }
 
         // 7. Notify via Webhook (Optional/Throttled)
         if (triggerSource === 'manual') {

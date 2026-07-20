@@ -3,7 +3,7 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { db, admin } from '../utils/firebase.js';
 import { sendWebhook } from '../utils/helpers.js';
 import { runWeeklyCoronerSummary, runMonthlyCoronerSummary, runYearlyCoronerSummary } from '../reports/coroner.js';
-import { syncFactionMembers } from './factionSync.js';
+// import { syncFactionMembers } from './factionSync.js';  // Commented out: sync now runs on auth recovery only, not scheduled
 import { getFunctionStats } from '../utils/functionStats.js';
 
 const _runMaintenance = async (triggerContext) => {
@@ -21,19 +21,20 @@ const _runMaintenance = async (triggerContext) => {
     let maintenanceResults = {
         duplicateCleanup: { scanned: 0, duplicatesFound: 0, duplicatesDeleted: 0, errors: [] },
         reportCleanup: { oldReportsCleaned: 0, errors: [] },
-        factionSync: { success: false, count: 0, error: null },
+        // factionSync: { success: false, count: 0, error: null },  // Commented out with import above
         pendingDeployments: { coronerReports: 0, coronerEmails: 0, total: 0, errors: [] },
         functionStats: null,
     };
 
     // --- 0. Faction Member Sync ---
-    try {
-        const syncResult = await syncFactionMembers(triggerContext.trigger);
-        maintenanceResults.factionSync = syncResult;
-    } catch (e) {
-        console.error("Error during faction sync in maintenance:", e);
-        maintenanceResults.factionSync = { success: false, error: e.message };
-    }
+    // Commented out: sync now runs on auth recovery only, not scheduled maintenance
+    // try {
+    //     const syncResult = await syncFactionMembers(triggerContext.trigger);
+    //     maintenanceResults.factionSync = syncResult;
+    // } catch (e) {
+    //     console.error("Error during faction sync in maintenance:", e);
+    //     maintenanceResults.factionSync = { success: false, error: e.message };
+    // }
 
     // --- 1. Pending Deployment Report Count ---
     try {
@@ -193,9 +194,9 @@ const _runMaintenance = async (triggerContext) => {
         title: `Daily Maintenance Task (${triggerContext.trigger})`,
         color: hasPending ? 0x9b59b6 : (hasCleanedUp ? 0xFF6B35 : 0x1E90FF),
         fields: [
-            { name: "👥 Faction Member Sync", value: maintenanceResults.factionSync?.success
-                ? `✅ Synced **${maintenanceResults.factionSync.count}** members.`
-                : `❌ Failed: ${maintenanceResults.factionSync?.error || 'Unknown error'}`, inline: false },
+            // { name: "👥 Faction Member Sync", value: maintenanceResults.factionSync?.success
+            //     ? `✅ Synced **${maintenanceResults.factionSync.count}** members.`
+            //     : `❌ Failed: ${maintenanceResults.factionSync?.error || 'Unknown error'}`, inline: false },
             { name: "📜 Old Reports (365+ days)", value: `Deleted: ${maintenanceResults.reportCleanup.oldReportsCleaned}`, inline: true },
             { name: "🧹 Recent Duplicates (14 days)", value: `Scanned: ${maintenanceResults.duplicateCleanup.scanned}
 Deleted: ${maintenanceResults.duplicateCleanup.duplicatesDeleted}`, inline: true },
@@ -267,7 +268,7 @@ export const dailyMaintenanceTask = onSchedule({
     region: "europe-west2",
     secrets: ["PHMC_CONFIG"],
     memory: "512MiB",
-    timeoutSeconds: 1200, 
+    timeoutSeconds: 540,
 }, async (event) => {
     console.log(`Running daily maintenance task. Event ID: ${event.id}`);
     const result = await _runMaintenance({ trigger: 'schedule', id: event.id });
@@ -341,11 +342,11 @@ export const updateAuthState = onCall({
 
         // If it's the UCP auth state, trigger a sync to verify it works
         if (path === '/factions/364/ucp_auth_state') {
-            const syncResult = await syncFactionMembers('auth_update');
-            return { 
-                success: true, 
+            // const syncResult = await syncFactionMembers('auth_update');  // Commented out: sync runs on auth recovery
+            return {
+                success: true,
                 message: `Auth state for ${path} updated and sync triggered.`,
-                syncResult 
+                // syncResult
             };
         }
 

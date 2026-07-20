@@ -1,6 +1,7 @@
 import React, { createContext, useState, useContext, useEffect, useMemo } from 'react';
 import { auth } from '../firebase';
 import { getIdTokenResult } from 'firebase/auth';
+import * as Sentry from '@sentry/react';
 
 const AuthContext = createContext(null);
 
@@ -18,6 +19,8 @@ export const AuthProvider = ({ children }) => {
                     console.log('[JWT Migration] Auth state change detected. User:', firebaseUser.uid);
                     console.debug('[JWT Migration] Claims received:', tokenResult.claims);
                     
+                    Sentry.setUser({ id: firebaseUser.uid });
+                    Sentry.setTag('accessLevel', tokenResult.claims.accessLevel || 'none');
                     setClaims(tokenResult.claims);
                     setUser(firebaseUser);
                 } catch (err) {
@@ -27,6 +30,7 @@ export const AuthProvider = ({ children }) => {
                 }
             } else {
                 console.log('[JWT Migration] Auth state change: No user');
+                Sentry.setUser(null);
                 setUser(null);
                 setClaims({});
             }

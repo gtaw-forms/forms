@@ -1,6 +1,7 @@
 import { SlashCommandBuilder, EmbedBuilder, MessageFlags } from 'discord.js';
 import firebase from '../services/firebase.js';
 import { getForumClient } from '../services/forumClient.js';
+import { clearAssignment } from '../services/autopsyRotation.js';
 
 const AUTOPSY_REQUEST_FORUM_ID = 265;
 const CASE_MGMT_FORUM_ID = 266;
@@ -174,6 +175,13 @@ export async function execute(interaction) {
         // Mark Firebase
         await db.ref(`autopsy-requested/${matchedId}/completedAt`).set(new Date().toISOString());
         if (manualBb) await db.ref(`autopsy-requested/${matchedId}/completedBbCode`).set(manualBb);
+
+        // Decrement the ME's active case count in the rotation tracker
+        if (matched.assignedTo) {
+            clearAssignment(db, matched.assignedTo, matchedId).catch(err => {
+                console.warn(`[CMD] force-autopsy-send: rotation tracking error: ${err.message}`);
+            });
+        }
 
         const embed = new EmbedBuilder()
             .setColor(0x3498db)

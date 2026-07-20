@@ -98,6 +98,23 @@ export class DeployProgressEmbed {
     }
 
     /**
+     * Resume editing an existing embed (for queue -> deploy handoff).
+     * Call instead of start() when a queued embed already exists.
+     */
+    async resume(messageId, channelId, title) {
+        this.messageId = messageId;
+        this.channelId = channelId;
+        this.title = title || this.title;
+        if (!this.client || !this.channelId || !this.messageId) return;
+        try {
+            const channel = await this.client.channels.fetch(this.channelId);
+            await channel.messages.edit(this.messageId, { embeds: [this._build()] });
+        } catch (err) {
+            console.warn(`[PROGRESS] Failed to resume embed: ${err.message}`);
+        }
+    }
+
+    /**
      * Add a step to the progress log and edit the embed.
      * @param {string} name - Step label (e.g. "PHMC Login", "Searching Case Mgmt")
      * @param {'pending'|'ok'|'fail'|'skip'} status
@@ -138,6 +155,7 @@ export class DeployProgressEmbed {
             const icon = s.status === 'ok' ? '✅'
                 : s.status === 'fail' ? '❌'
                 : s.status === 'skip' ? '⏭️'
+                : s.status === 'warn' ? '⚠️'
                 : '⏳';
             const detail = s.detail ? ` — ${s.detail}` : '';
             return `${icon} **${s.name}**${detail} *(${s.time})*`;

@@ -1,6 +1,6 @@
 import { onCall } from "firebase-functions/v2/https";
 import * as functions from "firebase-functions";
-import { db, admin } from '../utils/firebase.js';
+import { db, timestamp } from '../utils/firebase.js';
 export * from './coroner.js';
 
 
@@ -161,7 +161,7 @@ export const uploadFactionData = onCall({
                     lastDuty: member.lastDuty || null,
                     lastOnline: member.lastOnline || null,
                     activity: member.activity || null,
-                    uploadedAt: admin.database.ServerValue.TIMESTAMP,
+                    uploadedAt: timestamp,
                     uploadedBy: request.auth?.uid || 'unknown',
                     dataVersion: metadata.uploadTime || new Date().toISOString()
                 };
@@ -192,7 +192,7 @@ export const uploadFactionData = onCall({
             await backupRef.set({
                 data: existingData.val().members || {},
                 metadata: existingData.val().metadata || {},
-                backedUpAt: admin.database.ServerValue.TIMESTAMP
+                backedUpAt: timestamp
             });
             console.log('[Faction Upload] Created backup of existing data');
         }
@@ -202,7 +202,7 @@ export const uploadFactionData = onCall({
             members: processedData,
             metadata: {
                 ...metadata,
-                lastUpdated: admin.database.ServerValue.TIMESTAMP,
+                lastUpdated: timestamp,
                 uploadedBy: request.auth?.uid || 'unknown',
                 statistics: statistics
             }
@@ -216,7 +216,7 @@ export const uploadFactionData = onCall({
             fileName: metadata.fileName,
             recordCount: statistics.validRecords,
             uploadedBy: request.auth?.uid || 'unknown',
-            uploadedAt: admin.database.ServerValue.TIMESTAMP,
+            uploadedAt: timestamp,
             statistics: statistics
         });
         

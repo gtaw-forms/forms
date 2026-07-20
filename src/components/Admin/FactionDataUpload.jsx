@@ -1,4 +1,4 @@
-import { logAdminAction, getUserContext } from '../../utils/logging';
+import { logAdminAction, getUserContext, logDataVersionBump } from '../../utils/logging';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import useFactionPermissions from '../../hooks/useFactionPermissions';
 import React, { useState, useCallback, useEffect } from 'react';
@@ -50,6 +50,7 @@ const FactionDataUpload = ({ showNotification }) => {
             // 2. Update version to trigger cache invalidation
             const factionsVersionRef = ref(database, 'appMetadata/factionsDataVersion');
             await set(factionsVersionRef, Date.now());
+            logDataVersionBump('appMetadata/factionsDataVersion', 'FactionDataUpload', 'Removed member: ' + member.characterName);
 
             // 3. Log action
             logAdminAction(
@@ -482,6 +483,7 @@ const FactionDataUpload = ({ showNotification }) => {
             try {
                 const factionsVersionRef = ref(database, 'appMetadata/factionsDataVersion');
                 await set(factionsVersionRef, Date.now());
+                logDataVersionBump('appMetadata/factionsDataVersion', 'FactionDataUpload', 'Uploaded faction data');
                 console.log('[Faction Upload] Successfully updated factionsDataVersion.');
                 showNotification && showNotification('Forcing cache refresh for all clients.', 'info');
             } catch (versionError) {

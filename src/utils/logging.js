@@ -364,7 +364,7 @@ export const sendDiscordErrorWebhook = (errorDetails, sentryBlocked = false) => 
             errorDetails.clientInfo ? { name: "Client Info", value: `\`\`\`json\n${JSON.stringify(errorDetails.clientInfo, null, 2)}\n\`\`\``, inline: false } : null,
         ].filter(Boolean),
         timestamp: new Date().toISOString(),
-        footer: { text: `PHMC Tools - Global Error Handler | ` }
+        footer: { text: `PHMC Tools - Global Error Handler` }
     };
     discordErrorWebhookQueue.push({ content: '<@228306972204597248>', embeds: [embed] });
     processDiscordErrorQueue();
@@ -400,4 +400,27 @@ export const reportLogicalError = (title, message, context = {}) => {
     };
 
     sendDiscordErrorWebhook(errorDetails);
+};
+
+/**
+ * Log a Firebase data version bump to the admin webhook.
+ * Call this right after bumping a version node to track what triggered it.
+ *
+ * @param {string} versionPath — Firebase path like "appMetadata/formsDataVersion"
+ * @param {string} source — component or function name that triggered it
+ * @param {string} [detail] — optional context like "Form: ER Protocol"
+ */
+export const logDataVersionBump = (versionPath, source, detail = '') => {
+    const embed = {
+        title: 'Data Version Bumped',
+        description: [
+            '**Path:** `' + versionPath + '`',
+            '**Source:** ' + source,
+            detail ? '**Detail:** ' + detail : null,
+        ].filter(Boolean).join('\n'),
+        color: 0x6366f1,
+        footer: { text: 'Version Bump Tracker' },
+        timestamp: new Date().toISOString(),
+    };
+    return triggerWebhookProxy('admin', { embeds: [embed] }).catch(() => {});
 };
