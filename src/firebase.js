@@ -4,6 +4,7 @@ import { getDatabase, ref, remove } from "firebase/database"; // Import ref and 
 import { getAuth } from "firebase/auth";
 import { getAnalytics } from "firebase/analytics";
 import { getFunctions } from "firebase/functions";
+import { resolveStagingPath } from "./utils/stagingPath";
 
 // Your web app's Firebase configuration using environment variables
 const firebaseConfig = {
@@ -26,8 +27,9 @@ const functions = getFunctions(app, 'europe-west2');
 // Function to delete a form
 const deleteForm = async (formId) => {
   try {
-    await remove(ref(database, `forms/${formId}`));
-    console.log(`Form with ID ${formId} deleted successfully.`);
+    const formsPath = resolveStagingPath('forms');
+    await remove(ref(database, `${formsPath}/${formId}`));
+    console.log(`Form with ID ${formId} deleted successfully from ${formsPath}.`);
   } catch (error) {
     console.error(`Error deleting form with ID ${formId}:`, error);
     throw error;

@@ -39,6 +39,9 @@ build/*
 # firebase
 firebase-admin-key.json
 
+# bot runtime data (roster / ban-state / patient index JSON on the VPS)
+discord-bot/data/
+
 
 # Sentry Config File
 .env.sentry-build-plugin
@@ -51,3 +54,4 @@ docs/
 functions
 # AI context artifact
 changelog.md
+

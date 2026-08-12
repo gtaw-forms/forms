@@ -6,7 +6,7 @@
  */
 
 import { getForumClient } from './forumClient.js';
-import { logFnCall, DeployProgressEmbed } from './deployLogger.js';
+import { logFnCall, DeployProgressEmbed, notifyDeployFailure } from './deployLogger.js';
 import { state } from './deployState.js';
 import { markDeployed, markReportComplete } from './deployStatus.js';
 import { requeueReport } from './deployRetry.js';
@@ -104,11 +104,13 @@ export async function handlePM(report) {
         await markReportComplete(db, authorId, key, label, 'pm', result.url);
         console.log(`[AUTO]  ${key}  PM sent to ${recipient}`);
     } else {
+        const reason = result.reason || 'Unknown error sending PM';
         console.log(`[AUTO]  ${key}  PM send returned failure`);
-        await requeueReport(db, authorId, key, 'PM send failed: ' + (result.reason || 'Unknown')).catch(err =>
+        await notifyDeployFailure(reportData.originalKey || key, 'pm', key, reason);
+        await requeueReport(db, authorId, key, 'PM send failed: ' + reason).catch(err =>
             console.warn(`[AUTO]  ${key}  Failed to requeue PM: ${err.message}`)
         );
-        await progress.addStep('Sending PM', 'fail', (result.reason || 'Unknown'));
+        await progress.addStep('Sending PM', 'fail', reason);
         await progress.addStep('Retry Scheduled', 'warn', 'Will auto-retry on next cycle');
         await progress.finalize('failed');
     }

@@ -27,7 +27,12 @@ export const triggerWebhookProxy = (webhookType, payload, webhookId = null) => {
 };
 export const triggerGetPublicConfig = () => triggerFunction('getPublicConfig');
 export const triggerGetMorgueRecords = (data) => triggerFunction('getMorgueRecords', data);
+export const triggerGetProtocolsDev = (data) => triggerFunction('getProtocolsDev', data);
 export const triggerDeleteMorgueRecord = (data) => triggerFunction('deleteMorgueRecord', data);
 export const triggerPurgeMorgueRecords = () => triggerFunction('purgeMorgueRecords', { confirmed: true });
 export const triggerSyncMorgueFile = () => triggerFunction('syncMorgueFile', {});
 export const triggerCheckOfficerName = (data) => triggerFunction('checkOfficerName', data);
+export const triggerGetPatientNames = (data) => triggerFunction('getPatientNames', data);
+export const triggerGetAgencyCredentials = () => triggerFunction('getAgencyCredentials', {});
+export const triggerGetCctvData = (data) => triggerFunction('getCctvData', data);
+export const triggerCctvFetch = () => triggerFunction('triggerCctvFetch', {});

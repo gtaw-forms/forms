@@ -1,0 +1,1314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PHMC Tools — Case File System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-base:#0B1220;
+    --bg-elevated:#121A2C;
+    --bg-surface:#182238;
+    --bg-surface-hover:#1E2A45;
+    --border:#25324D;
+    --border-accent:#324467;
+    --text:#E7ECF5;
+    --text-muted:#8B96AE;
+    --text-faint:#5D6883;
+    --teal:#33D6C0;
+    --teal-dim:rgba(51,214,192,0.12);
+    --amber:#E8A33D;
+    --amber-dim:rgba(232,163,61,0.12);
+    --danger:#E5566B;
+    --danger-dim:rgba(229,86,107,0.12);
+    --mono:'JetBrains Mono', monospace;
+    --sans:'Inter', sans-serif;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg-base); color:var(--text);
+    font-family:var(--sans); font-size:14px;
+    min-height:100vh;
+  }
+  ::selection{background:var(--teal-dim); color:var(--teal);}
+
+  /* watermark texture on base */
+  body::before{
+    content:"";
+    position:fixed; inset:0; pointer-events:none; z-index:0;
+    background-image: repeating-linear-gradient(135deg, rgba(255,255,255,0.012) 0 2px, transparent 2px 60px);
+  }
+
+  .app{ display:flex; min-height:100vh; position:relative; z-index:1;}
+
+  /* ============ LEFT SIDEBAR ============ */
+  .sidebar{
+    width:270px; flex-shrink:0; background:var(--bg-elevated);
+    border-right:1px solid var(--border);
+    display:flex; flex-direction:column;
+    height:100vh; position:sticky; top:0;
+  }
+  .sidebar-head{
+    padding:20px 18px 14px; border-bottom:1px solid var(--border);
+  }
+  .brand{ display:flex; align-items:center; gap:10px; }
+  .brand-mark{
+    width:30px; height:30px; border-radius:7px;
+    background:linear-gradient(155deg, var(--teal), #1B8F7F);
+    display:flex; align-items:center; justify-content:center;
+    font-family:var(--mono); font-weight:700; color:#06231F; font-size:13px;
+  }
+  .brand-text .t1{ font-weight:700; font-size:14px; letter-spacing:0.2px;}
+  .brand-text .t2{ font-family:var(--mono); font-size:10px; color:var(--text-faint); letter-spacing:1px; text-transform:uppercase; margin-top:1px;}
+
+  .search-box{ margin-top:14px; position:relative; }
+  .search-box input{
+    width:100%; background:var(--bg-surface); border:1px solid var(--border);
+    color:var(--text); border-radius:8px; padding:9px 12px 9px 32px;
+    font-size:12.5px; font-family:var(--sans);
+  }
+  .search-box input:focus{ outline:none; border-color:var(--teal); }
+  .search-box svg{ position:absolute; left:10px; top:9px; width:14px; height:14px; color:var(--text-faint); }
+
+  .form-tree{ flex:1; overflow-y:auto; padding:10px 10px 20px; }
+  .cat{ margin-bottom:4px; }
+  .cat-head{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:9px 8px; cursor:pointer; border-radius:7px;
+    color:var(--text-muted); font-size:11px; font-family:var(--mono);
+    text-transform:uppercase; letter-spacing:1px; user-select:none;
+  }
+  .cat-head:hover{ background:var(--bg-surface-hover); color:var(--text); }
+  .cat-head .chev{ transition:transform .15s ease; font-size:10px; }
+  .cat.open .cat-head .chev{ transform:rotate(90deg); }
+  .cat-items{ display:none; padding-left:4px; }
+  .cat.open .cat-items{ display:block; }
+  .form-item{
+    display:flex; align-items:center; gap:9px;
+    padding:8px 10px; margin:1px 4px; border-radius:7px;
+    color:var(--text-muted); font-size:13px; cursor:pointer;
+    border-left:2px solid transparent;
+  }
+  .form-item:hover{ background:var(--bg-surface-hover); color:var(--text); }
+  .form-item.active{
+    background:var(--teal-dim); color:var(--teal); border-left-color:var(--teal);
+    font-weight:600;
+  }
+  .form-item .dot{ width:5px; height:5px; border-radius:50%; background:currentColor; opacity:0.5; flex-shrink:0;}
+
+  /* ============ TOP BAR ============ */
+  .topbar{
+    height:56px; flex-shrink:0; border-bottom:1px solid var(--border);
+    display:flex; align-items:center; justify-content:space-between;
+    padding:0 22px; background:var(--bg-elevated);
+  }
+  .topbar-title{ display:flex; align-items:center; gap:10px; }
+  .topbar-title h1{ font-size:14.5px; font-weight:700; margin:0; }
+  .topbar-title .case-tag{
+    font-family:var(--mono); font-size:10.5px; color:var(--teal);
+    background:var(--teal-dim); padding:3px 8px; border-radius:5px; letter-spacing:0.5px;
+  }
+  .topbar-actions{ display:flex; align-items:center; gap:14px; }
+  .status-pill{
+    display:flex; align-items:center; gap:6px; font-size:11.5px; color:var(--text-muted);
+    font-family:var(--mono);
+  }
+  .status-pill .led{ width:6px; height:6px; border-radius:50%; background:var(--teal); box-shadow:0 0 6px var(--teal); }
+  .icon-btn{
+    width:32px; height:32px; border-radius:8px; border:1px solid var(--border);
+    background:var(--bg-surface); color:var(--text-muted); display:flex; align-items:center; justify-content:center;
+    cursor:pointer; transition:all .15s;
+  }
+  .icon-btn:hover{ color:var(--text); border-color:var(--border-accent); }
+
+  /* ============ MAIN AREA ============ */
+  .main-wrap{ flex:1; display:flex; flex-direction:column; height:100vh; overflow:hidden; }
+  .content-row{ flex:1; display:flex; gap:20px; padding:22px; overflow:hidden; }
+
+  /* --- E1 main content --- */
+  .main-content{
+    flex:1 1 0; min-width:0; background:var(--bg-elevated);
+    border:1px solid var(--border); border-radius:var(--radius);
+    display:flex; flex-direction:column; overflow:hidden;
+    position:relative;
+  }
+  .main-content::after{ /* file-clip signature accent */
+    content:""; position:absolute; top:-1px; left:26px; width:34px; height:14px;
+    background:var(--bg-base); border:1px solid var(--border-accent); border-top:none;
+    border-radius:0 0 6px 6px;
+  }
+  .doc-header{ padding:22px 26px 16px; border-bottom:1px dashed var(--border); }
+  .doc-eyebrow{ font-family:var(--mono); font-size:10.5px; color:var(--text-faint); letter-spacing:1.5px; text-transform:uppercase; margin-bottom:6px;}
+  .doc-header h2{ margin:0 0 8px; font-size:19px; font-weight:700; }
+  .doc-desc{
+    font-size:12.5px; color:var(--teal); background:var(--teal-dim);
+    border:1px solid rgba(51,214,192,0.25); border-radius:7px; padding:9px 12px;
+    display:flex; gap:8px; align-items:flex-start;
+  }
+
+  .doc-body{ flex:1; overflow-y:auto; padding:22px 26px; }
+  .field-grid{ display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .field-grid .full{ grid-column:1/-1; }
+  .field{ display:flex; flex-direction:column; gap:6px; }
+  .field label{ font-size:11.5px; font-weight:600; color:var(--text-muted); letter-spacing:0.3px; }
+  .field label .req{ color:var(--danger); }
+  .field input, .field select, .field textarea{
+    background:var(--bg-surface); border:1px solid var(--border); color:var(--text);
+    border-radius:8px; padding:10px 12px; font-size:13px; font-family:var(--sans);
+    width:100%; resize:vertical;
+  }
+  .field input:focus, .field select:focus, .field textarea:focus{ outline:none; border-color:var(--teal); }
+  .field .hint{ font-size:10.5px; color:var(--text-faint); }
+
+  .input-with-btn{ display:flex; gap:8px; }
+  .input-with-btn input{ flex:1; min-width:0; }
+  .btn-inline{
+    flex-shrink:0; padding:0 14px; border-radius:8px; border:1px solid var(--border-accent);
+    background:var(--teal-dim); color:var(--teal); font-size:12px; font-weight:600;
+    font-family:var(--sans); cursor:pointer; white-space:nowrap; transition:all .15s;
+  }
+  .btn-inline:hover{ background:rgba(51,214,192,0.22); border-color:var(--teal); }
+  .btn-inline:active{ transform:scale(0.97); }
+
+  .doc-footer{
+    padding:16px 26px; border-top:1px solid var(--border);
+    display:flex; justify-content:flex-end; gap:10px;
+  }
+
+  /* ---- Morgue Records lookup ---- */
+  .lookup-bar{ display:flex; gap:10px; margin-bottom:18px; }
+  .lookup-bar input[type="text"]{
+    flex:1; background:var(--bg-surface); border:1px solid var(--border); color:var(--text);
+    border-radius:8px; padding:10px 12px; font-size:13px; font-family:var(--sans);
+  }
+  .lookup-bar select{
+    background:var(--bg-surface); border:1px solid var(--border); color:var(--text);
+    border-radius:8px; padding:10px 12px; font-size:12.5px; font-family:var(--sans); width:160px;
+  }
+  .lookup-bar input:focus, .lookup-bar select:focus{ outline:none; border-color:var(--teal); }
+
+  .records-head-row{
+    display:grid; grid-template-columns:110px 1fr 120px 110px 150px; gap:14px;
+    padding:0 14px 8px; font-size:10.5px; font-family:var(--mono); color:var(--text-faint);
+    text-transform:uppercase; letter-spacing:1px;
+  }
+  .record-row{
+    display:grid; grid-template-columns:110px 1fr 120px 110px 150px; gap:14px; align-items:center;
+    padding:13px 14px; border-radius:8px; background:var(--bg-surface); border:1px solid var(--border);
+    margin-bottom:8px;
+  }
+  .record-row .case-id{ font-family:var(--mono); color:var(--teal); font-size:11.5px; }
+  .record-row .decedent{ font-weight:600; font-size:13px; }
+  .record-row .decedent .sub{ font-size:10.5px; color:var(--text-faint); margin-top:2px; font-weight:400; }
+  .record-row .date{ font-family:var(--mono); font-size:11.5px; color:var(--text-muted); }
+  .status-badge{
+    font-size:10px; font-weight:700; padding:4px 9px; border-radius:20px; text-align:center;
+    font-family:var(--mono); letter-spacing:0.4px; text-transform:uppercase; width:fit-content;
+  }
+  .status-badge.pending{ background:var(--amber-dim); color:var(--amber); }
+  .status-badge.reviewed{ background:var(--teal-dim); color:var(--teal); }
+  .status-badge.released{ background:rgba(139,150,174,0.15); color:var(--text-muted); }
+  .btn-view{
+    padding:8px 12px; border-radius:7px; border:1px solid var(--border-accent);
+    background:var(--teal-dim); color:var(--teal); font-size:11.5px; font-weight:600;
+    cursor:pointer; white-space:nowrap; font-family:var(--sans); transition:all .15s;
+  }
+  .btn-view:hover{ background:rgba(51,214,192,0.22); border-color:var(--teal); }
+  .no-results{ text-align:center; padding:30px 10px; color:var(--text-faint); font-size:12.5px; }
+
+  /* ---- Admin Panel: tabs ---- */
+  .admin-tabs{ display:flex; gap:4px; margin-top:14px; }
+  .admin-tab{
+    padding:8px 14px; font-size:12px; font-weight:600; color:var(--text-muted);
+    border-radius:7px 7px 0 0; cursor:pointer; border:1px solid transparent; border-bottom:none;
+    transition:all .15s;
+  }
+  .admin-tab:hover{ color:var(--text); }
+  .admin-tab.active{
+    color:var(--teal); background:var(--bg-elevated); border-color:var(--border);
+    position:relative; top:1px;
+  }
+  .admin-pane{ display:none; }
+  .admin-pane.active{ display:block; }
+
+  .cctv-grid{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .cctv-feed{
+    background:#050a12; border:1px solid var(--border); border-radius:10px; overflow:hidden;
+    aspect-ratio:16/10; position:relative; display:flex; align-items:center; justify-content:center;
+  }
+  .cctv-feed::before{
+    content:""; position:absolute; inset:0;
+    background-image:repeating-linear-gradient(0deg, rgba(255,255,255,0.025) 0 1px, transparent 1px 3px);
+  }
+  .cctv-noise{ color:var(--text-faint); font-size:11px; font-family:var(--mono); z-index:1; }
+  .cctv-label{
+    position:absolute; top:8px; left:10px; font-family:var(--mono); font-size:10.5px; color:#E7ECF5;
+    background:rgba(0,0,0,0.5); padding:3px 8px; border-radius:5px; z-index:1; letter-spacing:0.4px;
+  }
+  .cctv-rec{
+    position:absolute; top:8px; right:10px; display:flex; align-items:center; gap:5px;
+    font-family:var(--mono); font-size:10px; color:var(--danger); z-index:1;
+  }
+  .cctv-rec .dot{ width:6px; height:6px; border-radius:50%; background:var(--danger); box-shadow:0 0 6px var(--danger); }
+  .cctv-time{
+    position:absolute; bottom:8px; right:10px; font-family:var(--mono); font-size:10px;
+    color:var(--text-faint); z-index:1;
+  }
+
+  /* ---- Admin Panel ---- */
+  .stat-cards{ display:grid; grid-template-columns:repeat(4, 1fr); gap:12px; margin-bottom:24px; }
+  .stat-card{
+    background:var(--bg-surface); border:1px solid var(--border); border-radius:10px;
+    padding:16px 14px; border-left:3px solid var(--border-accent);
+  }
+  .stat-card.accent-amber{ border-left-color:var(--amber); }
+  .stat-card.accent-danger{ border-left-color:var(--danger); }
+  .stat-card.accent-teal{ border-left-color:var(--teal); }
+  .stat-num{ font-family:var(--mono); font-size:24px; font-weight:700; color:var(--text); line-height:1; }
+  .stat-label{ font-size:11px; color:var(--text-muted); margin-top:6px; }
+
+  .admin-section-title{
+    font-size:12.5px; font-weight:700; color:var(--text); text-transform:uppercase; letter-spacing:0.6px;
+    margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid var(--border);
+  }
+
+  .records-head-row.user-cols, .record-row.user-row{
+    grid-template-columns:1fr 110px 110px 110px 90px;
+  }
+  .role-badge{
+    font-size:10px; font-weight:700; padding:4px 9px; border-radius:20px; text-align:center;
+    font-family:var(--mono); letter-spacing:0.4px; text-transform:uppercase; width:fit-content;
+  }
+  .role-badge.admin{ background:var(--danger-dim); color:var(--danger); }
+  .role-badge.examiner{ background:var(--teal-dim); color:var(--teal); }
+  .role-badge.coroner{ background:var(--amber-dim); color:var(--amber); }
+  .role-badge.trainee{ background:rgba(139,150,174,0.15); color:var(--text-muted); }
+
+  .user-actions{ display:flex; gap:6px; }
+  .icon-mini-btn{
+    width:26px; height:26px; border-radius:6px; border:1px solid var(--border);
+    background:var(--bg-elevated); color:var(--text-muted); display:flex; align-items:center; justify-content:center;
+    cursor:pointer; font-size:11px; transition:all .15s;
+  }
+  .icon-mini-btn:hover{ color:var(--text); border-color:var(--border-accent); }
+  .icon-mini-btn.danger:hover{ color:var(--danger); border-color:var(--danger); }
+
+  .form-config-row{
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding:12px 14px; border-radius:8px; background:var(--bg-surface); border:1px solid var(--border);
+    margin-bottom:8px;
+  }
+  .form-config-name{ font-size:13px; font-weight:600; }
+  .form-config-sub{ font-size:10.5px; color:var(--text-faint); margin-top:2px; }
+  .toggle-switch{
+    position:relative; width:38px; height:21px; flex-shrink:0; border-radius:20px;
+    background:var(--border-accent); cursor:pointer; transition:background .15s ease;
+  }
+  .toggle-switch::after{
+    content:""; position:absolute; top:2px; left:2px; width:17px; height:17px; border-radius:50%;
+    background:#fff; transition:transform .15s ease;
+  }
+  .toggle-switch.on{ background:var(--teal); }
+  .toggle-switch.on::after{ transform:translateX(17px); }
+
+  /* ---- Right panel: untabbed cards for Admin view ---- */
+  .panel-card-head{ padding:14px 18px; border-bottom:1px solid var(--border); }
+  .panel-card-head h3{ margin:0; font-size:13px; font-weight:700; display:flex; align-items:center; gap:7px; }
+  .status-row{
+    display:flex; justify-content:space-between; align-items:center; padding:9px 0;
+    border-bottom:1px dotted var(--border); font-size:12.5px;
+  }
+  .status-row:last-child{ border-bottom:none; }
+  .activity-item{
+    display:flex; gap:10px; padding:9px 0; border-bottom:1px dotted var(--border); font-size:12px;
+  }
+  .activity-item:last-child{ border-bottom:none; }
+  .activity-time{
+    font-family:var(--mono); font-size:10.5px; color:var(--text-faint); flex-shrink:0; width:56px; padding-top:1px;
+  }
+  .activity-text{ color:var(--text-muted); line-height:1.5; }
+  .activity-text strong{ color:var(--text); }
+
+  /* ---- Morgue findings modal read-out ---- */
+  .modal-box.wide{ max-width:620px; }
+  .finding-header{ margin-bottom:16px; }
+  .finding-eyebrow{
+    font-family:var(--mono); font-size:10.5px; color:var(--teal); letter-spacing:1.5px;
+    text-transform:uppercase; margin-bottom:6px;
+  }
+  .finding-title{ margin:0; font-size:17px; font-weight:700; line-height:1.3; }
+
+  .notice-bubble{
+    display:flex; gap:9px; align-items:flex-start; font-size:12px; line-height:1.55;
+    border-radius:8px; padding:11px 13px; margin-bottom:10px;
+  }
+  .notice-bubble span:first-child{ flex-shrink:0; font-size:13px; }
+  .notice-warn{ background:var(--amber-dim); color:var(--amber); border:1px solid rgba(232,163,61,0.3); }
+  .notice-ooc{ background:rgba(179,156,255,0.1); color:#B39CFF; border:1px solid rgba(179,156,255,0.28); }
+  .notice-muted{ background:var(--bg-surface); color:var(--text-muted); border:1px solid var(--border); }
+
+  .finding-section{ margin-bottom:20px; }
+  .finding-section:last-child{ margin-bottom:4px; }
+  .finding-section-title{
+    font-family:var(--mono); font-size:10.5px; color:var(--text-faint); text-transform:uppercase;
+    letter-spacing:1.2px; padding-bottom:7px; margin-bottom:11px; border-bottom:1px dashed var(--border);
+  }
+  .finding-kv{
+    display:flex; justify-content:space-between; gap:16px; padding:6px 0;
+    border-bottom:1px dotted var(--border); font-size:12.5px;
+  }
+  .finding-kv:last-child{ border-bottom:none; }
+  .finding-kv > span:first-child{ color:var(--text-muted); flex-shrink:0; }
+  .finding-kv > span:last-child{ color:var(--text); text-align:right; font-weight:500; }
+  .finding-kv .mono{ font-family:var(--mono); font-size:11.5px; letter-spacing:0.3px; }
+  .finding-value{ font-size:13px; color:var(--text); line-height:1.6; }
+
+  .autopsy-table{ display:flex; flex-direction:column; gap:4px; }
+  .autopsy-row{
+    display:grid; grid-template-columns:100px 1fr 110px 70px; gap:10px; align-items:center;
+    padding:8px 10px; border-radius:7px; font-size:12px;
+  }
+  .autopsy-row.autopsy-head{
+    font-family:var(--mono); font-size:10px; color:var(--text-faint); text-transform:uppercase;
+    letter-spacing:0.8px; padding:0 10px 6px;
+  }
+  .autopsy-row:not(.autopsy-head){ background:var(--bg-surface); border:1px solid var(--border); }
+  .autopsy-row .mono{ font-family:var(--mono); color:var(--text-muted); font-size:11.5px; }
+  .btn{
+    padding:10px 18px; border-radius:8px; font-size:13px; font-weight:600;
+    cursor:pointer; border:1px solid transparent; transition:all .15s; font-family:var(--sans);
+  }
+  .btn-ghost{ background:transparent; border-color:var(--border-accent); color:var(--text-muted); }
+  .btn-ghost:hover{ color:var(--text); border-color:var(--text-faint); }
+  .btn-primary{ background:var(--teal); color:#06231F; }
+  .btn-primary:hover{ background:#4EE3CF; }
+  .btn-amber{ background:var(--amber); color:#2E1E04; }
+  .btn-amber:hover{ background:#F5B85B; }
+
+  /* --- E2 right panel --- */
+  .right-panel{
+    width:380px; flex-shrink:0; display:flex; flex-direction:column; gap:16px;
+    overflow-y:auto; padding-right:2px;
+  }
+  .panel-card{
+    background:var(--bg-elevated); border:1px solid var(--border); border-radius:var(--radius);
+    overflow:hidden;
+  }
+  .panel-tabs{ display:flex; border-bottom:1px solid var(--border); }
+  .panel-tab{
+    flex:1; text-align:center; padding:12px 10px; font-size:12px; font-weight:600;
+    color:var(--text-muted); cursor:pointer; border-bottom:2px solid transparent;
+    display:flex; align-items:center; justify-content:center; gap:6px;
+  }
+  .panel-tab.active{ color:var(--teal); border-bottom-color:var(--teal); background:var(--teal-dim); }
+  .panel-tab:hover:not(.active){ color:var(--text); }
+
+  .panel-section{ padding:18px; display:none; }
+  .panel-section.active{ display:block; }
+
+  .id-badge{
+    display:flex; gap:12px; align-items:center; padding-bottom:14px; margin-bottom:14px;
+    border-bottom:1px dashed var(--border);
+  }
+  .id-avatar{
+    width:44px; height:44px; border-radius:9px; background:var(--bg-surface);
+    border:1px solid var(--border-accent); display:flex; align-items:center; justify-content:center;
+    color:var(--text-faint); font-size:16px; flex-shrink:0;
+  }
+  .id-name{ font-weight:700; font-size:13.5px; }
+  .id-role{ font-family:var(--mono); font-size:10.5px; color:var(--teal); margin-top:2px; }
+
+  .panel-section .field{ margin-bottom:14px; }
+  .panel-section .field:last-child{ margin-bottom:0; }
+
+  .patient-note{
+    display:flex; gap:8px; font-size:11.5px; color:var(--amber);
+    background:var(--amber-dim); border:1px solid rgba(232,163,61,0.25);
+    border-radius:7px; padding:9px 11px; margin-bottom:10px;
+  }
+
+  .btn-row{ display:flex; gap:8px; margin-top:16px; }
+  .btn-row .btn{ flex:1; }
+
+  .misc-item{
+    display:flex; align-items:center; gap:11px; padding:11px 12px; border-radius:8px;
+    background:var(--bg-surface); border:1px solid var(--border); margin-bottom:8px;
+    cursor:pointer; transition:all .15s;
+  }
+  .misc-item:hover{ border-color:var(--border-accent); background:var(--bg-surface-hover); }
+  .misc-icon{
+    width:30px; height:30px; border-radius:7px; display:flex; align-items:center; justify-content:center;
+    font-size:14px; flex-shrink:0;
+  }
+  .misc-item.admin .misc-icon{ background:var(--danger-dim); color:var(--danger); }
+  .misc-item.reports .misc-icon{ background:var(--teal-dim); color:var(--teal); }
+  .misc-item.autopsy .misc-icon{ background:var(--amber-dim); color:var(--amber); }
+  .misc-item.bug .misc-icon{ background:rgba(139,150,174,0.15); color:var(--text-muted); }
+  .misc-item.card .misc-icon{ background:rgba(139,110,255,0.14); color:#B39CFF; }
+  .misc-title{ font-size:12.5px; font-weight:600; }
+  .misc-sub{ font-size:10.5px; color:var(--text-faint); margin-top:1px; }
+  .misc-item .arrow{ margin-left:auto; color:var(--text-faint); font-size:12px; }
+
+  .bbcode-panel{ padding:18px; }
+  .bbcode-banner{
+    font-size:11.5px; padding:8px 11px; border-radius:7px; margin-bottom:10px;
+    display:flex; gap:7px; align-items:center;
+  }
+  .bbcode-banner.success{ background:var(--teal-dim); color:var(--teal); border:1px solid rgba(51,214,192,0.25); }
+  .bbcode-tabs{ display:flex; gap:6px; margin-bottom:8px; }
+  .bbcode-tab{
+    font-family:var(--mono); font-size:10.5px; padding:5px 10px; border-radius:6px;
+    background:var(--bg-surface); color:var(--text-muted); cursor:pointer; border:1px solid var(--border);
+  }
+  .bbcode-tab.active{ color:var(--teal); border-color:var(--teal); background:var(--teal-dim); }
+  .bbcode-pre{
+    font-family:var(--mono); font-size:11px; color:var(--text-muted); background:var(--bg-surface);
+    border:1px solid var(--border); border-radius:8px; padding:12px; max-height:120px; overflow-y:auto;
+    line-height:1.6; white-space:pre-wrap;
+  }
+
+  /* ============ MODAL: BUSINESS CARD GENERATOR ============ */
+  .modal-overlay{
+    position:fixed; inset:0; z-index:100; background:rgba(6,10,18,0.72);
+    backdrop-filter:blur(3px);
+    display:none; align-items:center; justify-content:center; padding:24px;
+  }
+  .modal-overlay.open{ display:flex; }
+  .modal-box{
+    width:100%; max-width:460px; max-height:90vh; overflow-y:auto;
+    background:var(--bg-elevated); border:1px solid var(--border-accent);
+    border-radius:14px; box-shadow:0 24px 60px rgba(0,0,0,0.5);
+  }
+  .modal-head{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:16px 20px; border-bottom:1px solid var(--border);
+  }
+  .modal-head h3{ margin:0; font-size:14.5px; font-weight:700; display:flex; align-items:center; gap:8px; }
+  .modal-close{
+    width:28px; height:28px; border-radius:7px; border:1px solid var(--border);
+    background:var(--bg-surface); color:var(--text-muted); display:flex; align-items:center;
+    justify-content:center; cursor:pointer; font-size:14px;
+  }
+  .modal-close:hover{ color:var(--text); border-color:var(--border-accent); }
+  .modal-body{ padding:22px 20px; }
+
+  /* the printable card preview */
+  .card-preview-wrap{
+    display:flex; justify-content:center; padding:6px 0 18px;
+  }
+  .biz-card-stage{
+    width:100%; max-width:340px; transition:max-width .15s ease;
+  }
+  .biz-card-top, .biz-card-mid, .biz-card-bottom{ position:relative; z-index:1; }
+  .biz-card{
+    width:100%; max-width:340px; aspect-ratio:320/186; border-radius:12px; position:relative; overflow:hidden;
+    background:linear-gradient(150deg, #101a30 0%, #0B1220 60%, #06231F 130%);
+    background-size:cover; background-position:center;
+    border:1px solid var(--border-accent);
+    box-shadow:0 14px 30px rgba(0,0,0,0.45);
+    padding:5.5% 6%; display:flex; flex-direction:column; justify-content:space-between;
+    transition:background-image .2s ease;
+  }
+  .biz-card::before{
+    /* readability scrim — always present, strengthens automatically once a photo is set via .has-photo */
+    content:""; position:absolute; inset:0; z-index:0;
+    background:linear-gradient(180deg, rgba(6,10,18,0.15) 0%, rgba(6,10,18,0.55) 100%);
+    opacity:0; transition:opacity .2s ease;
+  }
+  .biz-card.has-photo::before{ opacity:1; }
+  .biz-card::after{
+    content:""; position:absolute; top:-40px; right:-40px; width:160px; height:160px;
+    border-radius:50%; background:radial-gradient(circle, rgba(51,214,192,0.14), transparent 70%);
+    transition:opacity .2s ease;
+  }
+  .biz-card.has-photo::after{ opacity:0; }
+  .biz-card-top{ display:flex; justify-content:space-between; align-items:flex-start; position:relative; z-index:1; }
+  .biz-card-org{ font-family:var(--mono); font-size:10px; letter-spacing:1.5px; color:var(--teal); text-transform:uppercase; }
+  .biz-card-mark{
+    width:26px; height:26px; border-radius:6px; background:linear-gradient(155deg, var(--teal), #1B8F7F);
+    display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-weight:700;
+    font-size:11px; color:#06231F;
+  }
+  .biz-card-mid{ position:relative; z-index:1; }
+  .biz-card-name{ font-size:18px; font-weight:700; color:#F2F5FB; line-height:1.2; }
+  .biz-card-rank{ font-family:var(--mono); font-size:11px; color:var(--amber); margin-top:3px; letter-spacing:0.4px; }
+  .biz-card-bottom{
+    display:flex; justify-content:space-between; align-items:flex-end; position:relative; z-index:1;
+    font-family:var(--mono); font-size:10.5px; color:var(--text-muted);
+  }
+  .biz-card-bottom .phone::before{ content:"☎ "; color:var(--text-faint); }
+  .biz-card-id{ color:var(--text-faint); letter-spacing:0.5px; }
+
+  .modal-fields{ display:flex; flex-direction:column; gap:14px; }
+  .modal-fields .field label{ font-size:11.5px; }
+
+  .size-row{
+    display:flex; align-items:center; gap:10px; margin-bottom:14px;
+    font-size:11.5px; color:var(--text-muted);
+  }
+  .size-row label{ flex-shrink:0; font-weight:600; }
+  .size-row input[type="range"]{
+    flex:1; accent-color:var(--teal); height:4px;
+  }
+  .size-row span{ font-family:var(--mono); color:var(--teal); width:36px; text-align:right; flex-shrink:0; }
+
+  .upload-row{ display:flex; gap:8px; margin-bottom:20px; }
+  .upload-btn{
+    flex:1; display:flex; align-items:center; justify-content:center; gap:7px;
+    background:var(--bg-surface); border:1px dashed var(--border-accent); color:var(--text-muted);
+    border-radius:8px; padding:9px 14px; font-size:12px; font-weight:600; cursor:pointer;
+    transition:all .15s;
+  }
+  .upload-btn:hover{ color:var(--teal); border-color:var(--teal); background:var(--teal-dim); }
+  .upload-btn input[type="file"]{ display:none; }
+
+  .modal-foot{
+    padding:16px 20px; border-top:1px solid var(--border);
+    display:flex; justify-content:flex-end; gap:10px;
+  }
+
+  /* ============ PROGRESS STAMP (signature element) ============ */
+  .stamp{
+    position:fixed; bottom:24px; right:24px; z-index:10;
+    width:92px; height:92px; border-radius:50%;
+    background:var(--bg-elevated); border:1px solid var(--border-accent);
+    display:flex; align-items:center; justify-content:center; flex-direction:column;
+    box-shadow:0 8px 24px rgba(0,0,0,0.45);
+  }
+  .stamp svg{ position:absolute; inset:0; transform:rotate(-90deg); }
+  .stamp-pct{ font-family:var(--mono); font-weight:700; font-size:16px; color:var(--teal); }
+  .stamp-frac{ font-family:var(--mono); font-size:9px; color:var(--text-faint); margin-top:1px; }
+
+  ::-webkit-scrollbar{ width:8px; height:8px; }
+  ::-webkit-scrollbar-thumb{ background:var(--border-accent); border-radius:8px; }
+  ::-webkit-scrollbar-track{ background:transparent; }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ===================== C. LEFT SIDEBAR ===================== -->
+  <div class="sidebar">
+    <div class="sidebar-head">
+      <div class="brand">
+        <div class="brand-mark">PH</div>
+        <div class="brand-text">
+          <div class="t1">PHMC Tools</div>
+          <div class="t2">Case File System</div>
+        </div>
+      </div>
+      <div class="search-box">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" placeholder="Search forms…">
+      </div>
+    </div>
+    <div class="form-tree" id="formTree">
+      <div class="cat open">
+        <div class="cat-head" onclick="toggleCat(this)"><span>Administration</span><span class="chev">▶</span></div>
+        <div class="cat-items">
+          <div class="form-item active" onclick="switchAdminTab(this,'users')"><span class="dot"></span>Admin Panel</div>
+          <div class="form-item" onclick="switchAdminTab(this,'forms')"><span class="dot"></span>Form Management</div>
+          <div class="form-item" onclick="switchAdminTab(this,'cctv')"><span class="dot"></span>CCTV</div>
+        </div>
+      </div>
+      <div class="cat open">
+        <div class="cat-head" onclick="toggleCat(this)"><span>Morgue</span><span class="chev">▶</span></div>
+        <div class="cat-items">
+          <div class="form-item"><span class="dot"></span>Morgue Records</div>
+        </div>
+      </div>
+      <div class="cat open">
+        <div class="cat-head" onclick="toggleCat(this)"><span>Medical Records</span><span class="chev">▶</span></div>
+        <div class="cat-items">
+          <div class="form-item"><span class="dot"></span>Autopsy Report</div>
+          <div class="form-item"><span class="dot"></span>Admission Chart</div>
+          <div class="form-item"><span class="dot"></span>Discharge Summary</div>
+        </div>
+      </div>
+      <div class="cat">
+        <div class="cat-head" onclick="toggleCat(this)"><span>Coroner Forms</span><span class="chev">▶</span></div>
+        <div class="cat-items">
+          <div class="form-item"><span class="dot"></span>Cause of Death</div>
+          <div class="form-item"><span class="dot"></span>Body Release</div>
+        </div>
+      </div>
+      <div class="cat">
+        <div class="cat-head" onclick="toggleCat(this)"><span>Administrative</span><span class="chev">▶</span></div>
+        <div class="cat-items">
+          <div class="form-item"><span class="dot"></span>Shift Log</div>
+          <div class="form-item"><span class="dot"></span>Incident Report</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== MAIN WRAP ===================== -->
+  <div class="main-wrap">
+
+    <!-- TOP BAR -->
+    <div class="topbar">
+      <div class="topbar-title">
+        <h1>Admin Panel</h1>
+        <span class="case-tag">SYS-ADMIN</span>
+      </div>
+      <div class="topbar-actions">
+        <div class="status-pill"><span class="led"></span>Connected</div>
+        <div class="icon-btn" title="Notifications">🔔</div>
+        <div class="icon-btn" title="Saved Reports">🗂️</div>
+      </div>
+    </div>
+
+    <!-- CONTENT ROW: E1 + E2 -->
+    <div class="content-row">
+
+      <!-- ============ E1. MAIN CONTENT ============ -->
+      <div class="main-content">
+        <div class="doc-header">
+          <div class="doc-eyebrow">Administration / Control Panel</div>
+          <h2 id="adminTitle">Admin Panel</h2>
+          <div class="doc-desc" id="adminDesc">
+            <span>ℹ️</span>
+            <span>Manage staff access, review permissions, and toggle which forms are live. Changes here apply system-wide.</span>
+          </div>
+          <div class="admin-tabs">
+            <div class="admin-tab active" data-tab="users" onclick="switchAdminTab(this,'users')">Admin Panel</div>
+            <div class="admin-tab" data-tab="forms" onclick="switchAdminTab(this,'forms')">Form Management</div>
+            <div class="admin-tab" data-tab="cctv" onclick="switchAdminTab(this,'cctv')">CCTV</div>
+          </div>
+        </div>
+
+        <div class="doc-body">
+
+          <!-- ===== TAB: Admin Panel (users) ===== -->
+          <div class="admin-pane active" data-pane="users">
+            <div class="stat-cards">
+              <div class="stat-card">
+                <div class="stat-num">24</div>
+                <div class="stat-label">Total Staff</div>
+              </div>
+              <div class="stat-card accent-amber">
+                <div class="stat-num">3</div>
+                <div class="stat-label">Pending Approvals</div>
+              </div>
+              <div class="stat-card accent-danger">
+                <div class="stat-num">1</div>
+                <div class="stat-label">Suspended</div>
+              </div>
+              <div class="stat-card accent-teal">
+                <div class="stat-num">9</div>
+                <div class="stat-label">Forms Enabled</div>
+              </div>
+            </div>
+
+            <div class="admin-section-title">User Management</div>
+            <div class="lookup-bar">
+              <input type="text" id="userSearch" placeholder="Search by name or badge #…" oninput="filterUsers()">
+              <select id="userRole" onchange="filterUsers()">
+                <option value="">All Roles</option>
+                <option value="admin">Admin</option>
+                <option value="examiner">Examiner</option>
+                <option value="coroner">Coroner</option>
+                <option value="trainee">Trainee</option>
+              </select>
+            </div>
+
+            <div class="records-head-row user-cols">
+              <span>Name</span>
+              <span>Role</span>
+              <span>Status</span>
+              <span>Last Active</span>
+              <span></span>
+            </div>
+            <div id="usersList"></div>
+          </div>
+
+          <!-- ===== TAB: Form Management ===== -->
+          <div class="admin-pane" data-pane="forms">
+            <div class="admin-section-title">Form Configuration</div>
+            <div id="formConfigList"></div>
+          </div>
+
+          <!-- ===== TAB: CCTV ===== -->
+          <div class="admin-pane" data-pane="cctv">
+            <div class="admin-section-title">Live Camera Feeds</div>
+            <div class="cctv-grid" id="cctvGrid"></div>
+          </div>
+
+        </div>
+
+        <div class="doc-footer" style="justify-content:space-between; align-items:center;">
+          <span id="usersCount" style="font-size:11.5px; color:var(--text-faint); font-family:var(--mono);"></span>
+          <div style="display:flex; gap:10px;">
+            <button class="btn btn-ghost">Reset</button>
+            <button class="btn btn-primary">Save Changes</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ E2. RIGHT PANEL ============ -->
+      <div class="right-panel">
+
+        <!-- System Status -->
+        <div class="panel-card">
+          <div class="panel-card-head">
+            <h3>🖥️ System Status</h3>
+          </div>
+          <div class="panel-section active">
+            <div class="status-row">
+              <span>API Server</span>
+              <span class="status-badge reviewed">Operational</span>
+            </div>
+            <div class="status-row">
+              <span>Database</span>
+              <span class="status-badge reviewed">Operational</span>
+            </div>
+            <div class="status-row">
+              <span>Forum Deploy Bot</span>
+              <span class="status-badge pending">Degraded</span>
+            </div>
+            <div class="status-row">
+              <span>Backup Job</span>
+              <span class="status-badge reviewed">Last run 2h ago</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recent Activity -->
+        <div class="panel-card">
+          <div class="panel-card-head">
+            <h3>🕓 Recent Activity</h3>
+          </div>
+          <div class="panel-section active">
+            <div class="activity-item">
+              <span class="activity-time">10:42</span>
+              <span class="activity-text"><strong>R. Whitfield</strong> approved a Coroner application</span>
+            </div>
+            <div class="activity-item">
+              <span class="activity-time">09:58</span>
+              <span class="activity-text"><strong>System</strong> disabled the Discharge Summary form</span>
+            </div>
+            <div class="activity-item">
+              <span class="activity-time">09:21</span>
+              <span class="activity-text"><strong>M. Alvarez</strong> suspended a Trainee account</span>
+            </div>
+            <div class="activity-item">
+              <span class="activity-time">Yesterday</span>
+              <span class="activity-text"><strong>R. Whitfield</strong> updated the Autopsy Report template</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MODAL: MORGUE FINDINGS ============ -->
+<div class="modal-overlay" id="findingsModal">
+  <div class="modal-box wide">
+    <div class="modal-head">
+      <h3>🔬 Morgue Intake Record</h3>
+      <div class="modal-close" onclick="closeFindingsModal()">✕</div>
+    </div>
+    <div class="modal-body" id="findingsContent">
+      <!-- populated by openFindings() -->
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeFindingsModal()">Close</button>
+      <button class="btn btn-primary" onclick="closeFindingsModal()">Export Report</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MODAL: BUSINESS CARD GENERATOR ============ -->
+<div class="modal-overlay" id="cardModal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h3>💳 Business Card Generator</h3>
+      <div class="modal-close" onclick="closeCardModal()">✕</div>
+    </div>
+    <div class="modal-body">
+
+      <div class="card-preview-wrap">
+        <div class="biz-card-stage" id="cardStage">
+          <div class="biz-card" id="bizCard">
+            <div class="biz-card-top">
+              <div class="biz-card-org">Pillbox Hill Medical Center</div>
+              <div class="biz-card-mark">PH</div>
+            </div>
+            <div class="biz-card-mid">
+              <div class="biz-card-name" id="cardName">Jane Doe</div>
+              <div class="biz-card-rank" id="cardRank">MEDICAL EXAMINER</div>
+            </div>
+            <div class="biz-card-bottom">
+              <div class="phone" id="cardPhone">555-0100</div>
+              <div class="biz-card-id" id="cardId">ID #0000</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="size-row">
+        <label for="cardSize">Card size</label>
+        <input type="range" id="cardSize" min="60" max="140" value="100" oninput="resizeCard(this.value)">
+        <span id="cardSizeVal">100%</span>
+      </div>
+
+      <div class="upload-row">
+        <label class="upload-btn">
+          📷 Upload background image
+          <input type="file" accept="image/*" id="cardImageInput" onchange="handleImageUpload(event)">
+        </label>
+        <button class="btn btn-ghost" style="padding:9px 14px; font-size:12px;" onclick="clearCardImage()">Reset</button>
+      </div>
+
+      <div class="modal-fields">
+        <div class="field">
+          <label>Full Name</label>
+          <input type="text" id="inName" placeholder="Jane Doe" oninput="renderCard()">
+        </div>
+        <div class="field">
+          <label>Rank / Title</label>
+          <input type="text" id="inRank" placeholder="Medical Examiner" oninput="renderCard()">
+        </div>
+        <div class="field">
+          <label>Phone Number</label>
+          <input type="text" id="inPhone" placeholder="555-0100" oninput="renderCard()">
+        </div>
+      </div>
+
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeCardModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="closeCardModal()">Save Card</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ F. PROGRESS STAMP ============ -->
+<div class="stamp">
+  <svg width="92" height="92" viewBox="0 0 92 92">
+    <circle cx="46" cy="46" r="40" fill="none" stroke="#25324D" stroke-width="6"/>
+    <circle id="ringFill" cx="46" cy="46" r="40" fill="none" stroke="#33D6C0" stroke-width="6"
+      stroke-linecap="round" stroke-dasharray="251.2" stroke-dashoffset="251.2"/>
+  </svg>
+  <div class="stamp-pct" id="pctText">0%</div>
+  <div class="stamp-frac" id="fracText">0 / 6</div>
+</div>
+
+<script>
+const morgueRecords = [
+  {
+    id:'80206', displayName:'Unknown <span style="color:var(--text-faint); font-weight:400;">(( Iker Barato ))</span>',
+    listName:'Unknown (( Iker Barato ))', date:'2026-07-21', status:'pending', place:'Chamberlain Hills - Forum Dr',
+    manner:'Homicide', cause:'Shot to death.',
+    age:'14 to 16',
+    description:'He stands 5\'10 with medium length dark hair, serious facial expression. He has a low opacity but seen mustache.',
+    marks:'None',
+    timeOfDeath:'Tuesday, 21 July 2026 06:42:57',
+    dna:'4F506F73496B6572323139363731',
+    bac:'0.00', narcotics:'N/A',
+    evidence:[],
+    autopsy:[
+      { time:'06:18:51', wound:'Blunt force trauma — Fist', part:'Pelvis', dist:'0.74m' },
+      { time:'06:19:34', wound:'Blunt force trauma — Fist', part:'Pelvis', dist:'0.76m' },
+      { time:'06:19:39', wound:'Blunt force trauma — Fist', part:'Head', dist:'0.5m' },
+      { time:'06:19:57', wound:'Gunshot wound', part:'Head', dist:'5.4m' }
+    ]
+  },
+  {
+    id:'80179', displayName:'Elena Cruz', listName:'Elena Cruz', date:'2026-07-17', status:'reviewed', place:'Rancho, Los Santos',
+    manner:'Accident', cause:'Blunt force trauma consistent with vehicle collision.',
+    age:'30 to 35',
+    description:'She stands roughly 5\'5 with shoulder-length black hair, visible bruising across the face and arms.',
+    marks:'Small scar above left eyebrow',
+    timeOfDeath:'Friday, 17 July 2026 14:12:03',
+    dna:'45436C7A43727A32303235',
+    bac:'0.02', narcotics:'N/A',
+    evidence:[],
+    autopsy:[
+      { time:'14:12:03', wound:'Blunt force trauma — Vehicle Impact', part:'Torso', dist:'—' },
+      { time:'14:12:41', wound:'Blunt force trauma — Vehicle Impact', part:'Skull', dist:'—' }
+    ]
+  },
+  {
+    id:'80142', displayName:'Harold Ibbotson', listName:'Harold Ibbotson', date:'2026-07-15', status:'released', place:'Pillbox Hill',
+    manner:'Natural', cause:'Acute myocardial infarction.',
+    age:'60 to 65',
+    description:'He stands 5\'9 with grey hair, slim build, no visible external trauma.',
+    marks:'None',
+    timeOfDeath:'Wednesday, 15 July 2026 09:03:44',
+    dna:'48496262747332303231',
+    bac:'0.00', narcotics:'N/A',
+    evidence:[],
+    autopsy:[
+      { time:'09:03:44', wound:'Cardiac arrest — no external trauma', part:'Chest', dist:'—' }
+    ]
+  },
+  {
+    id:'80095', displayName:'Priya Anand', listName:'Priya Anand', date:'2026-07-13', status:'reviewed', place:'Del Perro Pier',
+    manner:'Undetermined', cause:'Drowning, pending toxicology confirmation.',
+    age:'20 to 25',
+    description:'She stands 5\'4 with long dark hair, waterlogged clothing at time of discovery.',
+    marks:'Small tattoo on right wrist',
+    timeOfDeath:'Monday, 13 July 2026 22:47:19',
+    dna:'50414E616E643230313739',
+    bac:'0.05', narcotics:'Pending',
+    evidence:[],
+    autopsy:[
+      { time:'22:47:19', wound:'Water in lungs consistent with drowning', part:'Respiratory', dist:'—' }
+    ]
+  },
+  {
+    id:'80051', displayName:'Deshawn Carter', listName:'Deshawn Carter', date:'2026-07-09', status:'pending', place:'La Mesa',
+    manner:'Homicide', cause:'Multiple stab wounds to abdomen.',
+    age:'25 to 30',
+    description:'He stands 6\'0 with short black hair, athletic build, defensive wounds on both forearms.',
+    marks:'Tattoo sleeve, right arm',
+    timeOfDeath:'Thursday, 9 July 2026 23:58:12',
+    dna:'44436172746572323031383130',
+    bac:'0.00', narcotics:'N/A',
+    evidence:['Bloodstained knife recovered at scene'],
+    autopsy:[
+      { time:'23:56:02', wound:'Stab wound', part:'Abdomen', dist:'0.2m' },
+      { time:'23:56:40', wound:'Stab wound', part:'Abdomen', dist:'0.2m' },
+      { time:'23:57:15', wound:'Stab wound', part:'Chest', dist:'0.2m' },
+      { time:'23:57:52', wound:'Defensive wound — Laceration', part:'Left Forearm', dist:'0.1m' },
+      { time:'23:58:12', wound:'Stab wound', part:'Abdomen', dist:'0.2m' }
+    ]
+  },
+  {
+    id:'79988', displayName:'Wendy Okafor', listName:'Wendy Okafor', date:'2026-07-05', status:'released', place:'Mirror Park',
+    manner:'Suicide', cause:'Asphyxiation.',
+    age:'40 to 45',
+    description:'She stands 5\'6 with curly brown hair. Findings consistent with scene report.',
+    marks:'None',
+    timeOfDeath:'Sunday, 5 July 2026 03:15:30',
+    dna:'574F6B61666F723230313435',
+    bac:'0.00', narcotics:'N/A',
+    evidence:[],
+    autopsy:[
+      { time:'03:15:30', wound:'Asphyxiation', part:'Neck', dist:'—' }
+    ]
+  }
+];
+
+function statusLabel(s){
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function renderRecords(list){
+  const container = document.getElementById('recordsList');
+  if(list.length === 0){
+    container.innerHTML = '<div class="no-results">No records match your search.</div>';
+  } else {
+    container.innerHTML = list.map(r => `
+      <div class="record-row">
+        <div class="case-id">#${r.id}</div>
+        <div class="decedent">${r.listName}<div class="sub">${r.place}</div></div>
+        <div class="date">${r.date}</div>
+        <div><span class="status-badge ${r.status}">${statusLabel(r.status)}</span></div>
+        <div><button class="btn-view" onclick="openFindings('${r.id}')">View Morgue Findings</button></div>
+      </div>
+    `).join('');
+  }
+  document.getElementById('recordsCount').textContent = 'Showing ' + list.length + ' of ' + morgueRecords.length + ' records';
+  updateRecordStamp(list.length, morgueRecords.length);
+}
+
+function filterRecords(){
+  const q = document.getElementById('morgueSearch').value.trim().toLowerCase();
+  const status = document.getElementById('morgueStatus').value;
+  const filtered = morgueRecords.filter(r=>{
+    const matchesQuery = !q || r.listName.toLowerCase().includes(q) || r.id.toLowerCase().includes(q);
+    const matchesStatus = !status || r.status === status;
+    return matchesQuery && matchesStatus;
+  });
+  renderRecords(filtered);
+}
+
+function buildFindingsHTML(r){
+  const evidenceHTML = r.evidence.length
+    ? r.evidence.map(e => '• ' + e).join('<br>')
+    : 'None catalogued';
+  const autopsyRows = r.autopsy.map(a => `
+    <div class="autopsy-row">
+      <span class="mono">${a.time}</span>
+      <span>${a.wound}</span>
+      <span>${a.part}</span>
+      <span class="mono">${a.dist}</span>
+    </div>
+  `).join('');
+
+  return `
+    <div class="finding-header">
+      <div class="finding-eyebrow">Case #${r.id}</div>
+      <h2 class="finding-title">Morgue Intake Records for ${r.displayName}</h2>
+    </div>
+
+    <div class="notice-bubble notice-warn">
+      <span>⚠️</span>
+      <span>NOTICE: Law Enforcement MAY use the PHMC Morgue Intake Records for PKs as proof of death for court cases. CKs will require a formal autopsy process which can be requested on the PHMC Forums.</span>
+    </div>
+
+    <div class="finding-section">
+      <div class="finding-section-title">Vital Statistics</div>
+      <div class="finding-kv"><span>Estimated Age</span><span>${r.age}</span></div>
+    </div>
+
+    <div class="finding-section">
+      <div class="finding-section-title">Physical Description</div>
+      <div class="finding-value">${r.description}</div>
+      <div class="finding-kv" style="margin-top:10px;"><span>Identifying Marks / Tattoos</span><span>${r.marks}</span></div>
+    </div>
+
+    <div class="finding-section">
+      <div class="finding-section-title">Discovery Details</div>
+      <div class="finding-kv"><span>Time of Death</span><span>${r.timeOfDeath}</span></div>
+      <div class="finding-kv"><span>Location of Discovery</span><span>${r.place}</span></div>
+      <div class="finding-kv"><span>Cause of Death</span><span>${r.cause}</span></div>
+      <div class="finding-kv"><span>DNA Profile</span><span class="mono">${r.dna}</span></div>
+    </div>
+
+    <div class="finding-section">
+      <div class="finding-section-title">Forensic Collection &amp; Toxicology</div>
+      <div class="notice-bubble notice-ooc">
+        <span>🔒</span>
+        <span>OOC Information: The data below (slugs, exact injuries, narcotics) is strictly Out of Character. Any use of this information In Character requires a formal autopsy request.</span>
+      </div>
+      <div class="notice-bubble notice-muted">
+        <span>👮</span>
+        <span>Law Enforcement Note: Slugs and alcohol readings are visual reference for Medical Examiners performing autopsies. Slugs may be requested IC'ly via a formal autopsy request on the PHMC Forums.</span>
+      </div>
+      <div class="finding-kv"><span>Alcohol / Narcotics Screen</span><span>BAC: ${r.bac}% | Narcotics: ${r.narcotics}</span></div>
+      <div class="finding-kv"><span>Evidence Collected</span><span>${evidenceHTML}</span></div>
+    </div>
+
+    <div class="finding-section">
+      <div class="finding-section-title">Autopsy Findings</div>
+      <div class="autopsy-table">
+        <div class="autopsy-row autopsy-head"><span>Time</span><span>Wound Type</span><span>Body Part</span><span>Dist.</span></div>
+        ${autopsyRows}
+      </div>
+    </div>
+  `;
+}
+
+function openFindings(id){
+  const r = morgueRecords.find(rec => rec.id === id);
+  if(!r) return;
+  document.getElementById('findingsContent').innerHTML = buildFindingsHTML(r);
+  document.getElementById('findingsModal').classList.add('open');
+}
+function closeFindingsModal(){
+  document.getElementById('findingsModal').classList.remove('open');
+}
+document.getElementById('findingsModal').addEventListener('click', function(e){
+  if(e.target === this) closeFindingsModal();
+});
+
+function updateRecordStamp(shown, total){
+  const pct = total === 0 ? 0 : Math.round((shown/total)*100);
+  const circumference = 251.2;
+  const offset = circumference - (circumference * pct/100);
+  document.getElementById('ringFill').style.strokeDashoffset = offset;
+  document.getElementById('pctText').textContent = shown;
+  document.getElementById('fracText').textContent = 'of ' + total + ' records';
+}
+
+const staffUsers = [
+  { name:'Dr. R. Whitfield', badge:'2291', role:'admin', status:'active', lastActive:'Just now' },
+  { name:'Dr. M. Alvarez', badge:'2104', role:'examiner', status:'active', lastActive:'12m ago' },
+  { name:'K. Sutherland', badge:'1987', role:'coroner', status:'active', lastActive:'1h ago' },
+  { name:'J. Okonkwo', badge:'2233', role:'trainee', status:'pending', lastActive:'3h ago' },
+  { name:'T. Ferreira', badge:'2050', role:'examiner', status:'active', lastActive:'Yesterday' },
+  { name:'S. Whitmore', badge:'1899', role:'trainee', status:'suspended', lastActive:'4d ago' }
+];
+
+const formConfigs = [
+  { name:'Autopsy Report', sub:'Medical Records', enabled:true },
+  { name:'Admission Chart', sub:'Medical Records', enabled:true },
+  { name:'Discharge Summary', sub:'Medical Records', enabled:false },
+  { name:'Cause of Death', sub:'Coroner Forms', enabled:true },
+  { name:'Body Release', sub:'Coroner Forms', enabled:true }
+];
+
+function userStatusLabel(s){
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function renderUsers(list){
+  const container = document.getElementById('usersList');
+  if(list.length === 0){
+    container.innerHTML = '<div class="no-results">No staff match your search.</div>';
+  } else {
+    container.innerHTML = list.map(u => `
+      <div class="record-row user-row">
+        <div class="decedent">${u.name}<div class="sub">Badge #${u.badge}</div></div>
+        <div><span class="role-badge ${u.role}">${u.role}</span></div>
+        <div><span class="status-badge ${u.status === 'active' ? 'reviewed' : (u.status === 'pending' ? 'pending' : 'released')}">${userStatusLabel(u.status)}</span></div>
+        <div class="date">${u.lastActive}</div>
+        <div class="user-actions">
+          <div class="icon-mini-btn" title="Edit">✎</div>
+          <div class="icon-mini-btn danger" title="Suspend">⛔</div>
+        </div>
+      </div>
+    `).join('');
+  }
+  document.getElementById('usersCount').textContent = 'Showing ' + list.length + ' of ' + staffUsers.length + ' staff';
+  updateRecordStamp(list.length, staffUsers.length);
+}
+
+function filterUsers(){
+  const q = document.getElementById('userSearch').value.trim().toLowerCase();
+  const role = document.getElementById('userRole').value;
+  const filtered = staffUsers.filter(u=>{
+    const matchesQuery = !q || u.name.toLowerCase().includes(q) || u.badge.includes(q);
+    const matchesRole = !role || u.role === role;
+    return matchesQuery && matchesRole;
+  });
+  renderUsers(filtered);
+}
+
+function renderFormConfigs(){
+  const container = document.getElementById('formConfigList');
+  container.innerHTML = formConfigs.map((f, i) => `
+    <div class="form-config-row">
+      <div>
+        <div class="form-config-name">${f.name}</div>
+        <div class="form-config-sub">${f.sub}</div>
+      </div>
+      <div class="toggle-switch ${f.enabled ? 'on' : ''}" onclick="toggleForm(${i})"></div>
+    </div>
+  `).join('');
+}
+function toggleForm(i){
+  formConfigs[i].enabled = !formConfigs[i].enabled;
+  renderFormConfigs();
+}
+
+renderUsers(staffUsers);
+renderFormConfigs();
+
+const adminTabMeta = {
+  users:{ title:'Admin Panel', desc:'Manage staff access, review permissions, and toggle which forms are live. Changes here apply system-wide.' },
+  forms:{ title:'Form Management', desc:'Enable or disable which forms staff can access and submit from the sidebar.' },
+  cctv:{ title:'CCTV', desc:'Live camera feeds across PHMC facilities. Footage is retained for 72 hours.' }
+};
+
+function switchAdminTab(el, tab){
+  document.querySelectorAll('.admin-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  document.querySelectorAll('.admin-pane').forEach(p => p.classList.toggle('active', p.dataset.pane === tab));
+  document.querySelectorAll('#formTree .form-item').forEach(item => item.classList.remove('active'));
+  el.classList.add('active');
+
+  const meta = adminTabMeta[tab];
+  document.getElementById('adminTitle').textContent = meta.title;
+  document.getElementById('adminDesc').querySelector('span:last-child').textContent = meta.desc;
+  document.querySelector('.case-tag').textContent = tab === 'users' ? 'SYS-ADMIN' : tab.toUpperCase();
+
+  if(tab === 'cctv') renderCctvGrid();
+}
+
+const cctvCams = ['Morgue - Bay 1', 'Morgue - Bay 2', 'PHMC Lobby', 'Staff Entrance'];
+function renderCctvGrid(){
+  const grid = document.getElementById('cctvGrid');
+  if(grid.dataset.rendered) return;
+  grid.dataset.rendered = 'true';
+  grid.innerHTML = cctvCams.map(cam => `
+    <div class="cctv-feed">
+      <div class="cctv-label">${cam}</div>
+      <div class="cctv-rec"><span class="dot"></span>REC</div>
+      <div class="cctv-noise">No signal — feed offline</div>
+      <div class="cctv-time">${new Date().toLocaleTimeString()}</div>
+    </div>
+  `).join('');
+}
+
+function toggleCat(el){
+  el.parentElement.classList.toggle('open');
+}
+document.querySelectorAll('.form-item').forEach(item=>{
+  item.addEventListener('click',()=>{
+    document.querySelectorAll('.form-item').forEach(i=>i.classList.remove('active'));
+    item.classList.add('active');
+  });
+});
+function switchTab(el, name){
+  el.parentElement.querySelectorAll('.panel-tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  const card = el.closest('.panel-card');
+  card.querySelectorAll('.panel-section').forEach(s=>s.classList.remove('active'));
+  card.querySelector('.panel-section[data-tab="'+name+'"]').classList.add('active');
+}
+function setToday(){
+  const input = document.getElementById('dodInput');
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth()+1).padStart(2,'0');
+  const dd = String(now.getDate()).padStart(2,'0');
+  input.value = yyyy + '-' + mm + '-' + dd;
+  updateProgress();
+}
+
+function handleImageUpload(event){
+  const file = event.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e){
+    const card = document.getElementById('bizCard');
+    card.style.backgroundImage = 'url(' + e.target.result + ')';
+    card.classList.add('has-photo');
+  };
+  reader.readAsDataURL(file);
+}
+function clearCardImage(){
+  const card = document.getElementById('bizCard');
+  card.style.backgroundImage = '';
+  card.classList.remove('has-photo');
+  document.getElementById('cardImageInput').value = '';
+}
+function resizeCard(val){
+  document.getElementById('cardSizeVal').textContent = val + '%';
+  document.getElementById('cardStage').style.maxWidth = (340 * (val/100)) + 'px';
+}
+
+function openCardModal(){
+  document.getElementById('cardModal').classList.add('open');
+}
+function closeCardModal(){
+  document.getElementById('cardModal').classList.remove('open');
+}
+function renderCard(){
+  const name = document.getElementById('inName').value.trim();
+  const rank = document.getElementById('inRank').value.trim();
+  const phone = document.getElementById('inPhone').value.trim();
+  document.getElementById('cardName').textContent = name || 'Jane Doe';
+  document.getElementById('cardRank').textContent = (rank || 'Medical Examiner').toUpperCase();
+  document.getElementById('cardPhone').textContent = phone || '555-0100';
+}
+// close modal on backdrop click
+document.getElementById('cardModal').addEventListener('click', function(e){
+  if(e.target === this) closeCardModal();
+});
+
+function updateProgress(){
+  const fields = document.querySelectorAll('#fieldGrid input, #fieldGrid select, #fieldGrid textarea');
+  let filled = 0;
+  fields.forEach(f=>{ if(f.value && f.value.trim() !== '') filled++; });
+  const total = fields.length;
+  const pct = Math.round((filled/total)*100);
+  const circumference = 251.2;
+  const offset = circumference - (circumference * pct/100);
+  document.getElementById('ringFill').style.strokeDashoffset = offset;
+  document.getElementById('pctText').textContent = pct + '%';
+  document.getElementById('fracText').textContent = filled + ' / ' + total;
+}
+</script>
+
+</body>
+</html>

@@ -64,48 +64,90 @@ export const renderMarkdown = (text) => {
   const lines = text.split('\n');
   let htmlResult = [];
   let openLists = [];
+  let i = 0;
 
-  lines.forEach(line => {
-    const trimmed = line.trim();
+  // Render a markdown table block (| ... | rows) as an HTML table.
+  const renderTable = (rows) => {
+    const cells = (row) => row.replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim());
+    const parsed = rows.map(cells);
+    const isSeparator = (r) => r.length === 1 && /^:?-{2,}:?$/.test(r[0]);
+    const headerRow = parsed[0] || [];
+    const bodyRows = parsed.slice(1).filter(r => !isSeparator(r));
+
+    let html = '<table style="width:100%; border-collapse:collapse; margin:10px 0; font-size:0.9em;">';
+    if (headerRow.some(c => c)) {
+      html += '<thead><tr>';
+      headerRow.forEach(h => { html += `<th style="border:1px solid #334155; padding:6px 8px; background:#1e293b; text-align:left;">${renderInlineMarkdown(h)}</th>`; });
+      html += '</tr></thead>';
+    }
+    if (bodyRows.length > 0) {
+      html += '<tbody>';
+      bodyRows.forEach(r => {
+        html += '<tr>';
+        r.forEach(c => { html += `<td style="border:1px solid #334155; padding:6px 8px;">${renderInlineMarkdown(c)}</td>`; });
+        html += '</tr>';
+      });
+      html += '</tbody>';
+    }
+    html += '</table>';
+    return html;
+  };
+
+  while (i < lines.length) {
+    const trimmed = lines[i].trim();
+
+    // Markdown table block
+    if (trimmed.startsWith('|')) {
+      while (openLists.length > 0) { htmlResult.push('</ul>'); openLists.pop(); }
+      const rows = [];
+      while (i < lines.length && lines[i].trim().startsWith('|')) {
+        rows.push(lines[i].trim());
+        i++;
+      }
+      htmlResult.push(renderTable(rows));
+      continue;
+    }
 
     // Handle horizontal lines (--- or [hr])
     if (trimmed === '---' || trimmed.toLowerCase() === '[hr]') {
-      while (openLists.length > 0) { 
-        htmlResult.push('</ul>'); 
-        openLists.pop(); 
+      while (openLists.length > 0) {
+        htmlResult.push('</ul>');
+        openLists.pop();
       }
       htmlResult.push('<hr style="border: 0; border-top: 1px solid #30363d; margin: 15px 0;" />');
-      return;
+      i++;
+      continue;
     }
 
     // Handle custom list levels from EMS Dashboard (> and >>)
     let level = trimmed.startsWith('>>') ? 2 : trimmed.startsWith('>') ? 1 : 0;
-    
+
     if (level > 0) {
       const lineContent = trimmed.substring(level).trim();
-      while (openLists.length > level) { 
-        htmlResult.push('</ul>'); 
-        openLists.pop(); 
+      while (openLists.length > level) {
+        htmlResult.push('</ul>');
+        openLists.pop();
       }
-      while (openLists.length < level) { 
-        htmlResult.push('<ul style="margin-bottom: 5px;">'); 
-        openLists.push('ul'); 
+      while (openLists.length < level) {
+        htmlResult.push('<ul style="margin-bottom: 5px;">');
+        openLists.push('ul');
       }
       htmlResult.push(`<li>${renderInlineMarkdown(lineContent)}</li>`);
     } else {
-      while (openLists.length > 0) { 
-        htmlResult.push('</ul>'); 
-        openLists.pop(); 
+      while (openLists.length > 0) {
+        htmlResult.push('</ul>');
+        openLists.pop();
       }
       if (trimmed) {
         htmlResult.push(`<p style="margin-bottom: 8px;">${renderInlineMarkdown(trimmed)}</p>`);
       }
     }
-  });
+    i++;
+  }
 
-  while (openLists.length > 0) { 
-    htmlResult.push('</ul>'); 
-    openLists.pop(); 
+  while (openLists.length > 0) {
+    htmlResult.push('</ul>');
+    openLists.pop();
   }
 
   return htmlResult.join('');

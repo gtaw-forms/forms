@@ -1,6 +1,3 @@
-import { ref, get, update } from 'firebase/database';
-import { database } from '../firebase';
-
 // ---------------------------------------------------------------------------
 // Character Data Extraction (from GTA World OAuth)
 // ---------------------------------------------------------------------------
@@ -134,25 +131,91 @@ export const getDisplayRank = (gtaWorldUser, factionsData) => {
 };
 
 // ---------------------------------------------------------------------------
+// Employee Credential Resolver (single source of truth)
+// ---------------------------------------------------------------------------
+// The OAuth `faction` object is only populated when an OAuth character id
+// matches a roster key. For users whose OAuth payload carries the UCP account
+// id instead of the character id (e.g. Sarah Bell: account `50230` vs roster
+// char `156863`), `faction` can be null while the author name still resolves
+// via getCharacterData() — the old narrow sync chain then left
+// coronerEmployee / coronerRank / coronerBadge blank in saved reports.
+//
+// Returns:
+//   { employeeName, rank, badge, discord, phNumber, firstName, lastName, matchedBy }
+//   matchedBy: 'id' | 'name' | 'none'
+export const resolveEmployeeCredentials = (gtaWorldUser, { phmcListData = [], coronerListData = [], cleanRank = null } = {}) => {
+    const empty = {
+        employeeName: null,
+        rank: '',
+        badge: '',
+        discord: '',
+        phNumber: '',
+        firstName: '',
+        lastName: '',
+        matchedBy: 'none',
+    };
+    if (!gtaWorldUser) return empty;
+
+    // 1. Name — same breadth as getCharacterData()/getCharacterName() (the
+    //    author-resolution path that always worked).
+    const characterData = getCharacterData(gtaWorldUser);
+    const oauthName = characterData?.fullName
+        || gtaWorldUser?.faction?.characterName
+        || gtaWorldUser?.activeCharacter?.characterName
+        || gtaWorldUser?.characterName
+        || null;
+    if (!oauthName || oauthName === 'GTAW User') return empty;
+
+    const factionDataInner = gtaWorldUser?.faction || gtaWorldUser?.activeCharacter || null;
+    const oauthCharacterId = factionDataInner?.characterId || factionDataInner?.id
+        || gtaWorldUser?.character?.[0]?.characterId || gtaWorldUser?.character?.[0]?.id || null;
+
+    const allEmployees = [...phmcListData, ...coronerListData];
+    const normalizeId = (v) => (v == null || v === '' ? null : String(v));
+    const oauthIdStr = normalizeId(oauthCharacterId);
+
+    // 2. Roster match — by character id first (only when it equals a roster
+    //    key / member.characterId — never treat a UCP account id as the
+    //    character id), then by name (case-insensitive).
+    let dbMatch = null;
+    let matchedBy = 'none';
+    if (oauthIdStr) {
+        dbMatch = allEmployees.find((e) => {
+            const keyId = normalizeId(e.characterId) || normalizeId(e.id);
+            return keyId && keyId === oauthIdStr;
+        }) || null;
+        if (dbMatch) matchedBy = 'id';
+    }
+    if (!dbMatch) {
+        const lowerName = String(oauthName).trim().toLowerCase();
+        dbMatch = allEmployees.find((e) =>
+            String(e.characterName || e.name || '').trim().toLowerCase() === lowerName
+        ) || null;
+        if (dbMatch) matchedBy = 'name';
+    }
+
+    const cleanRankFn = (rank) => (cleanRank ? cleanRank(String(rank)) : String(rank || '').trim());
+    const rawRank = factionDataInner?.rank
+        ? factionDataInner.rank
+        : (factionDataInner?.scriptRank || dbMatch?.rank || '');
+    // Badge = the roster record KEY when we have a roster match. Never use the
+    // raw gtawCharacterId when it is only the UCP account id (Fix F).
+    const resolvedBadge = dbMatch
+        ? (normalizeId(dbMatch.characterId) || normalizeId(dbMatch.id) || dbMatch.badge || '')
+        : (normalizeId(factionDataInner?.characterId) || factionDataInner?.badge || '');
+
+    return {
+        employeeName: oauthName,
+        rank: rawRank ? cleanRankFn(rawRank) : '',
+        badge: String(resolvedBadge || ''),
+        discord: dbMatch?.discordName || dbMatch?.discord || gtaWorldUser.username || '',
+        phNumber: dbMatch?.phNumber || '50056',
+        firstName: factionDataInner?.firstname || characterData?.firstname || (oauthName.split(' ')[0] || ''),
+        lastName: factionDataInner?.lastname || characterData?.lastname || (oauthName.split(' ').slice(1).join(' ') || ''),
+        matchedBy,
+    };
+};
+
+// ---------------------------------------------------------------------------
 // Faction Member Updates
 // ---------------------------------------------------------------------------
-
-export const updateDiscordName = async (characterId, discordName) => {
-    if (!characterId) {
-        throw new Error('Character ID is required to update Discord name.');
-    }
-
-    const userRef = ref(database, `factions/364/members/${characterId}`);
-
-    try {
-        await update(userRef, {
-            discordName: discordName,
-            discord: discordName
-        });
-        console.log(`Successfully updated Discord name for character ${characterId}`);
-        return { success: true };
-    } catch (error) {
-        console.error(`Failed to update Discord name for character ${characterId}:`, error);
-        throw new Error('Failed to save Discord name to the database.');
-    }
-};

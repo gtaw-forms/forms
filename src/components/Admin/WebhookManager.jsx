@@ -131,7 +131,7 @@ const WebhookManager = () => {
 
             const embed = {
                 title: title,
-                url: "https://gtaw-forms.github.io/forms/#/form-handler",
+                url: "https://gtaw-forms.github.io/forms/#/ui-prototype",
                 description: (message + mediaDescription).trim() || undefined,
                 color: 0x7289DA,
                 timestamp: new Date().toISOString(),

@@ -7,9 +7,7 @@ const BugReportModal = ({ show, onClose, showNotification }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { user } = useGtaWorldAuth();
 
-  if (!show) {
-    return null;
-  }
+  if (!show) return null;
 
   const handleSubmit = async () => {
     if (!report.trim()) {
@@ -57,70 +55,28 @@ const BugReportModal = ({ show, onClose, showNotification }) => {
     }
   };
 
-  // Basic modal styling
-  const modalStyle = {
-    position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 1050,
-  };
-
-  const contentStyle = {
-    background: '#1e293b',
-    padding: '2rem',
-    borderRadius: '8px',
-    width: '90%',
-    maxWidth: '500px',
-    color: '#e2e8f0',
-  };
-
-  const textareaStyle = {
-    width: '100%',
-    minHeight: '150px',
-    padding: '0.8rem',
-    background: '#1e293b',
-    border: '1px solid #334155',
-    color: '#e2e8f0',
-    borderRadius: 8,
-    marginBottom: '1rem',
-  };
-
-  const buttonStyle = {
-    padding: '0.8rem 1.5rem',
-    borderRadius: '8px',
-    border: 'none',
-    cursor: 'pointer',
-    fontWeight: '600',
-  };
-
   return (
-    <div style={modalStyle} onClick={onClose}>
-      <div style={contentStyle} onClick={(e) => e.stopPropagation()}>
-        <h3 style={{ color: "#a78bfa", marginBottom: "1.5rem" }}>Submit a Bug Report</h3>
-        <textarea
-          style={textareaStyle}
-          value={report}
-          onChange={(e) => setReport(e.target.value)}
-          placeholder="Please describe the bug in detail. What were you doing? What did you expect to happen? What actually happened?"
-        />
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
-          <button
-            style={{ ...buttonStyle, background: '#475569' }}
-            onClick={onClose}
-          >
-            Cancel
-          </button>
-          <button
-            style={{ ...buttonStyle, background: '#6366f1' }}
-            onClick={handleSubmit}
-            disabled={isSubmitting}
-          >
+    <div className="modal-overlay open" onClick={onClose} style={{ display: 'flex' }}>
+      <div className="modal-box" onClick={e => e.stopPropagation()}>
+        <div className="modal-head">
+          <h3><i className="fas fa-bug" style={{ color: 'var(--teal, #33D6C0)' }} /> Submit a Bug Report</h3>
+          <button className="modal-close" onClick={onClose} aria-label="Close">✕</button>
+        </div>
+        <div className="modal-body">
+          <p style={{ fontSize: 13, color: 'var(--text-muted, #8B96AE)', marginBottom: 12, lineHeight: 1.5 }}>
+            Please describe the bug in detail. What were you doing? What did you expect to happen? What actually happened?
+          </p>
+          <textarea
+            value={report}
+            onChange={(e) => setReport(e.target.value)}
+            placeholder="Describe the bug..."
+            style={{ minHeight: 140, resize: 'vertical', width: '100%', boxSizing: 'border-box' }}
+          />
+        </div>
+        <div className="modal-foot">
+          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" onClick={handleSubmit} disabled={isSubmitting}
+            style={{ opacity: isSubmitting ? 0.6 : 1 }}>
             {isSubmitting ? 'Submitting...' : 'Submit'}
           </button>
         </div>

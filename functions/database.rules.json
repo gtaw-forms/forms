@@ -19,6 +19,22 @@
         ".read": true
       }
     },
+    "presence": {
+      "$sessionId": {
+        ".read": true,
+        ".write": true
+      }
+    },
+    "analytics": {
+      "visitors": {
+        "$date": {
+          "$sessionId": {
+            ".read": true,
+            ".write": true
+          }
+        }
+      }
+    },
     "newSavedReports": {
       "$user_id": {
         ".read": true,
@@ -40,14 +56,14 @@
       ".write": "auth != null"
     },
     "deathRecordDrafts": {
-      ".indexOn": "needsMorgue"
+      ".indexOn": ["needsMorgue", "deploying"]
     },
     "morgue-records": {
       ".read": false,
       ".indexOn": "lastUpdated"
     },
     "autopsy-requested": {
-      ".indexOn": ["oocName", "name", "lssdCrosspostStatus", "lssdTopicId", "lspdAck", "lssdAck", "phmcAck"]
+      ".indexOn": ["oocName", "name", "lssdCrosspostStatus", "lspdCrosspostStatus", "lssdTopicId", "lspd-acknowledge-reply", "lssd-acknowledge-reply", "phmc-acknowledge-reply"]
     },
     "dev-reports": {
       ".read": true,

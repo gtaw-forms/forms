@@ -13,7 +13,6 @@ import { useAuth } from '../../contexts/AuthContext';
 import { database } from '../../firebase';
 import { useNotification } from '../../contexts/NotificationContext';
 import phmcLogo from '../../assets/hospital_logo.png';
-import BaseModal from './BaseModal';
 
 // --- LEAFLET ICON FIXES ---
 const DefaultIcon = L.icon({
@@ -43,6 +42,10 @@ const BuildingIcon = L.divIcon({
 const FireStationIcon = L.divIcon({
     html: '<div style="background-color: #fd7e14; border-radius: 50%; width: 30px; height: 30px; display: flex; justify-content: center; align-items: center; border: 2px solid #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"><i class="fas fa-fire" style="color: #fff; font-size: 16px;"></i></div>',
     className: 'custom-fire-icon', iconSize: [30, 30], iconAnchor: [15, 15], popupAnchor: [0, -15]
+});
+const LawEnforcementIcon = L.divIcon({
+    html: '<div style="background-color: #16337a; border-radius: 50%; width: 30px; height: 30px; display: flex; justify-content: center; align-items: center; border: 2px solid #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"><svg viewBox="0 0 24 24" width="15" height="15" fill="#ffffff" aria-hidden="true"><path d="M12 1.8 20 5v6.2c0 4.9-3.3 8.4-8 10.2-4.7-1.8-8-5.3-8-10.2V5l8-3.2z"/><path d="M12 6.5l1.3 2.7 2.9.4-2.1 2.1.5 2.9L12 13l-2.6 1.6.5-2.9-2.1-2.1 2.9-.4L12 6.5z"/></svg></div>',
+    className: 'custom-leo-icon', iconSize: [30, 30], iconAnchor: [15, 15], popupAnchor: [0, -15]
 });
 
 // --- CONSTANTS ---
@@ -133,7 +136,7 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
     const [reporting, setReporting] = useState(null);
     const [isSnapshotting, setIsSnapshotting] = useState(false);
     const [selectedStreetForEditing, setSelectedStreetForEditing] = useState(null);
-    const [liveMapData, setLiveMapData] = useState({ streets: [], hospitals: [], buildings: [], regions: [] });
+    const [liveMapData, setLiveMapData] = useState({ streets: [], hospitals: [], buildings: [], regions: [], leo: [] });
     
     // --- EXPERIMENTAL: Regional Zones ---
     const [isDrawingRegion, setIsDrawingRegion] = useState(false);
@@ -191,7 +194,7 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
             try {
                 const snapshot = await get(ref(database, 'verified_locations'));
                 if (snapshot.exists()) {
-                    let mS = []; let mH = []; let mB = []; let mR = [];
+                    let mS = []; let mH = []; let mB = []; let mR = []; let mL = [];
                     Object.values(snapshot.val()).forEach(fix => {
                         const item = { ...fix };
                         if (fix.gameX !== undefined) item.x = fix.gameX;
@@ -199,10 +202,11 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
                         if (fix.type === 'Street') mS.push(item);
                         else if (fix.type === 'Hospital') mH.push(item);
                         else if (fix.type === 'Building') mB.push(item);
+                        else if (fix.type === 'LEO') mL.push(item);
                         else if (fix.type === 'Region' || fix.type === 'Polygon') mR.push(item);
                         else mH.push(item);
                     });
-                    setLiveMapData({ streets: mS, hospitals: mH, buildings: mB, regions: mR });
+                    setLiveMapData({ streets: mS, hospitals: mH, buildings: mB, regions: mR, leo: mL });
                 }
             } catch (err) { console.error(err); }
             finally { setIsLoading(false); }
@@ -214,7 +218,8 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
         const s = (liveMapData.streets || []).filter(x => x.x !== undefined).map(x => ({ ...x, type: 'Street', id: `s-${x.name}`, position: gameToMap(x.x, x.y) }));
         const h = (liveMapData.hospitals || []).filter(x => x.x !== undefined).map(x => ({ ...x, type: 'Hospital', id: `h-${x.name}`, position: gameToMap(x.x, x.y) }));
         const b = (liveMapData.buildings || []).filter(x => x.x !== undefined).map(x => ({ ...x, type: 'Building', id: `b-${x.name}`, position: gameToMap(x.x, x.y) }));
-        setFixMarkers([...h, ...s, ...b]);
+        const l = (liveMapData.leo || []).filter(x => x.x !== undefined).map(x => ({ ...x, type: 'LEO', id: `l-${x.name}`, position: gameToMap(x.x, x.y) }));
+        setFixMarkers([...h, ...s, ...b, ...l]);
     };
 
     const handleSavePath = () => {
@@ -244,9 +249,10 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
         if (!searchQuery || searchQuery.length < 2) return [];
         const q = searchQuery.toLowerCase();
         return [
-            ...liveMapData.hospitals.map(h => ({...h, type: 'Hospital'})), 
+            ...liveMapData.hospitals.map(h => ({...h, type: 'Hospital'})),
             ...liveMapData.streets.map(s => ({...s, type: 'Street'})),
-            ...liveMapData.buildings.map(b => ({...b, type: 'Building'}))
+            ...liveMapData.buildings.map(b => ({...b, type: 'Building'})),
+            ...liveMapData.leo.map(l => ({...l, type: 'LEO'}))
         ].filter(item => item.name.toLowerCase().includes(q)).slice(0, 8);
     }, [searchQuery, liveMapData]);
 
@@ -295,8 +301,8 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
             }
         });
 
-        // 2. Check Hospitals/Buildings (Point based distance)
-        [...(liveMapData.hospitals || []), ...(liveMapData.buildings || [])].forEach(loc => {
+        // 2. Check Hospitals/Buildings/LEO (Point based distance)
+        [...(liveMapData.hospitals || []), ...(liveMapData.buildings || []), ...(liveMapData.leo || [])].forEach(loc => {
             const lx = loc.x || loc.gameX;
             const ly = loc.y || loc.gameY;
             if (lx !== undefined && ly !== undefined) {
@@ -460,28 +466,27 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
         finally { setReporting(null); setIsSnapshotting(false); }
     };
 
+    if (!show) return null;
+
     return (
-        <BaseModal
-            isOpen={show}
-            onClose={onHide}
-            title={onSelect ? "Select Location" : "GTA V Interactive Map"}
-            modalSize="full"
-            variant="info"
-            noPadding={true}
-            footer={
-                <div className="d-flex justify-content-between w-100 align-items-center">
-                    <div>
-                        {isLoading && <small className="text-info"><i className="fas fa-spinner fa-spin me-2"></i>Syncing Map Data...</small>}
-                    </div>
-                    <div className="d-flex gap-2">
-                        {markers.length > 0 && <Button variant="outline-danger" size="sm" onClick={() => setMarkers([])} disabled={isSnapshotting}>Clear All</Button>}
-                        {isMassFatality && markers.length > 0 && <Button variant="danger" size="sm" onClick={handleCaptureAll} disabled={isSnapshotting}>Capture All ({markers.length})</Button>}
-                        <Button variant="secondary" size="sm" onClick={onHide}>Close Map</Button>
-                    </div>
+        <div className="modal-overlay open" onClick={onHide} style={{ display: 'flex', zIndex: 1050 }}>
+            <div className="modal-box" onClick={e => e.stopPropagation()} style={{
+                maxWidth: '98vw', width: '98vw', height: '95vh', maxHeight: '95vh',
+                display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden',
+            }}>
+                <div className="modal-head" style={{ flexShrink: 0 }}>
+                    <h3 style={{ fontSize: 14.5, fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: 8, color: '#E7ECF5' }}>
+                        <i className="fas fa-map-marked-alt" style={{ color: '#33D6C0' }} /> {onSelect ? "Select Location" : "GTA V Interactive Map"}
+                    </h3>
+                    <button className="modal-close" onClick={onHide} aria-label="Close">✕</button>
                 </div>
-            }
-        >
-            <div style={{ height: '100%', width: '100%', position: 'relative', display: 'flex', flexDirection: 'column', backgroundColor: '#000' }}>
+                <div className="modal-body" style={{ flex: 1, padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                    {isLoading && (
+                        <div style={{ position: 'absolute', top: 60, left: 15, zIndex: 1000 }}>
+                            <small style={{ color: '#33D6C0' }}><i className="fas fa-spinner fa-spin me-2"></i>Syncing Map Data...</small>
+                        </div>
+                    )}
+                    <div style={{ height: '100%', width: '100%', position: 'relative', display: 'flex', flexDirection: 'column', backgroundColor: '#000' }}>
                 <style>{`
                     .info-control { padding: 10px; background: rgba(13, 17, 23, 0.9); color: #fff; border: 1px solid #30363d; border-radius: 8px; }
                     .info-control h4 { margin: 0 0 5px; font-size: 1rem; color: #58a6ff; }
@@ -572,6 +577,33 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
                             );
                         })}
 
+                        {/* Law Enforcement Stations */}
+                        {liveMapData.leo.filter(l => l.x !== undefined).map((l, i) => {
+                            const leoMarker = {
+                                id: `leo-${i}`,
+                                gameX: Number(l.x).toFixed(2),
+                                gameY: Number(l.y).toFixed(2),
+                                nearest: l.name,
+                                crossStreet: null,
+                                type: 'LEO'
+                            };
+                            return (
+                                <Marker key={`l-${i}`} position={gameToMap(l.x, l.y)} icon={LawEnforcementIcon}>
+                                    <Popup>
+                                        <div className="text-dark p-2" style={{ minWidth: '180px' }}>
+                                            <strong><i className="fas fa-shield-halved me-1"></i>{l.name}</strong><br/>
+                                            <small className="text-muted">(X:{Number(l.x).toFixed(2)} Y:{Number(l.y).toFixed(2)})</small>
+                                            <div className="d-flex gap-2 mt-2">
+                                                <Button variant="primary" size="sm" className="flex-grow-1" onClick={() => handleReportLocation(leoMarker)} disabled={isSnapshotting}>
+                                                    {isSnapshotting ? <Spinner size="sm" /> : "Confirm Deceased Location"}
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    </Popup>
+                                </Marker>
+                            );
+                        })}
+
                         {/* User Placed Markers */}
                         {markers.map((m) => (
                             <Marker key={m.id} position={m.position} icon={m.type === 'Body' ? BodyIcon : BuildingIcon}>
@@ -602,8 +634,20 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
                         ))}
                     </MapContainer>
                 </div>
+                </div>
             </div>
-        </BaseModal>
+            <div className="modal-foot" style={{ flexShrink: 0 }}>
+                <div>
+                    {isLoading && <small style={{ color: '#33D6C0' }}><i className="fas fa-spinner fa-spin me-2"></i>Syncing Map Data...</small>}
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                    {markers.length > 0 && <Button variant="outline-danger" size="sm" onClick={() => setMarkers([])} disabled={isSnapshotting}>Clear All</Button>}
+                    {isMassFatality && markers.length > 0 && <Button variant="danger" size="sm" onClick={handleCaptureAll} disabled={isSnapshotting}>Capture All ({markers.length})</Button>}
+                    <Button variant="secondary" size="sm" onClick={onHide}>Close Map</Button>
+                </div>
+            </div>
+            </div>
+        </div>
     );
 };
 

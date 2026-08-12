@@ -13,7 +13,12 @@ export const data = new SlashCommandBuilder()
         opt.setName('position')
             .setDescription('Set the position pointer (1-based) — who gets the next case')
             .setRequired(false)
-            .setMinValue(1));
+            .setMinValue(1))
+    .addStringOption(opt =>
+        opt.setName('change')
+            .setDescription('ME name to set as next in rotation')
+            .setRequired(false)
+            .setAutocomplete(true));
 
 export async function execute(interaction) {
     const ownerId = process.env.BOT_OWNER_ID;
@@ -29,9 +34,10 @@ export async function execute(interaction) {
 
     const listStr = interaction.options.getString('list');
     const position = interaction.options.getInteger('position');
+    const changeName = interaction.options.getString('change');
 
-    if (!listStr && !position) {
-        await interaction.editReply({ content: 'Provide either `list` (comma-separated names) or `position` (number). Use `/rotation-list` to see the current state.' });
+    if (!listStr && !position && !changeName) {
+        await interaction.editReply({ content: 'Provide `list` (comma-separated names), `position` (number), or `change` (ME name). Use `/rotation-list` to see the current state.' });
         return;
     }
 
@@ -72,6 +78,32 @@ export async function execute(interaction) {
             return;
         }
 
+        if (changeName) {
+            const status = await getRotationStatus(db);
+            if (!status.configured) {
+                await interaction.editReply({ content: 'No rotation list exists yet. Set the list first with `/rotation-set list:"Name1, Name2, ..."`' });
+                return;
+            }
+
+            const idx = status.list.findIndex(n => n.toLowerCase() === changeName.toLowerCase());
+            if (idx === -1) {
+                await interaction.editReply({ content: `Could not find "${changeName}" in the rotation list. Use \`/rotation-list\` to see all MEs.` });
+                return;
+            }
+
+            await db.ref('autopsy-requests/rotation/position').set(idx);
+
+            const embed = new EmbedBuilder()
+                .setColor(0x28a745)
+                .setTitle('Rotation Next Changed')
+                .setDescription(`Next assignment will go to **${status.list[idx]}** (#${idx + 1} of ${status.list.length})`)
+                .setFooter({ text: 'Rotation managed by PHMC Bot' })
+                .setTimestamp();
+
+            await interaction.editReply({ embeds: [embed] });
+            return;
+        }
+
         if (position !== null) {
             // Need to validate against current list length
             const status = await getRotationStatus(db);
@@ -101,4 +133,15 @@ export async function execute(interaction) {
         console.error('[CMD] rotation-set error:', err.message);
         await interaction.editReply({ content: `Error: ${err.message}` });
     }
+}
+
+/** Autocomplete for the `change` option — suggests ME names from the rotation list. */
+export async function autocomplete(interaction) {
+    firebase.init();
+    const db = firebase.db;
+    const status = await getRotationStatus(db);
+    const names = status.list || [];
+    const focused = interaction.options.getFocused().toLowerCase();
+    const filtered = names.filter(n => n.toLowerCase().includes(focused)).slice(0, 25);
+    await interaction.respond(filtered.map(n => ({ name: n, value: n })));
 }

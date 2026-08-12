@@ -5,14 +5,15 @@
  * and saves them to local JSON files on the VPS. The files are
  * consumed by morgue-api.js for the /api/roster/check endpoint.
  *
- * Runs daily at a random time with a 24h cooldown between syncs.
- * Fires on bot startup if the last sync was >24h ago.
+ * Runs roughly every 4 hours (with random offset). Notifies bot-spam on completion.
+ * Fires on bot startup if the last sync was >4h ago.
  */
 
 import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { getForumClient, createIsolatedClient } from './forumClient.js';
+import { sendLogMessage } from './logChannel.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -21,8 +22,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROSTER_DIR = resolve(__dirname, '..', 'data');
 const LSPD_GROUP_ID = 44;
 const LSSD_GROUP_ID = 66;
-const COOLDOWN_MS = 24 * 60 * 60 * 1000;
-const SYNC_WINDOW_MS = 60 * 60 * 1000; // pick a random minute within this window
+const COOLDOWN_MS = 4 * 60 * 60 * 1000;  // 4 hours
+const SYNC_WINDOW_MS = 30 * 60 * 1000;  // + up to 30 min random offset
 
 const FACTION_CONFIG = {
     lspd: {
@@ -126,6 +127,15 @@ export async function syncFactionRosters() {
     const lssdCount = results.lssd?.length ?? 0;
     console.log(`[ROSTER-SYNC] Sync complete — LSPD: ${lspdCount}, LSSD: ${lssdCount}`);
 
+    // Notify bot-spam channel
+    try {
+        await sendLogMessage(
+            `[ROSTER-SYNC] Faction rosters synced — LSPD: **${lspdCount}**, LSSD: **${lssdCount}** members`
+        );
+    } catch (err) {
+        console.warn('[ROSTER-SYNC] Failed to send log notification:', err.message);
+    }
+
     return results;
 }
 
@@ -175,6 +185,35 @@ export function getFactionRoster(faction) {
         const path = getDataPath(config.file);
         if (!existsSync(path)) return null;
         return JSON.parse(readFileSync(path, 'utf-8'));
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Read roster sync status for the dashboard.
+ * Returns { lastSyncAt, nextSyncAt, lspdCount, lssdCount } or null.
+ */
+export function getRosterSyncStatus() {
+    try {
+        const metaPath = getDataPath('sync-meta.json');
+        let lastSyncAt = 0;
+        if (existsSync(metaPath)) {
+            const meta = JSON.parse(readFileSync(metaPath, 'utf-8'));
+            lastSyncAt = meta.lastSyncAt || 0;
+        }
+
+        const nextSyncAt = lastSyncAt > 0 ? lastSyncAt + COOLDOWN_MS + Math.floor(Math.random() * SYNC_WINDOW_MS) : 0;
+
+        const lspdData = getFactionRoster('lspd');
+        const lssdData = getFactionRoster('lssd');
+
+        return {
+            lastSyncAt: lastSyncAt || null,
+            nextSyncAt: nextSyncAt || null,
+            lspdCount: lspdData?.count ?? lspdData?.members?.length ?? 0,
+            lssdCount: lssdData?.count ?? lssdData?.members?.length ?? 0,
+        };
     } catch {
         return null;
     }

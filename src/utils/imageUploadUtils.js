@@ -85,49 +85,22 @@ export const uploadImageToImgur = async (file) => {
   }
 };
 
-const isLikelyUK = () => {
-  try {
-    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const language = navigator.language || "";
-    return timeZone === 'Europe/London' || language.includes('en-GB');
-  } catch (e) {
-    return false;
-  }
-};
-
 export const uploadImageWithFallback = async (file) => {
-  const timeout = (ms) => new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), ms));
-
-  const skipImgur = isLikelyUK();
-
   try {
-    if (skipImgur) {
-      console.log('[Upload] Likely UK user detected, skipping Imgur to avoid blocks...');
-      throw new Error('Skipping Imgur (UK Region)');
-    }
-
-    // Try Imgur first as it is generally faster
-    console.log('[Upload] Attempting Imgur upload...');
-    const result = await Promise.race([
-      uploadImageToImgur(file),
-      timeout(10000) // 10s timeout for Imgur
-    ]);
+    // Use ImgBB as primary — Imgur is frequently blocked from cloud provider IP ranges
+    // and the fallback system already catches it, but there's no point trying a service
+    // that consistently fails.
+    console.log('[Upload] Attempting ImgBB upload...');
+    const result = await uploadImageToImgBB(file);
     return result;
   } catch (error) {
-    if (!skipImgur) {
-      console.warn(`[Upload] Imgur failed or timed out (${error.message}). Falling back to ImgBB...`);
-      await logUploadFailureToDiscord(error, 'Imgur', 'Primary Upload Attempt');
-    }
-
+    // Last-resort: try Imgur in case ImgBB is temporarily down
+    console.warn(`[Upload] ImgBB failed (${error.message}). Falling back to Imgur...`);
     try {
-      // Fallback to ImgBB
-      console.log('[Upload] Attempting ImgBB fallback...');
-      const result = await uploadImageToImgBB(file);
-      console.log('[Upload] ImgBB fallback successful.');
+      const result = await uploadImageToImgur(file);
       return result;
     } catch (fallbackError) {
-      console.error('[Upload] Both Imgur and ImgBB failed:', fallbackError);
-      await logUploadFailureToDiscord(fallbackError, 'ImgBB', 'Fallback Upload Attempt');
+      console.error('[Upload] Both ImgBB and Imgur failed:', fallbackError);
       throw new Error('All image upload services failed. Please try again or check your connection.');
     }
   }

@@ -2,7 +2,7 @@
  * deployMedicalRecord.js — Medical Record Handler
  *
  * Handles patient_notes, er_protocol, physical_evaluation, staff-patient-file,
- * surgical, session_notes, intensive_treatment, and psych_eval form types.
+ * surgical, session_notes, intensive_treatment, and psych-eval form types.
  *
  * Searches for an existing patient thread by name/ID and replies to it.
  * ONLY replies to existing topics — never creates new ones.
@@ -10,9 +10,10 @@
  */
 
 import { getForumClient } from './forumClient.js';
-import { logFnCall, DeployProgressEmbed } from './deployLogger.js';
+import { logFnCall, DeployProgressEmbed, notifyDeployFailure } from './deployLogger.js';
 import { state } from './deployState.js';
 import { setDeployStatus, markReportComplete } from './deployStatus.js';
+import { upsertPatient, findPatientIndexEntry, removePatientIndexEntry } from './patientIndex.js';
 
 // ── Safety env vars ──
 const MEDICAL_RECORD_DRY_RUN = process.env.MEDICAL_RECORD_DRY_RUN !== 'false';
@@ -84,7 +85,11 @@ export async function handleMedicalRecord(report) {
 
     console.log(`[AUTO]  handleMedicalRecord called for ${key}  patientID: "${reportData.data?.patientID}", formId: "${reportData.formId}"`);
     const rawPatientID = (reportData.data?.patientID || '').trim();
-    const patientName = reportData.data?.decedentName || reportData.originalKey || '';
+    // The medical Patient Name input writes `decedentName` (the real patient), so
+    // prefer it over `patientName` — `patientName` can be polluted with the OAuth
+    // author's character name by older credential-sync code, which made the bot
+    // search for (and thread-title) the poster instead of the patient.
+    const patientName = reportData.data?.decedentName || reportData.data?.patientName || reportData.originalKey || '';
     console.log(`[MEDICAL-RECORD-DEBUG] rawPatientID="${rawPatientID}" patientName="${patientName}"`);
 
     // Require at least patientID OR patientName to proceed
@@ -116,12 +121,14 @@ export async function handleMedicalRecord(report) {
     console.log(`[MEDICAL-RECORD] Rendered BBCode preview (first 500 chars):`);
     console.log(bbCode.substring(0, 500));
     try {
-        const { writeFileSync } = await import('fs');
+        const { writeFileSync, mkdirSync } = await import('fs');
         const { resolve, dirname } = await import('path');
         const { fileURLToPath } = await import('url');
         const __dirname = dirname(fileURLToPath(import.meta.url));
-        writeFileSync(resolve(__dirname, '../debug-medical-record-bbcode.txt'), bbCode, 'utf-8');
-        console.log('[MEDICAL-RECORD] Full BBCode written to debug-medical-record-bbcode.txt');
+        const debugDir = resolve(__dirname, '..', 'debug');
+        mkdirSync(debugDir, { recursive: true });
+        writeFileSync(resolve(debugDir, 'debug-medical-record-bbcode.txt'), bbCode, 'utf-8');
+        console.log('[MEDICAL-RECORD] Full BBCode written to debug/debug-medical-record-bbcode.txt');
     } catch (e) {
         console.warn('[MEDICAL-RECORD] Could not write debug file:', e.message);
     }
@@ -166,8 +173,12 @@ export async function handleMedicalRecord(report) {
             }
         }
 
-        // Broad safety net: same author + same formId within 60s
-        if (!dedupKey || !state.recentPatientRecords.has(dedupKey)) {
+        // Broad safety net: same author + same formId within 60s.
+        // ONLY applies when the report has no patient identity (no name/id) — the
+        // primary dedup above already handles same-patient rapid re-saves, and a
+        // named patient must never be trashed just because a DIFFERENT patient was
+        // saved on the same form within the window (e.g. two ME's/forms back-to-back).
+        if (!dedupKey) {
             const broadKey = `${authorId}|${reportData.formId}`;
             const existing = state.recentPatientRecords.get(broadKey);
             if (existing) {
@@ -202,40 +213,70 @@ export async function handleMedicalRecord(report) {
 
     let workingBbCode = bbCode;
 
-    // Always search by patient name — patient IDs are unreliable for search
+    // Search by patient name — patient IDs are unreliable for search.
     const searchTerm = patientName;
     console.log(`[MEDICAL-RECORD] Searching by name: "${searchTerm}"`);
 
     await progress.addStep('Searching', 'pending', `Looking for \`${searchTerm}\``);
     await setDeployStatus(db, authorId, key, 'searching', `Looking for patient: ${searchTerm}...`);
-    let { topicId, title: foundTitle } = await client.searchForPatientTopic(searchTerm);
-    console.log(`[MEDICAL-RECORD-DEBUG] Search result: topicId=${topicId}, foundTitle="${foundTitle}"`);
-
-    // If an existing topic was found, extract the patient ID from the title
-    // (e.g. "1424 - Alyson Frost" → "1424") and use it in the BBCode.
-    // No auto-assignment needed — the ID already exists.
+    let candidates = [];
+    let topicId = null;
+    let foundTitle = null;
     let resolvedPatientId = null;
-    if (topicId && (!rawPatientID || !/^\d+$/.test(rawPatientID))) {
-        const titleMatch = foundTitle?.match(/^(\d+)\s*[-–—]/);
-        console.log(`[MEDICAL-RECORD-DEBUG] Checking title for existing ID: titleMatch=${!!titleMatch}`);
-        if (titleMatch) {
-            resolvedPatientId = titleMatch[1];
-            console.log(`[MEDICAL-RECORD] Found existing topic #${topicId} with patient ID "${resolvedPatientId}"`);
-            workingBbCode = bbCode
+    let resolvedFromIndex = false;
+
+    // ── Fast path: resolve the patient's thread DIRECTLY from the local index ──
+    // No forum search. The index is built from f=97 itself (3-day rebuild) and
+    // kept current by the write-through on every deploy, so an exact name match
+    // gives us the exact thread id. Only exact (case-insensitive) matches count —
+    // fuzzy/partial names fall through to the forum search as before.
+    const idxEntry = findPatientIndexEntry(searchTerm);
+    if (idxEntry?.threadId) {
+        resolvedFromIndex = true;
+        topicId = idxEntry.threadId;
+        resolvedPatientId = idxEntry.id || null;
+        foundTitle = resolvedPatientId ? `${resolvedPatientId} - ${idxEntry.name}` : idxEntry.name;
+        console.log(`[MEDICAL-RECORD] INDEX match — "${searchTerm}" → topic #${topicId} (patient ${resolvedPatientId || '?'}) — skipped forum search`);
+        if (resolvedPatientId) {
+            workingBbCode = workingBbCode
                 .replace(/{{patientID}}/gi, String(resolvedPatientId))
                 .replace(/{{PATIENT_ID}}/g, String(resolvedPatientId))
                 .replace(/{{patientId}}/g, String(resolvedPatientId));
-            const stillHasPlaceholder = workingBbCode.includes('{{patientID}}') || workingBbCode.includes('{{PATIENT_ID}}') || workingBbCode.includes('{{patientId}}');
-            console.log(`[MEDICAL-RECORD-DEBUG] Still has patientID placeholder after existing ID replacement: ${stillHasPlaceholder}`);
-            console.log(`[MEDICAL-RECORD-DEBUG] BBCode snippet (first 300): ${workingBbCode.substring(0, 300)}`);
+        }
+    } else {
+        // ── Fallback path: forum search (partial/fuzzy names, unknown patients) ──
+        console.log(`[MEDICAL-RECORD] No exact index match for "${searchTerm}" — searching forum`);
+        const searchRes = await client.searchForPatientTopic(searchTerm);
+        topicId = searchRes.topicId;
+        foundTitle = searchRes.title;
+        candidates = searchRes.candidates || [];
+        console.log(`[MEDICAL-RECORD-DEBUG] Search result: topicId=${topicId}, foundTitle="${foundTitle}"`);
+
+        // If an existing topic was found, extract the patient ID from the title
+        // (e.g. "1424 - Alyson Frost" → "1424") and use it in the BBCode.
+        if (topicId && (!rawPatientID || !/^\d+$/.test(rawPatientID))) {
+            const titleMatch = foundTitle?.match(/^(\d+)\s*[-–—]/);
+            console.log(`[MEDICAL-RECORD-DEBUG] Checking title for existing ID: titleMatch=${!!titleMatch}`);
+            if (titleMatch) {
+                resolvedPatientId = titleMatch[1];
+                console.log(`[MEDICAL-RECORD] Found existing topic #${topicId} with patient ID "${resolvedPatientId}"`);
+                workingBbCode = workingBbCode
+                    .replace(/{{patientID}}/gi, String(resolvedPatientId))
+                    .replace(/{{PATIENT_ID}}/g, String(resolvedPatientId))
+                    .replace(/{{patientId}}/g, String(resolvedPatientId));
+                const stillHasPlaceholder = workingBbCode.includes('{{patientID}}') || workingBbCode.includes('{{PATIENT_ID}}') || workingBbCode.includes('{{patientId}}');
+                console.log(`[MEDICAL-RECORD-DEBUG] Still has patientID placeholder after existing ID replacement: ${stillHasPlaceholder}`);
+                console.log(`[MEDICAL-RECORD-DEBUG] BBCode snippet (first 300): ${workingBbCode.substring(0, 300)}`);
+            }
         }
     }
 
-    // If no topic was found AND no valid patientID from the form, auto-assign one now.
+    // No thread found for this name → we're creating a NEW patient. Always
+    // auto-assign a fresh ID: a form `patientID` (e.g. a leftover from a previous
+    // autocomplete selection) belongs to another patient and must NOT be reused.
     // Doing this AFTER the search avoids an expensive f=97 scan when we don't need it.
-    if (!topicId && (!rawPatientID || !/^\d+$/.test(rawPatientID))) {
-        console.log(`[MEDICAL-RECORD] No Patient ID passed, finding highest patient ID...`);
-        console.log(`[MEDICAL-RECORD] Searching f=97 for max ID to assign next available...`);
+    if (!topicId) {
+        console.log(`[MEDICAL-RECORD] No existing thread — assigning next patient ID...`);
         const newId = await getNextPatientId(client, db);
         if (newId) {
             resolvedPatientId = String(newId);
@@ -252,8 +293,10 @@ export async function handleMedicalRecord(report) {
 
     if (!topicId) {
         console.log(`[AUTO] No existing thread found for "${searchTerm}"`);
-        await progress.addStep("Searching", "fail", "No thread found");
-        const patientIdStr = resolvedPatientId || rawPatientID || "NEW";
+        const noMatchDetail = candidates?.length > 0 ? ` (${candidates.length} candidates — none matched all words)` : '';
+        await progress.addStep("Searching", "fail", "No thread found" + noMatchDetail);
+        // Fresh id (auto-assigned above) or "NEW" — never a stale form patientID.
+        const patientIdStr = resolvedPatientId || "NEW";
         const topicTitle = `${patientIdStr} - ${searchTerm}`;
         if (isDryRun) {
             console.log(`[MEDICAL-RECORD] DRY RUN -- would create topic: "${topicTitle}"`);
@@ -272,6 +315,15 @@ export async function handleMedicalRecord(report) {
             await progress.addStep("Searching", "ok", `Created #${newId || ""} ${topicTitle}`);
             topicId = newId;
             foundTitle = topicTitle;
+            // Write-through: the bot just created the patient's thread — record the
+            // exact name/id in the patient index (no forum re-scan needed).
+            upsertPatient({
+                name: searchTerm,
+                id: /^\d+$/.test(String(patientIdStr)) ? patientIdStr : null,
+                threadId: topicId,
+                lastSeen: Date.now(),
+                source: 'deploy:medical-record',
+            });
             if (!topicId) {
                 await setDeployStatus(db, authorId, key, "error", "Created topic but could not parse ID");
                 await progress.finalize("failed");
@@ -290,7 +342,17 @@ export async function handleMedicalRecord(report) {
         }
     }
 
-    console.log(`[AUTO]  Topic found: #${topicId}  "${foundTitle}"`);
+    console.log(`[AUTO]  Topic found: #${topicId}  "${foundTitle}"  (${resolvedFromIndex ? 'from patient index' : 'via forum search'})`);
+
+    // Write-through: the bot resolved this patient's existing thread — record the
+    // exact name/id/threadId in the patient index (no forum re-scan needed).
+    upsertPatient({
+        name: searchTerm,
+        id: /^\d+$/.test(String(resolvedPatientId || rawPatientID || '')) ? String(resolvedPatientId || rawPatientID) : null,
+        threadId: topicId,
+        lastSeen: Date.now(),
+        source: 'deploy:medical-record',
+    });
 
     // ── Dual-safety check for live post ──
     if (!isDryRun && MEDICAL_RECORD_ALLOWED.length > 0) {
@@ -305,19 +367,67 @@ export async function handleMedicalRecord(report) {
         }
     }
 
-    await progress.addStep('Searching', 'ok', `#${topicId} ${foundTitle}`);
-    await setDeployStatus(db, authorId, key, 'replying', `Found topic #${topicId}. ${isDryRun ? 'Filling form (dry run)' : 'Posting reply...'}`);
+    const foundLabel = resolvedFromIndex
+        ? `FOUND IN INDEX — #${topicId} ${foundTitle}`
+        : `FOUND VIA SEARCH — #${topicId} ${foundTitle}${candidates?.length > 1 ? ` (from ${candidates.length}: ${candidates.filter(c => c.topicId !== topicId).map(c => '#' + c.topicId).join(', ')})` : ''}`;
+    await progress.addStep('Searching', 'ok', foundLabel);
+    await setDeployStatus(db, authorId, key, 'replying', `Found topic #${topicId} (${resolvedFromIndex ? 'from patient index' : 'via forum search'}). ${isDryRun ? 'Filling form (dry run)' : 'Posting reply...'}`);
 
     await progress.addStep('Posting Reply', 'pending');
     let result;
     try {
         result = await client.replyToTopic(topicId, 97, workingBbCode, { dryRun: isDryRun });
+
+        // Stale-index fallback: an index-sourced thread may have been deleted or
+        // renamed since the last build. Re-resolve via the forum search ONCE and
+        // retry. Safe to retry — a failed/errored reply means nothing was posted.
+        if (!result.ok && resolvedFromIndex) {
+            console.warn(`[MEDICAL-RECORD] Index topic #${topicId} reply failed (${result.reason || 'unknown'}) — falling back to forum search`);
+            const res = await client.searchForPatientTopic(searchTerm);
+            if (res.topicId) {
+                topicId = res.topicId;
+                foundTitle = res.title || foundTitle;
+                console.log(`[MEDICAL-RECORD] Search fallback found topic #${topicId} — retrying reply`);
+                await progress.addStep('Posting Reply', 'pending', 'Retrying after search fallback');
+                result = await client.replyToTopic(topicId, 97, workingBbCode, { dryRun: isDryRun });
+            } else {
+                removePatientIndexEntry(searchTerm);
+                await setDeployStatus(db, authorId, key, 'reply_failed',
+                    `Indexed thread #${topicId} for "${searchTerm}" no longer exists and no replacement was found. Re-save to create a new thread.`);
+                await progress.addStep('Posting Reply', 'fail', 'Thread no longer exists');
+                await progress.finalize('failed');
+                return;
+            }
+        }
     } catch (e) {
-        console.error(`[MEDICAL-RECORD] replyToTopic threw: ${e.message}`);
-        await progress.addStep('Posting Reply', 'fail', `Forum error: ${e.message}`);
-        await progress.finalize('failed');
-        await setDeployStatus(db, authorId, key, 'reply_failed', `Forum error: ${e.message}`);
-        return;
+        if (resolvedFromIndex) {
+            // Same fallback for a thrown reply on an index-sourced thread.
+            console.warn(`[MEDICAL-RECORD] Index reply threw (${e.message}) — falling back to forum search`);
+            try {
+                const res = await client.searchForPatientTopic(searchTerm);
+                if (res.topicId) {
+                    topicId = res.topicId;
+                    foundTitle = res.title || foundTitle;
+                    result = await client.replyToTopic(topicId, 97, workingBbCode, { dryRun: isDryRun });
+                } else {
+                    removePatientIndexEntry(searchTerm);
+                    await setDeployStatus(db, authorId, key, 'reply_failed', `Indexed thread no longer exists: ${e.message}`);
+                    await progress.addStep('Posting Reply', 'fail', 'Thread no longer exists');
+                    await progress.finalize('failed');
+                    return;
+                }
+            } catch (e2) {
+                console.error(`[MEDICAL-RECORD] Fallback search/reply also failed: ${e2.message}`);
+                result = { ok: false, reason: e2.message };
+            }
+        } else {
+            console.error(`[MEDICAL-RECORD] replyToTopic threw: ${e.message}`);
+            await notifyDeployFailure(reportData.originalKey || key, 'medical-record', key, 'Forum error: ' + e.message);
+            await progress.addStep('Posting Reply', 'fail', `Forum error: ${e.message}`);
+            await progress.finalize('failed');
+            await setDeployStatus(db, authorId, key, 'reply_failed', `Forum error: ${e.message}`);
+            return;
+        }
     }
 
     if (result.ok && !result.dryRun) {
@@ -334,9 +444,11 @@ export async function handleMedicalRecord(report) {
         await progress.addStep('Posting Reply', 'ok', `Dry run — not submitted`);
         await progress.finalize('complete');
     } else {
-        await setDeployStatus(db, authorId, key, 'reply_failed', result.reason || 'Unknown error replying to topic');
-        console.error(`[MEDICAL-RECORD]  Failed to reply to topic #${topicId}: ${result.reason || 'Unknown'}`);
-        await progress.addStep('Posting Reply', 'fail', result.reason || 'Unknown');
+        const reason = result.reason || 'Unknown error replying to topic';
+        await setDeployStatus(db, authorId, key, 'reply_failed', reason);
+        console.error(`[MEDICAL-RECORD]  Failed to reply to topic #${topicId}: ${reason}`);
+        await notifyDeployFailure(reportData.originalKey || key, 'medical-record', key, reason);
+        await progress.addStep('Posting Reply', 'fail', reason);
         await progress.finalize('failed');
     }
 }

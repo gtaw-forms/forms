@@ -1,8 +1,9 @@
 // src/hooks/useBbcodeGenerator.js
 import { useState, useCallback } from 'react';
+import * as Sentry from "@sentry/react";
 import { getDepartmentFullName } from '../utils/bbcodeHelpers';
 import generateDecedentBBCode from '../phmc-bbcode-generators/generateMassFatality';
-import { formatCharacterNameForDisplay } from '../utils/identityUtils';
+import { formatCharacterNameForDisplay, getCharacterName } from '../utils/identityUtils';
 
 const useBbcodeGenerator = (selectedForm, formValues, finalSelectOptions, agencyDataStore, gtaWorldUser, factionsData) => {
   const [generatedBBCode, setGeneratedBBCode] = useState("");
@@ -140,7 +141,7 @@ const formatToNorthAmericanDate = (isoDateTime) => {
                 const [sn, member] = entry;
                 return {
                     sn: sn !== 'undefined' ? sn : (member.badge || member.characterId || member.ucpId || 'N/A'),
-                    rank: member.rank || 'Staff',
+                    rank: (member.rank || 'Staff').replace(/^\s*[-–—]\s*|\s*[-–—]\s*$/g, '').replace(/\s{2,}/g, ' ').trim(),
                     member
                 };
             }
@@ -149,8 +150,73 @@ const formatToNorthAmericanDate = (isoDateTime) => {
         return null;
       };
 
-      // Check if we're in a local environment
-      const isLocalInstance = !gtaWorldUser || !gtaWorldUser.faction?.firstname;
+      // Check if we're in a local environment.
+      // Previously checked !gtaWorldUser.faction?.firstname, but the OAuth faction
+      // object never carries a firstname field (it only has characterId/characterName/
+      // rank/scriptRank), so that check was true for every real login and stamped
+      // LocalEmployee/LocalRank onto empty coroner fields. Only treat the app as a
+      // "local instance" when running on a dev host WITHOUT any GTAW auth.
+      const isLocalDevHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      const isLocalInstance = isLocalDevHost && !gtaWorldUser;
+
+      // Comprehensive diagnostic for the historical "LocalEmployee" bug.
+      // Captures the exact session/faction/form state whenever an authenticated,
+      // non-dev user would hit the local fallback or ends up with empty coroner
+      // credentials at BBCode generation, so we can trace why the credential sync
+      // failed to populate the form.
+      const captureCoronerCredentialDiagnostic = (reason, extra = {}) => {
+        try {
+          if (isLocalDevHost) {
+            console.warn(`[BBCode] ${reason} (dev host, not sent to Sentry)`, extra);
+            return;
+          }
+          const faction = gtaWorldUser?.faction || null;
+          const firstChar = Array.isArray(gtaWorldUser?.character) ? gtaWorldUser.character[0] : null;
+          Sentry.captureMessage(`[BBCode] ${reason}`, {
+            level: 'error',
+            tags: {
+              bbcode_diagnostic: 'coroner_credentials',
+              reason,
+              has_gtaw_user: String(!!gtaWorldUser),
+              has_faction: String(!!faction),
+              is_faction_member: String(gtaWorldUser?.isFactionMember ?? 'unknown'),
+              login_role: gtaWorldUser?.loginRole || 'unknown',
+            },
+            extra: {
+              form_id: selectedForm?.id,
+              form_name: selectedForm?.name,
+              hostname: window.location.hostname,
+              faction_keys: faction ? Object.keys(faction) : null,
+              faction_character_name: faction?.characterName || null,
+              faction_character_id: faction?.characterId ?? faction?.id ?? null,
+              faction_has_firstname: faction ? String('firstname' in faction) : 'no-faction',
+              faction_rank: faction?.rank || null,
+              faction_script_rank: faction?.scriptRank ?? null,
+              oauth_username: gtaWorldUser?.username || null,
+              has_active_character: String(!!gtaWorldUser?.activeCharacter),
+              active_character_name: gtaWorldUser?.activeCharacter?.characterName || null,
+              has_character_array: String(Array.isArray(gtaWorldUser?.character) && gtaWorldUser.character.length > 0),
+              first_character_name: firstChar?.name || firstChar?.characterName || (firstChar ? `${firstChar.firstname || ''} ${firstChar.lastname || ''}`.trim() : null),
+              first_character_id: firstChar?.id ?? firstChar?.characterId ?? null,
+              form_coroner_employee: formValues?.coronerEmployee || null,
+              form_coroner_rank: formValues?.coronerRank || null,
+              form_coroner_badge: formValues?.coronerBadge || null,
+              form_coroner_first_name: formValues?.coronerFirstName || null,
+              form_coroner_last_name: formValues?.coronerLastName || null,
+              ...extra,
+            },
+          });
+        } catch (e) {
+          console.error('[BBCode] Failed to capture coroner credential diagnostic:', e);
+        }
+      };
+
+      // After the template substitution the only way the local placeholders can
+      // survive is a genuinely empty set of coroner credentials on a real login —
+      // capture the state so the next occurrence is fully diagnosable.
+      const isCoronerForm = selectedForm?.name?.toLowerCase().includes('coroner')
+        || selectedForm?.name?.toLowerCase().includes('death')
+        || selectedForm?.name?.toLowerCase().includes('mass fatality');
 
       // Process formValues to extract primitive values from select objects and format employee names
       const processedFormValues = Object.entries(formValues).reduce((acc, [key, value]) => {
@@ -233,6 +299,33 @@ const formatToNorthAmericanDate = (isoDateTime) => {
           coronerEmployee: processedFormValues.coronerEmployee,
           coronerBadge: processedFormValues.coronerBadge
         });
+      }
+
+      // ── Last-chance credential fill (Fix B) ──
+      // If an authenticated, non-dev user somehow reaches BBCode generation
+      // with empty employee identity (credential-sync race or a stale
+      // progression restore), resolve it here from OAuth + roster so a live
+      // post never ships blanks. Never reintroduces Local* for real logins.
+      if (gtaWorldUser && !isLocalInstance) {
+        const empType = selectedForm?.accessType === 'Coroner' ? 'coroner' : 'phmc';
+        const needsName = !processedFormValues[`${empType}Employee`];
+        const needsRank = !processedFormValues[`${empType}Rank`];
+        const needsBadge = !processedFormValues[`${empType}Badge`];
+        if (needsName || needsRank || needsBadge) {
+          const oauthName = getCharacterName(gtaWorldUser);
+          if (oauthName && oauthName !== 'GTAW User') {
+            const rosterMatch = findMemberAcrossFactions(oauthName);
+            if (needsName) processedFormValues[`${empType}Employee`] = oauthName;
+            if (needsRank) processedFormValues[`${empType}Rank`] = rosterMatch?.rank || gtaWorldUser?.faction?.rank || '';
+            if (needsBadge) processedFormValues[`${empType}Badge`] = rosterMatch?.sn || gtaWorldUser?.faction?.characterId || '';
+            captureCoronerCredentialDiagnostic('CredentialFallbackApplied', {
+              employee_type: empType,
+              matched_by: rosterMatch ? 'name' : 'none',
+              roster_badge: rosterMatch?.sn || null,
+              oauth_name: oauthName,
+            });
+          }
+        }
       }
 
       // Normalize decedents if it's an object-based array
@@ -492,6 +585,12 @@ const formatToNorthAmericanDate = (isoDateTime) => {
             workingTitle = workingTitle.replace(new RegExp(ph.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), String(val));
           }
         });
+
+        // Resolve [FORM_NAME] to the actual form name (some medical forms use it
+        // as a title placeholder, e.g. "Consultation - Session Notes").
+        if (workingTitle.includes('[FORM_NAME]')) {
+          workingTitle = workingTitle.replace(/\[FORM_NAME\]/g, selectedForm.name || '');
+        }
         finalTitle = workingTitle;
       }
 
@@ -630,6 +729,7 @@ const formatToNorthAmericanDate = (isoDateTime) => {
                   }
               }
               else if (field.type === "checkbox" && typeof value === "boolean") replacement = value ? "Yes" : "No";
+              else if (field.type === "body_tampered" && typeof value === "boolean") replacement = value ? "Yes" : "No";
               else if (field.type === "multi_select" && Array.isArray(value)) replacement = value.join(", ");
               else if (field.type === "dynamic_text_list" && Array.isArray(value)) {
                   const items = value.filter(val => val && String(val).trim() !== "");
@@ -681,6 +781,7 @@ const formatToNorthAmericanDate = (isoDateTime) => {
                   }
               }
               else if (field.type === "checkbox" && typeof value === "boolean") replacement = value ? "Yes" : "No";
+              else if (field.type === "body_tampered" && typeof value === "boolean") replacement = value ? "Yes" : "No";
               else if (field.type === "multi_select" && Array.isArray(value)) replacement = value.join(", ");
               else if (field.type === "dynamic_text_list" && Array.isArray(value)) {
                   const items = value.filter(val => val && String(val).trim() !== "");
@@ -738,6 +839,30 @@ const formatToNorthAmericanDate = (isoDateTime) => {
         console.warn('[useBbcodeGenerator] Unreplaced coronerRank/coronerEmployee/coronerBadge placeholders:', unreplacedPlaceholders);
       }
 
+      // ── LocalEmployee / LocalRank diagnostic ──
+      // Only meaningful for a real (authenticated, non-dev) user. Catches both the
+      // root cause (empty coroner credentials despite a signed-in user) and any
+      // local placeholder that somehow survives substitution.
+      if (gtaWorldUser && isCoronerForm) {
+        const hasLocalPlaceholder = bbcode.includes('LocalEmployee') || bbcode.includes('LocalRank') || bbcode.includes('LocalBadge');
+        const hasEmptyCoronerIdentity = !processedFormValues.coronerEmployee
+          && !processedFormValues.phmcEmployee
+          && !processedFormValues.employeeName;
+        if (hasLocalPlaceholder || hasEmptyCoronerIdentity) {
+          captureCoronerCredentialDiagnostic(
+            hasLocalPlaceholder ? 'LocalPlaceholderInGeneratedBBCode' : 'EmptyCoronerCredentialsAuthenticated',
+            {
+              has_local_employee: bbcode.includes('LocalEmployee'),
+              has_local_rank: bbcode.includes('LocalRank'),
+              has_local_badge: bbcode.includes('LocalBadge'),
+              has_empty_coroner_identity: String(hasEmptyCoronerIdentity),
+              final_title: finalTitle || null,
+              generated_title: ctx?.originalKey || null,
+            }
+          );
+        }
+      }
+
       return { bbcode, finalTitle };
     };
 
@@ -751,12 +876,19 @@ const formatToNorthAmericanDate = (isoDateTime) => {
     return { bbcode, finalTitle };
   }, [selectedForm, formValues, finalSelectOptions, agencyDataStore, gtaWorldUser, factionsData]);
 
+  const clearBBCode = useCallback(() => {
+    setGeneratedBBCode("");
+    setGeneratedTitle("");
+    setShowBBCode(false);
+  }, []);
+
   return {
     generatedBBCode,
     generatedTitle,
     showBBCode,
     setShowBBCode,
     generateBBCode,
+    clearBBCode,
     // limitWarning
   };
 };

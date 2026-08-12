@@ -9,29 +9,9 @@ import { state, C } from './deployState.js';
 import { setDeployStatus, markReportComplete } from './deployStatus.js';
 import { crosspostAutopsyToLssd } from './deployLssd.js';
 import { clearAssignment } from './autopsyRotation.js';
+import { buildCompletionBb } from './completionTemplate.js';
 
 const AUTOPSY_DRY_RUN = process.env.AUTOPSY_DRY_RUN !== 'false';
-const COMPLETION_TEMPLATE = `[divbox=white][center][img]https://i.imgur.com/Hxjt4M2.png[/img][/center][/divbox]
-
-[divbox=white][br][/br][center][b]Autopsy Request - Completed[/b]
-[/center]
-[br][/br]
-Dear REQUESTER_NAME
-
-We have completed the autopsy investigation, and the detailed report has been sent out. I have thoroughly reviewed all findings and compiled the results into a comprehensive document. Please review the report at your earliest convenience, and feel free to reach out if you have any questions or require further information.
-
-[i]Best regards,[/i]
-[hr][/hr]
-[b]Office of Forensic Medicine Division[/b]
-Department of Forensic Medicine and Pathology
-
-[b]Pillbox Hill Medical Center[/b]
-[size=85]Elgin Ave/Strawberry Ave, Los Santos, SA
-Ph: 50056
-Mail: [url=https://phmc.gta.world/ucp.php?i=pm&mode=compose&u=your_id]medical.examiners@phmc.health[/url]
-Website: [url]www.phmc.health[/url][/size]
-
-[center][img]https://i.imgur.com/vztjYpe.png[/img][/center]`;
 
 export async function resolveAutopsyTopic(interaction) {
     logFnCall('deployInteraction', 'resolveAutopsyTopic', 'Resolving autopsy topic pick');
@@ -136,12 +116,18 @@ export async function resolveAutopsyTopic(interaction) {
                             completedLssdTopicId = entry.lssdRequestTopicId;
                             if (entry.completedAt) return;
 
+                            // Private cases have no public request topic and never crosspost.
+                            // The main completion flow (deployAutopsyReply) handles their
+                            // delivery (optional pm_forum DM) — skip entirely here.
+                            if (entry.isPrivate === true) {
+                                console.log('[AUTO-COMPLETE] Private case #' + child.key + ' — skipping public reply + LSSD crosspost in interaction path');
+                                return;
+                            }
+
                             console.log('[AUTO-COMPLETE] Marking autopsy request as completed in Firebase');
                             const requesterName = entry.parsed?.requesterName || 'Requesting Party';
                             const caseTitle = (entry.caseUrl || entry.title || 'Autopsy Case').replace(/\s*[-–—]\s*UNASSIGNED\s*$/i, '');
-                            const completionBb = COMPLETION_TEMPLATE
-                                .replace('CASE_TITLE', caseTitle)
-                                .replace('REQUESTER_NAME', requesterName);
+                            const completionBb = buildCompletionBb(caseTitle, requesterName, null);
 
                             child.ref.update({ completedAt: new Date().toISOString(), completedBbCode: bbCode });
                             console.log('[AUTO] Marked autopsy-requested #' + child.key + ' as completed');

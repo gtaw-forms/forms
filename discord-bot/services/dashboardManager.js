@@ -165,7 +165,7 @@ async function gatherDashboardData(db, force = false) {
             let latest = 0;
             morgueSnap.forEach(child => { latest = child.val().lastUpdated || 0; });
             const hoursAgo = (now - latest) / 3600000;
-            if (hoursAgo > 24) {
+            if (hoursAgo > 48) {
                 data.morgue = { emoji: '🔴', text: `${Math.floor(hoursAgo)}h overdue` };
             } else if (hoursAgo > 12) {
                 data.morgue = { emoji: '⚠️', text: `${Math.floor(hoursAgo)}h ago` };
@@ -197,7 +197,15 @@ async function gatherDashboardData(db, force = false) {
         data.autopsyMonitor = { active: false };
     }
 
-    // 7. ME assignments from Firebase
+    // 7. Roster sync status
+    try {
+        const { getRosterSyncStatus } = await import('./factionRosterSync.js');
+        data.rosterSync = getRosterSyncStatus();
+    } catch {
+        data.rosterSync = null;
+    }
+
+    // 8. ME assignments from Firebase
     try {
         const assignSnap = await db.ref('autopsy-requested').once('value');
         const meList = [];
@@ -227,6 +235,29 @@ async function gatherDashboardData(db, force = false) {
     } catch {
         data.meAssignments = [];
         data.meLoa = [];
+    }
+
+    // 9. Scheduled Face posts (awaiting their publish delay)
+    try {
+        const faceList = [];
+        const faceSnap = await db.ref('facePostDrafts').once('value');
+        if (faceSnap.exists()) {
+            faceSnap.forEach((child) => {
+                if (child.key === '_ids') return;
+                const v = child.val();
+                if (v && v.status === 'scheduled' && v.publishAt) {
+                    faceList.push({
+                        reportKey: child.key,
+                        decedentName: v.decedentName || '',
+                        publishAt: v.publishAt,
+                    });
+                }
+            });
+        }
+        faceList.sort((a, b) => a.publishAt - b.publishAt);
+        data.facePosts = faceList;
+    } catch {
+        data.facePosts = [];
     }
 
     return data;
@@ -292,8 +323,42 @@ function buildDashboardEmbed(data) {
         });
     }
 
+    // Scheduled Face posts (awaiting their publish delay)
+    const faceList = data.facePosts || [];
+    if (faceList.length > 0) {
+        const faceLines = faceList.slice(0, 5).map(f => {
+            const who = f.decedentName || f.reportKey;
+            return `**${who}** — <t:${Math.floor(f.publishAt / 1000)}:R>`;
+        }).join('\n');
+        embed.addFields({
+            name: `📅 Scheduled Face Posts (${faceList.length})`,
+            value: faceLines + (faceList.length > 5 ? `\n...and ${faceList.length - 5} more` : ''),
+            inline: false,
+        });
+    } else {
+        embed.addFields({
+            name: '📅 Scheduled Face Posts',
+            value: '✅ None scheduled',
+            inline: false,
+        });
+    }
+
     // Scheduled Tasks
     const taskLines = [];
+
+    // Roster sync
+    const rs = data.rosterSync;
+    if (rs && rs.lastSyncAt) {
+        const lastSync = `<t:${Math.floor(rs.lastSyncAt / 1000)}:R>`;
+        const nextSync = rs.nextSyncAt ? `<t:${Math.floor(rs.nextSyncAt / 1000)}:R>` : 'pending...';
+        taskLines.push(
+            `📋 **Roster Sync** — every 4h (+random)\n` +
+            `└ LSPD: ${rs.lspdCount} | LSSD: ${rs.lssdCount} — last: ${lastSync} — next: ${nextSync}`
+        );
+    } else {
+        taskLines.push('📋 **Roster Sync** — pending first sync');
+    }
+
     // Autopsy Request Monitor
     const am = data.autopsyMonitor || {};
     if (am.active) {
@@ -304,7 +369,7 @@ function buildDashboardEmbed(data) {
         const statusIcon = am.lastCheckTime === null ? '⏳' : am.lastCheckSuccess ? '✅' : '❌';
         taskLines.push(
             `${statusIcon} **Autopsy Monitor** — every ${intervalMin}min (f=265)\n` +
-            `└ LSPD: ${am.lspdCount ?? '?'} requests | LSSD: ${am.lssdCount ?? '?'} requests — last check: ${lastCheck}`
+            `└ last check: ${lastCheck}`
         );
     } else {
         taskLines.push('⏹️ **Autopsy Monitor** — inactive');

@@ -8,8 +8,9 @@
  * New Topic URL: posting.php?mode=post&f=1361
  */
 
-import { logFnCall } from './deployLogger.js';
+import { logFnCall, notifyDeployFailure } from './deployLogger.js';
 import { getForumClient } from './forumClient.js';
+import { notifySelfHeal } from './logChannel.js';
 
 const LSPD_BASE = 'https://lspd.gta.world';
 const LSPD_FORUM_ID = 1361;
@@ -38,7 +39,8 @@ export async function crosspostAutopsyToLspd(reportData, bbCode, phmcTopicId, db
     }
 
     const caseTitle = options.caseTitle || reportData?.originalKey || 'Autopsy Case';
-    console.log('[LSPD-XP] LSPD cross-post for: "' + caseTitle + '"');
+    const caseTopicId = options.caseTopicId || null;
+    console.log('[LSPD-XP] LSPD cross-post for: "' + caseTitle + '"' + (caseTopicId ? ` caseTopicId=#${caseTopicId}` : ' caseTopicId=UNKNOWN'));
 
     try {
         const client = getForumClient();
@@ -95,6 +97,9 @@ export async function crosspostAutopsyToLspd(reportData, bbCode, phmcTopicId, db
         if (phmcTopicId && db) {
             await writeStatus(phmcTopicId, db, 'failed', { lspdCrosspostError: err.message });
         }
+        if (phmcTopicId) {
+            await notifyDeployFailure('Autopsy #' + phmcTopicId, 'lspd-crosspost', phmcTopicId, err.message);
+        }
         return { ok: false, error: err.message };
     }
 }
@@ -132,6 +137,10 @@ export async function retryFailedLspdCrossposts(db) {
         const promises = [];
         snap.forEach((child) => {
             const entry = child.val();
+            if (entry.isPrivate === true) {
+                console.log('[LSPD-XP] Skipping ' + child.key + ' — private case, no crosspost');
+                return;
+            }
             if (!entry.lspdCrosspostBbCode) {
                 console.log('[LSPD-XP] Skipping ' + child.key + ' — no BBCode saved');
                 return;
@@ -140,7 +149,15 @@ export async function retryFailedLspdCrossposts(db) {
             const reportData = { data: { department: 'LSPD', decedentName: entry.name || '' } };
             promises.push(
                 crosspostAutopsyToLspd(reportData, entry.lspdCrosspostBbCode, child.key, db, null)
-                    .then(r => console.log('[LSPD-XP] Retry ' + (r.ok ? 'succeeded' : 'failed') + ' for ' + child.key))
+                    .then(r => {
+                        console.log('[LSPD-XP] Retry ' + (r.ok ? 'succeeded' : 'failed') + ' for ' + child.key);
+                        if (r.ok) notifySelfHeal(child.key, 'lspd crosspost failed', 'LSPD crosspost posted');
+                        else notifySelfHeal(child.key, 'lspd crosspost failed', 'Retry FAILED: ' + (r.error || r.reason || 'Unknown'));
+                    })
+                    .catch(err => {
+                        console.error('[LSPD-XP] Retry error for ' + child.key + ': ' + err.message);
+                        notifySelfHeal(child.key, 'lspd crosspost failed', 'ERROR: ' + err.message);
+                    })
             );
             retried++;
         });

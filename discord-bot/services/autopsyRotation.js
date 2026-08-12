@@ -19,7 +19,7 @@
  *   loa/<username_lower>: true        — existing, read for exclusions
  */
 
-const RECENCY_MS = 24 * 60 * 60 * 1000; // 24 hours
+const RECENCY_MS = 48 * 60 * 60 * 1000; // 48 hours
 
 // ── Helpers ──
 
@@ -143,7 +143,11 @@ export async function selectME(db, topicId, caseNum) {
 
         const newPosition = (position + i + 1) % list.length;
         await db.ref('autopsy-requests/rotation/position').set(newPosition);
+
+        // Log full assignment landscape for tracking
+        const allCounts = list.map(m => `${m}=${activeCounts[m.toLowerCase()] || 0}${m.toLowerCase() === meName.toLowerCase() ? '+1' : ''}`).join(', ');
         console.log(`[ROTATION] Assigned ${meName} (positions walked: ${i + 1}, new pos: ${newPosition})`);
+        console.log(`[ROTATION] Assignment counts: ${allCounts}`);
 
         return meName;
     }
@@ -299,7 +303,7 @@ export async function initializeRotationFromGroup(db, groupMembers) {
     if (rotation) return; // already configured
 
     const names = groupMembers
-        .map(m => m.name)
+        .map(m => m.name.trim())
         .filter(n => n && n !== 'PHMC Forms Bot');
 
     if (names.length === 0) {
@@ -312,4 +316,97 @@ export async function initializeRotationFromGroup(db, groupMembers) {
         position: 0,
     });
     console.log(`[ROTATION] Initialized rotation list from forum group: ${names.join(', ')}`);
+}
+
+/**
+ * Check for new MEs in the forum group that aren't in the rotation list yet.
+ * If found, inserts them at a random position so the rotation stays fair.
+ * Also removes departed MEs (in group rotation but no longer in forum group).
+ * Returns { added: string[], removed: string[] } or null if no changes.
+ */
+export async function syncRotationFromGroup(db, groupMembers) {
+    const rotation = await getRotation(db);
+    if (!rotation) {
+        await initializeRotationFromGroup(db, groupMembers);
+        return null;
+    }
+
+    // Detect corruption: duplicates in the list reset to a fresh random order
+    const unique = new Set(rotation.list.map(n => n.trim().toLowerCase()));
+    if (unique.size !== rotation.list.length) {
+        console.warn(`[ROTATION] Corruption detected — ${rotation.list.length} entries with ${unique.size} unique names. Resetting to random order.`);
+        return await resetRotationRandom(db, groupMembers);
+    }
+
+    const forumNames = groupMembers
+        .map(m => m.name.trim())
+        .filter(n => n && n !== 'PHMC Forms Bot');
+
+    if (forumNames.length === 0) return null;
+
+    const currentLower = new Set(rotation.list.map(n => n.trim().toLowerCase()));
+    const forumLower = new Set(forumNames.map(n => n.toLowerCase()));
+
+    // Find new MEs (in forum group but not in rotation)
+    const toAdd = forumNames.filter(n => !currentLower.has(n.toLowerCase()));
+    // Find departed MEs (in rotation but not in forum group)
+    const toRemove = rotation.list.filter(n => !forumLower.has(n.toLowerCase()) && !n.toLowerCase().includes('phmc'));
+
+    if (toAdd.length === 0 && toRemove.length === 0) return null;
+
+    // Build updated list — remove departed first, then add new at random positions
+    let updated = rotation.list.filter(n => !toRemove.includes(n));
+    for (const name of toAdd) {
+        const insertAt = Math.floor(Math.random() * (updated.length + 1));
+        updated.splice(insertAt, 0, name);
+    }
+
+    // Write updated list, reset position to current index if it would be out of bounds
+    const newPosition = rotation.position < updated.length ? rotation.position : 0;
+    await db.ref('autopsy-requests/rotation').set({
+        list: updated,
+        position: newPosition,
+    });
+
+    const result = { added: toAdd, removed: toRemove };
+    if (toAdd.length > 0) {
+        console.log(`[ROTATION] New MEs auto-added to rotation: ${toAdd.join(', ')}`);
+    }
+    if (toRemove.length > 0) {
+        console.log(`[ROTATION] Departed MEs removed from rotation: ${toRemove.join(', ')}`);
+    }
+    return result;
+}
+
+/**
+ * Reset the rotation list from the forum group members in random order.
+ * This fixes any corruption (duplicates, missing MEs) caused by the old
+ * splice bug where new entries were replacing existing ones instead of inserting.
+ *
+ * Call this once to repair, or wire into a slash command for on-demand use.
+ */
+export async function resetRotationRandom(db, groupMembers) {
+    const names = groupMembers
+        .map(m => m.name.trim())
+        .filter(n => n && n !== 'PHMC Forms Bot');
+
+    if (names.length === 0) {
+        console.warn('[ROTATION] No group members to reset rotation from');
+        return null;
+    }
+
+    // Fisher-Yates shuffle for true randomness
+    const shuffled = [...names];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+
+    await db.ref('autopsy-requests/rotation').set({
+        list: shuffled,
+        position: 0,
+    });
+
+    console.log(`[ROTATION] Reset rotation to random order: ${shuffled.join(', ')}`);
+    return { list: shuffled, count: shuffled.length };
 }

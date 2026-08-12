@@ -34,8 +34,18 @@ export function setLogClient(client) {
 export async function sendLogMessage(content, embed, { crash = false } = {}) {
     if (!_channelId || !_client) return;
 
+    const SEND_TIMEOUT_MS = 10000;
+    // Timeout wrapper so a stalled Discord fetch/send can NEVER hang the caller.
+    // A stuck channel.send() used to freeze the autopsy monitor mid-run (blocking
+    // step 3 — acks + crossposts) because nothing bounded it. Now it degrades to a
+    // warn and lets the pipeline continue.
+    const withTimeout = (promise, label) => Promise.race([
+        promise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${SEND_TIMEOUT_MS}ms`)), SEND_TIMEOUT_MS)),
+    ]);
+
     try {
-        const channel = await _client.channels.fetch(_channelId);
+        const channel = await withTimeout(_client.channels.fetch(_channelId), 'channel fetch');
         if (!channel?.isTextBased()) {
             console.warn(`[LOG] ⚠️ Channel ${_channelId} is not a text channel`);
             return;
@@ -49,7 +59,7 @@ export async function sendLogMessage(content, embed, { crash = false } = {}) {
             payload.embeds = [embed];
         }
 
-        await channel.send(payload);
+        await withTimeout(channel.send(payload), 'channel send');
     } catch (err) {
         // Don't use the logger here to avoid potential infinite loops
         console.warn(`[LOG] ⚠️ Failed to send log message: ${err.message}`);
@@ -70,4 +80,18 @@ export async function sendCrashReport(type, error) {
         .setTimestamp();
 
     await sendLogMessage(null, embed, { crash: true });
+}
+
+/**
+ * Post a concise "SELF HEALING - <topic> / <reason> / <info>" message to the log
+ * channel when a recovery action fires. Shared by all recovery sweeps so failures
+ * and repairs are uniformly visible. Uses sendLogMessage (10s timeout) so a slow
+ * Discord send can never block a sweep.
+ */
+export async function notifySelfHeal(topicId, reason, info) {
+    try {
+        await sendLogMessage(`SELF HEALING - ${topicId} / ${reason} / ${info}`);
+    } catch (err) {
+        console.warn(`[LOG] ⚠️ Self-heal notify failed for ${topicId}: ${err.message}`);
+    }
 }

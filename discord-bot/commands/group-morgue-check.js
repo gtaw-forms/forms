@@ -1,5 +1,5 @@
 import { SlashCommandBuilder, EmbedBuilder, AttachmentBuilder, MessageFlags } from 'discord.js';
-import { readFileSync, writeFileSync, existsSync, readdirSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -81,6 +81,60 @@ function loadSavedScanFile(forumKey, groupId) {
     }
 }
 
+/**
+ * Parse a date string (DD-MM-YYYY or YYYY-MM-DD) into a timestamp (ms), or null.
+ * Accepts - / . separators.
+ */
+function parseDateParam(str) {
+    if (!str) return null;
+    const s = String(str).trim();
+    let m = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+    if (m) {
+        const d = new Date(+m[1], +m[2] - 1, +m[3]);
+        return isNaN(d.getTime()) ? null : d.getTime();
+    }
+    m = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/);
+    if (m) {
+        const d = new Date(+m[3], +m[2] - 1, +m[1]);
+        return isNaN(d.getTime()) ? null : d.getTime();
+    }
+    return null;
+}
+
+/**
+ * Best-effort timestamp for a morgue record. Prefers the death time
+ * (timeOfDeath) when parseable; falls back to lastUpdated.
+ */
+function recordTimestamp(r) {
+    if (r.timeOfDeath) {
+        const m = String(r.timeOfDeath).match(/(\d{1,2})\s+([A-Za-z]+),?\s+(\d{4})/);
+        if (m) {
+            const months = { Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5, Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11 };
+            const mon = months[m[2].slice(0, 3)];
+            if (mon !== undefined) {
+                const d = new Date(+m[3], mon, +m[1]);
+                if (!isNaN(d.getTime())) return d.getTime();
+            }
+        }
+    }
+    return r.lastUpdated || null;
+}
+
+/**
+ * Clean a stored narcotics value. The morgue parser sometimes dumps pellet /
+ * bullet recovery lines into the narcotics field; extract only the drug name.
+ */
+function cleanNarcotics(value) {
+    if (!value) return '';
+    return String(value)
+        .split('\n')
+        .map(l => l.trim())
+        .filter(l => l && !/^(?:pellet|bullet)\s+recovered with striation marks/i.test(l) && !/^#\d+$/.test(l))
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
 export const data = new SlashCommandBuilder()
     .setName('group-morgue-check')
     .setDescription('Scrape a faction group roster and check members against morgue records')
@@ -114,11 +168,11 @@ export const data = new SlashCommandBuilder()
             .setRequired(false))
     .addStringOption(opt =>
         opt.setName('date_from')
-            .setDescription('Filter records from this date (YYYY-MM-DD, e.g. 2026-06-01)')
+            .setDescription('Filter records from this date (DD-MM-YYYY or YYYY-MM-DD, e.g. 01-06-2026)')
             .setRequired(false))
     .addStringOption(opt =>
         opt.setName('date_to')
-            .setDescription('Filter records up to this date (YYYY-MM-DD, e.g. 2026-07-17)')
+            .setDescription('Filter records up to this date (DD-MM-YYYY or YYYY-MM-DD, e.g. 17-07-2026)')
             .setRequired(false));
 
 export async function execute(interaction) {
@@ -197,17 +251,9 @@ export async function execute(interaction) {
         return;
     }
 
-    // ── Date range filter (parsed from YYYY-MM-DD strings) ──
-    let dateFromMs = null;
-    let dateToMs = null;
-    if (dateFrom) {
-        const d = new Date(dateFrom + 'T00:00:00Z');
-        if (!isNaN(d.getTime())) dateFromMs = d.getTime();
-    }
-    if (dateTo) {
-        const d = new Date(dateTo + 'T23:59:59Z');
-        if (!isNaN(d.getTime())) dateToMs = d.getTime();
-    }
+    // ── Date range filter (supports DD-MM-YYYY or YYYY-MM-DD) ──
+    const dateFromMs = parseDateParam(dateFrom);
+    const dateToMs = parseDateParam(dateTo);
 
     // ── Morgue lookup ──
     let morgueRecords = null;
@@ -222,7 +268,7 @@ export async function execute(interaction) {
             let filtered = morgueRecords;
             if (dateFromMs || dateToMs) {
                 filtered = morgueRecords.filter(r => {
-                    const ts = r.lastUpdated;
+                    const ts = recordTimestamp(r);
                     if (!ts) return !dateFromMs && !dateToMs;
                     if (dateFromMs && ts < dateFromMs) return false;
                     if (dateToMs && ts > dateToMs) return false;
@@ -250,13 +296,25 @@ export async function execute(interaction) {
     if (matched.length > 0) {
         for (const m of matched) {
             for (const r of m.records) {
-                const narc = (r.narcotics || '').trim();
+                const narc = cleanNarcotics(r.narcotics);
                 if (narc && narc !== 'N/A' && narc !== 'None' && narc !== 'Unknown' && narc !== '') {
-                    drugWarnings.push({ name: m.name, caseId: r.caseId, narcotics: narc, bac: r.bac || '0.00%' });
+                    const dateStr = r.timeOfDeath
+                        ? r.timeOfDeath.replace(/\s*\(.*?\)\s*$/, '').trim()
+                        : r.lastUpdated
+                            ? new Date(r.lastUpdated).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+                            : null;
+                    drugWarnings.push({
+                        name: m.name,
+                        caseId: r.caseId,
+                        narcotics: narc,
+                        bac: r.bac || '0.00%',
+                        date: dateStr,
+                    });
                 }
                 // Track earliest record
-                if (r.lastUpdated && (!earliestDate || r.lastUpdated < earliestDate)) {
-                    earliestDate = r.lastUpdated;
+                const rTs = recordTimestamp(r);
+                if (rTs && (!earliestDate || rTs < earliestDate)) {
+                    earliestDate = rTs;
                 }
             }
         }
@@ -264,8 +322,9 @@ export async function execute(interaction) {
     // Also check earliest across all morgue data, not just matched
     if (!earliestDate && morgueRecords && morgueRecords.length > 0) {
         for (const r of morgueRecords) {
-            if (r.lastUpdated && (!earliestDate || r.lastUpdated < earliestDate)) {
-                earliestDate = r.lastUpdated;
+            const rTs = recordTimestamp(r);
+            if (rTs && (!earliestDate || rTs < earliestDate)) {
+                earliestDate = rTs;
             }
         }
     }
@@ -308,7 +367,7 @@ export async function execute(interaction) {
         let warnDetail = '';
         let warnCount = 0;
         for (const w of drugWarnings) {
-            const line = `**${w.name}** (#${w.caseId}) — ${w.narcotics} [BAC: ${w.bac}]\n`;
+            const line = `**${w.name}** (#${w.caseId}) — ${w.narcotics} [BAC: ${w.bac}]${w.date ? ` — ${w.date}` : ''}\n`;
             if (warnDetail.length + line.length > 950) {
                 const remaining = drugWarnings.length - warnCount;
                 warnDetail += `...and ${remaining} more flagged`;
@@ -359,19 +418,21 @@ export async function execute(interaction) {
                 causeOfDeath: r.causeOfDeath,
                 name: r.name,
                 bac: r.bac || '0.00%',
-                narcotics: r.narcotics || 'N/A',
+                narcotics: cleanNarcotics(r.narcotics) || 'N/A',
             })),
         })),
         unmatched: checkMorgue ? unmatched : undefined,
         members: members,
     };
 
-    // Save to VPS disk if requested
+    // Save to VPS disk if requested (into the debug/ folder)
     let savePath = null;
     if (saveFile) {
         const timestamp = Date.now();
-        savePath = resolve(__dirname, '..', `group-scan-${forumKey}-g${groupId}-${timestamp}.json`);
+        const debugDir = resolve(__dirname, '..', 'debug');
+        savePath = resolve(debugDir, `group-scan-${forumKey}-g${groupId}-${timestamp}.json`);
         try {
+            mkdirSync(debugDir, { recursive: true });
             writeFileSync(savePath, JSON.stringify(outputData, null, 2), 'utf-8');
         } catch (err) {
             console.error(`[CMD] Failed to save group scan file: ${err.message}`);

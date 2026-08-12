@@ -10,6 +10,10 @@ export const data = new SlashCommandBuilder()
     .addStringOption(option =>
         option.setName('date')
             .setDescription('Filter by date of death (DD/MMM/YYYY, e.g. 30/JUN/2026)')
+            .setRequired(false))
+    .addStringOption(option =>
+        option.setName('from')
+            .setDescription('Scan from this date onward (DD/MMM/YYYY, e.g. 20/JUL/2026)')
             .setRequired(false));
 
 export async function execute(interaction) {
@@ -23,6 +27,7 @@ export async function execute(interaction) {
     }
 
     const dateStr = interaction.options.getString('date');
+    const fromStr = interaction.options.getString('from');
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     try {
@@ -32,13 +37,18 @@ export async function execute(interaction) {
 
         const { scanAndDraftCKs } = await import('../services/deathRecordDraft.js');
 
-        // Confirm before proceeding
-        const confirmMsg = dateStr
-            ? `Scanning CK coroner reports from **${dateStr}**, matching against morgue records...`
-            : 'Scanning **all** CK coroner reports across both paths... This may take a while.';
+        // Build description based on filter type
+        let confirmMsg;
+        if (dateStr) {
+            confirmMsg = `Scanning CK coroner reports with date of death **${dateStr}**...`;
+        } else if (fromStr) {
+            confirmMsg = `Scanning CK coroner reports from **${fromStr}** to present...`;
+        } else {
+            confirmMsg = 'Scanning **all** CK coroner reports across both paths... This may take a while.';
+        }
         await interaction.editReply({ content: confirmMsg });
 
-        const results = await scanAndDraftCKs(db, { date: dateStr || undefined });
+        const results = await scanAndDraftCKs(db, { date: dateStr || undefined, dateFrom: fromStr || undefined });
 
         const fields = [
             { name: 'CK Reports Found', value: String(results.total), inline: true },
@@ -64,8 +74,10 @@ export async function execute(interaction) {
         }
 
         let description = dateStr
-            ? `Scanned reports from **${dateStr}**`
-            : 'Scanned all CK reports';
+            ? `Scanned reports with date of death **${dateStr}**`
+            : (fromStr
+                ? `Scanned reports from **${fromStr}** to present`
+                : 'Scanned all CK reports');
         if (results.drafted > 0) {
             description += `\nDraft(s) sent to <#${process.env.DEATH_RECORD_DRAFT_CHANNEL_ID || 'Death Record Drafts'}>. Approve or deny them there.`;
         } else if (results.total === 0) {
@@ -83,7 +95,7 @@ export async function execute(interaction) {
             .setColor(color)
             .setDescription(description)
             .addFields(fields)
-            .setFooter({ text: `/${interaction.commandName}${dateStr ? ' ' + dateStr : ''}` })
+            .setFooter({ text: `/${interaction.commandName}${dateStr ? ' date:' + dateStr : fromStr ? ' from:' + fromStr : ''}` })
             .setTimestamp();
 
         await interaction.editReply({ content: null, embeds: [embed] });

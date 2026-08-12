@@ -78,6 +78,8 @@ async function registerCommands() {
     const reportSkip = await import('./commands/report-skip.js');
     const deathRecordCheck = await import('./commands/death-record-check.js');
     const deathRecordPending = await import('./commands/death-record-pending.js');
+    const pendingReports = await import('./commands/pending-reports.js');
+    const purgeDeathDrafts = await import('./commands/purge-death-drafts.js');
     const reportRetry = await import('./commands/report-retry.js');
     const forceAutopsyCheck = await import('./commands/force-autopsy-check.js');
     const autopsyLoa = await import('./commands/autopsy-loa.js');
@@ -97,6 +99,11 @@ async function registerCommands() {
     const patientSearch = await import('./commands/patient-search.js');
     const fixAutopsy = await import('./commands/fix-autopsy.js');
     const groupMorgueCheck = await import('./commands/group-morgue-check.js');
+    const faceRedraft = await import('./commands/face-redraft.js');
+    const agencyCreds = await import('./commands/agency-creds.js');
+    const dev = await import('./commands/dev.js');
+    const autopsyRequest = await import('./commands/autopsy-request.js');
+    const autopsyStats = await import('./commands/autopsy-stats.js');
     const commands = [
         morgue.data.toJSON(),
         card.data.toJSON(),
@@ -109,6 +116,8 @@ async function registerCommands() {
         reportSkip.data.toJSON(),
         deathRecordCheck.data.toJSON(),
         deathRecordPending.data.toJSON(),
+        pendingReports.data.toJSON(),
+        purgeDeathDrafts.data.toJSON(),
         reportRetry.data.toJSON(),
         forceAutopsyCheck.data.toJSON(),
         autopsyLoa.data.toJSON(),
@@ -127,6 +136,11 @@ async function registerCommands() {
         testNotify.data.toJSON(),
         patientSearch.data.toJSON(),
         groupMorgueCheck.data.toJSON(),
+        faceRedraft.data.toJSON(),
+        agencyCreds.data.toJSON(),
+        dev.data.toJSON(),
+        autopsyRequest.data.toJSON(),
+        autopsyStats.data.toJSON(),
     ];
 
     const rest = new REST({ version: '10' }).setToken(token);
@@ -265,6 +279,22 @@ client.once('clientReady', async () => {
     } catch (err) {
         console.warn('[BOT] ⚠️ Queue dashboard failed to start (non-fatal):', err.message);
     }
+
+    // ── Start CCTV scheduler (fetches all cameras every 6 hours) ──
+    try {
+        const { startCctvScheduler } = await import('./services/cctvScheduler.js');
+        startCctvScheduler();
+    } catch (err) {
+        console.warn('[BOT] ⚠️ CCTV scheduler failed to start (non-fatal):', err.message);
+    }
+
+    // ── Start Face publish sweep (publishes scheduled Face posts after their delay) ──
+    try {
+        const { startFacePublishSweep } = await import('./services/deathRecordDraftFace.js');
+        startFacePublishSweep().catch((err) => console.warn('[BOT] ⚠️ Face publish sweep failed to start (non-fatal):', err.message));
+    } catch (err) {
+        console.warn('[BOT] ⚠️ Face publish sweep failed to start (non-fatal):', err.message);
+    }
 });
 
 client.on('interactionCreate', async (interaction) => {
@@ -297,17 +327,73 @@ client.on('interactionCreate', async (interaction) => {
         return;
     }
 
-    // Handle Death Record draft buttons (Approve/Edit/Deny)
-    if (interaction.isButton() && (interaction.customId.startsWith('dr_approve_') || interaction.customId.startsWith('dr_edit_') || interaction.customId.startsWith('dr_checkmorgue_') || interaction.customId.startsWith('dr_deny_'))) {
+    // Handle Death Record draft buttons (Approve/Edit/Fields/Check/Deny)
+    if (interaction.isButton() && (interaction.customId.startsWith('dr_approve_') || interaction.customId.startsWith('dr_edit_') || interaction.customId.startsWith('dr_editfields_') || interaction.customId.startsWith('dr_checkmorgue_') || interaction.customId.startsWith('dr_deny_'))) {
         const { handleDraftButton } = await import('./services/deathRecordDraft.js');
         await handleDraftButton(interaction);
         return;
     }
 
     // Handle Death Record draft Edit modal submission
-    if (interaction.isModalSubmit() && interaction.customId.startsWith('dr_edit_modal_')) {
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('dr_editbbc_modal_')) {
         const { handleEditModal } = await import('./services/deathRecordDraft.js');
         await handleEditModal(interaction);
+        return;
+    }
+
+    // Handle Death Record draft Edit Fields modal submission
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('dr_editfld_modal_')) {
+        const { handleEditFieldsModal } = await import('./services/deathRecordDraft.js');
+        await handleEditFieldsModal(interaction);
+        return;
+    }
+
+    // Handle Facebrowser post draft buttons (Approve/Edit/Deny)
+    if (interaction.isButton() && (interaction.customId.startsWith('face_approve_') || interaction.customId.startsWith('face_edit_') || interaction.customId.startsWith('face_deny_'))) {
+        const { handleFaceButton } = await import('./services/deathRecordDraft.js');
+        await handleFaceButton(interaction);
+        return;
+    }
+
+    // Handle Facebrowser post draft Edit modal submission
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('face_edit_modal_')) {
+        const { handleFaceEditModal } = await import('./services/deathRecordDraft.js');
+        await handleFaceEditModal(interaction);
+        return;
+    }
+
+    // Handle Developer panel buttons (dev_*)
+    if (interaction.isButton() && interaction.customId.startsWith('dev_')) {
+        const { handleDevButton } = await import('./services/devPanel.js');
+        await handleDevButton(interaction);
+        return;
+    }
+
+    // Handle Developer panel Agency Credentials modal
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('dev_creds_modal')) {
+        const { handleDevCredsModal } = await import('./services/devPanel.js');
+        await handleDevCredsModal(interaction);
+        return;
+    }
+
+    // Handle Developer panel action modals (dev_modal_* — autopsy/death-record args)
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('dev_modal_')) {
+        const { handleDevActionModal } = await import('./services/devPanel.js');
+        await handleDevActionModal(interaction);
+        return;
+    }
+
+    // Handle autopsy-request preview buttons (Approve / Edit / Deny)
+    if (interaction.isButton() && (interaction.customId.startsWith('ar_appr_') || interaction.customId.startsWith('ar_edit_') || interaction.customId.startsWith('ar_deny_'))) {
+        const { handleButton } = await import('./commands/autopsy-request.js');
+        await handleButton(interaction);
+        return;
+    }
+
+    // Handle autopsy-request chained modal submissions
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('ar_modal_')) {
+        const { handleModal } = await import('./commands/autopsy-request.js');
+        await handleModal(interaction);
         return;
     }
 
@@ -406,6 +492,19 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.isStringSelectMenu() && interaction.customId.startsWith('reassign_me_pick_')) {
         const { onMePick } = await import('./commands/reassign-autopsy.js');
         await onMePick(interaction);
+        return;
+    }
+
+    // Handle autocomplete for commands that support it
+    if (interaction.isAutocomplete()) {
+        const command = client.commands.get(interaction.commandName);
+        if (command?.autocomplete) {
+            try {
+                await command.autocomplete(interaction);
+            } catch (err) {
+                console.error(`[BOT] ❌ Autocomplete error for /${interaction.commandName}:`, err.message);
+            }
+        }
         return;
     }
 
@@ -512,6 +611,12 @@ async function start() {
     const deathRecordPendingCmd = await import('./commands/death-record-pending.js');
     client.commands.set(deathRecordPendingCmd.data.name, { execute: deathRecordPendingCmd.execute });
 
+    const pendingReportsCmd = await import('./commands/pending-reports.js');
+    client.commands.set(pendingReportsCmd.data.name, { execute: pendingReportsCmd.execute });
+
+    const purgeDeathDraftsCmd = await import('./commands/purge-death-drafts.js');
+    client.commands.set(purgeDeathDraftsCmd.data.name, { execute: purgeDeathDraftsCmd.execute });
+
     const reportRetryCmd = await import('./commands/report-retry.js');
     client.commands.set(reportRetryCmd.data.name, { execute: reportRetryCmd.execute });
 
@@ -536,6 +641,12 @@ async function start() {
     const assignAutopsyCmd = await import('./commands/assign-autopsy.js');
     client.commands.set(assignAutopsyCmd.data.name, { execute: assignAutopsyCmd.execute });
 
+    const autopsyRequestCmd = await import('./commands/autopsy-request.js');
+    client.commands.set(autopsyRequestCmd.data.name, { execute: autopsyRequestCmd.execute, autocomplete: autopsyRequestCmd.autocomplete });
+
+    const autopsyStatsCmd = await import('./commands/autopsy-stats.js');
+    client.commands.set(autopsyStatsCmd.data.name, { execute: autopsyStatsCmd.execute });
+
     const testAutopsyCmd = await import('./commands/test-autopsy.js');
     client.commands.set(testAutopsyCmd.data.name, { execute: testAutopsyCmd.execute });
 
@@ -550,7 +661,7 @@ async function start() {
     client.commands.set(rotationListCmd.data.name, { execute: rotationListCmd.execute });
 
     const rotationSetCmd = await import('./commands/rotation-set.js');
-    client.commands.set(rotationSetCmd.data.name, { execute: rotationSetCmd.execute });
+    client.commands.set(rotationSetCmd.data.name, { execute: rotationSetCmd.execute, autocomplete: rotationSetCmd.autocomplete });
 
     const patientSearchCmd = await import('./commands/patient-search.js');
     client.commands.set(patientSearchCmd.data.name, { execute: patientSearchCmd.execute });
@@ -566,6 +677,15 @@ async function start() {
 
     const groupMorgueCheckCmd = await import('./commands/group-morgue-check.js');
     client.commands.set(groupMorgueCheckCmd.data.name, { execute: groupMorgueCheckCmd.execute });
+
+    const faceRedraftCmd = await import('./commands/face-redraft.js');
+    client.commands.set(faceRedraftCmd.data.name, { execute: faceRedraftCmd.execute });
+
+    const agencyCredsCmd = await import('./commands/agency-creds.js');
+    client.commands.set(agencyCredsCmd.data.name, { execute: agencyCredsCmd.execute });
+
+    const devCmd = await import('./commands/dev.js');
+    client.commands.set(devCmd.data.name, { execute: devCmd.execute });
 
     console.log('[BOT] 🔌 Connecting to Discord...');
     await client.login(token);

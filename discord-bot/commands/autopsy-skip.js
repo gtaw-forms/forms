@@ -25,7 +25,8 @@ export async function execute(interaction) {
     const reason = interaction.options.getString('reason') || 'Manual skip';
 
     try {
-        const admin = (await import('firebase-admin')).default;
+        const { initializeApp, cert, getApps } = await import('firebase-admin/app');
+        const { getDatabase } = await import('firebase-admin/database');
         const { readFileSync, existsSync } = await import('fs');
         const { resolve } = await import('path');
 
@@ -41,9 +42,10 @@ export async function execute(interaction) {
             return;
         }
 
-        let app;
-        try { app = admin.app(); } catch { app = admin.initializeApp({ credential: admin.credential.cert(serviceAccount), databaseURL }); }
-        const db = admin.database();
+        if (getApps().length === 0) {
+            initializeApp({ credential: cert(serviceAccount), databaseURL });
+        }
+        const db = getDatabase();
 
         // Search by OOC name, then IC name
         let snap = await db.ref('autopsy-requested').orderByChild('oocName').equalTo(searchName).once('value');

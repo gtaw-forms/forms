@@ -31,7 +31,7 @@ const FORM_LABELS = {
     // Mental Health
     session_notes:        'Session Notes - Consultation',
     intensive_treatment:  'Intensive Treatment Certification',
-    psych_eval:           'Psych Eval',
+    'psych-eval':           'Psych Eval',
 };
 
 function getTimeAgo(isoString) {

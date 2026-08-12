@@ -1,7 +1,5 @@
 import React, { createContext, useState, useRef, useCallback, useContext, useEffect } from 'react';
 import Notification from '../components/UI/Notification';
-import { database } from '../firebase';
-import { ref, onValue, off } from 'firebase/database';
 
 const DEFAULT_NOTIFICATION_DURATION = 5000; 
 
@@ -59,8 +57,6 @@ const NotificationContext = createContext();
 export const useNotification = () => {
     return useContext(NotificationContext);
 };
-
-import { ToastContainer } from 'react-bootstrap';
 
 export const NotificationProvider = ({ children }) => {
     const [notifications, setNotifications] = useState([]);
@@ -130,32 +126,20 @@ export const NotificationProvider = ({ children }) => {
         return newNotificationId;
     }, [removeNotification]);
 
-    useEffect(() => {
-        const maintenanceRef = ref(database, 'appMetadata/maintenance');
-        const handleValue = (snapshot) => {
-            const data = snapshot.val();
-            if (data && data.active) {
-                showNotification(
-                    data.message || 'System maintenance in progress. Some features may be unavailable.',
-                    'error',
-                    0,
-                    { key: 'maintenance-banner' }
-                );
-            } else {
-                removeNotification('maintenance-banner');
-            }
-        };
-        onValue(maintenanceRef, handleValue);
-        return () => {
-            off(maintenanceRef, 'value', handleValue);
-            removeNotification('maintenance-banner');
-        };
-    }, [showNotification, removeNotification]);
-
     return (
         <NotificationContext.Provider value={{ showNotification, removeNotification }}>
             {children}
-            <ToastContainer position="bottom-end" className="p-3" style={{ zIndex: 1060, position: 'fixed' }}>
+            <div style={{
+                position: 'fixed',
+                bottom: 24,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                zIndex: 1060,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                pointerEvents: 'none',
+            }}>
                 {notifications.map(notification => (
                     <Notification
                         key={notification.id}
@@ -169,7 +153,7 @@ export const NotificationProvider = ({ children }) => {
                         }))}
                     />
                 ))}
-            </ToastContainer>
+            </div>
         </NotificationContext.Provider>
     );
 };

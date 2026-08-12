@@ -11,21 +11,18 @@ import { getDatabase, ref, get, set } from 'firebase/database';
 import { isGoogleAuthenticated, getGoogleUser } from '../../services/gtaWorldAuth';
 import { runOAuthDiagnostics, testFirebaseFunctions, testProfileRetrieval, logEnvironmentInfo } from '../../services/firebaseDebug';
 import { triggerFetchExternalUrl, triggerWebhookProxy } from '../../services/firebaseFunctions';
-import { WebhookProvider } from '../../contexts/WebhookProvider';
 import { logAdminAction, getUserContext } from '../../utils/logging';
 import LoginSplash from '../Auth/LoginSplash';
 
 // Static imports for managers (removed lazy loading)
 import DatabaseEditor from './DatabaseEditor';
 import FactionDataUpload from './FactionDataUpload';
-import WebhookManager from './WebhookManager';
 import FirebaseFunctionsTester from './FirebaseFunctionsTester';
 import EmployeeManager from './EmployeeManager';
 import LsccManager from './LsccManager';
 import FormsManager from './FormsManager';
-import MetricsDashboard from './MetricsDashboard';
 import MorgueManager from './MorgueManager';
-import BotStatus from './BotStatus';
+import CctvViewer from './CctvViewer';
 
 const AdminDashboard = ({
 
@@ -54,6 +51,9 @@ const AdminDashboard = ({
     const [maintenanceActive, setMaintenanceActive] = useState(false);
     const [maintenanceMessage, setMaintenanceMessage] = useState('');
     const [isSavingMaintenance, setIsSavingMaintenance] = useState(false);
+    const [morgueBannerText, setMorgueBannerText] = useState('');
+    const [morgueBannerType, setMorgueBannerType] = useState('info');
+    const [isSavingMorgueBanner, setIsSavingMorgueBanner] = useState(false);
     const navigate = useNavigate();
 
     const [externalStatuses, setExternalStatuses] = useState({
@@ -211,58 +211,40 @@ const AdminDashboard = ({
     const scriptRank = gtaWorldUser?.faction?.scriptRank;
     const isSuperAdminAccess = accessLevel === 'superadmin' || permissions.includes('superadmin_access');
 
-    const isRank13OrHigher = scriptRank >= 13;
-    const isRank14OrHigher = scriptRank >= 14;
-    const isRank15OrHigher = scriptRank >= 15;
+    // Simplified: Rank 11+ sees everything. Rank Permissions stays hardcoded at 15+.
     const isRank11OrHigher = scriptRank >= 11;
-    const hasLsccManagerAccess = isGoogleAdminActive || isSuperAdminAccess || scriptRank >= 10;
-    const hasFormsManagerAccess = isGoogleAdminActive || isSuperAdminAccess || scriptRank >= 10;
-
-    // Determine access levels for specific sections
-    const hasServiceStatusAccess = isGoogleAdminActive || isSuperAdminAccess || isRank14OrHigher;
-    const hasUsersAccess = isGoogleAdminActive || isSuperAdminAccess || isRank14OrHigher;
+    const isRank15OrHigher = scriptRank >= 15;
+    const hasAdminPageAccess = isGoogleAdminActive || isSuperAdminAccess || isRank11OrHigher;
     const hasRankPermissionsAccess = isGoogleAdminActive || isSuperAdminAccess || isRank15OrHigher;
-    const hasEmployeeManagerAccess = isGoogleAdminActive || isSuperAdminAccess || isRank13OrHigher;
-    
-    const canUseGoogleAdminOverride = isEmailSignin; // Only available for email signin
-    
-    // Override permissions for Google-authenticated users
-    const hasAdminAccess = isGoogleAdminActive || isSuperAdminAccess || canAccessAdmin;
-    const hasFactionUpload = isGoogleAdminActive || isSuperAdminAccess || canUploadFactionData || (scriptRank >= 10); // Direct rank check for faction upload
-    const hasDatabaseAccess = isGoogleAdminActive || isSuperAdminAccess || canAccessDatabase || (scriptRank >= 12); // Direct rank check for database
-    const hasWebhookAccess = isGoogleAdminActive || isSuperAdminAccess || canManageWebhooks || isRank11OrHigher; // Direct rank check for webhook management
-    const hasDevAccess = isGoogleAdminActive || isSuperAdminAccess || isRank11OrHigher;
+
+    const canUseGoogleAdminOverride = isEmailSignin;
 
     // -----------------------------------------------------------------------
     // Rank check helpers for admin action logging
     // -----------------------------------------------------------------------
     const getAccessForSection = (section) => {
         switch (section) {
-            case 'metrics': return hasUsersAccess;
-            case 'employeeManager': return hasEmployeeManagerAccess;
-            case 'lscc': return hasLsccManagerAccess;
-            case 'forms': return hasFormsManagerAccess;
-            case 'webhooks': return hasWebhookAccess;
-            case 'factions': return hasFactionUpload;
-            case 'database': return hasDatabaseAccess;
-            case 'morgue': return hasDatabaseAccess;
-            case 'botStatus': return hasDevAccess;
-            case 'dev': return hasDevAccess;
+            case 'employeeManager': return hasAdminPageAccess;
+            case 'lscc': return hasAdminPageAccess;
+            case 'forms': return hasAdminPageAccess;
+            case 'factions': return hasAdminPageAccess;
+            case 'database': return hasAdminPageAccess;
+            case 'morgue': return hasAdminPageAccess;
+            case 'cctv': return hasAdminPageAccess;
+            case 'dev': return hasAdminPageAccess;
             default: return true;
         }
     };
 
     const getRequiredRank = (section) => {
         switch (section) {
-            case 'metrics': return 14;
             case 'employeeManager': return 13;
             case 'lscc': return 10;
             case 'forms': return 10;
-            case 'webhooks': return 11;
             case 'factions': return 10;
             case 'database': return 12;
             case 'morgue': return 12;
-            case 'botStatus': return 11;
+            case 'cctv': return 11;
             case 'dev': return 11;
             default: return null;
         }
@@ -469,6 +451,47 @@ const AdminDashboard = ({
         }
     };
 
+    // Load current morgue banner on mount
+    useEffect(() => {
+        const dbRef = ref(getDatabase(), 'appMetadata/morgueBanner');
+        get(dbRef).then((snap) => {
+            if (snap.exists()) {
+                const val = snap.val();
+                setMorgueBannerText(val.text || '');
+                setMorgueBannerType(val.type || 'info');
+            }
+        }).catch(() => {});
+    }, []);
+
+    const handleSaveMorgueBanner = async () => {
+        setIsSavingMorgueBanner(true);
+        try {
+            const dbRef = ref(getDatabase(), 'appMetadata/morgueBanner');
+            await set(dbRef, {
+                text: morgueBannerText.trim(),
+                type: morgueBannerType,
+                updatedAt: Date.now(),
+            });
+            showInAppNotification('Morgue banner updated.', 'success');
+        } catch (error) {
+            showInAppNotification('Failed to save morgue banner.', 'error');
+        } finally {
+            setIsSavingMorgueBanner(false);
+        }
+    };
+
+    const handleClearMorgueBanner = async () => {
+        try {
+            const dbRef = ref(getDatabase(), 'appMetadata/morgueBanner');
+            await set(dbRef, null);
+            setMorgueBannerText('');
+            setMorgueBannerType('info');
+            showInAppNotification('Morgue banner cleared.', 'success');
+        } catch (error) {
+            showInAppNotification('Failed to clear morgue banner.', 'error');
+        }
+    };
+
     const handleSectionChange = (sectionName, sectionLabel) => {
         setSelectedSection(sectionName);
         const { userAgent, timeZone } = getUserContext();
@@ -497,90 +520,55 @@ const AdminDashboard = ({
     }
 
     return (
-        <div className="admin-dashboard-container">
-            <div className="admin-dashboard-layout">
-                {/* Modern Admin Sidebar */}
-                <aside className="admin-sidebar">
-                    <div className="sidebar-header">
-                        <h5><i className="fas fa-shield-alt"></i> <span>Admin Panel</span></h5>
-                        <div className="sidebar-user-info">
-                            <p><strong>{currentUser?.displayName || currentUser?.email || 'Unknown User'}</strong></p>
-                            {gtaWorldUser && (
-                                <p className="text-info"><i className="fas fa-user me-1"></i> {gtaWorldUser.username}</p>
-                            )}
-                        </div>
-                        
-                        {currentUser && canUseGoogleAdminOverride && (
-                            <div className="mt-3 px-1">
-                                <div className="form-check form-switch small">
-                                    <input
-                                        className="form-check-input"
-                                        type="checkbox"
-                                        role="switch"
-                                        id="googleAdminToggle"
-                                        checked={googleAdminToggle}
-                                        onChange={(e) => setGoogleAdminToggle(e.target.checked)}
-                                    />
-                                    <label className="form-check-label text-muted" htmlFor="googleAdminToggle">
-                                        Admin Override
-                                    </label>
-                                </div>
+        <div className="app">
+                <div className="sidebar">
+                    <div className="sidebar-head">
+                        <div className="brand">
+                            <div className="brand-mark">AD</div>
+                            <div className="brand-text">
+                                <div className="t1">Admin Panel</div>
+                                <div className="t2">{currentUser?.displayName || currentUser?.email || 'Unknown'}</div>
                             </div>
-                        )}
+                        </div>
                     </div>
 
-                    <nav className="sidebar-nav">
-                        {hasUsersAccess && (
-                            <button className={`nav-item-btn ${selectedSection === 'metrics' ? 'active' : ''}`} onClick={() => handleSectionChange('metrics', 'User Metrics')}>
-                                <i className="fas fa-chart-line"></i> <span>User Metrics</span>
-                            </button>
-                        )}
-                        {hasEmployeeManagerAccess && (
-                            <button className={`nav-item-btn ${selectedSection === 'employeeManager' ? 'active' : ''}`} onClick={() => handleSectionChange('employeeManager', 'Employee Metrics')}>
-                                <i className="fas fa-users-cog"></i> <span>Employee Metrics</span>
-                            </button>
-                        )}
-                        {hasLsccManagerAccess && (
-                            <button className={`nav-item-btn ${selectedSection === 'lscc' ? 'active' : ''}`} onClick={() => handleSectionChange('lscc', 'LSCC Protocols')}>
-                                <i className="fas fa-hospital-alt"></i> <span>LSCC Protocols</span>
-                            </button>
-                        )}
-                        {hasFormsManagerAccess && (
-                            <button className={`nav-item-btn ${selectedSection === 'forms' ? 'active' : ''}`} onClick={() => handleSectionChange('forms', 'Form Manager')}>
-                                <i className="fas fa-file-signature"></i> <span>Form Manager</span>
-                            </button>
-                        )}
-                        <button className={`nav-item-btn ${selectedSection === 'webhooks' ? 'active' : ''}`} onClick={() => handleSectionChange('webhooks', 'Webhooks')}>
-                            <i className="fas fa-bullhorn"></i> <span>Webhooks</span>
-                        </button>
-                        <button className={`nav-item-btn ${selectedSection === 'factions' ? 'active' : ''}`} onClick={() => handleSectionChange('factions', 'Faction Data')}>
-                            <i className="fas fa-users"></i> <span>Faction Data</span>
-                        </button>
-                        <button className={`nav-item-btn ${selectedSection === 'database' ? 'active' : ''}`} onClick={() => handleSectionChange('database', 'Database Editor')}>
-                            <i className="fas fa-database"></i> <span>Database Editor</span>
-                        </button>
-                        <button className={`nav-item-btn ${selectedSection === 'morgue' ? 'active' : ''}`} onClick={() => handleSectionChange('morgue', 'Morgue Records')}>
-                            <i className="fas fa-microscope"></i> <span>Morgue Records</span>
-                        </button>
-                        {hasDevAccess && (
-                            <button className={`nav-item-btn ${selectedSection === 'botStatus' ? 'active' : ''}`} onClick={() => handleSectionChange('botStatus', 'PHMC Bot')}>
-                                <i className="fas fa-robot"></i> <span>PHMC Bot</span>
-                            </button>
-                        )}
-                        {hasDevAccess && (
-                            <button className={`nav-item-btn ${selectedSection === 'maintenance' ? 'active' : ''}`} onClick={() => handleSectionChange('maintenance', 'System Maintenance')}>
-                                <i className="fas fa-wrench"></i> <span>System Maintenance</span>
-                            </button>
-                        )}
-                        {hasDevAccess && (
-                            <button className={`nav-item-btn ${selectedSection === 'dev' ? 'active' : ''}`} onClick={() => handleSectionChange('dev', 'Developer Console')}>
-                                <i className="fas fa-terminal"></i> <span>Developer Console</span>
-                            </button>
-                        )}
-                    </nav>
-                </aside>
+                    <div className="form-tree">
+                        <div className="cat-head" style={{ cursor: 'default' }}><span>Management</span></div>
+                        <div className={`form-item ${selectedSection === 'employeeManager' ? 'active' : ''}`} onClick={() => handleSectionChange('employeeManager', 'Employee Metrics')}>
+                            <span className="dot" />Employee Metrics
+                        </div>
+                        <div className={`form-item ${selectedSection === 'forms' ? 'active' : ''}`} onClick={() => handleSectionChange('forms', 'Form Manager')}>
+                            <span className="dot" />Form Manager
+                        </div>
+                        <div className={`form-item ${selectedSection === 'lscc' ? 'active' : ''}`} onClick={() => handleSectionChange('lscc', 'LSCC Protocols')}>
+                            <span className="dot" />LSCC Protocols
+                        </div>
 
-                <main className="admin-main-content">
+                        <div className="cat-head" style={{ cursor: 'default', marginTop: 12 }}><span>Data & Records</span></div>
+                        <div className={`form-item ${selectedSection === 'factions' ? 'active' : ''}`} onClick={() => handleSectionChange('factions', 'Faction Data')}>
+                            <span className="dot" />Faction Data
+                        </div>
+                        <div className={`form-item ${selectedSection === 'database' ? 'active' : ''}`} onClick={() => handleSectionChange('database', 'Database Editor')}>
+                            <span className="dot" />Database Editor
+                        </div>
+                        <div className={`form-item ${selectedSection === 'morgue' ? 'active' : ''}`} onClick={() => handleSectionChange('morgue', 'Morgue Records')}>
+                            <span className="dot" />Morgue Records
+                        </div>
+
+                        <div className="cat-head" style={{ cursor: 'default', marginTop: 12 }}><span>System</span></div>
+                        <div className={`form-item ${selectedSection === 'cctv' ? 'active' : ''}`} onClick={() => handleSectionChange('cctv', 'CCTV')}>
+                            <span className="dot" />CCTV
+                        </div>
+                        <div className={`form-item ${selectedSection === 'maintenance' ? 'active' : ''}`} onClick={() => handleSectionChange('maintenance', 'System Maintenance')}>
+                            <span className="dot" />System Maintenance
+                        </div>
+                        <div className={`form-item ${selectedSection === 'dev' ? 'active' : ''}`} onClick={() => handleSectionChange('dev', 'Developer Console')}>
+                            <span className="dot" />Developer Console
+                        </div>
+                    </div>
+                </div>
+
+                <div className="main-content" style={{ flex: 1, overflow: 'auto', padding: 22, border: 'none', borderRadius: 0 }}>
                     {/* Welcome Page / System Status */}
                     {selectedSection === 'serviceStatus' && (
                         <div className="welcome-hero">
@@ -642,117 +630,41 @@ const AdminDashboard = ({
 
                     {/* Section Rendering */}
                     <div className="section-content-wrapper">
-                        {selectedSection === 'metrics' && (
-                            hasUsersAccess ? <MetricsDashboard /> : <div className="admin-section"><div className="alert alert-danger border-0 bg-opacity-25 shadow-sm p-4">Access Denied</div></div>
-                        )}
-
                         {selectedSection === 'employeeManager' && (
-                            hasEmployeeManagerAccess ? <EmployeeManager /> : <div className="admin-section"><div className="alert alert-danger border-0 bg-opacity-25 shadow-sm p-4">Access Denied</div></div>
+                            hasAdminPageAccess ? <EmployeeManager /> : <div className="admin-section"><div className="alert alert-danger border-0 bg-opacity-25 shadow-sm p-4">Access Denied</div></div>
                         )}
 
                         {selectedSection === 'lscc' && (
-                            hasLsccManagerAccess ? <div className="dark"><LsccManager /></div> : <div className="admin-section"><div className="alert alert-danger border-0 bg-opacity-25 shadow-sm p-4">Access Denied</div></div>
+                            hasAdminPageAccess ? <div className="dark"><LsccManager /></div> : <div className="admin-section"><div className="alert alert-danger border-0 bg-opacity-25 shadow-sm p-4">Access Denied</div></div>
                         )}
 
                         {selectedSection === 'forms' && (
-                            hasFormsManagerAccess ? <FormsManager currentUser={currentUser} /> : <div className="admin-section"><div className="alert alert-danger border-0 bg-opacity-25 shadow-sm p-4">Access Denied</div></div>
+                            hasAdminPageAccess ? <FormsManager currentUser={currentUser} /> : <div className="admin-section"><div className="alert alert-danger border-0 bg-opacity-25 shadow-sm p-4">Access Denied</div></div>
                         )}
 
-                        {selectedSection === 'webhooks' && (
-                            hasWebhookAccess ? (
-                                <div className="admin-section">
-                                    <div className="d-flex justify-content-between align-items-center mb-5">
-                                        <h2 className="mb-0 fw-800"><i className="fas fa-bullhorn me-3 text-indigo"></i>Webhook Management</h2>
-                                        <span className="admin-badge admin-badge-indigo">{webhooks.length} Registered</span>
-                                    </div>
-                                    <div className="row g-4">
-                                        <div className="col-lg-5">
-                                            <div className="card h-100 border-0 shadow-sm">
-                                                <div className="card-header bg-transparent py-3 small text-muted uppercase fw-bold">Register Webhook</div>
-                                                <div className="card-body p-4">
-                                                    <div className="form-group mb-3">
-                                                        <label className="form-label small text-muted">Friendly Name</label>
-                                                        <input type="text" className="form-control bg-dark border-secondary text-white" placeholder="e.g., Dispatch Alerts" value={newWebhook.name} onChange={(e) => setNewWebhook(prev => ({ ...prev, name: e.target.value }))} />
-                                                    </div>
-                                                    <div className="form-group mb-3">
-                                                        <label className="form-label small text-muted">Webhook URL</label>
-                                                        <input type="url" className="form-control bg-dark border-secondary text-white font-monospace small" placeholder="https://discord.com/..." value={newWebhook.url} onChange={(e) => setNewWebhook(prev => ({ ...prev, url: e.target.value }))} />
-                                                    </div>
-                                                    <div className="form-group mb-4">
-                                                        <label className="form-label small text-muted">Event Type</label>
-                                                        <select className="form-select bg-dark border-secondary text-white" value={newWebhook.type} onChange={(e) => setNewWebhook(prev => ({ ...prev, type: e.target.value }))}>
-                                                            <option value="coronerAlerts">Coroner Alerts</option>
-                                                            <option value="phmcAlerts">PHMC Alerts</option>
-                                                            <option value="dev">Local Dev Alerts</option>
-                                                        </select>
-                                                    </div>
-                                                    <Button variant="primary" onClick={handleAddWebhook} disabled={isUpdatingWebhooks || !newWebhook.name || !newWebhook.url} className="w-100 py-2 admin-btn fw-bold">
-                                                        {isUpdatingWebhooks ? <Spinner animation="border" size="sm" /> : <><i className={`fas ${newWebhook.id ? 'fa-save' : 'fa-plus'} me-2`}></i>{newWebhook.id ? "Update Webhook" : "Register Webhook"}</>}
-                                                    </Button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="col-lg-7">
-                                            <div className="admin-modern-table mb-0 h-100">
-                                                <Table hover responsive className="mb-0">
-                                                    <thead>
-                                                        <tr><th>Target Name</th><th>Type</th><th className="text-end">Actions</th></tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        {webhooks.map((webhook) => (
-                                                            <tr key={webhook.id}>
-                                                                <td className="fw-bold">{webhook.name}</td>
-                                                                <td><span className={`admin-badge ${webhook.type === 'coronerAlerts' ? 'admin-badge-danger' : 'admin-badge-indigo'}`}>{webhook.type}</span></td>
-                                                                <td className="text-end">
-                                                                    <div className="btn-group">
-                                                                        <Button variant="link" className="text-info p-1" onClick={() => handleTestWebhook(webhook)}><i className="fas fa-paper-plane"></i></Button>
-                                                                        <Button variant="link" className="text-warning p-1" onClick={() => setNewWebhook(webhook)}><i className="fas fa-edit"></i></Button>
-                                                                        <Button variant="link" className="text-danger p-1" onClick={() => handleDeleteWebhook(webhook.id)}><i className="fas fa-trash"></i></Button>
-                                                                    </div>
-                                                                </td>
-                                                            </tr>
-                                                        ))}
-                                                    </tbody>
-                                                </Table>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <WebhookProvider>
-                                        <div className="card border-0 shadow-sm mt-5">
-                                            <div className="card-header bg-transparent py-3">
-                                                <h4 className="mb-0 text-indigo fw-bold small uppercase"><i className="fas fa-paper-plane me-2"></i>Send Webhook Announcement</h4>
-                                            </div>
-                                            <div className="card-body p-4">
-                                                <WebhookManager />
-                                            </div>
-                                        </div>
-                                    </WebhookProvider>
-                                </div>
-                            ) : <div className="admin-section"><div className="alert alert-warning border-0 bg-opacity-25 shadow-sm p-4">Webhook Access Denied</div></div>
-                        )}
 
                         {selectedSection === 'dev' && (
-                            hasDevAccess ? <div className="admin-section"><FirebaseFunctionsTester showInAppNotification={showInAppNotification} /></div> : <div className="admin-section"><div className="alert alert-danger border-0 bg-opacity-25 shadow-sm p-4">Access Denied</div></div>
+                            hasAdminPageAccess ? <div className="admin-section"><FirebaseFunctionsTester showInAppNotification={showInAppNotification} /></div> : <div className="admin-section"><div className="alert alert-danger border-0 bg-opacity-25 shadow-sm p-4">Access Denied</div></div>
                         )}
 
                         {selectedSection === 'factions' && (
-                            hasFactionUpload ? <FactionDataUpload showNotification={showInAppNotification} /> : <div className="admin-section"><div className="alert alert-warning border-0 bg-opacity-25 shadow-sm p-4">Denied</div></div>
+                            hasAdminPageAccess ? <FactionDataUpload showNotification={showInAppNotification} /> : <div className="admin-section"><div className="alert alert-warning border-0 bg-opacity-25 shadow-sm p-4">Denied</div></div>
                         )}
 
                         {selectedSection === 'database' && (
-                            hasDatabaseAccess ? <DatabaseEditor showNotification={showInAppNotification} currentUser={currentUser} gtawUser={gtaWorldUser} /> : <div className="admin-section"><div className="alert alert-warning border-0 bg-opacity-25 shadow-sm p-4">Denied</div></div>
+                            hasAdminPageAccess ? <DatabaseEditor showNotification={showInAppNotification} currentUser={currentUser} gtawUser={gtaWorldUser} /> : <div className="admin-section"><div className="alert alert-warning border-0 bg-opacity-25 shadow-sm p-4">Denied</div></div>
                         )}
 
                         {selectedSection === 'morgue' && (
-                            hasDatabaseAccess ? <MorgueManager showNotification={showInAppNotification} /> : <div className="admin-section"><div className="alert alert-warning border-0 bg-opacity-25 shadow-sm p-4">Denied</div></div>
+                            hasAdminPageAccess ? <MorgueManager showNotification={showInAppNotification} /> : <div className="admin-section"><div className="alert alert-warning border-0 bg-opacity-25 shadow-sm p-4">Denied</div></div>
                         )}
 
-                        {selectedSection === 'botStatus' && (
-                            hasDevAccess ? <BotStatus /> : <div className="admin-section"><div className="alert alert-danger border-0 bg-opacity-25 shadow-sm p-4">Access Denied</div></div>
+                        {selectedSection === 'cctv' && (
+                            hasAdminPageAccess ? <CctvViewer showInAppNotification={showInAppNotification} /> : <div className="admin-section"><div className="alert alert-danger border-0 bg-opacity-25 shadow-sm p-4">Access Denied</div></div>
                         )}
 
                         {selectedSection === 'maintenance' && (
-                            hasDevAccess ? (
+                            hasAdminPageAccess ? (
                                 <div className="admin-section">
                                     <div className="d-flex justify-content-between align-items-center mb-4">
                                         <h2 className="mb-0 fw-800"><i className="fas fa-wrench me-3 text-warning"></i>System Maintenance</h2>
@@ -801,24 +713,58 @@ const AdminDashboard = ({
                                             </button>
                                         </div>
                                     </div>
+
+                                    <hr className="my-4 border-secondary" />
+
+                                    <div className="admin-section-title"><i className="fas fa-bullhorn me-2" />Morgue Banner</div>
+                                    <p className="text-muted" style={{ fontSize: '0.9rem' }}>
+                                        Set a banner message shown at the top of the Morgue Records page (e.g. absence notices).
+                                    </p>
+                                    <div className="mb-3">
+                                        <label className="form-label fw-bold">Banner Message</label>
+                                        <textarea
+                                            className="form-control bg-dark border-secondary text-white"
+                                            rows={3}
+                                            placeholder="e.g. Morgue records may be delayed — on leave until Aug 5th."
+                                            value={morgueBannerText}
+                                            onChange={(e) => setMorgueBannerText(e.target.value)}
+                                        />
+                                    </div>
+                                    <div className="mb-3">
+                                        <label className="form-label fw-bold me-3">Banner Type</label>
+                                        <select
+                                            className="form-select bg-dark border-secondary text-white d-inline-block w-auto"
+                                            value={morgueBannerType}
+                                            onChange={(e) => setMorgueBannerType(e.target.value)}
+                                        >
+                                            <option value="info">Info</option>
+                                            <option value="warning">Warning</option>
+                                        </select>
+                                    </div>
+                                    <div className="d-flex gap-2">
+                                        <button
+                                            className="btn btn-warning fw-bold px-4 py-2"
+                                            onClick={handleSaveMorgueBanner}
+                                            disabled={isSavingMorgueBanner}
+                                        >
+                                            {isSavingMorgueBanner ? (
+                                                <><Spinner animation="border" size="sm" className="me-2" />Saving...</>
+                                            ) : (
+                                                <><i className="fas fa-save me-2"></i>Save Banner</>
+                                            )}
+                                        </button>
+                                        <button
+                                            className="btn btn-outline-danger fw-bold px-4 py-2"
+                                            onClick={handleClearMorgueBanner}
+                                        >
+                                            <i className="fas fa-times me-2"></i>Clear Banner
+                                        </button>
+                                    </div>
                                 </div>
                             ) : <div className="admin-section"><div className="alert alert-danger border-0 bg-opacity-25 shadow-sm p-4">Access Denied</div></div>
                         )}
                     </div>
-                </main>
-            </div>
-            <style>{`
-                .status-indicator { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
-                .status-indicator.online { background-color: var(--admin-success); box-shadow: 0 0 8px var(--admin-success); }
-                .status-indicator.degraded { background-color: #ffc107; box-shadow: 0 0 8px #ffc107; }
-                .status-indicator.offline { background-color: #dc3545; box-shadow: 0 0 8px #dc3545; }
-                .status-indicator.unknown { background-color: #6c757d; }
-                .text-indigo { color: var(--admin-accent) !important; }
-                .border-indigo { border-color: var(--admin-accent) !important; }
-                .bg-indigo { background-color: var(--admin-accent) !important; }
-                .uppercase { text-transform: uppercase; }
-                .italic { font-style: italic; }
-            `}</style>
+                </div>
         </div>
     );
 };

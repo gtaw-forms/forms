@@ -2,8 +2,10 @@ import { useCallback } from 'react';
 import { database } from '../firebase';
 import { ref, set, runTransaction } from 'firebase/database';
 import * as Sentry from "@sentry/react";
-import { getCharacterName, getCharacterID } from '../utils/identityUtils';
+import { getCharacterName, getCharacterID, resolveEmployeeCredentials } from '../utils/identityUtils';
+import { cleanRankText } from '../utils/textUtils';
 import { comprehensiveSanitize } from '../utils/textUtils';
+import { triggerGetPatientNames } from '../services/firebaseFunctions';
 import { useNotification } from '../contexts/NotificationContext';
 import { reportLogicalError } from '../utils/logging';
 import { useAuth } from '../contexts/AuthContext';
@@ -13,7 +15,7 @@ const isLocalHost = window.location.hostname === 'localhost' || window.location.
 
 const deployTrackedForms = ['coroner-report', 'coroner_email', 'death_record', 'autopsy', 'mass-ftality-test',
     'patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical',
-    'session_notes', 'intensive_treatment', 'psych_eval', 'testing-compact-mode'];
+    'session_notes', 'intensive_treatment', 'psych-eval', 'testing-compact-mode'];
 
 export function getReportBasePath(formFirebaseKey, botDeployOptedIn = false) {
   if (deployTrackedForms.includes(formFirebaseKey)) {
@@ -125,11 +127,12 @@ const formatToMMM_DD_YYYY = (isoDateTime) => {
 import { useGtaWorldAuthContext } from '../contexts/GtaWorldAuthContext';
 import { triggerWebhookProxy } from '../services/firebaseFunctions';
 
-export const useFormSaver = (gtaWorldUser, isGtaAuthenticated) => {
+export const useFormSaver = (gtaWorldUser, isGtaAuthenticated, rosterData = {}) => {
     const { showNotification } = useNotification();
     const { isFactionMember } = useGtaWorldAuthContext();
     const { user: authUser } = useAuth();
     const firebaseUid = authUser?.uid || null;
+    const { phmcListData = [], coronerListData = [] } = rosterData;
 
     const validateMembership = useCallback(() => {
         // --- LOCALHOST DEVELOPMENT BYPASS ---
@@ -200,11 +203,14 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated) => {
             const dateSource = anyDecWithDate?.dateOfDeath || formValues.dateTime;
             const formattedMFDate = formatToNorthAmericanDate(dateSource);
             finalTitle = `[${label}] ${nameSummary} - ${formattedMFDate}`;
-        } else if (['patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical', 'session_notes', 'intensive_treatment', 'psych_eval'].includes(selectedForm.firebaseKey) && !title) {
-            // Medical record fallback title
+        } else if (['patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical', 'session_notes', 'intensive_treatment', 'psych-eval'].includes(selectedForm.firebaseKey)) {
+            // Medical record title — uniform preset matching the patient-file
+            // thread naming (`<patientID> - <patientName>`, e.g. "1424 - Alyson
+            // Frost"). Ignores the form's own (often verbose) titleGeneratorCode
+            // so every medical report saves with a short, consistent title.
             const pName = formValues.decedentName || formValues.patientName || 'Unknown Patient';
-            const pId = formValues.patientID || '';
-            finalTitle = pId ? `Patient #${pId} - ${pName}` : `Patient - ${pName}`;
+            const pId = (formValues.patientID || '').trim();
+            finalTitle = pId ? `${pId} - ${pName}` : pName;
         } else if (selectedForm.firebaseKey === 'coroner_email' && !title) {
             // Only use fallback when saved without BBCode generation (title is empty)
             const reqOfficer = formValues.requestingOfficer || formValues.requesting_officer || '';
@@ -297,10 +303,69 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated) => {
         const sanitizedAuthorId = comprehensiveSanitize(currentAuthor);
         const sanitizedKey = finalTitle.trim().replace(/[.#$[/ \]]+/g, '_') + '_' + Date.now();
 
+        // ── Fix C: never persist blank employee identity ──
+        // If the form's employee fields are empty but we have OAuth data,
+        // resolve them from the roster right before saving. A saved report
+        // with blank coronerEmployee/Rank/Badge is what shipped blanks to the
+        // forum (Xavier Bogdanovic case).
+        const dataToSave = { ...formValues };
+        if (gtaWorldUser && isGtaAuthenticated && selectedForm?.accessType) {
+            const empType = selectedForm.accessType === 'Coroner' ? 'coroner' : 'phmc';
+            const needsEmployee = !String(dataToSave[`${empType}Employee`] || '').trim();
+            const needsRank = !String(dataToSave[`${empType}Rank`] || '').trim();
+            const needsBadge = !String(dataToSave[`${empType}Badge`] || '').trim();
+            if (needsEmployee || needsRank || needsBadge) {
+                const resolved = resolveEmployeeCredentials(gtaWorldUser, {
+                    phmcListData,
+                    coronerListData,
+                    cleanRank: cleanRankText,
+                });
+                if (resolved.employeeName) {
+                    if (needsEmployee) dataToSave[`${empType}Employee`] = resolved.employeeName;
+                    if (needsRank) dataToSave[`${empType}Rank`] = resolved.rank;
+                    if (needsBadge) dataToSave[`${empType}Badge`] = resolved.badge;
+                    dataToSave[`${empType}Discord`] = resolved.discord;
+                    dataToSave[`${empType}PHNumber`] = resolved.phNumber;
+                    dataToSave[`${empType}FirstName`] = resolved.firstName;
+                    dataToSave[`${empType}LastName`] = resolved.lastName;
+                    console.warn(`[useFormSaver] Fix C credential merge applied for ${resolved.employeeName} (matchedBy: ${resolved.matchedBy})`);
+                    reportLogicalError("CredentialFallbackApplied", "Save-time credential backfill from OAuth/roster", {
+                        formId: selectedForm.firebaseKey,
+                        employeeType: empType,
+                        matchedBy: resolved.matchedBy,
+                        employeeName: resolved.employeeName,
+                    });
+                }
+            }
+        }
+
+        // ── Medical record: validate/fill the patient name from the ID ──
+        // If a patientID was provided but the authoritative subject name
+        // (decedentName) is missing — e.g. the old legacy auto-fill stamped the
+        // author's name into patientName only (Paolina Russo / 1919 incident) —
+        // resolve the name from the patient index by ID. Never blocks saving.
+        const MEDICAL_SAVE_IDS = ['patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical', 'session_notes', 'intensive_treatment', 'psych-eval', 'testing-compact-mode'];
+        const isMedicalSave = MEDICAL_SAVE_IDS.includes(selectedForm.firebaseKey);
+        if (isMedicalSave && !String(dataToSave.decedentName || '').trim() && String(dataToSave.patientID || '').trim().length >= 2) {
+            try {
+                const res = await triggerGetPatientNames({ q: String(dataToSave.patientID).trim() });
+                const matches = res?.matches || [];
+                const exact = matches.find((m) => m.id != null && String(m.id) === String(dataToSave.patientID).trim());
+                if (exact && exact.name) {
+                    dataToSave.decedentName = exact.name;
+                    dataToSave.patientName = exact.name;
+                    dataToSave.patientID = String(exact.id);
+                    console.warn(`[useFormSaver] Patient name resolved from ID ${dataToSave.patientID} -> ${exact.name}`);
+                }
+            } catch (err) {
+                console.warn('[useFormSaver] Patient-ID lookup failed (saving without name resolution):', err?.message || err);
+            }
+        }
+
         const reportDataToSave = {
             formId: selectedForm.firebaseKey,
             formName: selectedForm.name,
-            data: sanitizeForFirebase(formValues),
+            data: sanitizeForFirebase(dataToSave),
             timestamp: Date.now(),
             originalKey: finalTitle,
             authorName: currentAuthor,
@@ -488,6 +553,48 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated) => {
             } catch (err) {
                 console.error("Fatal error constructing or sending Discord webhook.", err);
                 Sentry.captureException(err, { extra: { context: 'saveReport - Webhook' } });
+            }
+
+            // ── Body Tampered incident logging ──
+            // Any form with a body_tampered field that was ticked triggers a separate alert webhook.
+            try {
+                const bodyTamperedFields = (selectedForm.fields || []).filter(f => f.type === 'body_tampered');
+                // Requesting officer details (if present) so the alert identifies who requested the report
+                const reqOfficer = formValues['Requesting Officer'] || formValues.requestingOfficer || '';
+                const reqDeptVal = formValues.department || formValues.requestingOfficerDepartment;
+                const reqDept = (typeof reqDeptVal === 'object' && reqDeptVal !== null) ? (reqDeptVal.label || reqDeptVal.value) : reqDeptVal;
+                for (const btField of bodyTamperedFields) {
+                    if (!formValues[btField.name]) continue;
+                    const btReasonKey = btField.associatedInputField?.name || `${btField.name || 'bodyTampered'}Reason`;
+                    const btReason = formValues[btReasonKey] || 'No reason provided';
+                    const btFields = [
+                        { name: 'Report Title', value: `\`${finalTitle}\``, inline: false },
+                        { name: 'Submitter', value: currentAuthor, inline: true },
+                        { name: 'Body Tampered', value: 'Yes', inline: true },
+                        { name: 'Reason', value: btReason, inline: false },
+                    ];
+                    if (reqOfficer) {
+                        btFields.push({ name: 'Requesting Officer', value: reqOfficer, inline: true });
+                        if (reqDept) btFields.push({ name: 'Requesting Department', value: reqDept, inline: true });
+                    }
+                    const btPayload = {
+                        embeds: [{
+                            title: 'Body Tampered Alert',
+                            description: 'A report has been saved with the **Body Tampered** flag set.',
+                            color: 0xE5566B,
+                            fields: btFields,
+                            timestamp: new Date().toISOString(),
+                            footer: { text: `FormID: ${selectedForm.firebaseKey} | ReportKey: ${sanitizedKey}` }
+                        }]
+                    };
+                    triggerWebhookProxy('forms', btPayload).catch(error => {
+                        console.error("Error sending Body Tampered webhook to Discord:", error);
+                        Sentry.captureException(error, { extra: { context: 'saveReport - Body Tampered Webhook' } });
+                    });
+                }
+            } catch (err) {
+                console.error("Fatal error constructing or sending Body Tampered webhook.", err);
+                Sentry.captureException(err, { extra: { context: 'saveReport - Body Tampered Webhook' } });
             }
 
             return { success: true, reportKey: sanitizedKey, authorId: sanitizedAuthorId, reportPath, originalKey: finalTitle };

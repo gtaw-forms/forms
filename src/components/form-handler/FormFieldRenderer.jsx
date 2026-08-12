@@ -587,7 +587,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
                   value={formValues[field.associatedInputField.name] || ""}
                   onChange={e => {
                     handleChange(field.associatedInputField.name, e.target.value);
-                    if (field.associatedInputField.name === 'requestingOfficer') {
+                    if ((field.associatedInputField.name || '').toLowerCase() === 'requestingofficer') {
                       const dept = (formValues.department || '').toLowerCase().trim();
                       const deptKey = dept.includes('lssd') || dept.includes('sheriff') ? 'lssd' : dept.includes('lspd') || dept.includes('police') ? 'lspd' : '';
                       handleOfficerNameChange(e.target.value, deptKey || undefined);
@@ -597,7 +597,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
                   style={inputStyle}
                 />
               )}
-              {field.associatedInputField.name === 'requestingOfficer' && renderOfficerBadge()}
+              {(field.associatedInputField.name || '').toLowerCase() === 'requestingofficer' && renderOfficerBadge()}
             </>
           )}
         </div>
@@ -822,7 +822,10 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
           ? (Array.isArray(rawBullets) ? rawBullets : Object.keys(rawBullets).length > 0 ? [rawBullets] : [])
           : [];
         if (bulletsArr.length > 0) {
-          data.casings = bulletsArr.map(b => `Bullet found with striation marks (${sanitizeMorgueText(b.type)}) #${b.id}`);
+          data.casings = bulletsArr.map(b => {
+            const prefix = (b.type || '').toLowerCase().includes('gauge') ? 'Pellet' : 'Bullet';
+            return `${prefix} found with striation marks (${sanitizeMorgueText(b.type)}) #${b.id}`;
+          });
           data.RadiologyResult = `${bulletsArr.length} projectiles/slugs were identified via fluoroscopy and recovered during the autopsy.`;
         }
 
@@ -918,11 +921,12 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
         data.narcoticTraces = extractField('Traces of narcotics');
 
         // Casings (Multiple)
-        const casingRegex = /Bullet recovered with striation marks - (.*?)\s*\n#(.*)/g;
+        const casingRegex = /(?:Bullet|Pellet) recovered with striation marks - (.*?)\s*\n#(.*)/g;
         let casingMatch;
         const casings = [];
         while ((casingMatch = casingRegex.exec(sanitizedText)) !== null) {
-          casings.push(`Bullet found with striation marks (${casingMatch[1].trim()}) #${casingMatch[2].trim()}`);
+          const prefix = casingMatch[1].toLowerCase().includes('gauge') ? 'Pellet' : 'Bullet';
+          casings.push(`${prefix} found with striation marks (${casingMatch[1].trim()}) #${casingMatch[2].trim()}`);
         }
         const hasCasings = casings.length > 0; // Evaluate once
         if (hasCasings) {
@@ -1562,6 +1566,42 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
           />
         </div>
       );
+    case "requesting_officer": {
+      const isReq = !!formValues[field.name];
+      const deptOptions = agencyOptions.length > 0 ? agencyOptions : [
+        { value: 'lspd', label: 'Los Santos Police Department' },
+        { value: 'lssd', label: 'Los Santos County Sheriffs Department' },
+        { value: 'sadcr', label: 'San Andreas Department of Corrections and Rehabilitation' },
+        { value: 'dao', label: 'District Attorney Office' },
+      ];
+      return (
+        <div style={{ ...fieldWrapperStyle, display: "inline-block" }}>
+          <label style={labelStyle}>{field.label}</label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', color: '#e2e8f0', fontSize: '0.85rem', marginBottom: 6 }}>
+            <input type="checkbox"
+              checked={isReq}
+              onChange={() => handleChange(field.name, isReq ? '' : ' ')}
+              style={{ width: 16, height: 16, margin: 0 }} />
+            Requested
+          </label>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <input type="text"
+              value={typeof formValues[field.name] === 'string' ? formValues[field.name] : ''}
+              onChange={e => handleChange(field.name, e.target.value)}
+              placeholder={isReq ? (field.placeholder || "Officer Name") : ''}
+              disabled={!isReq}
+              style={{ ...inputStyle, flex: 1, minWidth: 160, opacity: isReq ? 1 : 0.5 }} />
+            <select
+              value={formValues.requestingOfficerDepartment || ''}
+              onChange={e => handleChange('requestingOfficerDepartment', e.target.value)}
+              style={{ ...inputStyle, width: 220 }}>
+              <option value="">— Requesting Department —</option>
+              {deptOptions.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+            </select>
+          </div>
+        </div>
+      );
+    }
     case "input":
     default:
       return (
@@ -1593,11 +1633,19 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
             <input
               type="text"
               value={formValues[`${field.name}_display`] || formValues[field.name] || ""}
-              onChange={e => handleChange(field.name, e.target.value)}
+              onChange={e => {
+                handleChange(field.name, e.target.value);
+                if (field.name.toLowerCase() === 'requestingofficer') {
+                  const dept = (formValues.department || '').toLowerCase().trim();
+                  const deptKey = dept.includes('lssd') || dept.includes('sheriff') ? 'lssd' : dept.includes('lspd') || dept.includes('police') ? 'lspd' : '';
+                  handleOfficerNameChange(e.target.value, deptKey || undefined);
+                }
+              }}
               placeholder={field.placeholder || ""}
               style={inputStyle}
             />
           )}
+          {(field.name || '').toLowerCase() === 'requestingofficer' && renderOfficerBadge()}
           <div style={{ display: 'flex', gap: '5px', marginTop: '5px' }}>
             {field.name === 'placeOfDeath' && !isUploadingMapImage[field.name] && !formValues[`${field.name}_isFromMap`] && (
               <button

@@ -1,0 +1,59 @@
+{
+  "accessType": "Coroner",
+  "bbcodeTemplate": "[center][img]https://i.ibb.co/GfSHbMMj/ItaoQkO.webp[/img][/center]\n[hr][/hr]\n\nTO: {{requestingOfficer}} - {{getDepartmentFullName(department)}}\nFROM: {{coronerEmployee}} @ phmc.health\nSUBJECT: Coroner Report Paperwork\n\nFor the attention of: [bold]{{getDepartmentFullName(formData.department, agencyDataStore)}}[/bold] - [bold]{{requestingOfficer}}[/bold]\n\nThis Coroner Report has been written by {{coronerEmployee}} you can find the enclosed documents attached to this email. \n\nDid you know you can check on the [url=https://gtaw-forms.github.io/forms/#/morgue]phmc.health/morgue[/url] to view the latest Morgue Intake Records. Save a trip a visit to the PHMC Morgue and view records online!\n\n[bold]IMPORTANT INFORMATION REGARDING AUTOPSIES IN SPOILER[/bold]\n\n[altspoiler=Request a Autopsy FAQ]\n1) How do I request an autopsy report and/or a death certificate?\nAutopsies and death certificates can aid in various situations, especially whenever the cause of death plays a vital role in. Our professionals attempt to handle each and every request in a timely manner. However, given the fact that the effort of documentation is immense, a request fee is associated along with it. Upon its payment, the report or certificate will be sent to you directly.\n\n\n2) Is there a fee associated with the request process?\nYes, there is a $2,000 fee associated with the request. This fee covers administrative costs related to processing and maintaining your requested report/certificate securely within our systems. It ensures the continued improvement of our services, maintaining the highest standards in healthcare data management.\n\n\n3) How do I pay the $2,000 request fee?\nTo pay your $2,000 request fee, please log into the banking website and navigate to the \"Payment\" section. Select your preferred payment method (e.g., credit card, debit card), insert our routing number (020000062), enter the required payment details, review the transaction, and confirm your payment. (( Type /transfer 2000 020000062 ))\n\n(( Autopsies for Player Kills (PK) and Character Kills (CK) will only be accepted if they are deemed strictly necessary and relevant to an important case or investigation. It is mandatory to provide information about /cdamages and /cexamine. In the event that this information is not available, please do not hesitate to contact an administrator in-game, who can provide it. If these steps are not followed, an automatic denial will cause your request to be archived.\n\nAlso if it is a PK, please be sure to use John/Jane Doe with their character name in OOC brackets . Ex: John Doe (( James Smith ))\n\n[url=https://phmc.gta.world/ucp.php?i=pm&mode=compose&g=50]You can make a private Autopsy Request to the Medical Examiner's via this link. [/url] Please follow the [url=https://phmc.gta.world/viewtopic.php?t=3023]instructions and format[/url] before sending. ))\n\n(( Important Note:  The Medical Examiner team behind handling autopsies is a small team, at <=5 Medical Examiners also juggling IRL, in-game field work, and administrative duties; we try to handle autopsies in a timely manner but delays can happen due to IC or OOC factors. )) \n[/altspoiler]\nIf you have further enquiries, feel free to reach out to the following individual:\n[list] {{coronerEmployee}}\n[*] Phone Number: 50056\n[*] (( Discord: https://discord.gg/qtJ98YvSsJ ))[/list]\n\n[b]Enclosed Report(s)[/b]\n{{deathReport}}\n\n\nKind regards\n{{coronerEmployee}}\nPillbox Hill Medical Center - Forensic Medicine and Pathology\n\n[size=75]The content of this email is intended for the person or entity to which it is addressed only. This email may contain confidential information. If you are not the person to whom this message is addressed, be aware that any use, reproduction, or distribution of this message is strictly prohibited. If you received this in error, please contact the sender and immediately delete this email and any attachments.[/size]\n\n",
+  "category": "DMEC",
+  "fields": [
+    {
+      "associatedInputField": {
+        "name": "requestingOfficer",
+        "placeholder": "Officer Name",
+        "type": "input"
+      },
+      "buttonAction": "",
+      "buttonLabel": "",
+      "content": "",
+      "decedentItemSchemaJson": "",
+      "displayCurrentTime": false,
+      "icon": "",
+      "id": "field-1785281974021",
+      "infoType": "Information",
+      "inputType": "",
+      "label": "Officer Information",
+      "layout": "full",
+      "listType": "",
+      "maxImages": 6,
+      "name": "requestingOfficer",
+      "optionsKey": "",
+      "placeholder": "Officer Name",
+      "rows": 4,
+      "timerType": "",
+      "type": "officer_info"
+    },
+    {
+      "buttonAction": "",
+      "buttonLabel": "",
+      "displayCurrentTime": false,
+      "employeeType": "Coroner",
+      "id": "field-1764033014518",
+      "inputType": "",
+      "label": "Attach Reports",
+      "layout": "full",
+      "maxImages": 6,
+      "name": "",
+      "optionsKey": "",
+      "placeholder": "",
+      "rows": 4,
+      "targetField": "deathReport",
+      "timerType": "",
+      "type": "attach_report_button"
+    }
+  ],
+  "formDescription": "",
+  "id": "coroner_email",
+  "isHidden": false,
+  "lastUpdated": 1771180073041,
+  "name": "Coroner Email",
+  "template": "[center][img]https://i.ibb.co/GfSHbMMj/ItaoQkO.webp[/img][/center]\n[hr][/hr]\n\nTO: {{requestingOfficer}} - {{getDepartmentFullName(department)}}\nFROM: {{coronerEmployee}} @ phmc.health\nSUBJECT: Coroner Report Paperwork\n\nFor the attention of: [bold]{{getDepartmentFullName(formData.department, agencyDataStore)}}[/bold] - [bold]{{requestingOfficer}}[/bold]\n\nThis Coroner Report has been written by {{coronerEmployee}} you can find the enclosed documents attached to this email. \n\nDid you know you can check on the [url=https://gtaw-forms.github.io/forms/#/morgue]phmc.health/morgue[/url] to view the latest Morgue Intake Records. Save a trip a visit to the PHMC Morgue and view records online!\n\n[bold]IMPORTANT INFORMATION REGARDING AUTOPSIES IN SPOILER[/bold]\n\n[altspoiler=Request a Autopsy FAQ]\n1) How do I request an autopsy report and/or a death certificate?\nAutopsies and death certificates can aid in various situations, especially whenever the cause of death plays a vital role in. Our professionals attempt to handle each and every request in a timely manner. However, given the fact that the effort of documentation is immense, a request fee is associated along with it. Upon its payment, the report or certificate will be sent to you directly.\n\n\n2) Is there a fee associated with the request process?\nYes, there is a $2,000 fee associated with the request. This fee covers administrative costs related to processing and maintaining your requested report/certificate securely within our systems. It ensures the continued improvement of our services, maintaining the highest standards in healthcare data management.\n\n\n3) How do I pay the $2,000 request fee?\nTo pay your $2,000 request fee, please log into the banking website and navigate to the \"Payment\" section. Select your preferred payment method (e.g., credit card, debit card), insert our routing number (020000062), enter the required payment details, review the transaction, and confirm your payment. (( Type /transfer 2000 020000062 ))\n\n(( Autopsies for Player Kills (PK) and Character Kills (CK) will only be accepted if they are deemed strictly necessary and relevant to an important case or investigation. It is mandatory to provide information about /cdamages and /cexamine. In the event that this information is not available, please do not hesitate to contact an administrator in-game, who can provide it. If these steps are not followed, an automatic denial will cause your request to be archived.\n\nAlso if it is a PK, please be sure to use John/Jane Doe with their character name in OOC brackets . Ex: John Doe (( James Smith ))\n\n[url=https://phmc.gta.world/ucp.php?i=pm&mode=compose&g=50]You can make a private Autopsy Request to the Medical Examiner's via this link. [/url] Please follow the [url=https://phmc.gta.world/viewtopic.php?t=3023]instructions and format[/url] before sending. ))\n\n(( Important Note:  The Medical Examiner team behind handling autopsies is a small team, at <=5 Medical Examiners also juggling IRL, in-game field work, and administrative duties; we try to handle autopsies in a timely manner but delays can happen due to IC or OOC factors. )) \n[/altspoiler]\nIf you have further enquiries, feel free to reach out to the following individual:\n[list] {{coronerEmployee}}\n[*] Phone Number: 50056\n[*] (( Discord: https://discord.gg/qtJ98YvSsJ ))[/list]\n\n[b]Enclosed Report(s)[/b]\n{{deathReport}}\n\n\nKind regards\n{{coronerEmployee}}\nPillbox Hill Medical Center - Forensic Medicine and Pathology\n\n[size=75]The content of this email is intended for the person or entity to which it is addressed only. This email may contain confidential information. If you are not the person to whom this message is addressed, be aware that any use, reproduction, or distribution of this message is strictly prohibited. If you received this in error, please contact the sender and immediately delete this email and any attachments.[/size]\n\n",
+  "titleGeneratorCode": "",
+  "updatedAt": 1785281980015
+}
