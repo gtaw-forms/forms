@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import * as Sentry from "@sentry/react";
 import { httpsCallable } from 'firebase/functions';
 import { database, functions } from '../firebase';
@@ -18,6 +18,8 @@ import {
     makeAuthenticatedRequest,
     isFactionMember as checkIsFactionMember,
     isGtawStaff,
+    storeUser,
+    clearUser,
     checkFactionMembershipInDb,
     validateStoredSession,
     tryRestoreFirebaseAuth
@@ -41,7 +43,7 @@ const getUrlParams = () => {
 
 export const GtaWorldAuthProvider = ({ children }) => {
     const { getIsInactivityWarningTriggered } = useInactivityReload();
-    const { showNotification, removeNotification } = useNotification();
+    const { showNotification } = useNotification();
     const [user, setUser] = useState(() => {
         if (isAuthenticated()) {
             const currentUser = getCurrentUser();
@@ -55,7 +57,7 @@ export const GtaWorldAuthProvider = ({ children }) => {
                     hasId: !!currentUser.id,
                     hasUsername: !!currentUser.username
                 });
-                localStorage.removeItem('gta-user-data');
+                clearUser();
             }
         }
         return null;
@@ -76,9 +78,27 @@ export const GtaWorldAuthProvider = ({ children }) => {
     const [error, setError] = useState(null);
     const [isValidatingSession, setIsValidatingSession] = useState(false);
     const [activeCharacter, setActiveCharacter] = useState(null);
+    const [credentialsLoading, setCredentialsLoading] = useState(false);
+
+    // Tracks an in-flight OAuth callback so re-runs of the initialization effect
+    // (triggered by Firebase authLoading flaps during sign-in) never treat the
+    // callback as finished and drop isLoading to false while it is still running.
+    const oauthInFlightRef = useRef(false);
+
+    // Pristine OAuth faction data — set once at login during render, never
+    // overwritten by character swaps. Used as a fallback in swappableCharacters
+    // when allFactionCharacters is empty, so the original login character
+    // always shows the correct rank and membership in the switch dropdown.
+    const pristineFactionRef = useRef(null);
+    if (!pristineFactionRef.current && user?.faction) {
+        pristineFactionRef.current = user.faction;
+        console.log('[GtaWorldAuthContext] Pristine faction preserved:', pristineFactionRef.current?.characterName, pristineFactionRef.current?.rank);
+    }
 
     // Sync active character when user changes
     useEffect(() => {
+        // Non-employees don't have faction data — don't override activeCharacter
+        if (user?.loginRole === 'non-employee') return;
         if (user && user.isFactionMember) {
             if (!activeCharacter) {
                 setActiveCharacter(user.faction);
@@ -97,14 +117,25 @@ export const GtaWorldAuthProvider = ({ children }) => {
         if (!user) return;
         if (!character || (character.id === undefined && character.characterId === undefined)) return;
 
-        const characterToSetActive = { ...user.faction, ...character };
+        // Build from the swappable character data + pristine OAuth fallback.
+        // Do NOT spread from user.faction — that has the PREVIOUS character's
+        // data and would leak stale fields (e.g. wrong rank, wrong badge).
+        const charId = String(character.characterId || character.id);
+        const pristineId = String(pristineFactionRef.current?.characterId || pristineFactionRef.current?.id || '');
+        const isPristine = pristineId === charId;
+        const fallback = isPristine ? pristineFactionRef.current : null;
+
+        const characterToSetActive = {
+            ...(fallback || {}),
+            ...character,
+        };
         setActiveCharacter(characterToSetActive);
-        
+
         const updatedUser = { ...user, faction: characterToSetActive };
         setUser(updatedUser);
-        
+
         try {
-            localStorage.setItem('gta-user-data', JSON.stringify(updatedUser));
+            storeUser(updatedUser);
         } catch (e) {
             console.error("Failed to update localStorage:", e);
         }
@@ -115,7 +146,7 @@ export const GtaWorldAuthProvider = ({ children }) => {
         const updatedUser = { ...user, faction: updatedData };
         setUser(updatedUser);
         try {
-            localStorage.setItem('gta-user-data', JSON.stringify(updatedUser));
+            storeUser(updatedUser);
         } catch (e) {
             console.error("Failed to update localStorage:", e);
         }
@@ -169,6 +200,7 @@ export const GtaWorldAuthProvider = ({ children }) => {
         setUser(null);
         setError(null);
         setActiveCharacter(null);
+        hadCharacter.current = false;
         if (reason) {
             setSessionLostReason(reason);
             showNotification(reason, 'exclamation-triangle', 10000);
@@ -216,19 +248,31 @@ export const GtaWorldAuthProvider = ({ children }) => {
         const factionChars = user?.allFactionCharacters || [];
         const sourceChars = apiChars.length > 0 ? apiChars : factionChars;
 
+        // Reliable OAuth login data — never overwritten by character swaps.
+        // Used as fallback when allFactionCharacters is sparse or empty.
+        const pristineFaction = pristineFactionRef.current;
+        const activeFactionId = pristineFaction ? String(pristineFaction.characterId || pristineFaction.id) : null;
+
         return sourceChars.map(c => {
             const characterData = c.character || c;
             if (!characterData || (!characterData.id && !characterData.characterId)) return null;
-            
-            // Normalize character ID to string for strict comparison
+
             const charId = String(characterData.characterId || characterData.id);
-            
-            // Use strict equality with normalized IDs
+
+            // Try matching against allFactionCharacters first
             const factionMatch = factionChars.find(fc => {
                 const fcId = String(fc.character?.characterId || fc.id);
                 return fcId === charId;
             });
-            
+
+            // Fallback: if no match in allFactionCharacters, check if this
+            // character is the one the user originally logged in with (pristine
+            // OAuth data). This handles the case where allFactionCharacters
+            // hasn't been populated — the login character always shows correct
+            // rank and membership regardless of character swaps.
+            const isPristineFallback = !factionMatch && activeFactionId && activeFactionId === charId;
+            const effectiveFaction = factionMatch || (isPristineFallback ? pristineFaction : null);
+
             const names = extractNames(characterData.characterName || characterData.name);
             const finalName = characterData.characterName || characterData.name || (characterData.firstname ? `${characterData.firstname} ${characterData.lastname || ''}`.trim() : null) || 'Unknown';
 
@@ -238,9 +282,9 @@ export const GtaWorldAuthProvider = ({ children }) => {
                 characterName: finalName,
                 firstname: characterData.firstname || names.firstname,
                 lastname: characterData.lastname || names.lastname,
-                scriptRank: factionMatch?.character?.scriptRank || characterData.scriptRank || 0,
-                rank: factionMatch?.character?.rank || characterData.rank || 'Non Faction Member',
-                isFactionMember: !!factionMatch
+                scriptRank: effectiveFaction?.character?.scriptRank || effectiveFaction?.scriptRank || characterData.scriptRank || 0,
+                rank: effectiveFaction?.character?.rank || effectiveFaction?.rank || characterData.rank || 'Non Faction Member',
+                isFactionMember: !!effectiveFaction
             };
         }).filter(Boolean);
     }, [user]);
@@ -253,8 +297,14 @@ export const GtaWorldAuthProvider = ({ children }) => {
         const storedOAuthData = sessionStorage.getItem('gta-oauth-state');
 
         if (code && state && storedOAuthData) {
+            // Guard against re-running this branch while the OAuth callback is
+            // already being processed (this effect re-runs when authLoading/user
+            // flap during Firebase sign-in).
+            if (oauthInFlightRef.current) return;
+            oauthInFlightRef.current = true;
+
             console.log('🔄 [GtaWorldAuthContext] Background auth callback detected and verified. Processing...');
-            
+
             // Remove code/state from URL without reloading
             const cleanHash = window.location.hash.split('?')[0];
             const newUrl = window.location.pathname + cleanHash;
@@ -267,7 +317,7 @@ export const GtaWorldAuthProvider = ({ children }) => {
                 
                 // --- Post-Login Verification Logic (Migrated from UnifiedGtaCallback) ---
                 if (userRole === 'employee') {
-                    const loadingNotifId = showNotification('Fetching Employee Credentials...', 'spinner fa-spin', 0);
+                    setCredentialsLoading(true);
                     console.warn('⚠️ [GtaWorldAuthContext] Performing faction sync for employee...');
                     try {
                         // Wait for Firebase Auth JWT to finish provisioning using
@@ -303,19 +353,19 @@ export const GtaWorldAuthProvider = ({ children }) => {
                         // Wait for sync propagation
                         await new Promise(resolve => setTimeout(resolve, 3000));
                         
-                        const accessToken = sessionStorage.getItem('gta-access-token');
+                        const accessToken = getAccessToken();
                         if (accessToken) {
                             const refreshedResult = await triggerRefreshGtawUser({ accessToken });
                             if (refreshedResult?.success && refreshedResult.user) {
                                 console.log('✅ [GtaWorldAuthContext] Re-check successful after sync.');
                                 const refreshedUser = { ...refreshedResult.user, loginRole: storedData.role || 'employee' };
                                 setUser(refreshedUser);
-                                localStorage.setItem('gta-user-data', JSON.stringify(refreshedUser));
+                                storeUser(refreshedUser);
                             }
                         }
-                        removeNotification(loadingNotifId);
+                        setCredentialsLoading(false);
                     } catch (syncError) {
-                        removeNotification(loadingNotifId);
+                        setCredentialsLoading(false);
                         if (syncError.code === 'permission-denied') {
                             console.warn('[GtaWorldAuthContext] Background sync skipped (Permission Denied). This is expected for non-faction members.');
                         } else {
@@ -335,10 +385,16 @@ export const GtaWorldAuthProvider = ({ children }) => {
             }).catch(err => {
                 console.error('[GtaWorldAuthContext] Background callback failed:', err);
                 setIsLoading(false);
+            }).finally(() => {
+                oauthInFlightRef.current = false;
             });
         } else {
-            // No callback detected or no matching session state
-            setIsLoading(false);
+            // No callback detected or no matching session state.
+            // Only clear isLoading when no OAuth callback is in flight — otherwise a
+            // re-run mid-callback would hide the loader while the flow is still going.
+            if (!oauthInFlightRef.current) {
+                setIsLoading(false);
+            }
 
             // validate user's faction membership with grace period for transient failures
             if (user && (!code && !state || getIsInactivityWarningTriggered())) {
@@ -346,6 +402,13 @@ export const GtaWorldAuthProvider = ({ children }) => {
                 const loginRole = user?.loginRole || 'employee';
                 if (loginRole === 'non-employee') {
                     console.log('[GtaWorldAuthContext] Non-employee login detected, skipping faction check');
+                    // Populate activeCharacter from available user data so characterName resolves
+                    if (!activeCharacter) {
+                        const source = user?.faction || user?.character?.[0];
+                        if (source) {
+                            setActiveCharacter(normalizeChar(source));
+                        }
+                    }
                 } else {
                     // For employee logins, always verify faction characters exist in DB
                     // Superadmins get isFactionMember=true automatically but may not have actual faction characters
@@ -415,14 +478,15 @@ export const GtaWorldAuthProvider = ({ children }) => {
             // Session recovery: if we have stored user data but no Firebase auth,
             // attempt silent re-authentication so Firebase-backed features work
             // without the user having to log out and back in.
-            if (user && !auth.currentUser && !isGoogleAdmin && !isStaff) {
+            // Non-employees are never faction members, so skip recovery entirely.
+            if (user && !auth.currentUser && !isGoogleAdmin && !isStaff && user?.loginRole !== 'non-employee') {
                 console.log('[GtaWorldAuthContext] Stored session found but no Firebase auth. Attempting recovery...');
                 tryRestoreFirebaseAuth().then(restored => {
                     if (restored) {
                         console.log('[GtaWorldAuthContext] Firebase auth recovered. Re-running faction sync.');
                         const syncFn = httpsCallable(functions, 'triggerFactionSync');
                         syncFn().catch(err => {
-                            if (err.code !== 'permission-denied') {
+                            if (!err.code?.includes('permission-denied')) {
                                 console.error('[GtaWorldAuthContext] Recovery sync failed:', err);
                             }
                         });
@@ -459,9 +523,33 @@ export const GtaWorldAuthProvider = ({ children }) => {
         validateSession();
     }, [authLoading]);
 
-    // REAL-TIME MEMBERSHIP ENFORCEMENT
+    // Normalize a raw API character object so it always has a characterName property.
+    // The GTA World API returns characters in multiple formats:
+    //   { id, name } or { firstname, lastname } or { characterId, characterName }.
+    const normalizeChar = useCallback((char) => {
+        if (!char) return null;
+        if (char.characterName) return char; // already normalized
+        const name = char.name || (char.firstname ? `${char.firstname} ${char.lastname || ''}`.trim() : null) || null;
+        return { ...char, characterName: name };
+    }, []);
+
+    // POPULATE ACTIVE CHARACTER from user data (runs after OAuth callback fills character[])
+    const hadCharacter = useRef(false);
+    useEffect(() => {
+        if (!user || hadCharacter.current) return;
+        const source = user.faction || user.character?.[0];
+        if (source) {
+            const normalized = normalizeChar(source);
+            console.log('[GtaWorldAuthContext] Setting active character from user data:', normalized?.characterName || source.firstname);
+            setActiveCharacter(normalized);
+            hadCharacter.current = true;
+        }
+    }, [user?.id, user?.faction, user?.character]);
+
+    // REAL-TIME MEMBERSHIP ENFORCEMENT (skipped for non-employee logins)
     useEffect(() => {
         if (!user || !firebaseUser || isGoogleAdmin || isStaff) return;
+        if (user?.loginRole === 'non-employee') return;
 
         const activeId = user?.faction?.characterId || user?.activeCharacter?.characterId;
         if (!activeId) return;
@@ -515,11 +603,12 @@ export const GtaWorldAuthProvider = ({ children }) => {
         canSwapCharacters: swappableCharacters.length > 0,
         updateFactionData,
         triggerFactionSync,
+        credentialsLoading,
     }), [
-        user, isLoading, authLoading, error, isValidatingSession, sessionLostReason, login, handleLogout, processCallback, 
-        clearError, isGoogleAdmin, firebaseUser, firebaseIsPhmcMember, firebaseAccessLevel, 
+        user, isLoading, authLoading, error, isValidatingSession, sessionLostReason, login, handleLogout, processCallback,
+        clearError, isGoogleAdmin, firebaseUser, firebaseIsPhmcMember, firebaseAccessLevel,
         firebasePermissions, activeCharacter, swappableCharacters, swapCharacter, updateFactionData,
-        triggerFactionSync
+        triggerFactionSync, credentialsLoading
     ]);
 
     return (

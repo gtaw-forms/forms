@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Button, Form, Spinner } from 'react-bootstrap';
 import Select from 'react-select';
-import BaseModal from './BaseModal';
 
 // Common form types used in the application
 const AVAILABLE_FORMS = [
@@ -93,7 +92,7 @@ const SavedReportsModal = ({
             }
 
             if (initialEmployeeValue) {
-                const option = effectiveEmployeeOptions?.flatMap(g => g.options).find(o => o.value === initialEmployeeValue);
+                const option = effectiveEmployeeOptions?.flatMap(g => g.options || []).find(o => o?.value === initialEmployeeValue);
                 if (option) {
                     setSelectedEmployee(option);
                     if (onEmployeeSelect) onEmployeeSelect(option.value);
@@ -227,17 +226,16 @@ const SavedReportsModal = ({
     };
 
 
+    if (!show) return null;
+
     return (
-        <BaseModal
-            isOpen={show}
-            onClose={onHide}
-            title="Saved Reports"
-            modalSize="xl"
-            variant="info"
-            footer={
-                <Button variant="secondary" onClick={onHide}>Close</Button>
-            }
-        >
+        <div className="modal-overlay open" onClick={onHide} style={{ display: 'flex', zIndex: 1050 }}>
+            <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 900 }}>
+                <div className="modal-head">
+                    <h3><i className="fas fa-save" style={{ color: '#33D6C0' }} /> Saved Reports</h3>
+                    <button className="modal-close" onClick={onHide} aria-label="Close">✕</button>
+                </div>
+                <div className="modal-body">
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                     <Form.Group>
@@ -400,7 +398,12 @@ const SavedReportsModal = ({
                     background-color: rgba(255, 255, 255, 0.02);
                 }
             `}</style>
-        </BaseModal>
+                </div>
+                <div className="modal-foot">
+                    <Button variant="secondary" onClick={onHide}>Close</Button>
+                </div>
+            </div>
+        </div>
     );
 };
 

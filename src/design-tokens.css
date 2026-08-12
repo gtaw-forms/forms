@@ -1,0 +1,133 @@
+/* ═══════════════════════════════════════
+   PHMC Forms — Design Tokens
+   Single source of truth for all CSS variables.
+   Imported by index.css, available app-wide.
+   ═══════════════════════════════════════ */
+
+:root {
+  /* ─── Background Surfaces (migrated from testing-ui.css) ─── */
+  --bg-canvas:   #0B1220;
+  --bg-surface:  #182238;
+  --bg-elevated: #121A2C;
+  --bg-hovered:  #1E2A45;
+  --bg-active:   #25324D;
+
+  /* ─── Text Hierarchy (migrated from testing-ui.css) ─── */
+  --text-primary:    #E7ECF5;
+  --text-secondary:  #8B96AE;
+  --text-muted:      #5D6883;
+  --text-disabled:   #475569;
+
+  /* ─── Accent (UNCHANGED — buttons stay indigo) ─── */
+  --accent-primary:       #6366f1;
+  --accent-primary-hover: #4f46e5;
+  --accent-primary-subtle: rgba(99, 102, 241, 0.15);
+  --accent-secondary:       #4f46e5;
+  --accent-secondary-hover: #4338ca;
+
+  /* ─── Semantic Colors (UNCHANGED) ─── */
+  --color-success:       #22c55e;
+  --color-success-bg:    rgba(34, 197, 94, 0.12);
+  --color-danger:        #ef4444;
+  --color-danger-bg:     rgba(239, 68, 68, 0.12);
+  --color-warning:       #f59e0b;
+  --color-warning-bg:    rgba(245, 158, 11, 0.12);
+  --color-info:          #60a5fa;
+  --color-info-bg:       rgba(96, 165, 250, 0.12);
+
+  /* ─── Borders (migrated from testing-ui.css) ─── */
+  --border-default: #25324D;
+  --border-muted:   #1E2A45;
+  --border-accent:  #324467;
+  --border-radius-sm:  4px;
+  --border-radius-md:  8px;
+  --border-radius-lg:  12px;
+  --border-radius-xl:  16px;
+  --border-radius-full: 9999px;
+
+  /* ─── Spacing (4px base) ─── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+
+  /* ─── Shadows ─── */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.4);
+  --shadow-xl: 0 20px 60px rgba(0, 0, 0, 0.5);
+
+  /* ─── Z-Index Scale ─── */
+  --z-dropdown:  100;
+  --z-sticky:    1000;
+  --z-overlay:   1040;
+  --z-modal:     1050;
+  --z-toast:     1060;
+  --z-tooltip:   1070;
+
+  /* ─── Font ─── */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --font-size-xs:   0.75rem;
+  --font-size-sm:   0.85rem;
+  --font-size-base: 0.9rem;
+  --font-size-lg:   1.1rem;
+  --font-size-xl:   1.25rem;
+  --font-size-2xl:  1.5rem;
+
+  /* ─── Transitions ─── */
+  --transition-fast: 0.15s ease;
+  --transition-base: 0.25s ease;
+  --transition-slow: 0.35s ease;
+
+  /* ══════════════════════════════════════
+     LEGACY ALIASES — for backward compatibility
+     These map old variable names to new tokens.
+     Remove these when the consuming files are migrated.
+     ══════════════════════════════════════ */
+
+  /* BaseModal.css aliases */
+  --modal-bg:             var(--bg-elevated);
+  --modal-card-bg:        var(--bg-surface);
+  --modal-border:         var(--border-default);
+  --modal-text-primary:   var(--text-primary);
+  --modal-text-secondary: var(--text-secondary);
+  --modal-accent-primary: #0066cc;
+  --modal-shadow:         var(--shadow-xl);
+  --modal-border-radius:  var(--border-radius-lg);
+  --modal-danger:         var(--color-danger);
+  --modal-warning:        var(--color-warning);
+  --modal-success:        var(--color-success);
+  --modal-info:           var(--color-info);
+
+  /* AdminDashboard.css aliases */
+  --admin-bg:             var(--bg-canvas);
+  --admin-surface:        var(--bg-surface);
+  --admin-surface-light:  var(--bg-elevated);
+  --admin-accent:         var(--accent-primary);
+  --admin-accent-glow:    rgba(79, 70, 229, 0.15);
+  --admin-border:         var(--border-default);
+  --admin-text:           var(--text-primary);
+  --admin-text-muted:     var(--text-secondary);
+  --admin-success:        #238636;
+  --admin-danger:         #da3633;
+  --admin-warning:        #d29922;
+
+  /* BusinessCard.css aliases */
+  --primary-color:           var(--accent-primary);
+  --primary-hover-color:     var(--accent-primary-hover);
+  --background-color:        var(--bg-surface);
+  --secondary-background-color: var(--bg-elevated);
+  --text-color:              var(--text-primary);
+  --border-color:            var(--border-default);
+  --placeholder-color:       var(--text-muted);
+  --error-color:             var(--color-danger);
+  --success-color:           var(--color-success);
+  --modal-border-radius:     var(--border-radius-lg);
+  --input-border-radius:     var(--border-radius-sm);
+  --button-border-radius:    var(--border-radius-sm);
+}

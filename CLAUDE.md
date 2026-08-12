@@ -1,5 +1,14 @@
 # PHMC Forms — Project Guide
 
+> **PHMC = Pillbox Hill Medical Center** — the faction/organization this app and the bot serve.
+>
+> **Bot docs:** [`discord-bot/README.md`](discord-bot/README.md) — architecture, Firebase schema, commands, setup
+> **Bot env vars:** [`discord-bot/.env.example`](discord-bot/.env.example) — complete reference with descriptions
+
+## Key Facts
+
+- **Bot changes must be UPLOADED to the VPS, then the bot RESTARTED — in that order.** Editing `discord-bot/*.js` (or `.env`) locally only changes the repo; the deployed bot on the VPS (`/opt/phmc-bot/discord-bot/`) keeps running the old code until you (1) `scp` the changed files up and (2) `pm2 restart phmc-bot` (plus `pm2 restart morgue-api` when `morgue-api.js` changed). No upload = no change; no restart after upload = no change either. Restart happens only on the VPS via SSH — a local `pm2`/`node` command on the user's machine does nothing to the deployed bot.
+
 ## Deploy Matrix
 
 What changed determines what needs deploying and who does it:
@@ -65,8 +74,14 @@ src/
 │   │                   #   bot status dashboard
 │   ├── Auth/           # GTA World OAuth, email login, login splash
 │   ├── ems-dashboard/  # EMS protocols, shift dashboard
-│   ├── form-handler/   # Form rendering, BBCode generation, save flow,
-│   │                   #   CK viewer, quick links (core feature)
+│   ├── ui-new/         # *Current main UI* (route: /ui-prototype)
+│   │                   #   Grid-based form layout, right panel, branded
+│   │                   #   sidebar — all new development goes here
+│   ├── form-handler/   # ⚠️ Legacy — original form renderer, BBCode gen,
+│   │                   #   save flow, CK viewer. Active route still uses
+│   │                   #   this code; major logic differences exist from
+│   │                   #   the prototype. Useful reference when debugging
+│   │                   #   prototype issues.
 │   ├── Modals/         # Map, bug report, bot deploy consent,
 │   │                   #   assigned autopsies, employee credentials
 │   └── UI/             # Sidebar nav, morgue lookup, notifications
@@ -129,7 +144,7 @@ discord-bot/
 │   └── meDiscordNotify.js      # Discord PM notifications for MEs
 ├── commands/                   # Slash commands (auto-registered on restart)
 ├── templates/                  # BBCode templates (e.g. Coroner-Email.json)
-└── scripts/                    # Utility scripts
+└── debug-testing-scripts/      # Ad-hoc/debug scripts (probes, one-shot tools)
 
 functions/                      # Firebase Cloud Functions (Node 20)
 ├── index.js                    # Export aggregator
@@ -144,7 +159,26 @@ functions/                      # Firebase Cloud Functions (Node 20)
 tools/                          # Misc scripts (some stale — user tinkers here)
 ```
 
-## Bot Auto-Deploy System
+## UI Architecture
+
+The app has two parallel UI implementations sharing the same hooks, contexts, and Firebase backend:
+
+### `ui-new/` (Prototype) — **Current primary UI**
+- Route: `/ui-prototype`
+- Grid-based form layout with branded sidebar, top bar, and tabbed right panel (Profile/Misc)
+- All new features and visual changes go here
+- Files: `src/components/ui-new/index.jsx` (main entry), `PrototypeFieldRenderer.jsx`, `MorgueBrowser.jsx`, `TimeDisplay.jsx`, `styles.css`, `index.module.css`
+
+### `form-handler/` (Legacy) — **Active production route**
+- Used by the original route (`/`) — still serves users
+- Contains significant logic differences from the prototype (field rendering, form state management, save flow)
+- **Keep as reference** when debugging prototype behavior — if a feature works in the legacy handler but not in the prototype, compare the implementations to find what's missing
+
+### Shared code
+- All hooks (`src/hooks/`), contexts (`src/contexts/`), and services (`src/services/`) are shared between both UIs — changes there affect both
+- Modals (`src/components/Modals/`) are shared, though prototype may pass different props
+
+## Staging Mode (forms_staging)
 
 - Listens on `scheduledReports` in Firebase RTDB
 - Routes: `coroner_email` → PM (LSPD/LSSD/SADCR), others → PHMC forum topic, `autopsy` → Case Management reply (f=266)
@@ -212,4 +246,28 @@ Add to `MORGUE_API_KEYS` in `.env`, then `pm2 restart morgue-api`.
 - Forms stored in Firebase as BBCode templates (JSON schema).
 - Bot forum client uses Playwright with stealth plugin — must NOT include `--disable-web-security` or `bypassCSP: true`.
 - Secrets (`.env`, `firebase-admin-key.json`, `*credentials.md`) are never committed or read aloud.
-Exce
+
+## Staging Mode (forms_staging)
+
+A staging database node (`forms_staging`) provides form templates isolated from production. Used by the `/ui-prototype` route.
+
+**Activation:**
+- Navigate to `http://localhost:5173/ui-prototype?staging=1`
+- Or click the `PROD`/`STAGING` toggle button in the prototype topbar
+
+**How it works:**
+- `DataContext.jsx` checks for `?staging=1` query param or `phmc_staging` localStorage flag
+- When active, all Firebase reads for `forms` are redirected to `forms_staging`
+- Cache keys use `forms_staging` prefix (separate from prod cache)
+- Version tracking uses `appMetadata/formsDataVersion_staging` (isolated listener)
+- Other data (factions, agencies, morgue, etc.) is unchanged — still reads from prod
+
+**Seed the staging node:**
+```bash
+node tools/seed-staging-forms.cjs                    # dry-run (shows what would happen)
+node tools/seed-staging-forms.cjs --apply --confirm   # copies /forms → /forms_staging
+```
+
+**Scope:**
+- Only `forms` → `forms_staging` is affected. `scheduledReports`, `morgue-records`, and all other paths remain on production.
+- The Discord bot ignores staging mode entirely — it reads from production paths always.

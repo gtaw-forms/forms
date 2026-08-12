@@ -1,6 +1,7 @@
-import admin from 'firebase-admin';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
+import { initializeApp, cert, getApps } from "firebase-admin/app";
+import { getDatabase } from "firebase-admin/database";
 
 class FirebaseService {
     constructor() {
@@ -28,12 +29,14 @@ class FirebaseService {
 
             const serviceAccount = JSON.parse(readFileSync(resolvedPath, 'utf-8'));
 
-            admin.initializeApp({
-                credential: admin.credential.cert(serviceAccount),
-                databaseURL,
-            });
+            if (getApps().length === 0) {
+                initializeApp({
+                    credential: cert(serviceAccount),
+                    databaseURL,
+                });
+            }
 
-            this.db = admin.database();
+            this.db = getDatabase();
             this.initialized = true;
             console.log('[FIREBASE] ✅ Firebase Admin initialized successfully');
             return this.db;

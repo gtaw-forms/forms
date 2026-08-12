@@ -129,6 +129,13 @@ export async function onMePick(interaction) {
 
     await interaction.deferUpdate();
 
+    // Give immediate visual feedback — the heavy forum/Firebase work below
+    // takes several seconds and would otherwise look like a silent hang.
+    await interaction.editReply({
+        content: `Reassigning topic #${topicId} to **${newME}**... please wait (editing forum title + posting notice).`,
+        components: [],
+    }).catch(() => {});
+
     firebase.init();
     const db = firebase.db;
 
@@ -180,18 +187,35 @@ export async function onMePick(interaction) {
             newTitle = lastDash > 3 ? oldTitle.substring(0, lastDash + 3) + newME : `- ${newME}`;
         }
 
-        // Update forum
+        // Extract decedent name from the case title (e.g. "Case 472 - Samuel Cerniglia [LSPD] - ME")
+        const decedentMatch = oldTitle.match(/Case\s+\w+\s*-\s*(.*?)\s*(?:\[|\s*-)/);
+        const decedentName = decedentMatch ? decedentMatch[1].trim() : oocName || topicId;
+
+        // Update forum title
         const client = getForumClient();
         await client.ensureBrowser();
         await client.login(process.env.FORUM_USERNAME, process.env.FORUM_PASSWORD, { baseUrl: process.env.FORUM_BASE_URL });
         await client.editTopicTitle(topicIdNum, 266, newTitle, { baseUrl: process.env.FORUM_BASE_URL });
 
+        // Post a reassignment notice reply so the topic body reflects the change.
+        // Quote the new ME (user_id resolves the ping) and bold the old ME.
+        let newUid = '0';
+        try {
+            const memberList = await client.getGroupMembers(50, { baseUrl: process.env.FORUM_BASE_URL, exclude: ['PHMC Forms Bot'], paginate: true });
+            const member = memberList.find(m => m.name.toLowerCase() === newME.toLowerCase());
+            newUid = member?.userId || '0';
+        } catch (err) {
+            console.warn(`[CMD] reassign: ME member lookup failed: ${err.message}`);
+        }
+        const reassignBBCode = `[quote="${newME}" user_id=${newUid}]\n[/quote]\n\n[b]Reassigned:[/b] [b]${currentAssigned}[/b] → [color=#33D6C0][b]${newME}[/b][/color]\n[b]Case:[/b] ${decedentName}`;
+        await client.replyToTopic(topicIdNum, 266, reassignBBCode, { dryRun: false, baseUrl: process.env.FORUM_BASE_URL }).catch(err => {
+            console.warn(`[CMD] reassign: reply post failed: ${err.message}`);
+        });
+
         // Update Firebase
         await db.ref(`autopsy-requested/${topicId}/assignedTo`).set(newME);
 
         // Update active case counts in the rotation tracker
-        // Handles decrementing old ME and incrementing new ME
-        // Pass null for oldName when it was never assigned (skip decrement)
         await reassignME(db, entry.assignedTo || null, newME, topicId).catch(err => {
             console.warn(`[CMD] reassign: rotation tracking error: ${err.message}`);
         });
@@ -199,7 +223,7 @@ export async function onMePick(interaction) {
         const embed = new EmbedBuilder()
             .setColor(0x3498db)
             .setTitle('Autopsy Case Reassigned')
-            .setDescription(`**${newME}** assigned to **${oocName || topicId}**.`)
+            .setDescription(`**${decedentName}** — reassigned from **${currentAssigned}** to **${newME}**`)
             .addFields(
                 { name: 'Previous', value: currentAssigned, inline: true },
                 { name: 'New', value: newME, inline: true },

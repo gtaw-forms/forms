@@ -2,11 +2,12 @@
 import { logAdminAction, getUserContext } from '../../utils/logging';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import React, { useState, useEffect } from "react";
-import { database, deleteForm } from "../../firebase"; 
+import { database, deleteForm } from "../../firebase";
 import { ref, onValue, update } from "firebase/database";
 import AddFormModal from "./AddFormModal";
 import styles from "./FormManager.module.css";
-import { useNotification } from '../../contexts/NotificationContext'; 
+import { useNotification } from '../../contexts/NotificationContext';
+import { resolveStagingPath } from '../../utils/stagingPath';
 
 const FormManager = ({ currentUser }) => {
   const { user: gtawUser, username: gtawUsername } = useGtaWorldAuth();
@@ -73,7 +74,9 @@ const FormManager = ({ currentUser }) => {
           .replace(/\[b\]/gi, '[bold]')
           .replace(/\[\/b\]/gi, '[/bold]');
         
-        updates[`forms/${form.firebaseKey}/template`] = newTemplate;
+        const formsBase = resolveStagingPath('forms');
+
+        updates[`${formsBase}/${form.firebaseKey}/template`] = newTemplate;
         updatedCount++;
       }
     });

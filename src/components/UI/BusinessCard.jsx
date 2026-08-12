@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Form, Button } from 'react-bootstrap';
 import * as Sentry from "@sentry/react";
-import BusinessCardImage from '../assets/business-card.png';
-import './BusinessCardModal.css';
+import BusinessCardImage from '../../assets/business-card.png';
+import '../Modals/BusinessCard.css';
+import BaseModal from '../Modals/BaseModal';
 
 const copyToClipboard = async (text, showNotification, message) => {
   try {
@@ -21,15 +22,109 @@ const copyToClipboard = async (text, showNotification, message) => {
 const overlayStyles = {
   name: { position: 'absolute', top: '23.44%', left: '2.75%', color: 'black', fontSize: '35px', pointerEvents: 'none', cursor: 'default', whiteSpace: 'nowrap', fontFamily: 'LufgaMedium, Arial, sans-serif' },
   rank: { position: 'absolute', top: '31.92%', left: '3.31%', color: '#cb1212', fontSize: '15px', cursor: 'default', pointerEvents: 'none', whiteSpace: 'nowrap', fontFamily: 'LufgaMedium, Arial, sans-serif' },
-  phoneNumber: { position: 'absolute', top: '63.25%', left: '12.06%', color: 'black', fontSize: '15px', cursor: 'default', pointerEvents: 'none', whiteSpace: 'nowrap', fontFamily: 'LufgaMedium, Arial, sans-serif' }
+  phoneNumber: { position: 'absolute', top: '52.77%', left: '12.56%', color: 'black', fontSize: '15px', cursor: 'default', pointerEvents: 'none', whiteSpace: 'nowrap', fontFamily: 'LufgaMedium, Arial, sans-serif' }
 };
 
-const BusinessCardModal = ({ show, onHide, showNotification, commitInfo, handleImageUpload }) => {
+const isDevHost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.'));
+
+const BusinessCardModal = ({ show, onHide, showNotification, commitInfo, handleImageUpload, defaultName = '', defaultRank = '', swappableCharacters = [], onSwapCharacter = null, canSwapCharacters = false }) => {
   const [name, setName] = useState('');
   const [rank, setRank] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [imageUrl, setImageUrl] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [showCharList, setShowCharList] = useState(false);
+  const [devPair, setDevPair] = useState(0);
+  const [debug, setDebug] = useState(() => (isDevHost ? localStorage.getItem('phmc_bizcard_debug') === '1' : false));
+
+  // Localhost-only: cycle two dummy name/rank pairs to test the card layout.
+  const toggleDevPair = () => {
+    setDevPair(prev => {
+      const next = prev === 0 ? 1 : 0;
+      setName(next === 0 ? 'Dev Name 1' : 'Dev Name 2');
+      setRank(next === 0 ? 'Dev Rank 1' : 'Dev Rank 2');
+      return next;
+    });
+  };
+
+  const toggleDebug = () => {
+    setDebug(prev => {
+      const next = !prev;
+      localStorage.setItem('phmc_bizcard_debug', next ? '1' : '0');
+      return next;
+    });
+  };
+
+  // ── Debug mode: draggable overlay boxes + live coordinate readout ──
+  const containerRef = useRef(null);
+  const draggingRef = useRef(null);
+
+  const [overlayPos, setOverlayPos] = useState({
+    name: { top: parseFloat(overlayStyles.name.top), left: parseFloat(overlayStyles.name.left) },
+    rank: { top: parseFloat(overlayStyles.rank.top), left: parseFloat(overlayStyles.rank.left) },
+    phoneNumber: { top: parseFloat(overlayStyles.phoneNumber.top), left: parseFloat(overlayStyles.phoneNumber.left) },
+  });
+
+  const onPointerMove = useCallback((e) => {
+    const d = draggingRef.current;
+    if (!d) return;
+    const dxPct = ((e.clientX - d.startX) / d.width) * 100;
+    const dyPct = ((e.clientY - d.startY) / d.height) * 100;
+    setOverlayPos(prev => ({
+      ...prev,
+      [d.field]: {
+        top: Math.max(0, Math.min(100, d.startTop + dyPct)),
+        left: Math.max(0, Math.min(100, d.startLeft + dxPct)),
+      },
+    }));
+  }, []);
+
+  const onPointerUp = useCallback(() => {
+    draggingRef.current = null;
+    window.removeEventListener('pointermove', onPointerMove);
+    window.removeEventListener('pointerup', onPointerUp);
+  }, [onPointerMove]);
+
+  const startDrag = (field) => (e) => {
+    if (!debug) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const el = containerRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    draggingRef.current = {
+      field,
+      startX: e.clientX,
+      startY: e.clientY,
+      startTop: overlayPos[field].top,
+      startLeft: overlayPos[field].left,
+      width: rect.width,
+      height: rect.height,
+    };
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+  };
+
+  useEffect(() => () => {
+    window.removeEventListener('pointermove', onPointerMove);
+    window.removeEventListener('pointerup', onPointerUp);
+  }, [onPointerMove, onPointerUp]);
+
+  // Debug: overlay uses the dragged position + visible box. Off: the real styles.
+  const overlayStyle = (field, base) => {
+    if (!debug) return base;
+    const pos = overlayPos[field];
+    return {
+      ...base,
+      top: `${pos.top}%`,
+      left: `${pos.left}%`,
+      pointerEvents: 'auto',
+      cursor: 'move',
+      touchAction: 'none',
+      outline: '1px dashed #ff3b3b',
+      background: 'rgba(255,59,59,0.12)',
+    };
+  };
 
   const webhookQueue = useRef([]);
   const isWebhookProcessing = useRef(false);
@@ -38,12 +133,13 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo, handleI
 
   useEffect(() => {
     if (show) {
-      setName(localStorage.getItem('name') || '');
-      setRank(localStorage.getItem('rank') || '');
+      // Prefer OAuth credentials (character name / rank) over any stored values.
+      setName(defaultName || localStorage.getItem('name') || '');
+      setRank(defaultRank || localStorage.getItem('rank') || '');
       setPhoneNumber(localStorage.getItem('phoneNumber') || '');
       setImageUrl(null);
     }
-  }, [show]);
+  }, [show, defaultName, defaultRank]);
 
   const handleNameChange = (e) => setName(e.target.value);
   const handleRankChange = (e) => setRank(e.target.value);
@@ -260,60 +356,111 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo, handleI
     }
   }, [name, rank, phoneNumber, showNotification, handleImageUpload, sendDiscordWebhook, commitInfo]);
 
-  if (!show) {
-    return null;
-  }
-
   return (
-    <div className="modal-overlay">
-      <div className="business-card-modal" onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <h4>Business Card</h4>
-          <button
-            type="button"
-            className="modal-close-btn"
-            onClick={onHide}
-            aria-label="Close"
-          >
-            <span aria-hidden="true">&times;</span>
-          </button>
+    <BaseModal
+      isOpen={show}
+      onClose={onHide}
+      title="Business Card"
+      modalSize="full"
+      variant="info"
+    >
+      <div className="business-card-content">
+        {imageUrl && (
+          <div className="image-link-container">
+            <p>
+              <strong>Image Link: </strong>
+              <a href={imageUrl} target="_blank" rel="noopener noreferrer">
+                {imageUrl}
+              </a>
+            </p>
+            Instructions!
+            <br />
+            1) /note [id of the blank note item in your inventory] [amount] NAME [name for the cards]
+            <br />
+            2) /note [id of the new note item in your inventory] [amount] CONTENT {imageUrl}
+          </div>
+        )}
+        <div className="business-card-image-container" ref={containerRef}>
+          <img
+            src={BusinessCardImage}
+            alt="Business Card Preview"
+          />
+          <div className="name-overlay" style={overlayStyle('name', overlayStyles.name)} onPointerDown={startDrag('name')}>{name}</div>
+          <div className="rank-overlay" style={overlayStyle('rank', overlayStyles.rank)} onPointerDown={startDrag('rank')}>{rank}</div>
+          <div className="phone-number-overlay" style={overlayStyle('phoneNumber', overlayStyles.phoneNumber)} onPointerDown={startDrag('phoneNumber')}>{phoneNumber}</div>
         </div>
-        <div className="business-card-content">
-          {imageUrl && (
-            <div className="image-link-container">
-              <p>
-                <strong>Image Link: </strong>
-                <a href={imageUrl} target="_blank" rel="noopener noreferrer">
-                  {imageUrl}
-                </a>
-              </p>
-              Instructions!
-              <br />
-              1) /note [id of the blank note item in your inventory] [amount] NAME [name for the cards]
-              <br />
-              2) /note [id of the new note item in your inventory] [amount] CONTENT {imageUrl}
-            </div>
-          )}
-          <div className="business-card-image-container">
-            <img
-              src={BusinessCardImage}
-              alt="Business Card Preview"
-            />
-            <div className="name-overlay" style={overlayStyles.name}>{name}</div>
-            <div className="rank-overlay" style={overlayStyles.rank}>{rank}</div>
-            <div className="phone-number-overlay" style={overlayStyles.phoneNumber}>{phoneNumber}</div>
+        {debug && (
+          <div style={{ marginTop: 12, padding: 10, borderRadius: 8, background: '#0f172a', border: '1px solid #334155', fontFamily: 'monospace', fontSize: 12 }}>
+            {['name', 'rank', 'phoneNumber'].map(f => {
+              const p = overlayPos[f];
+              const fs = overlayStyles[f].fontSize;
+              return (
+                <div key={f} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '2px 0' }}>
+                  <span style={{ color: '#94a3b8', textTransform: 'capitalize' }}>{f}</span>
+                  <span style={{ color: '#e2e8f0' }}>top: {p.top.toFixed(2)}% · left: {p.left.toFixed(2)}% · font: {fs}</span>
+                </div>
+              );
+            })}
+            <div style={{ color: '#64748b', marginTop: 6 }}>Drag the boxes on the card — copy these values into overlayStyles.</div>
           </div>
-          <div className="business-card-input-fields">
-            <Form.Control className="mb-2" type="text" placeholder="Name" value={name} onChange={handleNameChange} />
-            <Form.Control className="mb-2" type="text" placeholder="Rank" value={rank} onChange={handleRankChange} />
-            <Form.Control className="mb-2" type="text" placeholder="Phone Number" value={phoneNumber} onChange={handlePhoneNumberChange} />
+        )}
+        <div className="business-card-input-fields">
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Form.Control type="text" placeholder="Name" value={name} onChange={handleNameChange} style={{ marginBottom: 0 }} />
+            <Form.Control type="text" placeholder="Rank" value={rank} onChange={handleRankChange} style={{ marginBottom: 0 }} />
           </div>
-          <Button onClick={handleSave} disabled={isSaving}>
-            {isSaving ? 'Saving...' : 'Save & Upload Business Card'}
-          </Button>
+          <div style={{ position: 'relative', display: 'flex', gap: 8, marginTop: 8 }}>
+            <Form.Control type="text" placeholder="Phone Number" value={phoneNumber} onChange={handlePhoneNumberChange} style={{ flex: 1, marginBottom: 0 }} />
+            {canSwapCharacters && swappableCharacters.length > 0 && (
+              <>
+                <Button variant="outline-secondary" onClick={() => setShowCharList(v => !v)} style={{ flexShrink: 0 }}>
+                  <i className="fas fa-exchange-alt me-1" /> Switch Character
+                </Button>
+                {showCharList && (
+                  <div style={{
+                    position: 'absolute', bottom: '100%', left: 0, right: 0, marginBottom: 6,
+                    background: '#121A2C', border: '1px solid #324467', borderRadius: 10,
+                    boxShadow: '0 12px 40px rgba(0,0,0,0.5)', overflow: 'hidden', zIndex: 100,
+                  }}>
+                    <div style={{ padding: '10px 12px', borderBottom: '1px solid #25324D', fontSize: 10.5, fontWeight: 700, color: '#8B96AE', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                      Switch Character
+                    </div>
+                    {swappableCharacters.map(c => (
+                      <div key={c.id}
+                        onClick={() => { onSwapCharacter?.(c); setShowCharList(false); }}
+                        style={{ padding: '10px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid #25324D', transition: 'background 0.15s' }}
+                        onMouseEnter={e => e.currentTarget.style.background = '#182238'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                      >
+                        <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#182238', color: '#E7ECF5', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, flexShrink: 0 }}>
+                          {c.characterName?.charAt(0) || '?'}
+                        </div>
+                        <div style={{ fontSize: 12.5, fontWeight: 600, color: '#E7ECF5' }}>{c.characterName}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+            {isDevHost && (
+              <>
+                <Button variant="outline-secondary" onClick={toggleDevPair} style={{ flexShrink: 0 }}>
+                  <i className="fas fa-user-edit me-1" />Dev: {devPair === 0 ? 'Name 1' : 'Name 2'}
+                </Button>
+                <Button variant="outline-secondary" onClick={toggleDebug} style={{ flexShrink: 0 }}>
+                  {debug ? 'Hide Debug' : 'Debug Layout'}
+                </Button>
+              </>
+            )}
+            <Button onClick={handleSave} disabled={isSaving} style={{ flex: 1 }}>
+              {isSaving ? 'Saving...' : 'Save & Upload Business Card'}
+            </Button>
+          </div>
         </div>
       </div>
-    </div>
+    </BaseModal>
   );
 };
 

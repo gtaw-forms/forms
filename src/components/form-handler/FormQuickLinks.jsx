@@ -1,20 +1,5 @@
 import { useNotification } from '../../contexts/NotificationContext';
-
-const AGENCY_CREDENTIALS = {
-  'lspd.gta.world': {
-    username: 'PHMC Forensic Pathology',
-    password: 'Coroner1951!'
-  },
-  'lssd.gta.world': {
-    username: 'PHMC Forensic Pathology',
-    password: 'Coroner1951!'
-  },
-    'sfm-forum.gta.world': {
-    username: 'PHMC Forensic Path ',
-    password: 'Coroner1951!'
-  }
-
-};
+import { useAgencyCredentials } from '../../hooks/useAgencyCredentials';
 
 const getQuickLinks = (form, formValues, agencyDataStore, generatedBBCode, generatedTitle) => {
   if (!form) return [];
@@ -117,6 +102,7 @@ const getQuickLinks = (form, formValues, agencyDataStore, generatedBBCode, gener
 
 const FormQuickLinks = ({ form, formValues, agencyDataStore, generatedBBCode, generatedTitle }) => {
   const { showNotification } = useNotification();
+  const { creds: agencyCreds } = useAgencyCredentials();
   
   const links = getQuickLinks(form, formValues, agencyDataStore, generatedBBCode, generatedTitle);
 
@@ -138,8 +124,8 @@ const FormQuickLinks = ({ form, formValues, agencyDataStore, generatedBBCode, ge
   if (agency && agency.url) {
     try {
       agencyDomain = new URL(agency.url).hostname;
-      if (AGENCY_CREDENTIALS[agencyDomain]) {
-        credentials = AGENCY_CREDENTIALS[agencyDomain];
+      if (agencyCreds[agencyDomain]) {
+        credentials = agencyCreds[agencyDomain];
       }
     } catch (e) {
       // Ignore URL errors

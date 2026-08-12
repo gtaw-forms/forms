@@ -78,10 +78,19 @@ export const useInactivityReload = () => {
             window.addEventListener(event, resetTimers, { passive: true });
         });
 
+        // Track when the tab is hidden separately from activity timers.
+        // This avoids a race where the first mousemove on return resets
+        // lastActivityTime before visibilitychange fires.
+        let tabHiddenAt = null;
         const handleVisibilityChange = () => {
-            const elapsed = Date.now() - lastActivityTime.current;
-            if (elapsed >= INACTIVITY_RELOAD_TIMEOUT) {
-                reloadPage();
+            if (document.hidden) {
+                tabHiddenAt = Date.now();
+            } else if (tabHiddenAt !== null) {
+                const elapsed = Date.now() - tabHiddenAt;
+                tabHiddenAt = null;
+                if (elapsed >= INACTIVITY_RELOAD_TIMEOUT) {
+                    reloadPage();
+                }
             }
         };
 

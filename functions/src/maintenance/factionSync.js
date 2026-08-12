@@ -106,11 +106,42 @@ export const syncFactionMembers = async (triggerSource = 'scheduled') => {
         }
 
         // 6. Check if data actually changed before writing
-        const existingJson = JSON.stringify(existingData);
-        const newJson = JSON.stringify(membersObject);
-        const dataChanged = existingJson !== newJson;
+        // Strip volatile fields (lastDuty, lastOnline, activity) that change on every
+        // UCP API call and would cause false "data changed" detections.
+        const stableFields = (obj) => Object.fromEntries(
+            Object.entries(obj).map(([id, member]) => [
+                id,
+                { characterName: member.characterName, rank: member.rank, scriptRank: member.scriptRank }
+            ])
+        );
+        const dataChanged = JSON.stringify(stableFields(existingData)) !== JSON.stringify(stableFields(membersObject));
 
         if (dataChanged) {
+            // Log exactly what changed for debugging
+            const oldKeys = new Set(Object.keys(existingData));
+            const newKeys = new Set(Object.keys(membersObject));
+            const added = [...newKeys].filter(k => !oldKeys.has(k));
+            const removed = [...oldKeys].filter(k => !newKeys.has(k));
+            const common = [...oldKeys].filter(k => newKeys.has(k));
+            const changed = common.filter(id => {
+                const a = stableFields(existingData)[id];
+                const b = stableFields(membersObject)[id];
+                return JSON.stringify(a) !== JSON.stringify(b);
+            });
+            if (added.length > 0) console.log(`[Faction Sync] Members added: ${added.map(id => membersObject[id]?.characterName).join(', ')}`);
+            if (removed.length > 0) console.log(`[Faction Sync] Members removed: ${removed.map(id => existingData[id]?.characterName).join(', ')}`);
+            if (changed.length > 0) {
+                for (const id of changed.slice(0, 5)) {
+                    const old = stableFields(existingData)[id];
+                    const cur = stableFields(membersObject)[id];
+                    console.log(`[Faction Sync] Member changed: #${id} "${old.characterName}" rank:${old.rank}(${old.scriptRank}) -> "${cur.characterName}" rank:${cur.rank}(${cur.scriptRank})`);
+                }
+                if (changed.length > 5) console.log(`[Faction Sync] ...and ${changed.length - 5} more members changed`);
+            }
+            if (added.length === 0 && removed.length === 0 && changed.length === 0) {
+                console.warn(`[Faction Sync] Data changed detected but no stable-field diff found — volatile fields may still differ`);
+            }
+
             await db.ref(RTDB_PATH).set(membersObject);
 
             // Update Metadata

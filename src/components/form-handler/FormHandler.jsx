@@ -4,7 +4,6 @@ import useGtaWorldAuth from "../../hooks/useGtaWorldAuth";
 import { useModal } from "../../contexts/ModalProvider";
 import { useData } from "../../contexts/DataContext";
 import FormFieldRenderer from './FormFieldRenderer';
-import FormHandlerNavButtons from './FormHandlerNavButtons';
 import LeftSidebarNav from '../UI/LeftSidebarNav';
 import useBbcodeGenerator from '../../hooks/useBbcodeGenerator';
 import { uploadImageToImgBB } from '../../utils/imageUploadUtils'; 
@@ -21,6 +20,7 @@ import { database } from '../../firebase';
 import { ref, onValue, get } from 'firebase/database';
 import { useInactivityReload } from '../../hooks/useInactivityReload';
 import { cleanRankText } from '../../utils/textUtils';
+import { resolveEmployeeCredentials } from '../../utils/identityUtils';
 import { STORAGE_KEYS } from '../../services/gtaWorldAuth';
 import { useAuth } from '../../contexts/AuthContext';
 import { useConsent, DEPLOY_TRACKED_FORMS } from '../../hooks/useConsent';
@@ -171,7 +171,7 @@ export const FormHandler = () => {
     }
   }, [formsData]); // Run once when formsData is available
 
-  const { saveReport: saveNewReport, validateMembership } = useFormSaver(user, isAuthenticated);
+  const { saveReport: saveNewReport, validateMembership } = useFormSaver(user, isAuthenticated, { phmcListData, coronerListData });
   const modalCloseTimer = React.useRef(null);
   const { user: firebaseAuthUser } = useAuth();
   const firebaseUid = firebaseAuthUser?.uid || null;
@@ -690,9 +690,11 @@ const handleClearForm = useCallback(() => {
       }
     }
 
-    let bbcodeToUse = generatedBBCode;
-    if (!bbcodeToUse) {
-      // Auto-generate BBCode if not already generated, so Save & Queue works in one click
+    // Always regenerate BBCode from the LATEST formValues — reusing cached
+    // output could ship an earlier (blank) generation if credentials synced
+    // after a preview (Fix D).
+    let bbcodeToUse;
+    {
       const genResult = generateBBCode();
       if (genResult?.bbcode) {
         bbcodeToUse = genResult.bbcode;
@@ -714,7 +716,7 @@ const handleClearForm = useCallback(() => {
       }
 
       // Medical record forms require a patient name for reliable forum search
-      const MEDICAL_FORM_IDS = ['patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical', 'session_notes', 'intensive_treatment', 'psych_eval', 'testing-compact-mode'];
+      const MEDICAL_FORM_IDS = ['patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical', 'session_notes', 'intensive_treatment', 'psych-eval', 'testing-compact-mode'];
       const isMedicalRecord = selectedForm?.firebaseKey && MEDICAL_FORM_IDS.includes(selectedForm.firebaseKey);
       if (isMedicalRecord) {
         const patientName = formValues.decedentName || formValues.decedentname || formValues.patientName || '';
@@ -1000,48 +1002,36 @@ const handleClearForm = useCallback(() => {
     const currentEmployeeType = selectedForm?.accessType === 'Coroner' ? 'coroner' : 'phmc';
     const employeeNameField = `${currentEmployeeType}Employee`;
 
-    // Determine the "source of truth" for the employee name, usually from OAuth
-    const oauthEmployeeName = user?.faction?.characterName || user?.activeCharacter?.characterName || null;
-    
     setFormValues(currentFormValues => {
       const updates = {};
-      
-      // Update patientName based on characterName if not a patient form,
-      // and if patientName is not already set by patientCharacterSelector.
-      if (characterName && currentFormValues.patientName !== characterName) {
-        // Only set patientName from characterName if patientCharacterSelector hasn't taken precedence
-        if (!currentFormValues.patientCharacterSelector) {
-            updates.patientName = characterName;
-        }
-      }
 
-      // Sync employee credentials from OAuth if OAuth name is available
-      if (oauthEmployeeName) {
-        const currentFormEmployeeName = currentFormValues[employeeNameField];
-        const currentFormRank = currentFormValues[`${currentEmployeeType}Rank`];
-        const currentFormBadge = currentFormValues[`${currentEmployeeType}Badge`];
+      // NOTE: the legacy patientName = characterName auto-fill was REMOVED
+      // (2026-08-11). It stamped the author's own name into empty patient
+      // names on medical forms (Paolina Russo / patient 1919 incident) and
+      // the legacy handler is decommissioned — patient names now come only
+      // from the patient lookup or the user.
 
-        if (
-          currentFormEmployeeName !== oauthEmployeeName ||
-          !currentFormRank ||
-          !currentFormBadge
-        ) {
-          const factionData = user?.faction || user?.activeCharacter;
-          const dbMatch = [...phmcListData, ...coronerListData].find(e =>
-            String(e.characterId) === String(factionData?.characterId)
-          );
-
-          updates[`${currentEmployeeType}Employee`] = oauthEmployeeName;
-          updates[`${currentEmployeeType}Rank`] = factionData?.rank ? cleanRankText(String(factionData.rank)) : (factionData?.scriptRank || '');
-          updates[`${currentEmployeeType}Badge`] = factionData?.characterId || factionData?.badge || '';
-          updates[`${currentEmployeeType}Discord`] = dbMatch?.discordName || dbMatch?.discord || user.username || '';
-          updates[`${currentEmployeeType}PHNumber`] = dbMatch?.phNumber || '50056';
-          updates[`${currentEmployeeType}FirstName`] = factionData?.firstname || (oauthEmployeeName.split(' ')[0] || '');
-          updates[`${currentEmployeeType}LastName`] = factionData?.lastname || (oauthEmployeeName.split(' ').slice(1).join(' ') || '');
-        }
-      } else {
-        if (isDevelopment) {
-             console.log(`[FormHandler] User auth lost/changed, but preserving credentials for ${currentEmployeeType} to prevent data loss.`);
+      // Sync employee credentials via the shared resolver (same breadth as
+      // author resolution; roster match by id or name; badge = roster key).
+      const currentFormEmployeeName = currentFormValues[employeeNameField];
+      const currentFormRank = currentFormValues[`${currentEmployeeType}Rank`];
+      const currentFormBadge = currentFormValues[`${currentEmployeeType}Badge`];
+      if (!currentFormEmployeeName || !currentFormRank || !currentFormBadge) {
+        const resolved = resolveEmployeeCredentials(user, {
+          phmcListData,
+          coronerListData,
+          cleanRank: cleanRankText,
+        });
+        if (resolved.employeeName) {
+          if (!currentFormEmployeeName) updates[`${currentEmployeeType}Employee`] = resolved.employeeName;
+          if (!currentFormRank) updates[`${currentEmployeeType}Rank`] = resolved.rank;
+          if (!currentFormBadge) updates[`${currentEmployeeType}Badge`] = resolved.badge;
+          updates[`${currentEmployeeType}Discord`] = resolved.discord;
+          updates[`${currentEmployeeType}PHNumber`] = resolved.phNumber;
+          updates[`${currentEmployeeType}FirstName`] = resolved.firstName;
+          updates[`${currentEmployeeType}LastName`] = resolved.lastName;
+        } else if (isDevelopment) {
+          console.log(`[FormHandler] User auth lost/changed, but preserving credentials for ${currentEmployeeType} to prevent data loss.`);
         }
       }
 
@@ -1282,12 +1272,6 @@ const handleClearForm = useCallback(() => {
           mapTargetField={mapTargetField}
           selectedForm={selectedForm}
         />
-      <FormHandlerNavButtons
-        onToggleSavedReports={handleNavToggleSavedReports}
-        phmcLogoSrc={phmcLogo}
-        onOpenBotConsent={() => setShowConsentModal(true)}
-      />
-
       <LeftSidebarNav
         groupedForms={groupedForms}
         collapsedCategories={collapsedCategories}
@@ -1510,7 +1494,7 @@ const handleClearForm = useCallback(() => {
   </div>
 )}
           {(() => {
-            const MEDICAL_FORM_IDS = ['patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical', 'session_notes', 'intensive_treatment', 'psych_eval', 'testing-compact-mode'];
+            const MEDICAL_FORM_IDS = ['patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical', 'session_notes', 'intensive_treatment', 'psych-eval', 'testing-compact-mode'];
             if (selectedForm?.firebaseKey && MEDICAL_FORM_IDS.includes(selectedForm.firebaseKey) && botConsent?.[selectedForm.firebaseKey]) {
               return (
                 <div style={{ marginBottom: 8 }}>
@@ -1903,9 +1887,16 @@ ${morgue.tattoos}
               return type + ' to ' + part + (distR !== null ? ' (' + distR + 'm)' : '');
             }).filter(Boolean);
           }
-          if (Array.isArray(morgue?.bullets) && morgue.bullets.length > 0) {
-            updates.casings = morgue.bullets.map(b => 'Bullet found with striation marks - ' + (b.type || '') + ' #' + (b.id || ''));
-            updates.RadiologyResult = morgue.bullets.length + ' projectiles/slugs were identified via fluoroscopy and recovered during the autopsy.';
+          const rawBullets = morgue?.bullets;
+          const bulletsArr = rawBullets && typeof rawBullets === 'object'
+            ? (Array.isArray(rawBullets) ? rawBullets : [rawBullets])
+            : [];
+          if (bulletsArr.length > 0) {
+            updates.casings = bulletsArr.map(b => {
+              const prefix = (b.type || '').toLowerCase().includes('gauge') ? 'Pellet' : 'Bullet';
+              return prefix + ' found with striation marks - ' + (b.type || '') + ' #' + (b.id || '');
+            });
+            updates.RadiologyResult = bulletsArr.length + ' projectiles/slugs were identified via fluoroscopy and recovered during the autopsy.';
           }
           if (!morgue) {
             showNotification('Cannot load case - no morgue record found for this decedent. Upload the body via the PS Logger or Morgue Manager first.', 'error');

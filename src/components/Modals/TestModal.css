@@ -1,0 +1,72 @@
+/* TestModal — inline modal, no portal, no BaseModal dependency */
+.test-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1050;
+  background: rgba(6,10,18,0.72);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.test-box {
+  width: 100%;
+  max-width: 460px;
+  max-height: 90vh;
+  overflow-y: auto;
+  background: #121A2C;
+  border: 1px solid #324467;
+  border-radius: 14px;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.5);
+  animation: testSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.test-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid #25324D;
+}
+
+.test-head h3 {
+  margin: 0;
+  font-size: 14.5px;
+  font-weight: 700;
+  color: #E7ECF5;
+}
+
+.test-close {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  border: 1px solid #25324D;
+  background: #182238;
+  color: #8B96AE;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.15s;
+  padding: 0;
+}
+
+.test-close:hover {
+  color: #E7ECF5;
+  border-color: #324467;
+}
+
+.test-body {
+  padding: 22px 20px;
+  color: #E7ECF5;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+@keyframes testSlideIn {
+  from { opacity: 0; transform: translateY(16px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}

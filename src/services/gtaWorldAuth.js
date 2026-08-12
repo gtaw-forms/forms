@@ -151,9 +151,18 @@ export const initiateGtaWorldLogin = async (options = {}) => {
     try {
         const restoredSession = await tryRestoreSession();
         if (restoredSession && restoredSession.user) {
-            sendLoginWebhook(restoredSession.user);
+            // Apply the login role from the button click to the restored data
+            const isNonEmp = options.role === 'non-employee';
+            const userWithRole = {
+                ...restoredSession.user,
+                loginRole: options.role || 'employee',
+                // Strip faction data for non-employee — prevents stale faction checks
+                ...(isNonEmp ? { isFactionMember: false, faction: null, allFactionCharacters: [] } : {}),
+            };
+            storeUser(userWithRole);
+            sendLoginWebhook(userWithRole, options.role);
             if (options.onSuccess) {
-                options.onSuccess(restoredSession.user, options.returnPath || '#/');
+                options.onSuccess(userWithRole, options.returnPath || '#/');
             }
             return;
         }
@@ -277,8 +286,14 @@ export const handleOAuthCallback = async (code, state, onSuccess, onError, onPro
 
             // SECURITY FIX: Access Token moved to sessionStorage to prevent persistent clear-text storage.
             // User Data remains in localStorage for performance, but sensitive tokens are now volatile.
-            const userDataToStore = { ...userData, loginRole: storedOAuthData.role || 'employee' };
-            localStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(userDataToStore));
+            const isNonEmp = storedOAuthData.role === 'non-employee';
+            const userDataToStore = {
+                ...userData,
+                loginRole: storedOAuthData.role || 'employee',
+                // Strip faction data for non-employee to prevent stale faction checks
+                ...(isNonEmp ? { isFactionMember: false, faction: null, allFactionCharacters: [] } : {}),
+            };
+            storeUser(userDataToStore);
             sessionStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, result.accessToken);
 
             // Persistence: Store token in localStorage for cross-session access (enabled by default)
@@ -288,7 +303,7 @@ export const handleOAuthCallback = async (code, state, onSuccess, onError, onPro
             sessionStorage.removeItem(STORAGE_KEYS.OAUTH_STATE);
             sessionStorage.removeItem(STORAGE_KEYS.OAUTH_REQUEST_LOCK);
 
-            if (onSuccess) onSuccess(result.userData, storedOAuthData.returnPath);
+            if (onSuccess) onSuccess(userDataToStore, storedOAuthData.returnPath);
         } else {
             throw new Error(result.error || 'Token exchange failed');
         }
@@ -531,6 +546,26 @@ export const getAccessToken = () => {
     return sessionStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN) || localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
 };
 
+/**
+ * Store user data to localStorage, preserving loginRole from any existing data.
+ * Single point of write — use this everywhere instead of raw localStorage.setItem.
+ */
+export const storeUser = (user) => {
+    if (!user) return;
+    const existing = (() => { try { return JSON.parse(localStorage.getItem(STORAGE_KEYS.USER_DATA)); } catch {} })();
+    if (existing?.loginRole && !user.loginRole) {
+        user.loginRole = existing.loginRole;
+    }
+    try { localStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(user)); } catch {}
+};
+
+/** Clear stored user data. */
+export const clearUser = () => {
+    try { localStorage.removeItem(STORAGE_KEYS.USER_DATA); } catch {}
+    try { sessionStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN); } catch {}
+    try { localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN); } catch {}
+};
+
 export const isAuthenticated = () => {
     const user = getCurrentUser();
     const token = getAccessToken();
@@ -748,7 +783,7 @@ export const refreshFactionData = async () => {
                 });
             }
         }
-        localStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(user));
+        storeUser(user);
         return user;
     }
     throw new Error('Refresh failed');

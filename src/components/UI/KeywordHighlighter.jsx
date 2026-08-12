@@ -1,8 +1,10 @@
 // components/KeywordHighlighter.jsx — FINAL + BULLETPROOF + STATIC METHOD
+// Highlights LSCC keywords in protocol content and opens a self-contained modal
+// (portal'd to document.body — no BaseModal dependency) with the keyword info.
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { onValue, ref } from 'firebase/database';
 import { database } from '../../firebase';
-import BaseModal from '../Modals/BaseModal';
 import { renderMarkdown, escapeHtml } from '../../utils/textUtils';
 
 // Helper: escape regex characters
@@ -21,6 +23,19 @@ export const KeywordHighlighter = ({ children }) => {
     return () => unsubscribe();
   }, []);
 
+  // Lock body scroll + close on Escape while the modal is open.
+  useEffect(() => {
+    if (!showModal) return;
+    const onKey = (e) => { if (e.key === 'Escape') setShowModal(false); };
+    window.addEventListener('keydown', onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [showModal]);
+
   if (!children || typeof children !== 'string') return <>{children}</>;
 
   const keywordList = Object.values(keywords)
@@ -31,9 +46,9 @@ export const KeywordHighlighter = ({ children }) => {
 
   if (keywordList.length === 0) {
     return (
-      <div 
+      <div
         dangerouslySetInnerHTML={{ __html: isHTML ? children : renderMarkdown(children) }}
-        style={{ wordWrap: 'break-word', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }} 
+        style={{ wordWrap: 'break-word', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }}
       />
     );
   }
@@ -49,7 +64,6 @@ export const KeywordHighlighter = ({ children }) => {
         ? new RegExp(`(${escaped})`, 'gi')
         : new RegExp(`\\b(${escaped})\\b`, 'gi');
 
-      // Replace with a temporary token that won't conflict with Markdown (no __ or **)
       content = content.replace(regex, match => {
         const escapedKeywordForData = escapeHtml(kw.keyword.toLowerCase());
         const escapedMatchContent = escapeHtml(match);
@@ -62,26 +76,23 @@ export const KeywordHighlighter = ({ children }) => {
     }
   });
 
-  // Apply Markdown to the text (which now contains tokens), but skip for HTML content
   if (!isHTML) {
     content = renderMarkdown(content);
   }
 
-  // After all keywords and Markdown are processed, replace tokens with actual HTML
   finalReplacements.forEach((html, index) => {
     const tokenRegex = new RegExp(`@@KWTOKEN_${index}@@`, 'g');
     content = content.replace(tokenRegex, html);
   });
 
   const handleClick = (e) => {
-    const target = e.target;
-    if (target && target.classList && target.classList.contains('smart-keyword')) {
-      const kwKey = target.getAttribute('data-kw');
-      const kw = keywordList.find(k => k.keyword.toLowerCase() === kwKey);
-      if (kw) {
-        setActiveKeyword(kw);
-        setShowModal(true);
-      }
+    const el = e.target && e.target.closest ? e.target.closest('.smart-keyword') : null;
+    if (!el) return;
+    const kwKey = el.getAttribute('data-kw');
+    const kw = keywordList.find(k => k.keyword.toLowerCase() === kwKey);
+    if (kw) {
+      setActiveKeyword(kw);
+      setShowModal(true);
     }
   };
 
@@ -98,51 +109,53 @@ export const KeywordHighlighter = ({ children }) => {
         }}
       />
 
-      <BaseModal
-        isOpen={showModal && !!activeKeyword}
-        onClose={() => setShowModal(false)}
-        title={activeKeyword?.keyword}
-        modalSize="small"
-        variant="info"
-        footer={
-          <button 
-            className="keyword-modal-btn keyword-modal-btn-primary" 
-            onClick={() => setShowModal(false)}
-            style={{ 
-              backgroundColor: '#0066cc', 
-              color: 'white', 
-              border: 'none', 
-              padding: '8px 16px', 
-              borderRadius: '6px',
-              fontWeight: 600,
-              cursor: 'pointer' 
+      {showModal && activeKeyword && createPortal(
+        <div
+          onClick={() => setShowModal(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 2000,
+            background: 'rgba(6,10,18,0.72)', backdropFilter: 'blur(3px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: '#121A2C', border: '1px solid #324467', borderRadius: 14,
+              maxWidth: 460, width: '100%', maxHeight: '85vh', display: 'flex',
+              flexDirection: 'column', boxShadow: '0 24px 60px rgba(0,0,0,0.5)',
             }}
           >
-            Close
-          </button>
-        }
-      >
-        {activeKeyword && (
-          <>
-            <div style={{ marginBottom: 16 }}>
-              <strong style={{ color: '#0066cc', fontSize: '1.1em', display: 'block', marginBottom: '4px' }}>CONSIDER</strong>
-              <div 
-                style={{ margin: 0, lineHeight: '1.6', whiteSpace: 'pre-wrap' }}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #25324D', flexShrink: 0 }}>
+              <h3 style={{ margin: 0, fontSize: 14.5, fontWeight: 700, color: '#33D6C0' }}>{activeKeyword.keyword}</h3>
+              <button
+                onClick={() => setShowModal(false)}
+                aria-label="Close"
+                style={{ width: 28, height: 28, borderRadius: 7, border: '1px solid #25324D', background: '#182238', color: '#8B96AE', cursor: 'pointer', fontSize: 14, lineHeight: 1 }}
+              >
+                ✕
+              </button>
+            </div>
+            <div style={{ padding: '22px 20px', color: '#E7ECF5', fontSize: 13, lineHeight: 1.55, overflowY: 'auto' }}>
+              <strong style={{ color: '#33D6C0', fontSize: '1.1em', display: 'block', marginBottom: 4 }}>CONSIDER</strong>
+              <div
+                style={{ margin: 0, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}
                 dangerouslySetInnerHTML={{ __html: renderMarkdown(activeKeyword.definition || 'No definition provided.') }}
               />
+              {activeKeyword.tip && (
+                <div style={{ marginTop: 16 }}>
+                  <strong style={{ color: '#33D6C0', fontSize: '1.1em', display: 'block', marginBottom: 4 }}>TIP</strong>
+                  <div
+                    style={{ margin: 0, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}
+                    dangerouslySetInnerHTML={{ __html: renderMarkdown(activeKeyword.tip) }}
+                  />
+                </div>
+              )}
             </div>
-            {activeKeyword.tip && (
-              <div style={{ marginBottom: 16 }}>
-                <strong style={{ color: '#0066cc', fontSize: '1.1em', display: 'block', marginBottom: '4px' }}>TIP</strong>
-                <div 
-                  style={{ margin: 0, lineHeight: '1.6', whiteSpace: 'pre-wrap' }}
-                  dangerouslySetInnerHTML={{ __html: renderMarkdown(activeKeyword.tip) }}
-                />
-              </div>
-            )}
-          </>
-        )}
-      </BaseModal>
+          </div>
+        </div>,
+        document.body
+      )}
 
       <style>{`
         .smart-keyword {

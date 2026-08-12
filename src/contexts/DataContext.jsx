@@ -5,7 +5,8 @@ import { useNotification } from './NotificationContext.jsx';
 import { useWebhooks } from '../hooks/useWebhooks';
 import { useInactivityReload } from '../hooks/useInactivityReload';
 import useGtaWorldAuth from '../hooks/useGtaWorldAuth';
-import { triggerGetMorgueRecords } from '../services/firebaseFunctions';
+import { triggerGetMorgueRecords, triggerGetProtocolsDev } from '../services/firebaseFunctions';
+import { isStagingMode, resolveStagingPath, resolveVersionRef, resolveVersionKey } from '../utils/stagingPath';
 import { idbGet, idbSet, idbRemove } from '../utils/idbCache';
 
 // Cache versions below this threshold are considered dead/broken and force a fresh fetch.
@@ -26,6 +27,33 @@ const CACHE_SEGMENTS = {
 // Define segments that should not be cached in localStorage
 // morgue-records uses IndexedDB (too large for 5MB localStorage quota)
 const EXCLUDED_FROM_CACHE = ['savedReports', 'morgue-records'];
+
+// ── Staging Mode ──
+// Resolves forms → forms_staging via the shared stagingPath utility.
+// Localhost defaults to staging; see ../utils/stagingPath.js for rules.
+const IS_STAGING = isStagingMode();
+const resolveFormsPath = (segment) => resolveStagingPath(segment);
+const FORMS_VERSION_KEY = resolveVersionKey('formsDataVersion');
+const FORMS_VERSION_REF_PATH = resolveVersionRef('appMetadata/formsDataVersion');
+
+// ── Localhost dev override ──
+// On dev hosts, EMS Protocols load from the VPS-hosted dev dataset (fetched via
+// the getProtocolsDev function) so dev content never touches production and the
+// heavy base64 images stay out of RTDB. Falls back to prod protocols on error.
+const IS_DEV_HOST = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.'));
+const applyLsccDevOverride = async (data) => {
+    if (!IS_DEV_HOST || !data || typeof data !== 'object') return data;
+    try {
+        const res = await triggerGetProtocolsDev();
+        const devProtocols = res?.protocols;
+        if (Array.isArray(devProtocols) && devProtocols.length > 0) {
+            return { ...data, protocols: devProtocols };
+        }
+    } catch (err) {
+        console.warn('[DataContext] Failed to load dev protocols:', err?.message || err);
+    }
+    return data;
+};
 
 const DataContext = createContext();
 
@@ -59,16 +87,17 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
         if (!EXCLUDED_FROM_CACHE.includes(segment)) {
             try {
                 const version = getSegmentVersion(segment);
-                localStorage.setItem(getCacheKey(segment), JSON.stringify(data));
-                localStorage.setItem(getTimestampKey(segment), Date.now().toString());
-                localStorage.setItem(getVersionKey(segment), version);
-                
+                const cacheSegment = resolveFormsPath(segment); // staging-aware cache key
+                localStorage.setItem(getCacheKey(cacheSegment), JSON.stringify(data));
+                localStorage.setItem(getTimestampKey(cacheSegment), Date.now().toString());
+                localStorage.setItem(getVersionKey(cacheSegment), version);
+
                 const cachedDataSize = (JSON.stringify(data)?.length || 0) / 1024;
                 let logMessage = `💾 Updated cache segment: ${segment} (v${version}) (${cachedDataSize.toFixed(2)} KB)`;
 
                 // If updating the forms segment, append the Firebase Data version
                 if (segment === CACHE_SEGMENTS.FORMS) {
-                    const firebaseDataVersion = localStorage.getItem('formsDataVersion') || 'N/A';
+                    const firebaseDataVersion = localStorage.getItem(FORMS_VERSION_KEY) || 'N/A';
                     logMessage = `💾 Updated cache segment: forms (${cachedDataSize.toFixed(2)} KB) | InternalDataContext v${version} | Firebase Data: v${firebaseDataVersion}`;
                 }
                 console.debug(logMessage);
@@ -114,15 +143,18 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
             case CACHE_SEGMENTS.SELECT_OPTIONS:
                 setSelectOptions(data);
                 break;
-            case CACHE_SEGMENTS.FORMS: {
+            case CACHE_SEGMENTS.FORMS:
+            case 'forms_staging': {
                 // Ensure formsData is always an array
                 const formsAsList = Array.isArray(data) ? data : (data ? Object.keys(data).map(key => ({ ...data[key], firebaseKey: key })) : []);
                 setFormsData(formsAsList);
                 break;
             }
-            case CACHE_SEGMENTS.LSCC:
-                setLsccData(data || {});
+            case CACHE_SEGMENTS.LSCC: {
+                const finalLscc = await applyLsccDevOverride(data);
+                setLsccData(finalLscc || {});
                 break;
+            }
             case CACHE_SEGMENTS.VERIFIED_ADMINS:
                 setVerifiedAdmins(data || {});
                 break;
@@ -177,7 +209,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
     };
 
     const getSegmentVersion = (segment) => {
-        if (segment === CACHE_SEGMENTS.FORMS) return localStorage.getItem('formsDataVersion') || '0';
+        if (segment === CACHE_SEGMENTS.FORMS) return localStorage.getItem(FORMS_VERSION_KEY) || '0';
         if (segment === CACHE_SEGMENTS.FACTIONS) return localStorage.getItem('factionsDataVersion') || '0';
         if (segment === CACHE_SEGMENTS.SELECT_OPTIONS) return localStorage.getItem('selectOptionsDataVersion') || '0';
         if (segment === CACHE_SEGMENTS.LSCC) return localStorage.getItem('lsccDataVersion') || '0';
@@ -225,7 +257,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                 continue;
             }
 
-            const segmentRef = ref(database, segment);
+            const segmentRef = ref(database, resolveFormsPath(segment));
             try {
                 // For forms, compare cached vs server data to detect staleness
                 let cachedOptionsKey = null;
@@ -429,34 +461,34 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
         // Use an async IIFE to perform a get() before attaching the onValue listener
         // This forces Firebase to update its local cache's understanding of this node.
         (async () => {
-            const formsVersionRef = ref(database, 'appMetadata/formsDataVersion');
+            const formsVersionRef = ref(database, FORMS_VERSION_REF_PATH);
             let initialServerVersion = null;
 
             // Save the old version BEFORE the get() overwrites it — needed to detect real changes
-            const oldLocalVersion = localStorage.getItem('formsDataVersion');
+            const oldLocalVersion = localStorage.getItem(FORMS_VERSION_KEY);
 
             try {
                 const snapshot = await get(formsVersionRef);
                 if (snapshot.exists()) {
                     initialServerVersion = String(snapshot.val());
-                    console.debug(`[DataContext] Initial formsDataVersion fetched from server: v${initialServerVersion}`);
-                    localStorage.setItem('formsDataVersion', initialServerVersion);
+                    console.debug(`[DataContext] Initial ${FORMS_VERSION_KEY} fetched from server: v${initialServerVersion}`);
+                    localStorage.setItem(FORMS_VERSION_KEY, initialServerVersion);
                 } else {
                     console.log('[DataContext] formsDataVersion does not exist on server initially. Clearing local version.');
-                    localStorage.removeItem('formsDataVersion');
+                    localStorage.removeItem(FORMS_VERSION_KEY);
                 }
 
             } catch (error) {
                 console.error('[DataContext] Failed to get initial formsDataVersion from server:', error);
-                localStorage.removeItem('formsDataVersion');
+                localStorage.removeItem(FORMS_VERSION_KEY);
             }
 
             // If the version changed while the user was away, refresh now (before onValue fires)
             if (oldLocalVersion !== null && initialServerVersion !== null && oldLocalVersion !== initialServerVersion) {
                 console.log(`🔄 Forms version changed offline (v${oldLocalVersion} → v${initialServerVersion}). Refreshing forms data.`);
-                localStorage.removeItem(getCacheKey(CACHE_SEGMENTS.FORMS));
-                localStorage.removeItem(getTimestampKey(CACHE_SEGMENTS.FORMS));
-                localStorage.removeItem(getVersionKey(CACHE_SEGMENTS.FORMS));
+                localStorage.removeItem(getCacheKey(resolveFormsPath(CACHE_SEGMENTS.FORMS)));
+                localStorage.removeItem(getTimestampKey(resolveFormsPath(CACHE_SEGMENTS.FORMS)));
+                localStorage.removeItem(getVersionKey(resolveFormsPath(CACHE_SEGMENTS.FORMS)));
                 // Don't await — let UI render with cached data while refresh happens
                 refreshSegments([CACHE_SEGMENTS.FORMS]);
             }
@@ -471,17 +503,17 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                 }
                 // serverVersion can be null if the node is deleted or doesn't exist
                 const serverVersion = snapshot.exists() ? String(snapshot.val()) : null;
-                const localVersion = localStorage.getItem('formsDataVersion');
+                const localVersion = localStorage.getItem(FORMS_VERSION_KEY);
 
                 console.debug(`Global Forms Version - Local: ${localVersion || 'N/A'}, Server: ${serverVersion || 'N/A'}`);
 
-                if (serverVersion !== null && localVersion !== serverVersion) { 
+                if (serverVersion !== null && localVersion !== serverVersion) {
                     console.log(`🔄 Global forms version mismatch (v${localVersion} → v${serverVersion}).${formsFirstFire ? ' Refreshing immediately (first load).' : ' Refresh queued (5 min debounce).'}`);
 
-                    localStorage.removeItem(getCacheKey(CACHE_SEGMENTS.FORMS));
-                    localStorage.removeItem(getTimestampKey(CACHE_SEGMENTS.FORMS));
-                    localStorage.removeItem(getVersionKey(CACHE_SEGMENTS.FORMS));
-                    localStorage.setItem('formsDataVersion', serverVersion);
+                    localStorage.removeItem(getCacheKey(resolveFormsPath(CACHE_SEGMENTS.FORMS)));
+                    localStorage.removeItem(getTimestampKey(resolveFormsPath(CACHE_SEGMENTS.FORMS)));
+                    localStorage.removeItem(getVersionKey(resolveFormsPath(CACHE_SEGMENTS.FORMS)));
+                    localStorage.setItem(FORMS_VERSION_KEY, serverVersion);
 
                     if (formsFirstFire) {
                         await refreshSegments([CACHE_SEGMENTS.FORMS]);
@@ -491,10 +523,10 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                     formsFirstFire = false;
                 } else if (serverVersion === null && localVersion !== null) {
                     console.log(`🗑️ Global forms version deleted from server.`);
-                    localStorage.removeItem(getCacheKey(CACHE_SEGMENTS.FORMS));
-                    localStorage.removeItem(getTimestampKey(CACHE_SEGMENTS.FORMS));
-                    localStorage.removeItem(getVersionKey(CACHE_SEGMENTS.FORMS));
-                    localStorage.removeItem('formsDataVersion');
+                    localStorage.removeItem(getCacheKey(resolveFormsPath(CACHE_SEGMENTS.FORMS)));
+                    localStorage.removeItem(getTimestampKey(resolveFormsPath(CACHE_SEGMENTS.FORMS)));
+                    localStorage.removeItem(getVersionKey(resolveFormsPath(CACHE_SEGMENTS.FORMS)));
+                    localStorage.removeItem(FORMS_VERSION_KEY);
                     await debouncedRefresh([CACHE_SEGMENTS.FORMS]);
                     formsFirstFire = false;
                 }
@@ -760,10 +792,11 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                 if (EXCLUDED_FROM_CACHE.includes(segment)) return;
                 if (segment === CACHE_SEGMENTS.MORGUE_RECORDS) return; // Lazy-loaded on demand
 
-                const cacheKey = getCacheKey(segment);
+                const cacheSegment = resolveFormsPath(segment); // staging-aware cache isolation
+                const cacheKey = getCacheKey(cacheSegment);
                 const cachedData = localStorage.getItem(cacheKey);
-    
-                if (cachedData && isCacheValid(segment)) {
+
+                if (cachedData && isCacheValid(cacheSegment)) {
                     try {
                         cachedSegments[segment] = JSON.parse(cachedData);
                         const segmentSize = (cachedData.length || 0) / 1024;
@@ -817,7 +850,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
         try {
             loadingNotificationId = showNotification(`Fetching ${segmentsToFetch.join(', ')} from server...`, 'spinner fa-spin', 0);
             
-            const promises = segmentsToFetch.map(segment => get(ref(database, segment)).then(snapshot => ({ segment, snapshot })));
+            const promises = segmentsToFetch.map(segment => get(ref(database, resolveFormsPath(segment))).then(snapshot => ({ segment, snapshot })));
             const results = await Promise.all(promises);
     
             const fetchedData = {};
@@ -1105,7 +1138,13 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                 return [];
             }
     
-            const allMembers = Object.values(factionsData['364'].members);
+            const allMembers = Object.entries(factionsData['364'].members).map(([charId, member]) => ({
+                ...member,
+                // Roster records store the character id as the KEY — surface it
+                // so id-based identity matching works (badge/SN lookups).
+                characterId: member.characterId || charId,
+                _rosterKey: charId,
+            }));
             
             // Add verified admins to the list
             const adminMembers = Object.values(verifiedAdmins).map(admin => ({
@@ -1143,7 +1182,11 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
         // Use faction data if available, otherwise use legacy data
         let dataSource = [];
         if (factionsData['364'] && factionsData['364'].members) {
-            const allMembers = Object.values(factionsData['364'].members);
+            const allMembers = Object.entries(factionsData['364'].members).map(([charId, member]) => ({
+                ...member,
+                characterId: member.characterId || charId,
+                _rosterKey: charId,
+            }));
             
             // Add verified admins to coroner list too
             const adminMembers = Object.values(verifiedAdmins).map(admin => ({

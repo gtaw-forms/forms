@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import './BaseModal.css';
 
@@ -18,12 +18,6 @@ const BaseModal = ({
 }) => {
     const modalRef = useRef(null);
     const previousActiveElement = useRef(null);
-    const [mounted, setMounted] = useState(false);
-
-    useEffect(() => {
-        setMounted(true);
-        return () => setMounted(false);
-    }, []);
 
     const onCloseRef = useRef(onClose);
     useEffect(() => {
@@ -34,8 +28,7 @@ const BaseModal = ({
         if (isOpen) {
             previousActiveElement.current = document.activeElement;
             document.body.style.overflow = 'hidden';
-            
-            // Small timeout to ensure render before focus
+
             setTimeout(() => {
                 if (modalRef.current) {
                     modalRef.current.focus();
@@ -52,7 +45,7 @@ const BaseModal = ({
             return () => {
                 document.body.style.overflow = '';
                 window.removeEventListener('keydown', handleEscape);
-                
+
                 if (previousActiveElement.current) {
                     previousActiveElement.current.focus();
                 }
@@ -60,7 +53,7 @@ const BaseModal = ({
         }
     }, [isOpen, title]);
 
-    if (!isOpen || !mounted) return null;
+    if (!isOpen) return null;
 
     const handleOverlayClick = (e) => {
         if (closeOnOverlayClick && e.target === e.currentTarget && onClose) {
@@ -68,31 +61,32 @@ const BaseModal = ({
         }
     };
 
+    // Map modalSize to CSS class
+    const sizeClass = modalSize === 'large' || modalSize === 'xl' ? ' wide' : modalSize === 'full' ? ' full' : '';
+
     const modalContent = (
-        <div 
+        <div
             className={`modal-overlay variant-${variant}`}
             onClick={handleOverlayClick}
-            style={{ zIndex }}
+            style={{ zIndex, display: 'flex' }}
             role="presentation"
         >
             <div
                 ref={modalRef}
-                className={`modal-container modal-size-${modalSize} modal-variant-${variant} ${className}`}
+                className={`modal-box${sizeClass} modal-variant-${variant} ${className}`}
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="modal-title"
                 tabIndex={-1}
             >
                 {(title || showCloseButton) && (
-                    <div className="modal-header">
-                        {title && <h2 id="modal-title" className="modal-title">{title}</h2>}
+                    <div className="modal-head">
+                        {title && <h3 id="modal-title" className="modal-title">{title}</h3>}
                         {showCloseButton && (
                             <button
                                 type="button"
-                                className="modal-close-button"
-                                onClick={() => {
-                                    onClose();
-                                }}
+                                className="modal-close"
+                                onClick={onClose}
                                 aria-label="Close modal"
                                 title="Close"
                             >
@@ -101,13 +95,13 @@ const BaseModal = ({
                         )}
                     </div>
                 )}
-                
-                <div className={`modal-content ${noPadding ? 'modal-no-padding' : ''}`}>
+
+                <div className={`modal-body${noPadding ? ' modal-no-padding' : ''}`}>
                     {children}
                 </div>
 
                 {footer && (
-                    <div className="modal-footer">
+                    <div className="modal-foot">
                         {footer}
                     </div>
                 )}

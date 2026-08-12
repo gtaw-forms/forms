@@ -1,6 +1,51 @@
+/**
+ * Forum Client — Playwright browser automation layer for phpBB forums.
+ *
+ * ── Architecture ──
+ * All instances share a single Chromium browser (getSharedBrowser), but each
+ * ForumClient instance gets its own browser context + page.  This means:
+ *   • Default instance (getForumClient) — one context, used for PHMC operations
+ *   • Isolated instances (createIsolatedClient) — separate contexts,
+ *     each with its own session file and cookie store
+ *
+ * Every public method acquires a mutex lock (_acquire() / release()), so
+ * only one forum operation runs at a time across ALL instances sharing the
+ * same browser.  This prevents Cloudflare challenges and phpBB session
+ * conflicts.
+ *
+ * ── Methods ──
+ *   login()                 — Authenticate to the forum (username/password or stored session)
+ *   postTopic()             — Create a new forum thread in a specified forum
+ *   replyToTopic()          — Post a reply in an existing thread
+ *   sendPM()                — Send a Private Message to a forum user
+ *   searchForum()           — Full-text search across a forum
+ *   searchCaseManagement()  — Search case management forum (f=266) by decedent name
+ *   getTopicPoster()        — Get the username of the person who created a topic
+ *   resolveCaseTopic()      — Find the case topic for a given autopsy request
+ *
+ * ── Cross-Forum (Agency) Posting ──
+ * LSSD, LSPD, SADCR, and DAO forums use ISOLATED instances with separate
+ * credentials.  Each call to createIsolatedClient('name') creates a fresh
+ * context initialized from its own session file (forum-session-<name>.json).
+ * The caller MUST call .login() on the isolated client before use.
+ *
+ * ── Session Management ──
+ * After successful login, the session cookies are saved to a JSON file
+ * (forum-session.json by default).  On next startup, login() with force=false
+ * checks if the saved session is still valid and skips re-authentication if so.
+ * Force-login (force=true) always fills the login form regardless of session
+ * state — used for isolated clients and when credentials change.
+ *
+ * ── Dry-Run ──
+ * All posting methods accept { dryRun: true } to fill the form but skip
+ * submission.  The filled form content is logged for inspection.
+ *
+ * @module forumClient
+ */
+
 import { chromium } from 'playwright-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
-import { writeFileSync, readFileSync, existsSync } from 'fs';
+import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -319,7 +364,8 @@ class ForumClient {
             const snippet = pageHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 300).trim();
 
             // Save full HTML to debug file
-            const debugPath = resolve(__dirname, '..', 'debug-login-page.html');
+            const debugPath = resolve(__dirname, '..', 'debug', 'debug-login-page.html');
+            mkdirSync(dirname(debugPath), { recursive: true });
             writeFileSync(debugPath, pageHtml, 'utf-8');
 
             console.error(`[FORUM] ❌ Login failed — URL: ${loginUrl} Title: "${loginTitle}"`);
@@ -372,7 +418,8 @@ class ForumClient {
 
             // Dump full page HTML for debugging login failures
             const debugHtml = await this.page.content().catch(() => '(unable to capture page content)');
-            const debugPath = resolve(__dirname, '..', 'debug-login-page.html');
+            const debugPath = resolve(__dirname, '..', 'debug', 'debug-login-page.html');
+            mkdirSync(dirname(debugPath), { recursive: true });
             writeFileSync(debugPath, debugHtml, 'utf-8');
             console.error(`[FORUM] ❌ Login failed — "${errText}" — HTML saved to ${debugPath}`);
 
@@ -492,6 +539,67 @@ class ForumClient {
         await this.page.waitForTimeout(2000);
         url = this.page.url();
         ok = url.includes('viewtopic.php');
+
+        // ── Flood control / stale form token handling ──
+        // Same as replyToTopic: phpBB rejects rapid consecutive posts from the same
+        // account. If the submit bounced with a flood or invalid-form error, wait out
+        // the flood window, reload the form (fresh token), refill, and resubmit.
+        const FLOOD_WAIT_MS = 25000;
+        const MAX_FLOOD_RETRIES = 3;
+
+        const detectSubmitError = async () => {
+            const text = await this.page.evaluate(() => document.body.innerText || '').catch(() => '');
+            if (/cannot make another post so soon after your last/i.test(text)) return 'flood';
+            if (/submitted form was invalid/i.test(text)) return 'stale-token';
+            return null;
+        };
+
+        const reloadAndResubmit = async () => {
+            try { await this.page.goto(postUrl, { waitUntil: 'networkidle', timeout: 180000 }); } catch {}
+            await this.page.waitForTimeout(2000);
+            await this.page.evaluate((s) => {
+                const el = document.querySelector('input[name="subject"]');
+                if (el) { el.value = s; el.dispatchEvent(new Event('input', { bubbles: true })); }
+            }, subject);
+            await this.page.evaluate((msg) => {
+                const ta = document.querySelector('textarea[name="message"]');
+                if (ta) { ta.value = msg; ta.dispatchEvent(new Event('input', { bubbles: true })); return; }
+                const ed = document.querySelector('div[contenteditable="true"]');
+                if (ed) { ed.textContent = msg; ed.dispatchEvent(new Event('input', { bubbles: true })); }
+            }, bbCode);
+            await this.page.waitForTimeout(500);
+            await this.page.evaluate(() => {
+                const form = document.querySelector('form[action*="posting.php"]');
+                if (!form) return false;
+                const btn = form.querySelector(
+                    'input[type="submit"][name="post"], ' +
+                    'input[type="submit"][value="Submit"], ' +
+                    'button[type="submit"][name="post"]'
+                );
+                if (!btn) return false;
+                btn.click();
+                return true;
+            });
+            await this.page.waitForTimeout(3000);
+            try { await this.page.waitForLoadState('networkidle', { timeout: 25000 }); } catch {}
+            await this.page.waitForTimeout(2000);
+        };
+
+        for (let attempt = 1; attempt <= MAX_FLOOD_RETRIES; attempt++) {
+            const errType = await detectSubmitError();
+            if (!errType) break;
+
+            if (errType === 'flood') {
+                console.log(`[FORUM] ⚠️ FLOOD ENCOUNTERED, WAITING ${FLOOD_WAIT_MS / 1000}s before retry (attempt ${attempt}/${MAX_FLOOD_RETRIES})...`);
+                await this.page.waitForTimeout(FLOOD_WAIT_MS);
+            } else {
+                console.log(`[FORUM] ⚠️ Stale form token detected — reloading form (attempt ${attempt}/${MAX_FLOOD_RETRIES})...`);
+            }
+
+            await reloadAndResubmit();
+            url = this.page.url();
+            if (url.includes('viewtopic.php')) { ok = true; break; }
+        }
 
         // Handle phpBB preview: still on posting.php after submit
         if (!ok && url.includes('posting.php')) {
@@ -617,7 +725,8 @@ class ForumClient {
             console.error(`[FORUM] ❌ No message textarea or editor found — dumping full page HTML`);
             const fullHtml = await this.page.evaluate(() => document.documentElement?.outerHTML || '(no html)').catch(() => '(error)');
             const snippet = fullHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 300).trim();
-            const debugPath = resolve(__dirname, '..', 'debug-pm-page.html');
+            const debugPath = resolve(__dirname, '..', 'debug', 'debug-pm-page.html');
+            mkdirSync(dirname(debugPath), { recursive: true });
             writeFileSync(debugPath, fullHtml, 'utf-8');
             console.log(`[FORUM] 🔍 Page text snippet: "${snippet}..."`);
             console.log(`[FORUM] 🔍 Page URL: ${this.page.url()}`);
@@ -758,7 +867,8 @@ class ForumClient {
 
             // Save full HTML dump for debugging (always on failure)
             const debugHtml = await this.page.evaluate(() => document.documentElement?.outerHTML || '(no html)').catch(() => '(error)');
-            const debugPath = resolve(__dirname, '..', 'debug-pm-page.html');
+            const debugPath = resolve(__dirname, '..', 'debug', 'debug-pm-page.html');
+            mkdirSync(dirname(debugPath), { recursive: true });
             writeFileSync(debugPath, debugHtml, 'utf-8');
             console.log(`[FORUM] 💾 Full page HTML saved to ${debugPath} for debugging`);
         }
@@ -784,6 +894,7 @@ class ForumClient {
     async searchForPatientTopic(patientID) {
         const lock = await this._acquire('searchForPatientTopic');
         let result = { topicId: null, title: null };
+        let _candidates = []; // hoisted outside try block for return access
         try {
         await this.ensureBrowser();
 
@@ -808,46 +919,66 @@ class ForumClient {
             return result;
         }
 
-        // Parse the first result link — phpBB search results link to viewtopic.php?t=XXXXX
-        result = await this.page.evaluate((searchId) => {
-            // Look for topic links in results — they point to viewtopic.php?t=XXXXX
+        // Collect candidate topic links from search results.
+        // Use a[href*="viewtopic.php"] (no topictitle class in this phpBB version),
+        // then filter to only keep links that reference a topic (t=) and not a specific post (p=).
+        // This avoids matching "Re:" replies, "Jump to post" links, or post body references.
+        _candidates = await this.page.evaluate((searchId) => {
             const links = document.querySelectorAll('a[href*="viewtopic.php"]');
+            const results = [];
             for (const link of links) {
                 const href = link.getAttribute('href') || '';
+                const text = link.textContent?.trim() || '';
+                // Skip post-specific links (p=) and navigation links
+                if (href.includes('p=') || text === 'Jump to post' || text.startsWith('Re:')) continue;
                 const match = href.match(/[?&]t=(\d+)/);
-                if (match) {
-                    const title = link.textContent?.trim() || '';
-                    // Verify the result contains our search ID to avoid false matches
-                    if (title.includes(searchId)) {
-                        return { topicId: parseInt(match[1], 10), title };
-                    }
+                if (match && !results.some(r => r.topicId === parseInt(match[1], 10))) {
+                    results.push({
+                        topicId: parseInt(match[1], 10),
+                        title: text || null,
+                        href,
+                    });
                 }
             }
-            // Fallback: return first topic link ONLY if title partially matches search term
-            const searchLower = searchId.toLowerCase();
-            for (const link of links) {
-                const href = link.getAttribute('href') || '';
-                const match = href.match(/[?&]t=(\d+)/);
-                if (match) {
-                    const title = (link.textContent?.trim() || '').toLowerCase();
-                    // Only accept if title contains at least a word from the search term
-                    const searchWords = searchLower.split(/\s+/).filter(w => w.length > 2);
-                    if (searchWords.length === 0 || searchWords.some(w => title.includes(w))) {
-                        return { topicId: parseInt(match[1], 10), title: link.textContent?.trim() || null };
-                    }
-                }
-            }
-            return { topicId: null, title: null };
-        }, patientID).catch(() => ({ topicId: null, title: null }));
+            return results;
+        }).catch(() => []);
 
-        if (result.topicId) {
+        // Debug: log every candidate result
+        console.log(`[FORUM] 🔍 Search for "${patientID}" — ${_candidates.length} candidate topic(s) found`);
+        for (const c of _candidates) {
+            console.log(`[FORUM]   Candidate: #${c.topicId} — "${c.title}"`);
+        }
+
+        // Filter: first try exact title match, then all-words match
+        const searchLower = patientID.toLowerCase();
+        const searchWords = searchLower.split(/\s+/).filter(w => w.length > 2);
+
+        result = _candidates.find(c => c.title?.includes(patientID)) || null;
+        if (result) {
+            console.log(`[FORUM] ✅ Exact match: #${result.topicId} — "${result.title}"`);
+        } else {
+            // Fallback: all significant words must appear in the title
+            // This prevents "David Tao" from matching "Nicole Tao" (shared last name)
+            result = _candidates.find(c => {
+                if (!c.title) return false;
+                const t = c.title.toLowerCase();
+                return searchWords.length > 0 && searchWords.every(w => t.includes(w));
+            }) || null;
+            if (result) {
+                console.log(`[FORUM] ✅ Word-match: #${result.topicId} — "${result.title}"`);
+            } else {
+                console.log(`[FORUM] ⚠️ No candidate matched all search words: [${searchWords.join(', ')}]`);
+            }
+        }
+
+        if (result?.topicId) {
             console.log(`[FORUM] ✅ Found topic #${result.topicId}: "${result.title}"`);
         } else {
             console.log('[FORUM] ⚠️ Search returned results but could not parse topic link');
         }
         } finally { lock.release(); }
 
-        return result;
+        return { ...(result || { topicId: null, title: null }), candidates: _candidates };
     }
 
     /**
@@ -1104,6 +1235,16 @@ class ForumClient {
         let pageTitle = await this.page.title().catch(() => '(no title)');
         console.log(`[FORUM] 🔍 Reply page: "${pageTitle}" — ${pageUrl}`);
 
+        // Detect phpBB "Information" notice pages (topic deleted/moved/no permission).
+        // These have no reply form — flag missing topics distinctly so callers can
+        // handle them gracefully instead of looping on "No message textarea".
+        const infoText = await this.page.evaluate(() => document.body?.innerText?.slice(0, 500) || '').catch(() => '');
+        if (/requested topic does not exist|this topic is locked|not exist/i.test(infoText)) {
+            const missing = /does not exist/i.test(infoText);
+            console.log(`[FORUM] ⚠️ phpBB info page (topic #${topicId}): "${infoText.replace(/\s+/g, ' ').slice(0, 100)}"`);
+            return { ok: false, url: pageUrl, reason: missing ? 'Topic does not exist' : 'Topic unavailable', topicMissing: missing };
+        }
+
         // Check if we got a login page (session expired) — phpBB may show a login
         // form on the same reply URL without redirecting, so check title too.
         if (pageUrl.includes('mode=login') || pageUrl.includes('mode=post') || pageTitle.toLowerCase().includes('login')) {
@@ -1185,8 +1326,79 @@ class ForumClient {
         await this.page.waitForTimeout(2000);
         finalUrl = this.page.url();
 
+        // ── Flood control / stale form token handling ──
+        // phpBB rejects rapid consecutive posts from the same account. If the submit
+        // bounced with a flood or invalid-form error, wait out the flood window,
+        // reload the form (fresh token), refill, and resubmit.
+        const FLOOD_WAIT_MS = 25000;
+        const MAX_FLOOD_RETRIES = 3;
+
+        const fillMessage = async () => {
+            const filled = await this.page.evaluate((msg) => {
+                const ta = document.querySelector('textarea[name="message"]');
+                if (ta) { ta.value = msg; ta.dispatchEvent(new Event('input', { bubbles: true })); return true; }
+                const ed = document.querySelector('div[contenteditable="true"]');
+                if (ed) { ed.textContent = msg; ed.dispatchEvent(new Event('input', { bubbles: true })); return true; }
+                return false;
+            }, bbCode);
+            if (!filled) console.error('[FORUM] ❌ No message textarea found on retry form');
+            return filled;
+        };
+
+        const clickSubmit = async () => {
+            const r = await this.page.evaluate(() => {
+                const form = document.querySelector('form[action*="posting.php"]');
+                if (!form) return { ok: false, reason: 'No form found' };
+                const btn = form.querySelector(
+                    'input[type="submit"][name="post"], ' +
+                    'input[type="submit"][value="Submit"], ' +
+                    'button[type="submit"][name="post"]'
+                );
+                if (!btn) return { ok: false, reason: 'No submit button' };
+                btn.click();
+                return { ok: true };
+            });
+            return r.ok ? true : r.reason;
+        };
+
+        const detectSubmitError = async () => {
+            const text = await this.page.evaluate(() => document.body.innerText || '').catch(() => '');
+            if (/cannot make another post so soon after your last/i.test(text)) return 'flood';
+            if (/submitted form was invalid/i.test(text)) return 'stale-token';
+            return null;
+        };
+
+        // Reload the reply form (fresh token), refill, and resubmit.
+        const reloadAndResubmit = async () => {
+            try { await this.page.goto(replyUrl, { waitUntil: 'networkidle', timeout: 180000 }); } catch {}
+            await this.page.waitForTimeout(2000);
+            if (!(await fillMessage())) return;
+            console.log(`[FORUM] 📤 Re-submitting reply after reload...`);
+            const r = await clickSubmit();
+            if (r !== true) { console.error(`[FORUM] ❌ ${r}`); return; }
+            await this.page.waitForTimeout(3000);
+            try { await this.page.waitForLoadState('networkidle', { timeout: 25000 }); } catch {}
+            await this.page.waitForTimeout(2000);
+        };
+
+        for (let attempt = 1; attempt <= MAX_FLOOD_RETRIES; attempt++) {
+            const errType = await detectSubmitError();
+            if (!errType) break;
+
+            if (errType === 'flood') {
+                console.log(`[FORUM] ⚠️ FLOOD ENCOUNTERED, WAITING ${FLOOD_WAIT_MS / 1000}s before retry (attempt ${attempt}/${MAX_FLOOD_RETRIES})...`);
+                await this.page.waitForTimeout(FLOOD_WAIT_MS);
+            } else {
+                console.log(`[FORUM] ⚠️ Stale form token detected — reloading form (attempt ${attempt}/${MAX_FLOOD_RETRIES})...`);
+            }
+
+            await reloadAndResubmit();
+            finalUrl = this.page.url();
+            if (finalUrl.includes('viewtopic.php') || finalUrl.includes('p=')) { ok = true; break; }
+        }
+
         // Handle phpBB preview: if still on posting page after submit, click the real Submit button
-        if (!finalUrl.includes('viewtopic.php') && finalUrl.includes('posting.php')) {
+        if (!ok && !finalUrl.includes('viewtopic.php') && finalUrl.includes('posting.php')) {
             console.log(`[FORUM] 🔄 Preview detected — re-submitting reply...`);
 
             // Strategy 1: Click the Submit button by name="post"
@@ -1261,8 +1473,8 @@ class ForumClient {
         if (!ok) {
             // Dump full page HTML for debugging submit failures (no truncation)
             const pageHtml = await this.page.content().catch(() => '(unable to capture page content)');
-            const dumpPath = resolve(this._sessionDir, 'debug-reply-page.html');
-            try { writeFileSync(dumpPath, pageHtml, 'utf-8'); console.log(`[FORUM] 💾 Full page HTML saved to ${dumpPath} for debugging`); } catch (e) {}
+            const dumpPath = resolve(__dirname, '..', 'debug', 'debug-reply-page.html');
+            try { mkdirSync(dirname(dumpPath), { recursive: true }); writeFileSync(dumpPath, pageHtml, 'utf-8'); console.log(`[FORUM] 💾 Full page HTML saved to ${dumpPath} for debugging`); } catch (e) {}
         }
         console.log(`[FORUM] 📬 Reply ${ok ? '✅ Posted' : '⚠️ Unknown'} — ${finalUrl}`);
         } finally { lock.release(); }
@@ -1801,7 +2013,7 @@ class ForumClient {
         'surgical':              { forumId: 97, name: 'Medical Records', url: 'https://phmc.gta.world/posting.php?mode=post&f=97' },
         'session_notes':         { forumId: 97, name: 'Medical Records', url: 'https://phmc.gta.world/posting.php?mode=post&f=97' },
         'intensive_treatment':   { forumId: 97, name: 'Medical Records', url: 'https://phmc.gta.world/posting.php?mode=post&f=97' },
-        'psych_eval':            { forumId: 97, name: 'Medical Records', url: 'https://phmc.gta.world/posting.php?mode=post&f=97' },
+        'psych-eval':            { forumId: 97, name: 'Medical Records', url: 'https://phmc.gta.world/posting.php?mode=post&f=97' },
     };
 
     static resolveForumId(formId, formName) {

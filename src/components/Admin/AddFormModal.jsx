@@ -23,8 +23,8 @@ import {
 } from '@dnd-kit/sortable';
 import { SortableFieldItem } from './SortableFieldItem';
 import { useNotification } from "../../contexts/NotificationContext";
-import BaseModal from '../Modals/BaseModal';
 import { Button, Form, Badge, Row, Col } from 'react-bootstrap';
+import { resolveStagingPath, resolveVersionRef } from '../../utils/stagingPath';
 
 const inputStyle = {
   width: "100%",
@@ -203,6 +203,15 @@ const AddFormModal = ({ show, onClose: onHide, editingForm = null, isDuplicate =
         fieldToSave.decedentItemSchemaJson = JSON.stringify(defaultDecedentSchema, null, 2);
     }
 
+    if (fieldToSave.type === "body_tampered") {
+        const reasonName = fieldToSave.name ? `${fieldToSave.name}Reason` : 'bodyTamperedReason';
+        fieldToSave.associatedInputField = {
+            name: reasonName,
+            type: fieldToSave.associatedInputField?.type || 'input',
+            placeholder: fieldToSave.associatedInputField?.placeholder || fieldToSave.placeholder || 'Describe what was tampered with...',
+        };
+    }
+
     if (editingFieldIndex !== null) {
         const updated = [...fields];
         updated[editingFieldIndex] = fieldToSave;
@@ -265,14 +274,16 @@ const AddFormModal = ({ show, onClose: onHide, editingForm = null, isDuplicate =
         id: finalFormId, name: formName, category, template: bbcodeTemplate, bbcodeTemplate,
         titleGeneratorCode, fields, accessType, formDescription, isHidden, updatedAt: Date.now()
       };
-      console.log('[saveForm] 1. Writing form to Firebase...', { path: `forms/${finalFormId}` });
-      await update(ref(database, `forms/${finalFormId}`), formData);
-      console.log('[saveForm] 2. Form written. Bumping formsDataVersion...');
+      const formsPath = resolveStagingPath('forms');
+      const versionRefPath = resolveVersionRef('appMetadata/formsDataVersion');
+      console.log('[saveForm] 1. Writing form to Firebase...', { path: `${formsPath}/${finalFormId}` });
+      await update(ref(database, `${formsPath}/${finalFormId}`), formData);
+      console.log('[saveForm] 2. Form written. Bumping version...', { ref: versionRefPath });
 
-      const metadataRef = ref(database, 'appMetadata/formsDataVersion');
+      const metadataRef = ref(database, versionRefPath);
       const newVersion = await runTransaction(metadataRef, (v) => (v || 0) + 1);
       console.log('[saveForm] 3. Version bumped to:', newVersion);
-      logDataVersionBump('appMetadata/formsDataVersion', editingForm ? 'EditForm' : 'AddForm', 'Form: ' + formName);
+      logDataVersionBump(versionRefPath, editingForm ? 'EditForm' : 'AddForm', 'Form: ' + formName);
 
       const { userAgent, timeZone } = getUserContext();
       logAdminAction(gtawUser?.username, editingForm ? 'Edited Form' : 'Created Form', `Form: ${formName}`, 'Form Management', userAgent, timeZone, gtawUser?.username, gtawUser);
@@ -420,7 +431,18 @@ const AddFormModal = ({ show, onClose: onHide, editingForm = null, isDuplicate =
                       <div className="d-flex gap-3">
                           <Form.Group className="flex-grow-1">
                               <Form.Label className="small text-light mb-1">Field Type</Form.Label>
-                              <Form.Select value={newField.type} onChange={e => setNewField({ ...createDefaultNewField(), type: e.target.value })} style={inputStyle}>
+                              <Form.Select value={newField.type} onChange={e => {
+                                const t = e.target.value;
+                                if (t === 'requesting_officer') {
+                                  setNewField({ ...createDefaultNewField(), type: t, label: 'Requesting Officer & Department', name: 'requestingOfficer', layout: 'full', placeholder: 'Officer Name' });
+                                } else if (t === 'officer_info') {
+                                  setNewField({ ...createDefaultNewField(), type: t, label: 'Officer Information', name: 'requestingOfficer', layout: 'full', placeholder: 'Officer Name', associatedInputField: { name: 'requestingOfficer', type: 'input', placeholder: 'Officer Name' } });
+                                } else if (t === 'body_tampered') {
+                                  setNewField({ ...createDefaultNewField(), type: t, label: 'Body Tampered', name: 'bodyTampered', layout: 'full', infoType: 'Information', info: 'Check this box if the body shows signs of having been tampered with.', placeholder: 'Describe what was tampered with...', associatedInputField: { name: 'bodyTamperedReason', type: 'input', placeholder: 'Describe what was tampered with...' } });
+                                } else {
+                                  setNewField({ ...createDefaultNewField(), type: t });
+                                }
+                              }} style={inputStyle}>
                                   <option value="input">Text Input</option>
                                   <option value="textarea">Textarea</option>
                                   <option value="section">Section Header</option>
@@ -440,6 +462,9 @@ const AddFormModal = ({ show, onClose: onHide, editingForm = null, isDuplicate =
                                   <option value="payment_button">Payment Button</option>
                                   <option value="character_selector">Character Selector</option>
                                   <option value="medicine_block">Medicine Block</option>
+                                  <option value="requesting_officer">Requesting Officer (Checkbox + Input)</option>
+                                  <option value="officer_info">Officer Information (Name + Department)</option>
+                                  <option value="body_tampered">Body Tampered (Checkbox + Reason)</option>
                                   <option value="hr">Separator Line</option>
                                   <option value="fake_line">Dashed Line</option>
                               </Form.Select>
@@ -560,6 +585,33 @@ const AddFormModal = ({ show, onClose: onHide, editingForm = null, isDuplicate =
                                   <Form.Label className="small text-light mb-1">Options (comma-separated)</Form.Label>
                                   <Form.Control placeholder="Option 1, Option 2" value={(newField.options || []).join(', ')} onChange={e => setNewField({...newField, options: e.target.value.split(',').map(o => o.trim()).filter(Boolean)})} style={inputStyle} />
                               </Form.Group>
+                          )}
+                          {newField.type === 'body_tampered' && (
+                              <>
+                                  <Form.Group className="flex-grow-1" style={{ flexBasis: '100%' }}>
+                                      <Form.Label className="small text-light mb-1">Information Header Text</Form.Label>
+                                      <Form.Control as="textarea" rows={2} placeholder="Text shown in the info header above the checkbox..." value={newField.info || ""} onChange={e => setNewField({...newField, info: e.target.value})} style={inputStyle} />
+                                  </Form.Group>
+                                  <Form.Group className="flex-grow-1">
+                                      <Form.Label className="small text-light mb-1">Header Type</Form.Label>
+                                      <Form.Select value={newField.infoType || "Information"} onChange={e => setNewField({...newField, infoType: e.target.value})} style={inputStyle}>
+                                          <option value="Information">Information (Blue)</option>
+                                          <option value="Warning">Warning (Orange)</option>
+                                          <option value="Danger">Danger (Red)</option>
+                                      </Form.Select>
+                                  </Form.Group>
+                                  <Form.Group className="flex-grow-1">
+                                      <Form.Label className="small text-light mb-1">Reason Field Type</Form.Label>
+                                      <Form.Select value={newField.associatedInputField?.type || "input"} onChange={e => setNewField({...newField, associatedInputField: { ...(newField.associatedInputField || {}), type: e.target.value }})} style={inputStyle}>
+                                          <option value="input">Text Input</option>
+                                          <option value="textarea">Textarea</option>
+                                      </Form.Select>
+                                  </Form.Group>
+                                  <Form.Group className="flex-grow-1">
+                                      <Form.Label className="small text-light mb-1">Reason Placeholder</Form.Label>
+                                      <Form.Control placeholder="Placeholder inside the reason field..." value={newField.associatedInputField?.placeholder || ""} onChange={e => setNewField({...newField, associatedInputField: { ...(newField.associatedInputField || {}), placeholder: e.target.value }})} style={inputStyle} />
+                                  </Form.Group>
+                              </>
                           )}
                       </div>
                   </div>
@@ -696,22 +748,27 @@ const AddFormModal = ({ show, onClose: onHide, editingForm = null, isDuplicate =
         bbcodeTemplate={bbcodeTemplate}
       />
 
-      <BaseModal
-        isOpen={showDeleteConfirmModal}
-        onClose={() => setShowDeleteConfirmModal(false)}
-        title="Confirm Field Deletion"
-        variant="danger"
-        zIndex={2100}
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setShowDeleteConfirmModal(false)}>Cancel</Button>
-            <Button variant="danger" onClick={handleDeleteField} style={{ marginLeft: '10px' }}>Delete</Button>
-          </>
-        }
-      >
-        <p className="text-light">Are you sure you want to delete the field: <strong>{fieldToDelete?.label || fieldToDelete?.type}</strong>?</p>
-        <p className="text-danger small">This action cannot be undone.</p>
-      </BaseModal>
+      {showDeleteConfirmModal && (
+        <div className="modal-overlay open" onClick={() => setShowDeleteConfirmModal(false)} style={{ display: 'flex', zIndex: 2100 }}>
+          <div className="modal-box" onClick={e => e.stopPropagation()}>
+            <div className="modal-head">
+              <h3 style={{ color: '#E5566B' }}><i className="fas fa-trash-alt" style={{ color: '#E5566B' }} /> Confirm Field Deletion</h3>
+              <button className="modal-close" onClick={() => setShowDeleteConfirmModal(false)} aria-label="Close">✕</button>
+            </div>
+            <div className="modal-body">
+              <p style={{ color: '#E7ECF5', margin: 0, marginBottom: 8 }}>
+                Are you sure you want to delete the field: <strong>{fieldToDelete?.label || fieldToDelete?.type}</strong>?
+              </p>
+              <p style={{ color: '#E5566B', fontSize: 12.5, margin: 0 }}>This action cannot be undone.</p>
+            </div>
+            <div className="modal-foot">
+              <button className="btn btn-ghost" onClick={() => setShowDeleteConfirmModal(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={handleDeleteField}
+                style={{ background: '#E5566B', color: '#fff', border: 'none' }}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`
         .aform-overlay {

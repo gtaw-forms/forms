@@ -17,6 +17,33 @@ async function sendWebhook(content, embed) {
     }
 }
 
+// ── System Resource Check ──
+
+async function checkSystemResources() {
+    const alerts = [];
+    try { const { execSync } = await import('child_process');
+        // CPU load (1-minute average as percentage of total cores)
+        const loadAvg = execSync('cat /proc/loadavg | cut -d" " -f1').toString().trim();
+        const cpuCores = execSync('nproc').toString().trim();
+        const loadPct = (parseFloat(loadAvg) / parseInt(cpuCores)) * 100;
+
+        // Memory usage percentage
+        const memInfo = execSync("free | awk '/Mem:/ {printf \"%.1f\", $3/$2 * 100}'").toString().trim();
+        const memPct = parseFloat(memInfo);
+
+        // Disk usage percentage on root
+        const diskInfo = execSync("df / | awk 'NR==2 {gsub(/%/,\"\"); print $5}'").toString().trim();
+        const diskPct = parseInt(diskInfo);
+
+        console.log(`[MONITOR] System: CPU=${loadPct.toFixed(1)}%  RAM=${memPct.toFixed(1)}%  DISK=${diskPct}%`);
+
+        if (loadPct > 80) alerts.push({ title: '🔴 High CPU Load', description: `CPU at **${loadPct.toFixed(1)}%** (load avg: ${loadAvg}, cores: ${cpuCores})`, color: 0xe74c3c });
+        if (memPct > 85) alerts.push({ title: '🔴 High Memory Usage', description: `RAM at **${memPct.toFixed(1)}%**`, color: 0xe67e22 });
+        if (diskPct > 90) alerts.push({ title: '🔴 Low Disk Space', description: `Disk at **${diskPct}%**`, color: 0xe74c3c });
+    } catch (err) { console.warn('[MONITOR] System resource check failed:', err.message); }
+    return alerts;
+}
+
 // ── Cloudflare Status Check ──
 
 async function checkCloudflare(db, previousState) {
@@ -166,8 +193,8 @@ async function checkForumLatency() {
     const { getForumClient } = await import('./forumClient.js');
     const client = getForumClient();
 
-    const results = [];
-    for (const forum of FORUM_URLS) {
+    // Run all forum checks in parallel to reduce wall-clock time and browser churn
+    const results = await Promise.all(FORUM_URLS.map(async (forum) => {
         try {
             const result = await client.checkHealth(forum.url);
             const latency = result.latency;
@@ -176,18 +203,20 @@ async function checkForumLatency() {
             const color = label === 'Good' ? 0x28a745 : label === 'Bad' ? 0xffc107 : 0xdc3545;
 
             console.log(`[MONITOR] ${forum.name}: ${latency !== null ? latency + 'ms' : 'N/A'} (${label})${label !== 'Good' ? ' — ' + result.details : ''}`);
-            results.push({ name: forum.name, latency, status: label, emoji, color, details: result.details });
+            return { name: forum.name, latency, status: label, emoji, color, details: result.details };
         } catch (err) {
             console.log(`[MONITOR] ${forum.name}: Error (${err.message})`);
-            results.push({ name: forum.name, latency: null, status: 'Unresponsive', emoji: '🔴', color: 0xdc3545 });
+            return { name: forum.name, latency: null, status: 'Unresponsive', emoji: '🔴', color: 0xdc3545 };
         }
-    }
+    }));
     return results;
 }
 
 // ── Morgue Overdue Check ──
 
 async function checkMorgueOverdue(db) {
+    const MORGUE_OVERDUE_HOURS = 48;
+    const MORGUE_OVERDUE_MS = MORGUE_OVERDUE_HOURS * 60 * 60 * 1000;
     console.log('[MONITOR] 🔍 Checking morgue update status...');
 
     try {
@@ -210,7 +239,7 @@ async function checkMorgueOverdue(db) {
         }
 
         const now = Date.now();
-        if (now - latest <= 24 * 60 * 60 * 1000) {
+        if (now - latest <= MORGUE_OVERDUE_MS) {
             console.log('[MONITOR] Morgue is up to date.');
             return;
         }
@@ -228,7 +257,7 @@ async function checkMorgueOverdue(db) {
         await sendWebhook('<@228306972204597248>', {
             title: '⚠️ Morgue Database Update Overdue',
             color: 0xe74c3c,
-            description: 'The morgue database has not been updated in over 24 hours.',
+            description: `The morgue database has not been updated in over ${MORGUE_OVERDUE_HOURS} hours.`,
             fields: [
                 { name: 'Last Update', value: new Date(latest).toLocaleString(), inline: true },
                 { name: 'Hours Overdue', value: `${hoursOverdue}h`, inline: true },
@@ -242,6 +271,97 @@ async function checkMorgueOverdue(db) {
         console.log('[MONITOR] ✅ Morgue overdue notification sent.');
     } catch (err) {
         console.error('[MONITOR] Morgue check error:', err.message);
+    }
+}
+
+// ── Overdue Autopsy Check ──
+
+// CK and PK requests get different wait windows: CKs are fast-tracked (up to 3
+// days), PKs get longer (up to 5 days). Requests without a parsed type fall back
+// to AUTOPSY_OVERDUE_HOURS.
+const hours = (name, def) => {
+    const v = parseFloat(process.env[name] || '');
+    return Number.isFinite(v) && v > 0 ? v : def;
+};
+const OVERDUE_DEFAULT_HOURS = hours('AUTOPSY_OVERDUE_HOURS', 48);
+const OVERDUE_CK_HOURS = hours('AUTOPSY_OVERDUE_HOURS_CK', 72);
+const OVERDUE_PK_HOURS = hours('AUTOPSY_OVERDUE_HOURS_PK', 120);
+
+async function checkOverdueAutopsies(db) {
+    console.log(`[MONITOR] 🔍 Checking for overdue autopsies (CK>${OVERDUE_CK_HOURS}h, PK>${OVERDUE_PK_HOURS}h, other>${OVERDUE_DEFAULT_HOURS}h)...`);
+
+    const thresholdHoursFor = (v) => {
+        const type = String(v.parsed?.deathType || '').toLowerCase();
+        if (type.includes('ck')) return OVERDUE_CK_HOURS;
+        if (type.includes('pk')) return OVERDUE_PK_HOURS;
+        return OVERDUE_DEFAULT_HOURS;
+    };
+
+    try {
+        const snap = await db.ref('autopsy-requested').once('value');
+        if (!snap.exists()) return;
+
+        const now = Date.now();
+        const FINAL_STATES = new Set(['complete', 'dry_run', 'skipped', 'cancelled', 'denied']);
+        const overdue = [];
+
+        snap.forEach((child) => {
+            const v = child.val() || {};
+            if (v.wasMatch === false && !v.name) return;
+            if (v.completedAt) return;
+            if (FINAL_STATES.has(String(v.caseState || '').toLowerCase())) return;
+            const detected = v.detectedAt ? new Date(v.detectedAt).getTime() : 0;
+            if (!detected) return;
+            const limitHours = thresholdHoursFor(v);
+            if (now - detected <= limitHours * 60 * 60 * 1000) return;
+            overdue.push({
+                name: v.name || child.key,
+                assignedTo: v.assignedTo || '',
+                state: v.caseState || 'detected',
+                since: detected,
+                caseNum: v.caseNum || '',
+                type: String(v.parsed?.deathType || '').trim() || '?',
+                limitHours,
+            });
+        });
+
+        if (overdue.length === 0) {
+            console.log('[MONITOR] No overdue autopsies.');
+            return;
+        }
+
+        // Cooldown — alert at most once per 6 hours while cases remain overdue.
+        const cdSnap = await db.ref('monitoring/autopsyOverdue').once('value');
+        const lastNotified = cdSnap.val()?.lastNotified || 0;
+        if (now - lastNotified < 6 * 60 * 60 * 1000) {
+            console.log('[MONITOR] Overdue autopsies already notified recently, skipping.');
+            return;
+        }
+
+        overdue.sort((a, b) => a.since - b.since);
+        const lines = overdue.slice(0, 10).map((o) => {
+            const days = Math.floor((now - o.since) / 86400000);
+            const since = new Date(o.since).toISOString().slice(0, 10);
+            return `• ${o.name}${o.assignedTo ? ` → ${o.assignedTo}` : ' (unassigned)'} [${o.type}] — ${o.state} — since ${since} (${days}d, limit ${o.limitHours}h)${o.caseNum ? ` — Case #${o.caseNum}` : ''}`;
+        }).join('\n');
+
+        const ownerPing = process.env.BOT_OWNER_ID ? `<@${process.env.BOT_OWNER_ID}>` : '<@228306972204597248>';
+
+        await sendWebhook(ownerPing, {
+            title: '⚠️ Overdue Autopsy Requests',
+            color: 0xe74c3c,
+            description: `**${overdue.length} autopsy request(s)** are past their wait window and may need investigation. (CK limit: ${OVERDUE_CK_HOURS}h · PK limit: ${OVERDUE_PK_HOURS}h)`,
+            fields: [
+                { name: 'Overdue Cases', value: lines.length > 1024 ? lines.slice(0, 1024) : lines, inline: false },
+            ],
+            footer: { text: 'PHMC Bot — Autopsy Monitor' },
+            timestamp: new Date().toISOString(),
+        });
+
+        await db.ref('monitoring/autopsyOverdue').set({ lastNotified: now, count: overdue.length });
+        console.log(`[MONITOR] ✅ Overdue autopsy notification sent (${overdue.length} cases).`);
+    } catch (err) {
+        console.error('[MONITOR] Overdue autopsy check error:', err.message);
     }
 }
 
@@ -310,13 +430,14 @@ export async function runHealthCheck(db) {
     const previousState = snapshot.val() || {};
 
     // Run checks in parallel
-    const [cfResult, gtawResult, forumResults] = await Promise.all([
+    const [sysAlerts, cfResult, gtawResult, forumResults] = await Promise.all([
+        checkSystemResources(),
         checkCloudflare(db, previousState),
         checkGtawUcp(db, previousState),
         checkForumLatency(),
     ]);
 
-    const allAlerts = [...cfResult.alerts, ...gtawResult.alerts];
+    const allAlerts = [...sysAlerts, ...cfResult.alerts, ...gtawResult.alerts];
     const allUpdates = { ...cfResult.updates, ...gtawResult.updates };
 
     // Save forum results to Firebase (dashboard reads from here)
@@ -331,9 +452,23 @@ export async function runHealthCheck(db) {
         await monitoringRef.update(allUpdates);
     }
 
-    // Dashboard handles all display — no redundant webhook needed
+    // Send high-severity alerts (CPU/memory/disk) to Discord immediately
+    for (const alert of allAlerts) {
+        try {
+            await sendLogMessage('', {
+                title: alert.title,
+                color: alert.color || 0xf1c40f,
+                description: alert.description,
+                footer: { text: 'PHMC Bot — System Monitor' },
+                timestamp: new Date().toISOString(),
+            });
+        } catch (err) {
+            console.error(`[MONITOR] Failed to send alert webhook: ${err.message}`);
+        }
+    }
+
     if (allAlerts.length > 0) {
-        console.log(`[MONITOR] ${allAlerts.length} alert(s) detected (logged to Firebase for dashboard).`);
+        console.log(`[MONITOR] ${allAlerts.length} alert(s) detected and sent to Discord.`);
     }
 }
 
@@ -360,13 +495,19 @@ export function startSystemMonitor() {
         }
 
         try {
+            await checkOverdueAutopsies(db);
+        } catch (err) {
+            console.error('[MONITOR] Overdue autopsy check error:', err.message);
+        }
+
+        try {
             await cleanupOldData(db);
         } catch (err) {
             console.error('[MONITOR] Cleanup error:', err.message);
         }
     };
 
-    // Run now, then every 3 hours
+    // Run now, then every 2 hours
     runAll();
-    setInterval(runAll, 3 * 60 * 60 * 1000);
+    setInterval(runAll, 2 * 60 * 60 * 1000);
 }

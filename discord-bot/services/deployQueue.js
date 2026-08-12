@@ -82,7 +82,7 @@ export async function setMaintenanceMode(enabled, db) {
                     const formId = reportData.formId;
                     if (formId === 'coroner_email') consentGateAndEnqueue('pm', item, formId);
                     else if (['death_record', 'mass-ftality-test', 'coroner-report'].includes(formId)) consentGateAndEnqueue('topic', item, formId);
-                    else if (['patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical', 'session_notes', 'intensive_treatment', 'psych_eval', 'testing-compact-mode'].includes(formId)) consentGateAndEnqueue('medical-record', item, formId);
+                    else if (['patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical', 'session_notes', 'intensive_treatment', 'psych-eval', 'testing-compact-mode'].includes(formId)) consentGateAndEnqueue('medical-record', item, formId);
                     else if (formId === 'autopsy') consentGateAndEnqueue('autopsy-reply', item, formId);
                     requeued++;
                 });
@@ -124,6 +124,10 @@ export async function enqueue(type, data) {
     const fireTime = Date.now() + C.DEFER_MS;
     const deployTime = new Date(fireTime).toLocaleTimeString();
 
+    // Extract patient info early for progress embed enrichment
+    const d = data.report?.data || {};
+    const patientName = d.decedentName || d.patientName || d.decedentOOC || '';
+
     if (state.pendingDeployments.has(entityKey)) {
         const existing = state.pendingDeployments.get(entityKey);
         clearTimeout(existing.timer);
@@ -146,8 +150,8 @@ export async function enqueue(type, data) {
         const msg = `Queued — will auto-deploy around ${deployTime} (${minutes} min). Re-save to make edits before then.`;
         setDeployStatus(data.db || state.dbRef, data.authorId, data.key, 'queued', msg).catch(() => {});
     } else {
-        console.log(`[AUTO] ${label} queued, will deploy at ${deployTime}`);
-        const d = data.report?.data || {};
+        const enrichedLabel = patientName ? `${label} — ${patientName}` : label;
+        console.log(`[AUTO] ${enrichedLabel} queued, will deploy at ${deployTime}`);
         let queueDetail = '';
         if (type === 'pm') {
             const recipient = d.requestingOfficer || d.requesting_officer || d.officerName || d.recipient || 'Unknown';
@@ -173,7 +177,8 @@ export async function enqueue(type, data) {
     try {
         const embed = new DeployProgressEmbed(state.discordClient, process.env.BOT_LOG_CHANNEL_ID);
         const minutes = Math.round(C.DEFER_MS / 60000);
-        await embed.start(`Queued: ${label} — deploys ~${deployTime} (${minutes} min)`);
+        const displayLabel = patientName ? `${label} — ${patientName}` : label;
+        await embed.start(`Queued: ${displayLabel} — deploys ~${deployTime} (${minutes} min)`);
         progressMessageId = embed.messageId;
     } catch (e) { /* progress embed is optional */ }
 
@@ -253,7 +258,6 @@ export async function skipReport(entityKey, skippedBy = 'unknown') {
 }
 
 export function getQueuedDeployments() {
-    logFnCall('deployQueue', 'getQueuedDeployments', 'Getting queued deployments');
     const now = Date.now();
     const entries = [];
 
@@ -271,7 +275,7 @@ export function getQueuedDeployments() {
         const remaining = Math.max(0, Math.round((entry.fireTime - now) / 1000));
         const formId = entry.data.report?.formId || '';
         let forumLabel;
-        if (['patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical', 'session_notes', 'intensive_treatment', 'psych_eval', 'testing-compact-mode'].includes(formId)) forumLabel = 'Medical Records';
+        if (['patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical', 'session_notes', 'intensive_treatment', 'psych-eval', 'testing-compact-mode'].includes(formId)) forumLabel = 'Medical Records';
         else if (entry.type === 'topic' || entry.type === 'medical-record') {
             const MAP = { 'coroner-report': 'Coroner Reports', 'death_record': 'Death Records', 'mass-ftality-test': 'Mass Fatality', 'autopsy': 'Autopsy' };
             forumLabel = MAP[formId] || 'PHMC Forum';
@@ -287,11 +291,17 @@ export function getQueuedDeployments() {
         }
         entries.push({ entityKey, label: entry.label, type: entry.type, forum: forumLabel, status: 'queued', remainingSec: remaining, fireTime: entry.fireTime });
     });
-    return entries.sort((a, b) => {
+    const sorted = entries.sort((a, b) => {
         if (a.status === 'processing') return -1;
         if (b.status === 'processing') return 1;
         return (a.fireTime || 0) - (b.fireTime || 0);
     });
+    // Log only when the queue actually has something in it — the 30s dashboard
+    // poll would otherwise spam the console with a no-op read every cycle.
+    if (sorted.length > 0) {
+        logFnCall('deployQueue', 'getQueuedDeployments', `Queue snapshot (${sorted.length} queued/processing)`);
+    }
+    return sorted;
 }
 
 export async function getStuckReports() {

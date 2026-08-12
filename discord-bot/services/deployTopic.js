@@ -6,9 +6,9 @@
  */
 
 import { getForumClient } from './forumClient.js';
-import { logFnCall, DeployProgressEmbed } from './deployLogger.js';
+import { logFnCall, DeployProgressEmbed, notifyDeployFailure } from './deployLogger.js';
 import { state } from './deployState.js';
-import { markDeployed, markReportComplete } from './deployStatus.js';
+import { markDeployed, markReportComplete, setDeployStatus } from './deployStatus.js';
 
 /**
  * Post a report as a forum topic (death_record, mass-fatality, coroner-report).
@@ -63,6 +63,15 @@ export async function handleTopic(report) {
 
     await progress.addStep('Posting Topic', 'pending', forumLabel);
     const result = await client.postTopic(forumInfo.forumId, reportData.originalKey || key, bbCode, forumInfo.url);
+    if (!result.ok) {
+        const reason = result.reason || 'Unknown error posting topic';
+        console.error(`[AUTO]  ${key}  Topic post failed: ${reason}`);
+        await setDeployStatus(db, authorId, key, 'reply_failed', reason);
+        await progress.addStep('Posting Topic', 'fail', reason);
+        await progress.finalize('failed');
+        await notifyDeployFailure(reportData.originalKey || key, 'topic', key, reason);
+        return;
+    }
     if (result.ok) {
         const label = reportData.originalKey || key;
         await progress.addStep('Posting Topic', 'ok', result.url || forumLabel);

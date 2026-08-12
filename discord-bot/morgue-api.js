@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, createWriteStream, renameSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
@@ -46,8 +46,15 @@ const WRITE_KEYS = (process.env.MORGUE_WRITE_API_KEYS || '').split(',').map(k =>
 const PORT = parseInt(process.env.MORGUE_API_PORT || '3001', 10);
 const DISCORD_WEBHOOK_URL = process.env.MORGUE_API_LOG_WEBHOOK || null;
 
+// ── IP ban config ──
+// Bans are PERMANENT and persisted to disk (data/ban-state.json), so they
+// survive restarts. An IP is banned after BAN_THRESHOLD suspicious requests.
+const BAN_THRESHOLD = parseInt(process.env.MORGUE_BAN_THRESHOLD || '2', 10);       // suspicious requests before a permanent ban
+const BAN_STATE_PATH = resolve(__dirname, 'data', 'ban-state.json');
+
 console.log(`[MORGUE-API] Loaded ${API_KEYS.length} API key(s) (read-only) and ${WRITE_KEYS.length} write key(s)`);
 console.log(`[MORGUE-API] Configured port: ${PORT}`);
+console.log(`[MORGUE-API] IP ban: ${BAN_THRESHOLD} suspicious request(s) → permanent ban (persisted to ${BAN_STATE_PATH})`);
 if (DISCORD_WEBHOOK_URL) {
     console.log(`[MORGUE-API] Discord webhook logging enabled`);
 } else {
@@ -194,6 +201,140 @@ setInterval(() => {
         }
     }
 }, 300_000);
+
+// ── IP ban tracking (per suspicious request count) ──
+// An IP is PERMANENTLY banned after BAN_THRESHOLD suspicious requests. Bans and
+// strike counts are persisted to disk (data/ban-state.json) so they survive
+// restarts — a banned scanner doesn't get a fresh slate on reboot.
+const ipBanMap = new Map();
+
+function isIpBanned(ip) {
+    const entry = ipBanMap.get(ip);
+    return !!(entry && entry.banned);
+}
+
+/** Load persisted ban state (bans + strike counts) on startup. */
+function loadBanState() {
+    try {
+        if (!existsSync(BAN_STATE_PATH)) return;
+        const data = JSON.parse(readFileSync(BAN_STATE_PATH, 'utf-8'));
+        for (const [ip, entry] of Object.entries(data)) {
+            if (!entry || typeof entry !== 'object') continue;
+            ipBanMap.set(ip, {
+                count: entry.count || 0,
+                banned: !!entry.banned,
+                reason: entry.reason || '',
+                bannedAt: entry.bannedAt || 0,
+                lastSeen: entry.lastSeen || Date.now(),
+            });
+        }
+        console.log(`[MORGUE-API] Loaded ${ipBanMap.size} persisted IP ban-state entr${ipBanMap.size === 1 ? 'y' : 'ies'}`);
+    } catch (e) {
+        console.warn(`[MORGUE-API] Could not load ban state: ${e.message}`);
+    }
+}
+
+let _persistTimer = null;
+/** Debounced atomic write of the ban map to disk. */
+function persistBanState() {
+    if (_persistTimer) clearTimeout(_persistTimer);
+    _persistTimer = setTimeout(() => {
+        try {
+            const out = {};
+            for (const [ip, entry] of ipBanMap) {
+                out[ip] = {
+                    count: entry.count,
+                    banned: !!entry.banned,
+                    reason: entry.reason || '',
+                    bannedAt: entry.bannedAt || 0,
+                    lastSeen: entry.lastSeen,
+                };
+            }
+            const tmp = BAN_STATE_PATH + '.tmp';
+            writeFileSync(tmp, JSON.stringify(out, null, 2));
+            renameSync(tmp, BAN_STATE_PATH);
+        } catch (e) {
+            console.warn(`[MORGUE-API] Could not persist ban state: ${e.message}`);
+        }
+    }, 500);
+}
+
+/**
+ * High-confidence scanner/CVE probes (label starts with CVE- or SCAN-) are
+ * banned on FIRST hit — e.g. phpunit eval, .env, wp-admin, git config scans.
+ * Ambiguous attack attempts (RCE/SQLi/path-traversal/SSTI) use the strike rule.
+ */
+function isObviousScanner(label) {
+    return /^(CVE|SCAN)-/i.test(label || '');
+}
+
+/**
+ * Record a suspicious request for an IP. Obvious scanner/CVE probes ban
+ * immediately; other attempts permanently ban the IP once the threshold is
+ * hit. Returns true if this call triggered a ban.
+ */
+function registerSuspiciousRequest(ip, reason, instant = false) {
+    const now = Date.now();
+    let entry = ipBanMap.get(ip);
+    if (!entry) {
+        entry = { count: 0, banned: false, reason: '', bannedAt: 0, lastSeen: now };
+        ipBanMap.set(ip, entry);
+    }
+    entry.lastSeen = now;
+
+    // Already permanently banned — nothing more to do.
+    if (entry.banned) return true;
+
+    // Obvious scanner/CVE probe → permanent ban on first hit.
+    if (instant) {
+        entry.banned = true;
+        entry.reason = reason || 'suspicious request(s)';
+        entry.bannedAt = now;
+        console.warn(
+            `[MORGUE-API] [WARN] IP BANNED ${ip} permanently (instant) for ${entry.reason}`
+        );
+        sendIpBanAlert(ip, entry.reason).catch(() => {});
+        persistBanState();
+        return true;
+    }
+
+    entry.count++;
+    if (entry.count >= BAN_THRESHOLD) {
+        entry.banned = true;
+        entry.reason = reason || 'suspicious request(s)';
+        entry.bannedAt = now;
+        console.warn(
+            `[MORGUE-API] [WARN] IP BANNED ${ip} permanently for ${entry.reason} after ${BAN_THRESHOLD} suspicious request(s)`
+        );
+        sendIpBanAlert(ip, entry.reason).catch(() => {});
+        persistBanState();
+        return true;
+    }
+    // Persist the running strike count too, so strikes survive restarts.
+    persistBanState();
+    return false;
+}
+
+/** Immediate high-priority Discord alert confirming a permanent ban. */
+async function sendIpBanAlert(ip, reason) {
+    if (!DISCORD_WEBHOOK_URL) return;
+    const msg = [
+        `**[MORGUE-API] [WARN] IP permanently banned**`,
+        `IP \`${ip}\` was banned for \`${reason || 'suspicious request(s)'}\``,
+        `**Threshold:** ${BAN_THRESHOLD} suspicious request(s)`,
+        `**Duration:** permanent`,
+        `**Time:** ${new Date().toISOString()}`,
+    ].join('\n');
+    try {
+        await fetch(DISCORD_WEBHOOK_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: msg.slice(0, 1990) }),
+        });
+    } catch (err) {
+        console.warn(`[MORGUE-API] IP ban alert webhook failed: ${err.message}`);
+    }
+}
 
 // ── CORS ──
 app.use((req, res, next) => {
@@ -374,6 +515,7 @@ function recordActivity(req, statusCode, ms, ip, ua, suspicious) {
         ip: ip || req.clientIp || null,
         ua: ua || null,
         suspicious: suspicious || null,
+        note: req.fetchSummary || null,
     };
     activityLog.push(entry);
     if (activityLog.length > MAX_ACTIVITY) activityLog.shift();
@@ -409,7 +551,8 @@ async function flushWebhookBatch() {
     for (const e of batch) {
         const q = e.query ? ` q="${e.query}"` : '';
         const s = e.source ? ` src="${e.source}"` : '';
-        lines.push(`\`${e.time.slice(11, 19)}\` **${e.method}** \`${e.path}\` → ${e.status} (${e.ms}ms) [${e.key}]${q}${s}`);
+        const n = e.note ? ` ${e.note}` : '';
+        lines.push(`\`${e.time.slice(11, 19)}\` **${e.method}** \`${e.path}\` → ${e.status} (${e.ms}ms) [${e.key}]${q}${s}${n}`);
     }
 
     // Discord has a 2000-char limit on webhook content
@@ -570,8 +713,27 @@ app.use((req, res, next) => {
     // ── Attach client IP ──
     req.clientIp = getClientIp(req);
 
-    // ── Check all attack surfaces for suspicious patterns ──
     const ip = req.clientIp;
+
+    // ── Ban check: reject known-bad IPs before doing anything else ──
+    if (isIpBanned(ip)) {
+        const banReason = ipBanMap.get(ip)?.reason || 'suspicious request(s)';
+        console.warn(
+            `[MORGUE-API] [WARN] BLOCKED req=${req.requestId} ${req.method} ${req.originalUrl} ` +
+            `BANNED_IP ip=${ip}`
+        );
+        recordActivity(req, 403, 0, ip,
+            (req.headers['user-agent'] || '').replace(/[\x00-\x1f]/g, '').slice(0, 120),
+            `BANNED:${banReason}`
+        );
+        return res.status(403).json({
+            success: false,
+            error: 'Forbidden',
+            message: `IP permanently banned (${banReason}).`,
+        });
+    }
+
+    // ── Check all attack surfaces for suspicious patterns ──
     const checkTargets = [req.path, req.originalUrl];
     if (req.query.q) checkTargets.push(req.query.q);
     if (req.query.source) checkTargets.push(req.query.source);
@@ -603,6 +765,8 @@ app.use((req, res, next) => {
             (req.headers['user-agent'] || '').replace(/[\x00-\x1f]/g, '').slice(0, 120),
             `BLOCKED:${suspiciousFinding.label}`
         );
+        // Count toward the IP ban — obvious scanner/CVE probes ban instantly.
+        registerSuspiciousRequest(ip, suspiciousFinding.label, isObviousScanner(suspiciousFinding.label));
         return res.status(403).json({
             success: false,
             error: 'Forbidden',
@@ -621,10 +785,11 @@ app.use((req, res, next) => {
             ? ` [SUSPICIOUS:${suspiciousFinding.label}]`
             : '';
 
+        const summary = req.fetchSummary ? ` note="${sanitize(req.fetchSummary)}"` : '';
         console.log(
             `[MORGUE-API] [${req.requestId}] ${req.method} ${req.path} ` +
             `→ ${res.statusCode} (${ms}ms) [${req.apiKeyName || 'no-key'}]` +
-            ` ip=${ip}${source} ua="${ua}"${label}`
+            ` ip=${ip}${source} ua="${ua}"${label}${summary}`
         );
 
         // Store in activity log with new fields
@@ -643,6 +808,7 @@ app.use((req, res, next) => {
             ip,
             ua: ua.slice(0, 80),
             suspicious: suspiciousFinding?.label || null,
+            note: req.fetchSummary || null,
         });
     });
     next();
@@ -772,7 +938,7 @@ app.get('/api/morgue/:firebaseKey', validateApiKey, rateLimiter, (req, res) => {
 
         res.json({
             success: true,
-            record,
+            record: record,
         });
     } catch (error) {
         console.error('[MORGUE-API] Error fetching record:', error.message);
@@ -1248,6 +1414,53 @@ function loadRoster(faction) {
     } catch { return null; }
 }
 
+// ── Agency Credentials Endpoint ──
+// Shared faction-forum account credentials, stored ONLY on the VPS
+// (data/agency-credentials.json) — never shipped to the web client. Served to
+// authenticated callers (the Firebase getAgencyCredentials function) via the
+// morgue-api key.
+const AGENCY_CREDENTIALS_PATH = resolve(__dirname, 'data', 'agency-credentials.json');
+
+function loadAgencyCredentials() {
+    try {
+        if (!existsSync(AGENCY_CREDENTIALS_PATH)) return null;
+        return JSON.parse(readFileSync(AGENCY_CREDENTIALS_PATH, 'utf-8'));
+    } catch { return null; }
+}
+
+/**
+ * GET /api/agency-credentials
+ * Returns the faction-forum account credentials map (keyed by forum hostname).
+ * Auth: x-api-key header (server-side only — the web client must go through
+ * the Firebase function, never call this directly).
+ */
+app.get('/api/agency-credentials', validateApiKey, rateLimiter, (req, res) => {
+    const data = loadAgencyCredentials();
+    if (!data) return res.status(404).json({ error: 'No agency credentials configured' });
+    return res.json(data);
+});
+
+/**
+ * GET /api/protocols-dev
+ * Returns the dev EMS protocols dataset ({ protocols: [...] }). Hosted on the
+ * VPS (data/protocols-dev.json) to keep the heavy base64 images out of RTDB.
+ * Auth: x-api-key header (the web client goes through the Firebase function).
+ */
+const PROTOCOLS_DEV_PATH = resolve(__dirname, 'data', 'protocols-dev.json');
+
+function loadProtocolsDev() {
+    try {
+        if (!existsSync(PROTOCOLS_DEV_PATH)) return null;
+        return JSON.parse(readFileSync(PROTOCOLS_DEV_PATH, 'utf-8'));
+    } catch { return null; }
+}
+
+app.get('/api/protocols-dev', validateApiKey, rateLimiter, (req, res) => {
+    const data = loadProtocolsDev();
+    if (!data) return res.status(404).json({ error: 'No dev protocols configured' });
+    return res.json(data);
+});
+
 /**
  * GET /api/roster/check?name=XXX&dept=lspd
  * Checks a name against the LSPD/LSSD rosters.
@@ -1326,6 +1539,66 @@ app.get('/api/roster/check', validateApiKey, rateLimiter, (req, res) => {
     });
 });
 
+// ── Patient Index Endpoints ──
+// Served from data/medical-records-index.json, built by services/patientIndex.js
+// (startup incremental refresh + write-through on medical-record deploy + a
+// paginated f=97 full rebuild every 3 days).
+
+const PATIENT_INDEX_PATH = resolve(__dirname, 'data', 'medical-records-index.json');
+
+function loadPatientIndex() {
+    try {
+        if (!existsSync(PATIENT_INDEX_PATH)) return null;
+        return JSON.parse(readFileSync(PATIENT_INDEX_PATH, 'utf-8'));
+    } catch { return null; }
+}
+
+/**
+ * GET /api/patients?q=<name>
+ * Case-insensitive substring search over the patient index (min 2 chars),
+ * newest-seen first, limited to 10. Returns [{ name, id, lastSeen }].
+ *
+ * GET /api/patients
+ * Returns the whole index { version, lastUpdated, lastFullBuild, count, patients }.
+ *
+ * Auth: x-api-key header
+ */
+app.get('/api/patients', validateApiKey, rateLimiter, (req, res) => {
+    const index = loadPatientIndex();
+    if (!index || !Array.isArray(index.patients)) {
+        return res.status(404).json({ error: 'Patient index not built yet' });
+    }
+
+    const q = (req.query.q || '').trim().toLowerCase();
+    if (!q) {
+        return res.json({
+            version: index.version,
+            lastUpdated: index.lastUpdated,
+            lastFullBuild: index.lastFullBuild,
+            count: index.count ?? index.patients.length,
+            patients: index.patients,
+        });
+    }
+    if (q.length < 2) {
+        return res.status(400).json({ error: 'q must be at least 2 characters' });
+    }
+
+    // Match by NAME (substring) or by PATIENT ID (exact or substring of the
+    // numeric id) — lets the web app validate/fill a patient name from the ID
+    // the ME typed (bidirectional lookup).
+    const matches = index.patients
+        .filter((p) => {
+            if ((p.name || '').toLowerCase().includes(q)) return true;
+            const pid = p.id;
+            return pid != null && String(pid).toLowerCase().includes(q);
+        })
+        .sort((a, b) => (b.lastSeen || 0) - (a.lastSeen || 0))
+        .slice(0, 10)
+        .map((p) => ({ name: p.name, id: p.id || null, lastSeen: p.lastSeen || null }));
+
+    return res.json({ count: matches.length, matches });
+});
+
 /**
  * GET /api/roster/lspd
  * GET /api/roster/lssd
@@ -1345,6 +1618,197 @@ app.get('/api/roster/:faction', validateApiKey, rateLimiter, (req, res) => {
     res.json(data);
 });
 
+// ──────────────────────────────────────────
+// CCTV Data Routes
+// ──────────────────────────────────────────
+const CCTV_DATA_PATH = '/opt/phmc-bot/cctv-script/output/cctv-data.json';
+const CCTV_CAMERAS_PATH = '/opt/phmc-bot/cctv-script/cameras.json';
+
+function loadCctvData() {
+    if (!existsSync(CCTV_DATA_PATH)) return null;
+    try { return JSON.parse(readFileSync(CCTV_DATA_PATH, 'utf-8')); }
+    catch { return null; }
+}
+
+function loadCctvCameras() {
+    if (!existsSync(CCTV_CAMERAS_PATH)) return null;
+    try { return JSON.parse(readFileSync(CCTV_CAMERAS_PATH, 'utf-8')); }
+    catch { return null; }
+}
+
+/**
+ * GET /api/cctv/cameras
+ * Returns list of all cameras with metadata (log count, latestId, recent activity)
+ */
+app.get('/api/cctv/cameras', validateApiKey, rateLimiter, (req, res) => {
+    const cameras = loadCctvCameras();
+    const data = loadCctvData();
+
+    if (!cameras) {
+        return res.status(503).json({ success: false, error: 'Camera config not available.' });
+    }
+
+    const result = cameras.map(cam => {
+        const stored = data?.cameras?.[String(cam.id)];
+        return {
+            id: cam.id,
+            name: cam.name,
+            logCount: stored?.logs?.length ?? 0,
+            latestId: stored?.latestId ?? 0,
+            hasLogs: (stored?.logs?.length ?? 0) > 0,
+        };
+    });
+
+    res.json({ success: true, data: result });
+});
+
+/**
+ * GET /api/cctv/search?q=keyword
+ * Searches all camera logs for a keyword (case-insensitive).
+ * Returns matches grouped by camera.
+ */
+app.get('/api/cctv/search', validateApiKey, rateLimiter, (req, res) => {
+    const data = loadCctvData();
+    if (!data) {
+        return res.status(503).json({ success: false, error: 'CCTV data not available.' });
+    }
+
+    const query = (req.query.q || '').trim().toLowerCase();
+    if (!query) {
+        return res.status(400).json({ success: false, error: 'Search query "q" is required.' });
+    }
+
+    const cameras = data.cameras || {};
+    const results = [];
+
+    for (const [camId, camData] of Object.entries(cameras)) {
+        const matches = (camData.logs || []).filter(
+            (entry) =>
+                (entry.message || '').toLowerCase().includes(query) ||
+                (entry.date || '').toLowerCase().includes(query)
+        );
+        if (matches.length > 0) {
+            results.push({
+                cameraId: parseInt(camId, 10),
+                cameraName: camData.name || `Camera ${camId}`,
+                matchCount: matches.length,
+                logs: matches,
+            });
+        }
+    }
+
+    // Sort by cameraId for consistent ordering
+    results.sort((a, b) => a.cameraId - b.cameraId);
+
+    const totalMatches = results.reduce((sum, r) => sum + r.matchCount, 0);
+
+    res.json({
+        success: true,
+        data: {
+            query: req.query.q,
+            totalMatches,
+            camerasWithMatches: results.length,
+            results,
+        },
+    });
+});
+
+/**
+ * GET /api/cctv/cameras/:id
+ * Returns full log entries for a specific camera.
+ */
+app.get('/api/cctv/cameras/:id', validateApiKey, rateLimiter, (req, res) => {
+    const data = loadCctvData();
+    if (!data) {
+        return res.status(503).json({ success: false, error: 'CCTV data not available.' });
+    }
+
+    const camData = data.cameras?.[req.params.id];
+    if (!camData) {
+        return res.status(404).json({ success: false, error: `Camera ${req.params.id} not found.` });
+    }
+
+    res.json({
+        success: true,
+        data: {
+            id: parseInt(req.params.id, 10),
+            name: camData.name,
+            latestId: camData.latestId,
+            logs: camData.logs || [],
+        },
+    });
+});
+
+/**
+ * GET /api/cctv/stats
+ * Aggregate statistics for all cameras.
+ */
+app.get('/api/cctv/stats', validateApiKey, rateLimiter, (req, res) => {
+    const data = loadCctvData();
+    if (!data) {
+        return res.status(503).json({ success: false, error: 'CCTV data not available.' });
+    }
+
+    const cameras = data.cameras || {};
+    const camIds = Object.keys(cameras);
+    let totalEntries = 0;
+    let camerasWithData = 0;
+
+    for (const id of camIds) {
+        const count = cameras[id]?.logs?.length ?? 0;
+        totalEntries += count;
+        if (count > 0) camerasWithData++;
+    }
+
+    res.json({
+        success: true,
+        data: {
+            totalCameras: camIds.length,
+            camerasWithData,
+            totalLogEntries: totalEntries,
+            lastFetched: data.metadata?.lastFetched || null,
+        },
+    });
+});
+
+/**
+ * POST /api/cctv/fetch
+ * Triggers fetch-all.js on the VPS to pull latest CCTV data.
+ * Returns immediately — the script runs in the background.
+ * (Firebase callable functions have a 60s timeout, so we can't wait.)
+ */
+app.post('/api/cctv/fetch', validateApiKey, rateLimiter, async (req, res) => {
+    const scriptPath = '/opt/phmc-bot/cctv-script';
+    const logFile = 'output/fetch-trigger.log';
+
+    try {
+        const { spawn } = await import('child_process');
+        const child = spawn('node', ['fetch-all.js', '--headless'], {
+            cwd: scriptPath,
+            detached: true,
+            stdio: ['ignore', 'pipe', 'pipe'],
+        });
+
+        const timestamp = new Date().toISOString();
+        const logStream = createWriteStream(`${scriptPath}/${logFile}`, { flags: 'a' });
+        logStream.write(`\n[${timestamp}] Manual fetch triggered via API\n`);
+        child.stdout.pipe(logStream);
+        child.stderr.pipe(logStream);
+        child.unref();
+
+        console.log('[CCTV] Manual fetch triggered via API');
+        req.fetchSummary = 'Fetch triggered';
+
+        res.json({
+            success: true,
+            message: 'Fetch triggered in background.',
+        });
+    } catch (err) {
+        console.error('[CCTV] Failed to trigger fetch:', err.message);
+        res.status(500).json({ success: false, error: `Failed to trigger fetch: ${err.message}` });
+    }
+});
+
 // ── 404 handler ──
 app.use((req, res) => {
     res.status(404).json({
@@ -1358,6 +1822,8 @@ app.use((req, res) => {
 // Start server
 // ──────────────────────────────────────────
 const server = app.listen(PORT, '0.0.0.0', () => {
+    // Load persisted IP bans / strike counts so they survive restarts.
+    loadBanState();
     console.log('═══════════════════════════════════════════');
     console.log(`[MORGUE-API] Server running on port ${PORT}`);
     console.log(`[MORGUE-API] Endpoint:     http://0.0.0.0:${PORT}/api/morgue`);

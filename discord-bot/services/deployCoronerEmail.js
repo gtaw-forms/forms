@@ -264,9 +264,11 @@ export async function handleCoronerEmail(report) {
     console.log('[CORONER-EMAIL] Rendered BBCode preview (first 500 chars):');
     console.log(bbCode.substring(0, 500));
     try {
-        const { writeFileSync } = await import('fs');
-        writeFileSync(resolve(__dirname, '../debug-coroner-email-bbcode.txt'), bbCode, 'utf-8');
-        console.log('[CORONER-EMAIL] Full BBCode written to debug-coroner-email-bbcode.txt');
+        const { writeFileSync, mkdirSync } = await import('fs');
+        const debugDir = resolve(__dirname, '..', 'debug');
+        mkdirSync(debugDir, { recursive: true });
+        writeFileSync(resolve(debugDir, 'debug-coroner-email-bbcode.txt'), bbCode, 'utf-8');
+        console.log('[CORONER-EMAIL] Full BBCode written to debug/debug-coroner-email-bbcode.txt');
     } catch (e) {
         console.warn('[CORONER-EMAIL] Could not write debug file:', e.message);
     }

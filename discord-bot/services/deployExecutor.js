@@ -4,7 +4,7 @@
  */
 
 import { getForumClient } from './forumClient.js';
-import { logFnCall, sendWebhook } from './deployLogger.js';
+import { logFnCall, sendWebhook, notifyDeployFailure } from './deployLogger.js';
 import { state, C } from './deployState.js';
 import { requeueReport } from './deployRetry.js';
 import { checkUserConsent, skipDueToConsent } from './deployConsent.js';
@@ -74,6 +74,82 @@ export async function runDeploy(type, data) {
 
     const d = data.report?.data || {};
 
+    // ── 🛑 CRITICAL GATE: empty employee identity (emergency handbrake) ──
+    // A report with an empty coronerEmployee / phmcEmployee must NEVER be
+    // deployed — it ships blanks to the forum (Sarah Bell / Xavier Bogdanovic
+    // incident, 2026-08-11). Hard-stop here, mark the report, notify the
+    // developer, and do NOT retry — the data must be fixed first.
+    const EMPLOYEE_FIELD_BY_FORM = {
+        'coroner-report': 'coronerEmployee',
+        'coroner_email': 'coronerEmployee',
+        'death_record': 'coronerEmployee',
+        'mass-ftality-test': 'coronerEmployee',
+        'autopsy': 'coronerEmployee',
+        'patient_notes': 'phmcEmployee',
+        'er_protocol': 'phmcEmployee',
+        'physical_evaluation': 'phmcEmployee',
+        'staff-patient-file': 'phmcEmployee',
+        'surgical': 'phmcEmployee',
+        'session_notes': 'phmcEmployee',
+        'intensive_treatment': 'phmcEmployee',
+        'psych-eval': 'phmcEmployee',
+        'testing-compact-mode': 'phmcEmployee',
+    };
+    const expectedField = EMPLOYEE_FIELD_BY_FORM[formId] || null;
+    let employeeMissing = false;
+    if (expectedField) {
+        const val = d[expectedField];
+        employeeMissing = !val || !String(val).trim();
+    } else if (type === 'topic' || type === 'pm') {
+        // Unknown form id on a PHMC deploy: block only if BOTH employee
+        // fields are missing/empty (never false-positive a legit form).
+        const cVal = d.coronerEmployee;
+        const pVal = d.phmcEmployee;
+        employeeMissing = (!cVal || !String(cVal).trim()) && (!pVal || !String(pVal).trim());
+    }
+
+    if (employeeMissing) {
+        const missingField = expectedField || 'coronerEmployee/phmcEmployee';
+        console.error(`[AUTO] 🛑 BLOCKED ${label} — ${missingField} is empty. Not deploying.`);
+        try {
+            await data.db.ref(`scheduledReports/${data.authorId}/${data.key}`).update({
+                hasdeployed: false,
+                deployStatus: 'blocked_empty_employee',
+                deployMessage: `BLOCKED: ${missingField} is empty. Fix the report data (re-save in the app or run tools/fix-empty-coroner.mjs), then set hasdeployed:false + deployStatus:"pending" and restart the bot.`,
+                deployCheckedAt: new Date().toISOString(),
+            });
+            await data.db.ref(`retry-queue/${data.authorId}|${data.key}`).remove().catch(() => {});
+        } catch (statusErr) {
+            console.error('[AUTO] Failed to mark blocked status:', statusErr.message);
+        }
+
+        await sendWebhook(null, {
+            title: '🛑 DEPLOY BLOCKED — Empty Employee Identity',
+            description: [
+                '**Report:** ' + label,
+                '**Key:** `' + data.key + '`',
+                '**Type:** ' + type,
+                '**Form:** ' + (formId || 'unknown'),
+                '**Missing field:** `' + missingField + '`',
+                '',
+                '🛠 <@228306972204597248> — fix the report data first (re-save in the app, or `node tools/fix-empty-coroner.mjs --include-scheduled --apply`), then set `hasdeployed:false` + `deployStatus:"pending"` and restart the bot.',
+            ].join('\n'),
+            color: 0xdc3545,
+            footer: { text: 'PHMC Bot — Auto Deploy (emergency handbrake)' },
+            timestamp: new Date().toISOString(),
+        });
+
+        if (data._progressMessageId && state.discordClient) {
+            try {
+                const channel = await state.discordClient.channels.fetch(data._progressChannelId);
+                const msg = await channel.messages.fetch(data._progressMessageId);
+                await msg.edit({ content: `[BLOCKED] ${label} — empty employee identity, deploy halted`, embeds: [], components: [] });
+            } catch { /* progress embed is optional */ }
+        }
+        state.processing = false;
+        return;
+    }
+
     // Determine forum label based on deploy type
     let forumLabel;
     if (type === 'topic' || type === 'medical-record' || type === 'patient_notes') {
@@ -133,6 +209,9 @@ export async function runDeploy(type, data) {
     } catch (err) {
         console.error('[AUTO] ' + data.key + ' Failed:', err.message);
         console.error('[AUTO] Stack:', err.stack);
+
+        // User-facing alert so staff see ANY deploy failure in the log channel.
+        await notifyDeployFailure(label, type, data.key, err.message);
 
         const retries = (data.report?.deployRetries || 0) + 1;
 

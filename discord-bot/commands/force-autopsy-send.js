@@ -2,32 +2,11 @@ import { SlashCommandBuilder, EmbedBuilder, MessageFlags } from 'discord.js';
 import firebase from '../services/firebase.js';
 import { getForumClient } from '../services/forumClient.js';
 import { clearAssignment } from '../services/autopsyRotation.js';
+import { buildCompletionBb } from '../services/completionTemplate.js';
 
 const AUTOPSY_REQUEST_FORUM_ID = 265;
 const CASE_MGMT_FORUM_ID = 266;
 const PHMC_BASE = 'https://phmc.gta.world';
-
-const COMPLETION_TEMPLATE = `[divbox=white][center][img]https://i.imgur.com/Hxjt4M2.png[/img][/center][/divbox]
-
-[divbox=white][br][/br][center][b]Autopsy Request - Completed[/b]
-[/center]
-[br][/br]
-Dear REQUESTER_NAME
-
-We have completed the autopsy investigation, and the detailed report has been sent out. I have thoroughly reviewed all findings and compiled the results into a comprehensive document. Please review the report at your earliest convenience, and feel free to reach out if you have any questions or require further information.
-
-[i]Best regards,[/i]
-[hr][/hr]
-[b]Office of Forensic Medicine Division[/b]
-Department of Forensic Medicine and Pathology
-
-[b]Pillbox Hill Medical Center[/b]
-[size=85]Elgin Ave/Strawberry Ave, Los Santos, SA
-Ph: 50056
-Mail: [url=https://phmc.gta.world/ucp.php?i=pm&mode=compose&u=your_id]medical.examiners@phmc.health[/url]
-Website: [url]www.phmc.health[/url][/size]
-
-[center][img]https://i.imgur.com/vztjYpe.png[/img][/center]`;
 
 export const data = new SlashCommandBuilder()
     .setName('force-autopsy-send')
@@ -87,8 +66,7 @@ export async function execute(interaction) {
         // 1. Send completion reply to request topic
         const requesterName = matched.parsed?.requesterName || "Requesting Party";
         const caseTitle = matched.caseUrl || matched.title || "Autopsy Case";
-        const completionBb = COMPLETION_TEMPLATE
-            .replace("REQUESTER_NAME", requesterName);
+        const completionBb = buildCompletionBb(caseTitle, requesterName, null);
 
         console.log(`[FORCE-AUTO] Posting completion reply to request topic #${matchedId}...`);
         const replyResult = await client.replyToTopic(matchedId, AUTOPSY_REQUEST_FORUM_ID, completionBb, { dryRun: false, baseUrl: PHMC_BASE });

@@ -1,6 +1,6 @@
 import { onCall } from "firebase-functions/v2/https";
 import * as functions from "firebase-functions";
-import { db, admin } from '../utils/firebase.js';
+import { db, auth } from '../utils/firebase.js';
 import { getConfigValue, getConfig } from '../utils/config.js';
 import { sendWebhook } from '../utils/helpers.js';
 
@@ -366,7 +366,7 @@ export const processGtaWorldAuth = onCall({
                 // If it grows too large, we might need to compress or store in DB instead
                 permissions: factionResult.permissions
             };
-            firebaseCustomToken = await admin.auth().createCustomToken(firebaseUid, additionalClaims);
+            firebaseCustomToken = await auth.createCustomToken(firebaseUid, additionalClaims);
             console.log(`[UnifiedAuth] Firebase Custom Token generated for ${firebaseUid}`);
         } catch (tokenError) {
             console.error('[UnifiedAuth] Failed to generate Firebase Custom Token:', tokenError);
@@ -684,7 +684,13 @@ export const refreshGtawUser = onCall({
                     const memberData = allMembers[charId];
                     factionMembers.push({
                         character: {
-                            characterId: memberData.characterId,
+                            // Use the roster record KEY as the character ID. The member
+                            // records in factions/364/members do not store characterId as a
+                            // field — it IS the key (written by factionSync as acc[charId]).
+                            // Reading memberData.characterId produced `undefined` here,
+                            // which made the client fall back to the UCP account id for
+                            // gtawCharacterId and wiped the badge on every refresh.
+                            characterId: charId,
                             characterName: memberData.characterName,
                             rank: memberData.rank,
                             scriptRank: memberData.scriptRank
@@ -722,7 +728,7 @@ export const refreshGtawUser = onCall({
                 isSuperAdmin: isElevated,
                 permissions: factionResult.permissions
             };
-            firebaseCustomToken = await admin.auth().createCustomToken(firebaseUid, additionalClaims);
+            firebaseCustomToken = await auth.createCustomToken(firebaseUid, additionalClaims);
             console.log(`[refreshGtawUser] Firebase Custom Token generated for ${firebaseUid}`);
         } catch (tokenError) {
             console.error('[refreshGtawUser] Failed to generate Firebase Custom Token:', tokenError);

@@ -23,7 +23,7 @@ export const DEPLOY_TRACKED_FORMS = [
     // Mental Health
     'session_notes',
     'intensive_treatment',
-    'psych_eval',
+    'psych-eval',
 ];
 
 export const FORM_LABELS = {
@@ -43,7 +43,7 @@ export const FORM_LABELS = {
     // Mental Health
     session_notes:        'Session Notes',
     intensive_treatment:  'Intensive Treatment',
-    psych_eval:           'Psych Evaluation',
+    'psych-eval':           'Psych Evaluation',
 };
 
 /** Section grouping for the consent modal UI (multi-step wizard) */
@@ -66,7 +66,7 @@ export const FORM_SECTIONS = {
     'Mental Health': [
         'session_notes',
         'intensive_treatment',
-        'psych_eval',
+        'psych-eval',
     ],
 };
 

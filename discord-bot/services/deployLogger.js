@@ -44,6 +44,33 @@ export async function sendWebhook(content, embed) {
 }
 
 /**
+ * Post a clear, user-facing failure alert to the log channel for ANY deploy type
+ * (topic, PM, medical record, autopsy, crosspost). Self-healing handles the repair;
+ * this exists so staff see failures immediately and can investigate.
+ *
+ * @param {string} label   — human-readable report label
+ * @param {string} type    — deploy type ('topic', 'pm', 'medical-record', 'autopsy-reply', ...)
+ * @param {string} key     — report key
+ * @param {string} reason  — failure reason
+ */
+export async function notifyDeployFailure(label, type, key, reason) {
+    const embed = new EmbedBuilder()
+        .setColor(0xdc3545)
+        .setTitle('DEPLOY FAILED')
+        .setDescription([
+            `**Report:** ${label}`,
+            `**Key:** \`${key}\``,
+            `**Type:** ${type}`,
+            `**Reason:** ${reason || 'Unknown error'}`,
+            '',
+            'The retry / self-healing sweep will handle this automatically. Check `pm2 logs phmc-bot` for details.',
+        ].join('\n'))
+        .setFooter({ text: 'PHMC Bot — Auto Deploy' })
+        .setTimestamp();
+    await sendWebhook(null, embed);
+}
+
+/**
  * Send a step-by-step progress webhook with a consistent format.
  * Styled with a left border color to show progress vs success vs failure.
  */

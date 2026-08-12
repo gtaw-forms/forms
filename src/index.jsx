@@ -1,6 +1,10 @@
 import React, { useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
+import 'bootstrap/dist/css/bootstrap.min.css';
+import '@fortawesome/fontawesome-free/css/all.min.css';
+import './App.css';
+import './buttons.css';
 import App from './App';
 import { init, getClient } from "@sentry/react";
 import { AuthProvider } from './contexts/AuthContext.jsx';
