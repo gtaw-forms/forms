@@ -10,6 +10,7 @@ import { logFnCall, DeployProgressEmbed, notifyDeployFailure } from './deployLog
 import { state } from './deployState.js';
 import { markDeployed, markReportComplete } from './deployStatus.js';
 import { requeueReport } from './deployRetry.js';
+import { isMaintenanceMode } from './deployQueue.js';
  
 /**
  * Send a report as a forum PM.
@@ -17,6 +18,13 @@ import { requeueReport } from './deployRetry.js';
  */
 export async function handlePM(report) {
     const { authorId, key, report: reportData, db } = report;
+
+    // Respect maintenance mode — skip regardless of caller path
+    if (await isMaintenanceMode().catch(() => false)) {
+        console.log(`[AUTO]  ${key}  maintenance mode — skipping PM`);
+        return;
+    }
+
     const recipient = (reportData.data?.requestingOfficer
         || reportData.data?.requesting_officer
         || reportData.data?.officerName
@@ -24,7 +32,7 @@ export async function handlePM(report) {
         || '').trim() || null;
 
     // ── Progress embed ──
-    const progress = new DeployProgressEmbed(state.discordClient, process.env.BOT_LOG_CHANNEL_ID);
+    const progress = new DeployProgressEmbed(state.discordClient, process.env.BOT_LOG_CHANNEL_ID, reportData.appBuild);
     if (report._progressMessageId) {
         await progress.resume(report._progressMessageId, report._progressChannelId || process.env.BOT_LOG_CHANNEL_ID, `PM — ${reportData.originalKey || key}`);
     } else {

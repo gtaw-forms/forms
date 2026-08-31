@@ -3,6 +3,7 @@ import { generateMorgueBBCode } from '../../utils/morgue';
 import { triggerWebhookProxy } from '../../services/firebaseFunctions';
 import { ref, onValue } from 'firebase/database';
 import { database } from '../../firebase';
+import RequestAutopsyModal from './RequestAutopsyModal';
 
 const PAGE_SIZE = 50;
 const IS_LOCALHOST = window.location.hostname === 'localhost';
@@ -11,6 +12,7 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
   const [search, setSearch] = useState('');
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const [requestingAutopsy, setRequestingAutopsy] = useState(null);
   const [page, setPage] = useState(1);
 
   const canAccess = IS_LOCALHOST || isAuthenticated;
@@ -185,10 +187,15 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
               <div className="sub">{r.location || '—'}</div>
             </div>
             <div className="date">{r.timeOfDeath ? r.timeOfDeath.split(' ').slice(0, 4).join(' ') : '—'}</div>
-            <div style={{ display: 'flex', justifyContent: 'center' }}>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 6 }}>
               <button className="btn-view" onClick={() => { setSelectedRecord(r); setShowDetailModal(true); logMorgueAction('View Record', `#${r.caseId} — ${r.name || 'Unknown'}`); }}>
                 <i className="fas fa-eye me-1" style={{ fontSize: 10 }} /> View Record
               </button>
+              {IS_LOCALHOST && (
+              <button className="btn-view" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }} onClick={() => { setRequestingAutopsy(r); logMorgueAction('Request Autopsy', `#${r.caseId} — ${r.name || 'Unknown'}`); }}>
+                <i className="fas fa-microscope me-1" style={{ fontSize: 10 }} /> Request Autopsy
+              </button>
+              )}
             </div>
           </div>
         ))}
@@ -336,6 +343,15 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
         </div>
       )}
       </>)}
+      {requestingAutopsy && (
+        <RequestAutopsyModal
+          show={!!requestingAutopsy}
+          record={requestingAutopsy}
+          onClose={() => setRequestingAutopsy(null)}
+          showNotification={showNotification}
+          characterName={characterName}
+        />
+      )}
     </div>
   );
 };

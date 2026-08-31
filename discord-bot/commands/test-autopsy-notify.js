@@ -4,19 +4,40 @@ import { notifyAssignment, getDiscordId } from '../services/meDiscordNotify.js';
 
 export const data = new SlashCommandBuilder()
     .setName('test-autopsy-notify')
-    .setDescription('Test the ME Discord assignment ping (owner only)')
+    .setDescription('Test the ME Discord assignment ping with a real case (owner only)')
     .addStringOption(opt =>
-        opt.setName('name')
-            .setDescription('Forum username of the ME (e.g. Arthur Blackwood)')
+        opt.setName('me')
+            .setDescription('Forum username of the ME (e.g. Anne Carter)')
             .setRequired(true))
     .addStringOption(opt =>
         opt.setName('case')
-            .setDescription('Case number or title (e.g. 43 or "Case 43 - John Doe")')
-            .setRequired(true))
-    .addBooleanOption(opt =>
-        opt.setName('mass')
-            .setDescription('Simulate as mass autopsy (default: false)')
-            .setRequired(false));
+            .setDescription('Case number, topic id, or title fragment to pull real data for (e.g. 486, 9977, Bradley)')
+            .setRequired(true));
+
+/**
+ * Resolve a real autopsy case from the `autopsy-requested` node.
+ * Matches by case number, topic id, or a case-title fragment.
+ */
+async function resolveCase(db, needle) {
+    const snap = await db.ref('autopsy-requested').once('value');
+    const all = snap.val() || {};
+    const q = String(needle).trim().toLowerCase();
+
+    for (const [topicId, e] of Object.entries(all)) {
+        if (!e || typeof e !== 'object') continue;
+        const caseNum = String(e.caseNum || e.caseNumber || '');
+        const caseTitle = e.caseTitle || e.title || '';
+        const caseTopicId = String(e.caseTopicId || topicId || '');
+        if (
+            caseNum.toLowerCase() === q ||
+            caseTopicId.toLowerCase() === q ||
+            caseTitle.toLowerCase().includes(q)
+        ) {
+            return { topicId, entry: e };
+        }
+    }
+    return null;
+}
 
 export async function execute(interaction) {
     const ownerId = process.env.BOT_OWNER_ID;
@@ -27,37 +48,53 @@ export async function execute(interaction) {
 
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-    const name = interaction.options.getString('name').trim();
-    const caseStr = interaction.options.getString('case').trim();
-    const isMass = interaction.options.getBoolean('mass') ?? false;
+    const me = interaction.options.getString('me').trim();
+    const caseQuery = interaction.options.getString('case').trim();
 
     firebase.init();
     const db = firebase.db;
 
     try {
-        // Show current mapping status
-        const discordId = await getDiscordId(db, name);
+        const found = await resolveCase(db, caseQuery);
+        if (!found) {
+            await interaction.editReply({ content: `No case found matching "${caseQuery}" in autopsy-requested. Use a case number, topic id, or title fragment.` });
+            return;
+        }
+        const { topicId, entry } = found;
+        const caseTitle = entry.caseTitle || entry.title || `Case ${topicId}`;
+        const caseNum = entry.caseNum || entry.caseNumber || '';
+        const caseTopicId = entry.caseTopicId || topicId;
+        const caseUrl = entry.caseUrl || `${process.env.FORUM_BASE_URL}/viewtopic.php?t=${caseTopicId}`;
+        const assigned = me || entry.assignedTo || 'unknown';
+
+        // Show mapping status for the target ME
+        const discordId = await getDiscordId(db, assigned);
         const mappingStatus = discordId
             ? `<@${discordId}> (\`${discordId}\`)`
             : '**No Discord mapping** — will use plain name fallback';
 
-        // Send test notification
-        const caseTitle = caseStr.startsWith('Case') ? caseStr : `Case ${caseStr}`;
-        await notifyAssignment(db, name, caseTitle, null, { isMassAutopsy: isMass });
+        // Send the FULL real-data notification (same path as a live assignment/reassign)
+        await notifyAssignment(db, assigned, caseTitle, caseUrl, {
+            decedent: entry.name || null,
+            ooc: entry.oocName || null,
+            caseNumber: caseNum || null,
+            deathType: entry.deathType || null,
+            label: 'Autopsy Case Reassigned',
+            embedTitle: '🔬 Autopsy Case Reassigned',
+        });
 
         const embed = new EmbedBuilder()
             .setColor(0x00bcd4)
-            .setTitle('Test Autopsy Notification')
+            .setTitle('Test Autopsy Notification (real case)')
             .setDescription([
-                `**ME:** ${name}`,
+                `**ME:** ${assigned}`,
                 `**Case:** ${caseTitle}`,
-                `**Type:** ${isMass ? 'Mass Autopsy' : 'Standard Assignment'}`,
+                `**Resolved from:** \`${topicId}\``,
                 '',
                 `**Discord Mapping:** ${mappingStatus}`,
                 '',
-                '_A notification has been sent to the bot-spam channel above._',
+                `_Sent the full webhook embed for this real case above._`,
             ].join('\n'))
-            .setFooter({ text: 'If the ping looks wrong, use /me-discord to fix the mapping.' })
             .setTimestamp();
 
         await interaction.editReply({ embeds: [embed] });

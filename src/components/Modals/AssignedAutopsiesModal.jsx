@@ -145,6 +145,28 @@ const AssignedAutopsiesModal = ({ show, onClose, onLoadCase, factionsData }) => 
         { caseId: 'MOCK-2026-004', name: 'Elena Rodriguez', causeOfDeath: 'Stab wound', location: 'Rockford Hills', timeOfDeath: '07/JUL/2026 19:50' },
     ];
 
+    /**
+     * Typo-tolerant haystack check for morgue matching: whole term first,
+     * then EVERY word must appear (or a one-swap/one-drop variant of it —
+     * catches requester typos like "Autospy Test"). The existing score
+     * bonuses (location/date/time) still guard against weak cross-matches.
+     */
+    const haystackMatchesTerm = (hay, term) => {
+        if (!term) return false;
+        if (hay.includes(term)) return true;
+        return term.split(/\s+/).filter(w => w.length >= 3).every(w => {
+            const variants = new Set([w]);
+            for (let i = 0; i < w.length - 1; i++) {
+                if (w[i] !== w[i + 1]) variants.add(w.slice(0, i) + w[i + 1] + w[i] + w.slice(i + 2));
+            }
+            for (let i = 0; i < w.length; i++) {
+                const v = w.slice(0, i) + w.slice(i + 1);
+                if (v.length >= 4) variants.add(v);
+            }
+            return [...variants].some(v => hay.includes(v));
+        });
+    };
+
     const handleLoad = async (entry) => {
         setLoadingCase(entry.id);
         setMorgueErrors(prev => { const n = new Set(prev); n.delete(entry.id); return n; });
@@ -168,6 +190,7 @@ const AssignedAutopsiesModal = ({ show, onClose, onLoadCase, factionsData }) => 
                     if (rn === t) { s = 999; }
                     else if (rn.includes(t)) { s = Math.max(rn.length, 60); }
                     else if (t.includes(rn)) { s = Math.max(t.length, 60); }
+                    else if (haystackMatchesTerm(rn, t)) { s = Math.max(rn.length, 55); }
                     else continue;
 
                     const cause = (rec.causeOfDeath || '').toLowerCase();
@@ -345,7 +368,7 @@ const AssignedAutopsiesModal = ({ show, onClose, onLoadCase, factionsData }) => 
                                                         )}
                                                         {morgueErrors.has(a.id) ? (
                                                             <div style={{ color: 'var(--danger)', fontSize: 10, textAlign: 'right', maxWidth: 180, lineHeight: 1.4 }}>
-                                                                <i className="fas fa-exclamation-triangle me-1" />Not in morgue — contact an ME.
+                                                                <i className="fas fa-exclamation-triangle me-1" />No morgue match — intake may not exist yet.
                                                             </div>
                                                         ) : (
                                                             <button onClick={() => handleLoad(a)} disabled={loadingCase === a.id}

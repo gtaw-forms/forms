@@ -13,6 +13,7 @@ import { formatCharacterNameForDisplay } from '../../utils/identityUtils';
 import { useModal } from '../../contexts/ModalProvider';
 import { evaluateFieldVisibility } from '../../utils/formValidation';
 import { sanitizeMorgueText } from '../../utils/textUtils';
+import { parseDnaProfile } from '../../utils/morgue';
 
 const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, finalSelectOptions, currentUtcTime, agencyDataStore, toggleSavedReports, showNotification, isUploading, setShowMapModal, setMapTargetField, isUploadingMapImage = {} }) => {
   const { factionsData, morgueRecords, isLoadingData, loadMorgueRecords } = useData();
@@ -897,8 +898,8 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
           }
         }
 
-        // DNA Profile
-        data.dnaProfile = extractField('DNA PROFILE') || sanitizedText.match(/DNA PROFILE\s*\n?\s*([A-F0-9]+)/i)?.[1];
+        // DNA Profile — supports both "DNA PROFILE: DNA-<hex>" and legacy "DNA Profile<hex>".
+        data.dnaProfile = extractField('DNA PROFILE') || parseDnaProfile(sanitizedText);
 
         // Sex
         const sex = extractField('SEX');

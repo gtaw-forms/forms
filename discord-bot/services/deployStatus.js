@@ -38,6 +38,22 @@ export async function setDeployStatus(db, authorId, key, status, message) {
 }
 
 /**
+ * Extract deploy metadata from a posted-content URL so the report record knows
+ * WHERE it was posted (enables self-serve "Edit & Repost").
+ */
+function parseDeployUrl(url) {
+    if (!url) return { deployUrl: null, deployTopicId: null, deployPostId: null };
+    const s = String(url);
+    const t = s.match(/[?&]t=(\d+)/);
+    const p = s.match(/[?&]p=(\d+)/);
+    return {
+        deployUrl: url,
+        deployTopicId: t ? t[1] : null,
+        deployPostId: p ? p[1] : null,
+    };
+}
+
+/**
  * Mark a report as completed and send a clear completion webhook.
  * Verifies the write succeeded and logs the outcome.
  *
@@ -52,7 +68,7 @@ export async function setDeployStatus(db, authorId, key, status, message) {
 export async function markReportComplete(db, authorId, key, label, type, resultUrl) {
     logFnCall('deployStatus', 'markReportComplete', 'Marking report complete', { key, type });
     try {
-        await markDeployed(db, authorId, key, true);
+        await markDeployed(db, authorId, key, true, { ...parseDeployUrl(resultUrl), deployType: type });
 
         // Verify the write persisted
         const verifySnap = await db.ref(`scheduledReports/${authorId}/${key}/hasdeployed`).once('value');

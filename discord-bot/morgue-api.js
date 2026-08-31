@@ -1,5 +1,5 @@
-import { readFileSync, writeFileSync, existsSync, createWriteStream, renameSync } from 'fs';
-import { resolve, dirname } from 'path';
+import { readFileSync, writeFileSync, existsSync, createWriteStream, renameSync, mkdirSync } from 'fs';
+import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
 
@@ -30,6 +30,10 @@ function loadEnv() {
 }
 
 loadEnv();
+
+// ── Per-session file logger (logs/api-<timestamp>.log) ──
+const { initLogger } = await import('./services/logger.js');
+initLogger('api');
 
 // ──────────────────────────────────────────
 // Validate required env vars
@@ -269,6 +273,19 @@ function isObviousScanner(label) {
 }
 
 /**
+ * Trust-list guard so OUR OWN tooling can never ban itself: loopback addresses
+ * are always trusted, plus any IP listed in MORGUE_API_TRUSTED_IPS (comma-
+ * separated). Trusted IPs skip strike/ban registration entirely.
+ */
+const TRUSTED_IPS_ENV = (process.env.MORGUE_API_TRUSTED_IPS || '').split(',').map(s => s.trim()).filter(Boolean);
+const LOOPBACK_RE = /^(127\.|::1$|::ffff:127\.)/i;
+function isTrustedIp(ip) {
+    if (!ip) return false;
+    if (LOOPBACK_RE.test(ip)) return true;
+    return TRUSTED_IPS_ENV.includes(ip);
+}
+
+/**
  * Record a suspicious request for an IP. Obvious scanner/CVE probes ban
  * immediately; other attempts permanently ban the IP once the threshold is
  * hit. Returns true if this call triggered a ban.
@@ -452,17 +469,57 @@ function getLocalRecords() {
 }
 
 /**
+ * Generate tolerant spelling variants of one search token: the token itself,
+ * all adjacent-transposition swaps, and all single-character deletions.
+ * Catches common typos like "Autospy" -> "Autopsy" without any heavyweight
+ * edit-distance machinery. Length floor keeps variants meaningful.
+ */
+function queryTokenVariants(token) {
+    const q = String(token || '').toLowerCase().trim();
+    if (!q) return [];
+    const set = new Set([q]);
+    for (let i = 0; i < q.length - 1; i++) {
+        if (q[i] !== q[i + 1]) set.add(q.slice(0, i) + q[i + 1] + q[i] + q.slice(i + 2));
+    }
+    for (let i = 0; i < q.length; i++) {
+        const v = q.slice(0, i) + q.slice(i + 1);
+        if (v.length >= 4) set.add(v);
+    }
+    return [...set];
+}
+
+/** True when EVERY query token (or a typo-variant of it) appears in hay. */
+function fuzzyTokenMatch(hay, qLower) {
+    if (hay.includes(qLower)) return true;
+    const tokens = qLower.split(/\s+/).filter(t => t.length >= 3);
+    if (tokens.length === 0) return false;
+    return tokens.every(tok => {
+        for (const v of queryTokenVariants(tok)) {
+            if (hay.includes(v)) return true;
+        }
+        return false;
+    });
+}
+
+/**
  * Search local records by name, caseId, or location.
+ * Matching is case-insensitive substring AND typo-tolerant per token
+ * (one adjacent swap or one dropped character), so external consumers'
+ * near-miss queries — "Autospy Test", "Jane Doe!" — still resolve.
  */
 function searchLocalRecords(query) {
     const records = getLocalRecords();
     if (!query || !query.trim()) return records;
     const q = query.toLowerCase().trim();
-    return records.filter(r =>
-        (r.name || '').toLowerCase().includes(q) ||
-        String(r.caseId || '').toLowerCase().includes(q) ||
-        (r.location || '').toLowerCase().includes(q)
-    );
+    const hays = new Map();
+    return records.filter(r => {
+        let hay = hays.get(r);
+        if (hay === undefined) {
+            hay = `${r.name || ''} ${String(r.caseId || '')} ${r.location || ''}`.toLowerCase();
+            hays.set(r, hay);
+        }
+        return fuzzyTokenMatch(hay, q);
+    });
 }
 
 // ── API key validation middleware ──
@@ -622,6 +679,15 @@ const SUSPICIOUS_PATTERNS = [
     { pattern: /swagger/i,                label: 'SCAN-swagger' },
     { pattern: /server-status/i,          label: 'SCAN-server-status' },
     { pattern: /adminer/i,                label: 'SCAN-adminer' },
+    // API-scanner families observed hitting morgue-api in the wild (2026-08)
+    { pattern: /hassio(_ingress)?\//i,     label: 'SCAN-hassio' },
+    { pattern: /\/api\/auth\/cognito/i,    label: 'SCAN-cognito' },
+    { pattern: /\/api\/jmeter/i,           label: 'SCAN-jmeter' },
+    { pattern: /\/api\/runscript/i,        label: 'SCAN-runscript' },
+    { pattern: /supervisor\/info/i,        label: 'SCAN-supervisor' },
+    { pattern: /router\/mesh\/status/i,    label: 'SCAN-mesh-probe' },
+    // Encoded-traversal variants missed by the earlier traversal rules
+    { pattern: /%252e|%252f|%255c|%\t\.|\.\x09\./i, label: 'SCAN-traversal-encoded' },
     { pattern: /phpmyadmin/i,             label: 'SCAN-phpmyadmin' },
     { pattern: /\.git\/config/i,          label: 'SCAN-git-config' },
     { pattern: /\.git\/HEAD/i,            label: 'SCAN-git-head' },
@@ -715,8 +781,18 @@ app.use((req, res, next) => {
 
     const ip = req.clientIp;
 
+    // Authorized API clients (valid x-api-key) are never IP-reputation blocked.
+    // Cloud Functions egresses from shared Google Cloud IPs that scanners have
+    // been banned on; a keyed request must not 403/ban based on IP alone.
+    const apiKeyHeader = req.headers['x-api-key'];
+    const hasValidApiKey = !!apiKeyHeader && (
+        (API_KEYS.length > 0 && API_KEYS.includes(apiKeyHeader)) ||
+        (WRITE_KEYS.length > 0 && WRITE_KEYS.includes(apiKeyHeader))
+    );
+    req.hasValidApiKey = hasValidApiKey;
+
     // ── Ban check: reject known-bad IPs before doing anything else ──
-    if (isIpBanned(ip)) {
+    if (isIpBanned(ip) && !hasValidApiKey) {
         const banReason = ipBanMap.get(ip)?.reason || 'suspicious request(s)';
         console.warn(
             `[MORGUE-API] [WARN] BLOCKED req=${req.requestId} ${req.method} ${req.originalUrl} ` +
@@ -754,7 +830,9 @@ app.use((req, res, next) => {
     }
 
     // ── Fire-and-forget alert if suspicious, THEN BLOCK ──
-    if (suspiciousFinding) {
+    // (Trusted IPs — loopback / MORGUE_API_TRUSTED_IPS — skip strikes & bans
+    // so our own probes and health checks can never self-ban.)
+    if (suspiciousFinding && !isTrustedIp(ip) && !hasValidApiKey) {
         sendSuspiciousAlert(req, suspiciousFinding, ip).catch(() => {});
         console.warn(
             `[MORGUE-API] [WARN] BLOCKED req=${req.requestId} ${req.method} ${req.originalUrl} ` +
@@ -964,13 +1042,44 @@ app.get('/api/version', (req, res) => {
 
 /**
  * GET /api/health
- * Lightweight health check (no API key required)
+ * Lightweight health check (no API key required).
+ * Reports system maintenance state so API consumers can tell whether an outage /
+ * maintenance window is in effect (e.g. upstream forum provider down), vs the
+ * API itself being up.
  */
-app.get('/api/health', (req, res) => {
+app.get('/api/health', async (req, res) => {
+    let maintenance = null;
+    let deployQueuePaused = false;
+    try {
+        const botSnap = await firebase.db.ref('appMetadata/botMaintenance').once('value');
+        deployQueuePaused = botSnap.val() === true;
+        const maintSnap = await firebase.db.ref('appMetadata/maintenance').once('value');
+        const m = maintSnap.val() || {};
+        if (m.active) {
+            maintenance = {
+                active: true,
+                message: m.message || null,
+                splashActive: !!(m.splash && m.splash.active),
+                splashTitle: (m.splash && m.splash.title) || null,
+                splashEta: (m.splash && m.splash.eta) || null,
+            };
+        }
+    } catch (err) {
+        // Best-effort — health must never fail because of a DB hiccup.
+        console.warn('[HEALTH] Could not read maintenance state:', err.message);
+    }
+
+    const maintenanceActive = !!(maintenance && maintenance.active);
     res.json({
-        status: 'ok',
+        status: 'ok', // the API itself is serving; maintenance is reported below
+        degraded: maintenanceActive,
         service: 'phmc-morgue-api',
         morgueDataVersion: getMorgueVersion(),
+        maintenance: {
+            active: maintenanceActive,
+            deployQueuePaused,
+            ...(maintenance || {}),
+        },
         timestamp: new Date().toISOString(),
     });
 });
@@ -1463,10 +1572,10 @@ app.get('/api/protocols-dev', validateApiKey, rateLimiter, (req, res) => {
 
 /**
  * GET /api/roster/check?name=XXX&dept=lspd
- * Checks a name against the LSPD/LSSD rosters.
+ * Checks a name against the LSPD/LSSD/SADCR rosters.
  *
- * If `dept` is provided (lspd/lssd): checks that department first,
- * cross-references the other if not found (original behavior).
+ * If `dept` is provided (lspd/lssd/sadcr): checks that department first,
+ * cross-references the others if not found.
  *
  * If `dept` is omitted: checks ALL rosters and returns ALL matches
  * in a `matches` array.
@@ -1485,13 +1594,13 @@ app.get('/api/roster/check', validateApiKey, rateLimiter, (req, res) => {
     const name = (req.query.name || '').trim().toLowerCase();
     const rawName = req.query.name || '';
     const dept = (req.query.department || req.query.dept || '').trim().toLowerCase();
-    const hasDept = dept === 'lspd' || dept === 'lssd';
+    const hasDept = dept === 'lspd' || dept === 'lssd' || dept === 'sadcr';
 
     if (!name || name.length < 2) {
         return res.status(400).json({ error: 'name parameter is required (min 2 chars)' });
     }
 
-    const rosters = ['lspd', 'lssd'];
+    const rosters = ['lspd', 'lssd', 'sadcr'];
 
     if (hasDept) {
         // ── Specific department mode (original) ──
@@ -1608,8 +1717,8 @@ app.get('/api/patients', validateApiKey, rateLimiter, (req, res) => {
  */
 app.get('/api/roster/:faction', validateApiKey, rateLimiter, (req, res) => {
     const faction = req.params.faction;
-    if (faction !== 'lspd' && faction !== 'lssd') {
-        return res.status(404).json({ error: 'Unknown faction. Use lspd or lssd.' });
+    if (faction !== 'lspd' && faction !== 'lssd' && faction !== 'sadcr') {
+        return res.status(404).json({ error: 'Unknown faction. Use lspd, lssd, or sadcr.' });
     }
     const data = loadRoster(faction);
     if (!data) {
@@ -1809,8 +1918,84 @@ app.post('/api/cctv/fetch', validateApiKey, rateLimiter, async (req, res) => {
     }
 });
 
-// ── 404 handler ──
+// ── Saved-report BBCode store (P2: off RTDB — newSavedReportBBCode ~11MB) ──
+// The web app writes/reads report BBCode here (via Cloud Function) instead of
+// growing newSavedReportBBCode in RTDB. POST is a read-key op; GET is read.
+// Files: data/saved-report-bbcode/<author>/<key>.json
+const REPORT_BBCODE_DIR = resolve(__dirname, 'data', 'saved-report-bbcode');
+
+app.get('/api/report-bbcode/:author/:key', validateApiKey, rateLimiter, (req, res) => {
+    try {
+        const safeAuthor = String(req.params.author || '').replace(/[^a-zA-Z0-9_-]/g, '');
+        const safeKey = String(req.params.key || '').replace(/[^a-zA-Z0-9_-]/g, '');
+        if (!safeAuthor || !safeKey) return res.status(400).json({ success: false, error: 'Invalid author/key.' });
+        const file = join(REPORT_BBCODE_DIR, safeAuthor, `${safeKey}.json`);
+        if (!existsSync(file)) return res.status(404).json({ success: false, error: 'Not found' });
+        const data = JSON.parse(readFileSync(file, 'utf-8'));
+        return res.json({ success: true, bbCode: data.bbCode || '' });
+    } catch (err) {
+        console.error('[MORGUE-API] report-bbcode GET error:', err.message);
+        return res.status(500).json({ success: false, error: 'Read failed' });
+    }
+});
+
+app.post('/api/report-bbcode', validateApiKey, rateLimiter, (req, res) => {
+    try {
+        const { author, key, bbCode } = req.body || {};
+        const safeAuthor = String(author || '').replace(/[^a-zA-Z0-9_-]/g, '');
+        const safeKey = String(key || '').replace(/[^a-zA-Z0-9_-]/g, '');
+        if (!safeAuthor || !safeKey || typeof bbCode !== 'string') {
+            return res.status(400).json({ success: false, error: 'author, key and bbCode are required.' });
+        }
+        const dir = join(REPORT_BBCODE_DIR, safeAuthor);
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(
+            join(dir, `${safeKey}.json`),
+            JSON.stringify({ author: safeAuthor, key: safeKey, bbCode, savedAt: Date.now() }),
+            'utf-8'
+        );
+        return res.json({ success: true });
+    } catch (err) {
+        console.error('[MORGUE-API] report-bbcode POST error:', err.message);
+        return res.status(500).json({ success: false, error: 'Write failed' });
+    }
+});
+
+// ── 404 handler (+ unknown-path enumeration strike) ──
+// Junk API scanners cycle through many distinct nonexistent endpoints
+// (/api/status, /api/v1/me/, /api/server/version, ...) that no single pattern
+// catches. Cycling N DISTINCT unknown paths inside the window is a scanner
+// signature -> instant permanent ban. Repeat-hammering ONE missing path is a
+// buggy client, not an attacker, so only distinct paths count.
+const UNKNOWN_PATH_WINDOW_MS = 10 * 60 * 1000;
+const UNKNOWN_PATH_BAN_COUNT = 12;
+const unknownPathMap = new Map(); // ip -> { start: ts, paths: Set(path) }
+
 app.use((req, res) => {
+    const ip = req.clientIp || req.ip || 'unknown';
+    if (!req.hasValidApiKey && !isIpBanned(ip) && !isTrustedIp(ip)) {
+        const now = Date.now();
+        let entry = unknownPathMap.get(ip);
+        if (!entry || now - entry.start > UNKNOWN_PATH_WINDOW_MS) {
+            entry = { start: now, paths: new Set() };
+            unknownPathMap.set(ip, entry);
+        }
+        entry.paths.add(`${req.method} ${req.path}`);
+        if (unknownPathMap.size > 500) {
+            // Opportunistic prune so abandoned scanners don't grow the map.
+            for (const [k, v] of unknownPathMap) {
+                if (now - v.start > UNKNOWN_PATH_WINDOW_MS) unknownPathMap.delete(k);
+            }
+        }
+        if (entry.paths.size >= UNKNOWN_PATH_BAN_COUNT) {
+            console.warn(
+                `[MORGUE-API] [WARN] ENUMERATOR ip=${ip} hit ${entry.paths.size} distinct unknown API paths ` +
+                `in ${Math.round((now - entry.start) / 1000)}s — banning permanently`
+            );
+            registerSuspiciousRequest(ip, 'SCAN-path-enumeration', true);
+            unknownPathMap.delete(ip);
+        }
+    }
     res.status(404).json({
         success: false,
         error: 'Not found',

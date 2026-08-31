@@ -144,7 +144,7 @@ export async function handleCoronerEmail(report) {
         return;
     }
 
-    const progress = new DeployProgressEmbed(state.discordClient, process.env.BOT_LOG_CHANNEL_ID);
+    const progress = new DeployProgressEmbed(state.discordClient, process.env.BOT_LOG_CHANNEL_ID, reportData.appBuild);
     if (report._progressMessageId) {
         await progress.resume(report._progressMessageId, report._progressChannelId || process.env.BOT_LOG_CHANNEL_ID, `Coroner Email — ${reportData.originalKey || key}`);
     } else {
@@ -321,8 +321,24 @@ export async function handleCoronerEmail(report) {
         const label = reportData.originalKey || key;
         await progress.addStep('Sending PM', 'ok', result.url || recipient);
         await progress.finalize('complete');
-        await markReportComplete(db, authorId, key, label, 'pm', result.url);
-        console.log(`[CORONER-EMAIL] ✅ PM sent to ${recipient} via ${forum.forumLabel}: ${result.url || 'OK'}`);
+
+        // Auto-email sent as a side-effect of a topic deploy (coroner-report /
+        // mass-fatality "ReportRequested") shares the TOPIC's record key. Record the
+        // PM URL on its own field so it never overwrites the topic's deployUrl —
+        // "View post" and Edit & Repost must point at the PHMC topic, not the PM.
+        const isSideEffect = String(reportData.formId || '') !== 'coroner_email';
+        if (isSideEffect) {
+            await db.ref(`scheduledReports/${authorId}/${key}`).update({
+                coronerEmailUrl: result.url || null,
+                coronerEmailSentAt: new Date().toISOString(),
+                coronerEmailTo: recipient,
+                deployMessage: 'Coroner email sent; topic posted.',
+            }).catch(() => {});
+            console.log(`[CORONER-EMAIL] ✅ Auto email sent for ${key} (topic deployUrl preserved): ${result.url || 'OK'}`);
+        } else {
+            await markReportComplete(db, authorId, key, label, 'pm', result.url);
+            console.log(`[CORONER-EMAIL] ✅ PM sent to ${recipient} via ${forum.forumLabel}: ${result.url || 'OK'}`);
+        }
     } else {
         console.error(`[CORONER-EMAIL] ❌ PM send failed to ${recipient}: ${result.reason || 'Unknown'}`);
         await requeueReport(db, authorId, key, 'PM send failed: ' + (result.reason || 'Unknown')).catch(err =>

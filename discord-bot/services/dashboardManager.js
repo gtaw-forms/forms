@@ -8,12 +8,18 @@
 
 import firebase from './firebase.js';
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { getVpsStats } from './vpsStats.js';
+import { lastActivity } from './activityLog.js';
 
 const DASHBOARD_REFRESH_MS = 5 * 60 * 1000; // 5 minutes — uses cached monitoring data, no browser opens
+const VPS_STATS_REFRESH_MS = 5000; // VPS CPU/MEM/activity field refreshes every 5s. Discord's message-endpoint bucket allows 5 edits/5s per channel — 1/5s uses ~20%.
 const DASHBOARD_CONFIG_PATH = 'appMetadata/dashboard';
 
 let client = null;
 let refreshInterval = null;
+let statsInterval = null;
+let cachedConfig = null;
+let editInProgress = false;
 
 /**
  * Register the bot client instance (called from index.js on ready).
@@ -212,6 +218,24 @@ async function gatherDashboardData(db, force = false) {
         if (assignSnap.exists()) {
             assignSnap.forEach((child) => {
                 const c = child.val();
+                const multi = String(c.caseState || '') === 'multi';
+                const cases = multi && c.cases && typeof c.cases === 'object' ? Object.values(c.cases) : [];
+                if (multi && cases.length > 0) {
+                    // Multi-decedent: one row per assigned ME + their decedent so
+                    // names are never comma-merged (top-level assignedTo is the
+                    // dashboard aggregate).
+                    cases.forEach((cc) => {
+                        if (cc && cc.assignedTo && !cc.completedAt) {
+                            meList.push({
+                                name: cc.assignedTo,
+                                caseNum: cc.caseTitle || cc.oocName || cc.name || 'Case',
+                                caseUrl: cc.caseUrl || null,
+                                topicId: cc.caseTopicId || null,
+                            });
+                        }
+                    });
+                    return;
+                }
                 if (c.assignedTo && !c.completedAt) {
                     meList.push({
                         name: c.assignedTo,
@@ -260,10 +284,71 @@ async function gatherDashboardData(db, force = false) {
         data.facePosts = [];
     }
 
+    // 10. VPS resources (CPU/MEM/uptime/procs)
+    try {
+        data.vps = await getVpsStats();
+    } catch (err) {
+        console.error('[DASHBOARD] VPS stats error:', err.message);
+        data.vps = null;
+    }
+
     return data;
 }
 
 // ── Embed Builder ──
+
+function formatBytes(bytes) {
+    if (bytes >= 1073741824) return (bytes / 1073741824).toFixed(2) + ' GB';
+    if (bytes >= 1048576) return (bytes / 1048576).toFixed(0) + ' MB';
+    return Math.round(bytes / 1024) + ' KB';
+}
+
+function formatUptime(sec) {
+    const d = Math.floor(sec / 86400);
+    const h = Math.floor((sec % 86400) / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    if (d > 0) return `${d}d ${h}h`;
+    if (h > 0) return `${h}h ${m}m`;
+    return `${m}m`;
+}
+
+function buildVpsField(vps) {
+    const { cpuPct, mem, swap, load, uptime, procs } = vps;
+    const memPct = mem && mem.total > 0 ? Math.round((mem.used / mem.total) * 100) : null;
+    const swapPct = swap && swap.total > 0 ? Math.round((swap.used / swap.total) * 100) : null;
+
+    const lines = [
+        `**CPU** — ${cpuPct != null ? cpuPct.toFixed(1) + '%' : 'n/a'} (load ${load != null ? load.toFixed(2) : 'n/a'})`,
+        `**MEM** — ${formatBytes(mem.used)} / ${formatBytes(mem.total)}${memPct != null ? ` (${memPct}%)` : ''}`,
+    ];
+    if (swapPct != null && swap.total > 0) {
+        lines.push(`**SWAP** — ${formatBytes(swap.used)} / ${formatBytes(swap.total)} (${swapPct}%)`);
+    }
+    lines.push(`**Uptime** — ${formatUptime(uptime)}`);
+
+    const chrome = procs?.chrome;
+    const node = procs?.node;
+    const chromeDetail = chrome?.breakdown && Object.keys(chrome.breakdown).length
+        ? Object.entries(chrome.breakdown).map(([k, v]) => `${k} ${v}`).join(' · ')
+        : null;
+    const nodeDetail = node?.breakdown && Object.keys(node.breakdown).length
+        ? Object.entries(node.breakdown).map(([k, v]) => `${k} ${v}`).join(' · ')
+        : null;
+    lines.push(
+        `**Procs** — chrome ×${chrome?.total != null ? chrome.total : '?'}${chromeDetail ? ` (${chromeDetail})` : ''} · node ×${node?.total != null ? node.total : '?'}${nodeDetail ? ` (${nodeDetail})` : ''}`
+    );
+
+    const act = lastActivity();
+    if (act) {
+        const ago = Math.floor((Date.now() - act.at) / 1000);
+        const agoStr = ago < 60 ? `${ago}s ago` : ago < 3600 ? `${Math.floor(ago / 60)}m ago` : `${(ago / 3600).toFixed(1)}h ago`;
+        lines.push(`**Currently** — ${act.label} (${act.detail}) · ${agoStr}`);
+    } else {
+        lines.push(`**Currently** — idle (no browser activity yet)`);
+    }
+
+    return lines.join('\n');
+}
 
 function buildDashboardEmbed(data) {
     const color = data.forums.some(f => f.status === 'Unresponsive')
@@ -275,7 +360,7 @@ function buildDashboardEmbed(data) {
         .setColor(color)
         .setTitle('🖥️ PHMC System Dashboard')
         .setDescription(`Last refreshed: <t:${Math.floor(Date.now() / 1000)}:R>\nData checked: ${data.lastCheckTime ? `<t:${Math.floor(data.lastCheckTime / 1000)}:R>` : 'awaiting first health check...'}`)
-        .setFooter({ text: 'Auto-refreshes every 5 minutes' });
+        .setFooter({ text: 'VPS stats live • full refresh every 5 minutes' });
 
     // Forum Status (uses custom server emojis where available)
     const forumLines = data.forums.map(f => {
@@ -301,6 +386,15 @@ function buildDashboardEmbed(data) {
         ].join('\n'),
         inline: false,
     });
+
+    // VPS resources
+    if (data.vps) {
+        embed.addFields({
+            name: '🖥️ VPS Resources',
+            value: buildVpsField(data.vps),
+            inline: false,
+        });
+    }
 
     // Deploy Queue
     if (data.queue.length > 0) {
@@ -352,7 +446,7 @@ function buildDashboardEmbed(data) {
         const lastSync = `<t:${Math.floor(rs.lastSyncAt / 1000)}:R>`;
         const nextSync = rs.nextSyncAt ? `<t:${Math.floor(rs.nextSyncAt / 1000)}:R>` : 'pending...';
         taskLines.push(
-            `📋 **Roster Sync** — every 4h (+random)\n` +
+            `📋 **Roster Sync** — every 12h (+random)\n` +
             `└ LSPD: ${rs.lspdCount} | LSSD: ${rs.lssdCount} — last: ${lastSync} — next: ${nextSync}`
         );
     } else {
@@ -429,6 +523,27 @@ function buildRefreshRow() {
         );
 }
 
+/**
+ * Delete any other PHMC System Dashboard embeds in the channel that aren't the
+ * managed message. Called each refresh cycle so stale duplicates self-heal.
+ */
+async function cleanupOrphanDashboards(channel, activeMessageId) {
+    if (!channel) return;
+    try {
+        const messages = await channel.messages.fetch({ limit: 20 });
+        for (const msg of messages.values()) {
+            if (msg.id === activeMessageId) continue;
+            const isDashboard = (msg.embeds || []).some(e => e.title === '🖥️ PHMC System Dashboard');
+            if (isDashboard && msg.deletable) {
+                await msg.delete().catch(() => {});
+                console.log(`[DASHBOARD] 🧹 Deleted orphan dashboard message ${msg.id}`);
+            }
+        }
+    } catch (err) {
+        console.error('[DASHBOARD] Orphan cleanup error:', err.message);
+    }
+}
+
 async function postOrUpdateDashboard(db) {
     if (!client) return;
 
@@ -436,6 +551,7 @@ async function postOrUpdateDashboard(db) {
         const configSnap = await db.ref(DASHBOARD_CONFIG_PATH).once('value');
         const config = configSnap.val();
         if (!config || !config.channelId) return;
+        cachedConfig = config;
 
         const channel = await client.channels.fetch(config.channelId).catch(() => null);
         if (!channel) {
@@ -443,6 +559,11 @@ async function postOrUpdateDashboard(db) {
             await db.ref(DASHBOARD_CONFIG_PATH).set(null);
             return;
         }
+
+        // Clean up orphaned dashboard messages — delete any other PHMC System
+        // Dashboard embeds in the channel that aren't the one we manage. Prevents
+        // duplicates from old configs / re-posts after message deletion.
+        await cleanupOrphanDashboards(channel, config.messageId);
 
         const row = buildRefreshRow();
 
@@ -481,6 +602,7 @@ async function postOrUpdateDashboard(db) {
             try {
                 const msg = await channel.messages.fetch(config.messageId);
                 await msg.edit({ embeds: [embed], components: [row] });
+                cachedConfig = { ...config };
                 return;
             } catch {
                 // Message was deleted — will post new one below
@@ -490,9 +612,59 @@ async function postOrUpdateDashboard(db) {
         // No existing message — post a new one
         const msg = await channel.send({ embeds: [embed], components: [row] });
         await db.ref(DASHBOARD_CONFIG_PATH).update({ messageId: msg.id });
+        cachedConfig = { ...config, messageId: msg.id };
         console.log(`[DASHBOARD] 📋 Dashboard posted in #${channel.name}`);
     } catch (err) {
         console.error('[DASHBOARD] ⚠️ Update error:', err.message);
+    }
+}
+
+// ── VPS Stats Lightweight Updater ──
+// Refreshes only the VPS Resources field every 30s by editing the existing
+// dashboard message. Does NOT re-gather forums/queue — those stay on the 5-min
+// cycle. Discord allows ~5 edits per 5s per channel; one edit per 30s is fine.
+
+async function updateVpsStatsField() {
+    if (!client || editInProgress) return;
+    if (!cachedConfig || !cachedConfig.channelId || !cachedConfig.messageId) return;
+
+    editInProgress = true;
+    try {
+        const channel = await client.channels.fetch(cachedConfig.channelId).catch(() => null);
+        if (!channel) return;
+
+        const msg = await channel.messages.fetch(cachedConfig.messageId).catch(() => null);
+        if (!msg || msg.embeds.length === 0) return;
+
+        const vps = await getVpsStats();
+        const oldEmbed = msg.embeds[0];
+
+        // Rebuild the embed, swapping in fresh VPS stats while keeping everything else.
+        const embed = EmbedBuilder.from(oldEmbed);
+        const fields = (oldEmbed.fields || []).map(f => ({
+            name: f.name,
+            value: f.value,
+            inline: f.inline === true,
+        }));
+
+        const vpsIdx = fields.findIndex(f => f.name === '🖥️ VPS Resources');
+        if (vpsIdx !== -1) {
+            fields[vpsIdx] = { name: '🖥️ VPS Resources', value: buildVpsField(vps), inline: false };
+        } else {
+            fields.push({ name: '🖥️ VPS Resources', value: buildVpsField(vps), inline: false });
+        }
+
+        embed.spliceFields(0, fields.length, ...fields.map(f => ({
+            name: f.name,
+            value: f.value,
+            inline: f.inline,
+        })));
+
+        await msg.edit({ embeds: [embed] });
+    } catch (err) {
+        console.error('[DASHBOARD] VPS stats update error:', err.message);
+    } finally {
+        editInProgress = false;
     }
 }
 
@@ -624,15 +796,20 @@ export function startDashboardManager() {
     // Check if a dashboard is configured and start the cycle
     postOrUpdateDashboard(db).then(() => {
         refreshInterval = setTimeout(scheduleNext, DASHBOARD_REFRESH_MS);
+        statsInterval = setInterval(updateVpsStatsField, VPS_STATS_REFRESH_MS);
     });
 
-    console.log(`[DASHBOARD] ✅ Dashboard manager active (${DASHBOARD_REFRESH_MS / 60000}-min cycle, cached data).`);
+    console.log(`[DASHBOARD] ✅ Dashboard manager active (${DASHBOARD_REFRESH_MS / 60000}-min cycle, cached data; VPS stats every ${VPS_STATS_REFRESH_MS / 1000}s).`);
 }
 
 export function stopDashboardManager() {
     if (refreshInterval) {
         clearInterval(refreshInterval);
         refreshInterval = null;
+    }
+    if (statsInterval) {
+        clearInterval(statsInterval);
+        statsInterval = null;
     }
 }
 

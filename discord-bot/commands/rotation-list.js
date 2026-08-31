@@ -37,7 +37,14 @@ export async function execute(interaction) {
         lines.push('_Active case(s) = not eligible until completed_');
         lines.push('_Assigned within 24h = skipped if another ME is available_');
 
-        const nextUp = status.effectiveNext || '(all busy — surge mode)';
+        if (status.surgeMode) {
+            lines.push('');
+            lines.push(`**🔀 SURGE MODE ACTIVE** — every ME has an active case. Next case goes to the **least-loaded** ME (ties → **oldest last-assigned**${status.surgePick ? ` → **${status.surgePick}**` : ''}).`);
+        }
+
+        const nextUp = status.surgeMode
+            ? `${status.surgePick || 'least-loaded ME'} (surge)`
+            : (status.effectiveNext || 'None available');
 
         const embed = new EmbedBuilder()
             .setColor(0x00bcd4)
@@ -47,7 +54,7 @@ export async function execute(interaction) {
                 { name: 'Position Pointer', value: `#${status.position + 1} of ${status.list.length}`, inline: true },
                 { name: 'Next Up', value: nextUp, inline: true },
             )
-            .setFooter({ text: 'Next eligible ME in rotation (skips LOA and active cases). Surge mode assigns to least-loaded.' })
+            .setFooter({ text: 'Next eligible ME in rotation (skips LOA and active cases). Surge mode = least-loaded, ties → oldest last-assigned.' })
             .setTimestamp();
 
         await interaction.editReply({ embeds: [embed] });

@@ -33,13 +33,21 @@ export function shortId(str) {
  */
 export async function initMorgueCache(db) {
     try {
-        const snap = await db.ref('morgue-records').once('value');
+        // P1: read the VPS-local mirror (morgue-data.json) instead of the full
+        // RTDB morgue-records node (~5.5MB). Fall back to RTDB only if missing.
+        const { loadLocalMorgueList } = await import('./localMorgueData.js');
+        const local = loadLocalMorgueList();
         _morgueCache = [];
         _morgueCacheLoaded = true;
-        if (snap.exists()) {
-            snap.forEach((child) => {
-                _morgueCache.push({ ...child.val(), firebaseKey: child.key });
-            });
+        if (local && local.length > 0) {
+            _morgueCache = local;
+        } else {
+            const snap = await db.ref('morgue-records').once('value');
+            if (snap.exists()) {
+                snap.forEach((child) => {
+                    _morgueCache.push({ ...child.val(), firebaseKey: child.key });
+                });
+            }
         }
         console.log(`[DRAFT] [OK] Morgue cache loaded — ${_morgueCache.length} records`);
     } catch (err) {
@@ -246,12 +254,19 @@ export async function findMorgueRecord(db, decedentName, referenceDate, reportOo
 
     let records = _morgueCache;
     if (!records) {
-        const snap = await db.ref('morgue-records').once('value');
-        if (!snap.exists()) return null;
-        records = [];
-        snap.forEach((child) => {
-            records.push({ ...child.val(), firebaseKey: child.key });
-        });
+        // P1: VPS-local mirror first, RTDB fallback if unavailable.
+        const { loadLocalMorgueList } = await import('./localMorgueData.js');
+        const local = loadLocalMorgueList();
+        if (local && local.length > 0) {
+            records = local;
+        } else {
+            const snap = await db.ref('morgue-records').once('value');
+            if (!snap.exists()) return null;
+            records = [];
+            snap.forEach((child) => {
+                records.push({ ...child.val(), firebaseKey: child.key });
+            });
+        }
     }
 
     const nameLower = decedentName.toLowerCase().trim();

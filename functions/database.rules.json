@@ -5,6 +5,14 @@
     "appMetadata": {
       ".read": true
     },
+    "translations": {
+      ".read": true,
+      "$formId": {
+        "$langCode": {
+          ".write": false
+        }
+      }
+    },
     "forms": {
       ".read": true
     },

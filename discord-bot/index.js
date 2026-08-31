@@ -96,6 +96,7 @@ async function registerCommands() {
     const massAutopsy = await import('./commands/mass-autopsy.js');
     const meDiscord = await import('./commands/set-me-discord.js');
     const testNotify = await import('./commands/test-autopsy-notify.js');
+    const testPing = await import('./commands/test-ping.js');
     const patientSearch = await import('./commands/patient-search.js');
     const fixAutopsy = await import('./commands/fix-autopsy.js');
     const groupMorgueCheck = await import('./commands/group-morgue-check.js');
@@ -104,6 +105,15 @@ async function registerCommands() {
     const dev = await import('./commands/dev.js');
     const autopsyRequest = await import('./commands/autopsy-request.js');
     const autopsyStats = await import('./commands/autopsy-stats.js');
+    const forwardAutopsyNotify = await import('./commands/forward-autopsy-notify.js');
+    const globalStats = await import('./commands/global-stats.js');
+    const testRequesterWebhook = await import('./commands/test-requester-webhook.js');
+    const enableDevAutopsy = await import('./commands/enable-dev-autopsy.js');
+    const forwardAutopsyComplete = await import('./commands/forward-autopsy-complete.js');
+    // Personal AGH dashboard — optional. The files are gitignored/not part of a
+    // fork; guard so the bot still boots when they're absent.
+    let aghDashboard = null;
+    try { aghDashboard = await import('./commands/agh-dashboard.js'); } catch { /* AGH not present */ }
     const commands = [
         morgue.data.toJSON(),
         card.data.toJSON(),
@@ -134,6 +144,7 @@ async function registerCommands() {
         meDiscord.data.toJSON(),
         fixAutopsy.data.toJSON(),
         testNotify.data.toJSON(),
+        testPing.data.toJSON(),
         patientSearch.data.toJSON(),
         groupMorgueCheck.data.toJSON(),
         faceRedraft.data.toJSON(),
@@ -141,6 +152,12 @@ async function registerCommands() {
         dev.data.toJSON(),
         autopsyRequest.data.toJSON(),
         autopsyStats.data.toJSON(),
+        forwardAutopsyNotify.data.toJSON(),
+        globalStats.data.toJSON(),
+        testRequesterWebhook.data.toJSON(),
+        enableDevAutopsy.data.toJSON(),
+        forwardAutopsyComplete.data.toJSON(),
+        ...(aghDashboard ? [aghDashboard.data.toJSON()] : []),
     ];
 
     const rest = new REST({ version: '10' }).setToken(token);
@@ -241,6 +258,15 @@ client.once('clientReady', async () => {
         console.warn('[BOT] ⚠️ Dashboard manager failed to start (non-fatal):', err.message);
     }
 
+    // ── Start AdGuard Home metrics dashboard (10-min refresh) ──
+    try {
+        const { setAghClient, startAghMetrics } = await import('./services/aghMetrics.js');
+        setAghClient(client);
+        startAghMetrics();
+    } catch (err) {
+        console.warn('[BOT] ⚠️ AGH metrics manager failed to start (non-fatal):', err.message);
+    }
+
     // ── Register Death Record Draft client (for Approve/Deny buttons) ──
     try {
         const { setDraftClient } = await import('./services/deathRecordDraft.js');
@@ -305,10 +331,28 @@ client.on('interactionCreate', async (interaction) => {
         return;
     }
 
+    // Handle /global-stats page buttons (Overview / Full Breakdown / Heatmap)
+    if (interaction.isButton() && interaction.customId.startsWith('global_stats_page_')) {
+        const { handleStatsPage } = await import('./commands/global-stats.js');
+        await handleStatsPage(interaction);
+        return;
+    }
+
     // Handle dashboard restart button
     if (interaction.isButton() && interaction.customId === 'dashboard_restart') {
         const { handleDashboardRestart } = await import('./services/dashboardManager.js');
         await handleDashboardRestart(interaction);
+        return;
+    }
+
+    // Handle AGH metrics refresh button (optional — AGH files are personal/gitignored)
+    if (interaction.isButton() && interaction.customId === 'agh_refresh') {
+        try {
+            const { handleAghRefresh } = await import('./services/aghMetrics.js');
+            await handleAghRefresh(interaction);
+        } catch (err) {
+            console.warn('[BOT] ⚠️ AGH refresh handler unavailable:', err.message);
+        }
         return;
     }
 
@@ -324,6 +368,18 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.isButton() && pickPrefixes.some(p => interaction.customId.startsWith(p))) {
         const { resolveAutopsyTopic } = await import('./services/autoDeploy.js');
         await resolveAutopsyTopic(interaction);
+        return;
+    }
+
+    // Handle /me-discord interactive mapping (Add buttons → Discord-ID modal)
+    if (interaction.isButton() && interaction.customId.startsWith('me_map_')) {
+        const { handleMeMapButton } = await import('./commands/set-me-discord.js');
+        await handleMeMapButton(interaction);
+        return;
+    }
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('me_modal_')) {
+        const { handleMeMapModal } = await import('./commands/set-me-discord.js');
+        await handleMeMapModal(interaction);
         return;
     }
 
@@ -557,7 +613,24 @@ process.on('uncaughtException', async (error) => {
         const { sendCrashReport } = await import('./services/logChannel.js');
         await sendCrashReport('Uncaught Exception', error);
     } catch { /* best effort */ }
+    // Fail fast: an uncaught exception leaves the process in an unknown state
+    // (e.g. a half-connected Discord websocket after a handshake timeout). Exit
+    // so pm2 does a clean restart instead of the bot limping along broken.
+    process.exit(1);
 });
+
+// ── Graceful shutdown (pm2 sends SIGTERM on restart) ──
+// Close the shared Playwright browser so Chromium isn't orphaned, then exit.
+for (const sig of ['SIGTERM', 'SIGINT']) {
+    process.on(sig, async () => {
+        console.log(`[BOT] 🛑 ${sig} received — shutting down`);
+        try {
+            const { closeSharedBrowser } = await import('./services/forumClient.js');
+            await closeSharedBrowser('shutdown');
+        } catch { /* best effort */ }
+        process.exit(0);
+    });
+}
 
 process.on('unhandledRejection', async (reason) => {
     console.error(`[BOT] 💥 UNHANDLED REJECTION:`, reason);
@@ -647,6 +720,12 @@ async function start() {
     const autopsyStatsCmd = await import('./commands/autopsy-stats.js');
     client.commands.set(autopsyStatsCmd.data.name, { execute: autopsyStatsCmd.execute });
 
+    const globalStatsCmd = await import('./commands/global-stats.js');
+    client.commands.set(globalStatsCmd.data.name, { execute: globalStatsCmd.execute });
+
+    const forwardAutopsyNotifyCmd = await import('./commands/forward-autopsy-notify.js');
+    client.commands.set(forwardAutopsyNotifyCmd.data.name, { execute: forwardAutopsyNotifyCmd.execute });
+
     const testAutopsyCmd = await import('./commands/test-autopsy.js');
     client.commands.set(testAutopsyCmd.data.name, { execute: testAutopsyCmd.execute });
 
@@ -675,6 +754,18 @@ async function start() {
     const testNotifyCmd = await import('./commands/test-autopsy-notify.js');
     client.commands.set(testNotifyCmd.data.name, { execute: testNotifyCmd.execute });
 
+    const testRequesterCmd = await import('./commands/test-requester-webhook.js');
+    client.commands.set(testRequesterCmd.data.name, { execute: testRequesterCmd.execute });
+
+    const enableDevAutopsyCmd = await import('./commands/enable-dev-autopsy.js');
+    client.commands.set(enableDevAutopsyCmd.data.name, { execute: enableDevAutopsyCmd.execute });
+
+    const forwardAutopsyCompleteCmd = await import('./commands/forward-autopsy-complete.js');
+    client.commands.set(forwardAutopsyCompleteCmd.data.name, { execute: forwardAutopsyCompleteCmd.execute });
+
+    const testPingCmd = await import('./commands/test-ping.js');
+    client.commands.set(testPingCmd.data.name, { execute: testPingCmd.execute });
+
     const groupMorgueCheckCmd = await import('./commands/group-morgue-check.js');
     client.commands.set(groupMorgueCheckCmd.data.name, { execute: groupMorgueCheckCmd.execute });
 
@@ -686,6 +777,12 @@ async function start() {
 
     const devCmd = await import('./commands/dev.js');
     client.commands.set(devCmd.data.name, { execute: devCmd.execute });
+
+    // Personal AGH dashboard — optional (files gitignored / not in a fork).
+    try {
+        const aghDashboardCmd = await import('./commands/agh-dashboard.js');
+        client.commands.set(aghDashboardCmd.data.name, { execute: aghDashboardCmd.execute });
+    } catch { /* AGH not present */ }
 
     console.log('[BOT] 🔌 Connecting to Discord...');
     await client.login(token);

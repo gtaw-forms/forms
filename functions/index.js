@@ -143,6 +143,82 @@ export const getMorgueRecords = onCall({
 });
 
 /**
+ * saveReportBBCode — store a saved report's BBCode on the VPS (P2: keeps
+ * newSavedReportBBCode out of RTDB — that node was ~11MB and growing).
+ */
+export const saveReportBBCode = onCall({
+    cors: [
+        'https://gtaw-forms.github.io',
+        'https://phmc-tools.gta.world',
+        'http://localhost:3000',
+        'http://localhost:5173',
+    ],
+}, async (request) => {
+    if (!request.auth) throw new functions.https.HttpsError('unauthenticated', 'Authentication required.');
+    if (!MORGUE_API_KEY) throw new functions.https.HttpsError('internal', 'Server configuration error.');
+    const { author, key, bbCode } = request.data || {};
+    if (!author || !key || typeof bbCode !== 'string') {
+        throw new functions.https.HttpsError('invalid-argument', 'author, key and bbCode are required.');
+    }
+    try {
+        const response = await fetch(`${MORGUE_API_URL}/api/report-bbcode`, {
+            method: 'POST',
+            headers: { 'x-api-key': MORGUE_API_KEY, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ author, key, bbCode }),
+        });
+        if (!response.ok) {
+            const text = await response.text();
+            console.error(`[saveReportBBCode] VPS returned ${response.status}: ${text}`);
+            throw new functions.https.HttpsError('internal', 'Failed to save report BBCode.');
+        }
+        return { success: true };
+    } catch (err) {
+        if (err instanceof functions.https.HttpsError) throw err;
+        console.error('[saveReportBBCode] Error:', err.message);
+        throw new functions.https.HttpsError('internal', `Failed to save report BBCode: ${err.message}`);
+    }
+});
+
+/**
+ * getReportBBCode — fetch a saved report's BBCode from the VPS, falling back to
+ * RTDB newSavedReportBBCode for reports saved before the P2 migration.
+ */
+export const getReportBBCode = onCall({
+    cors: [
+        'https://gtaw-forms.github.io',
+        'https://phmc-tools.gta.world',
+        'http://localhost:3000',
+        'http://localhost:5173',
+    ],
+}, async (request) => {
+    if (!request.auth) throw new functions.https.HttpsError('unauthenticated', 'Authentication required.');
+    const { author, key } = request.data || {};
+    if (!author || !key) throw new functions.https.HttpsError('invalid-argument', 'author and key are required.');
+    if (MORGUE_API_KEY) {
+        try {
+            const response = await fetch(
+                `${MORGUE_API_URL}/api/report-bbcode/${encodeURIComponent(author)}/${encodeURIComponent(key)}`,
+                { headers: { 'x-api-key': MORGUE_API_KEY } }
+            );
+            if (response.ok) {
+                const data = await response.json();
+                return { bbCode: data.bbCode || '' };
+            }
+        } catch (err) {
+            console.error('[getReportBBCode] VPS read error:', err.message);
+        }
+    }
+    // Legacy fallback: reports saved before the migration still live in RTDB.
+    try {
+        const snap = await adminDb.ref(`newSavedReportBBCode/${author}/${key}`).once('value');
+        return { bbCode: snap.exists() ? (snap.val()?.bbCode || '') : '' };
+    } catch (err) {
+        console.error('[getReportBBCode] RTDB fallback error:', err.message);
+        throw new functions.https.HttpsError('internal', 'Failed to read report BBCode.');
+    }
+});
+
+/**
  * getProtocolsDev — Returns the dev EMS protocols dataset (for localhost
  * preview). Hosted on the VPS (data/protocols-dev.json) to keep the heavy
  * base64 images out of RTDB.

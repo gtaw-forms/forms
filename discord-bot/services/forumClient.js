@@ -45,9 +45,10 @@
 
 import { chromium } from 'playwright-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
-import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'fs';
+import { writeFileSync, readFileSync, existsSync, mkdirSync, readdirSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { logActivity, describeActivity } from './activityLog.js';
 
 chromium.use(StealthPlugin());
 
@@ -62,10 +63,73 @@ const DEFAULT_SESSION_FILE = resolve(__dirname, '..', 'forum-session.json');
 let _sharedBrowser = null;
 let _browserInitPromise = null;
 
+/**
+ * Kill any chrome-headless-shell processes that have been orphaned — i.e. their
+ * parent is dead (reparented to PID 1). This happens when a previous bot run
+ * died abruptly (uncaughtException → exit(1), SIGKILL), leaving its Chromium
+ * tree behind. Without this, zombie browsers accumulate and the dashboard
+ * shows phantom "main 2 · …" process trees. Only the main browser process needs
+ * killing; its children exit on their own. Linux only.
+ */
+function reapOrphanBrowsers() {
+    if (process.platform !== 'linux') return;
+    try {
+        for (const entry of readdirSync('/proc')) {
+            if (!/^\d+$/.test(entry)) continue;
+            let status;
+            try { status = readFileSync(`/proc/${entry}/status`, 'utf8'); } catch { continue; }
+            if (!/chrome-headless-shell|chrome-headless-sh/.test(status)) continue;
+            const m = status.match(/^PPid:\s+(\d+)/m);
+            const ppid = m ? parseInt(m[1], 10) : 0;
+            if (ppid === 1) {
+                try {
+                    process.kill(parseInt(entry, 10), 'SIGKILL');
+                    console.log(`[FORUM] 🧹 Reaped orphaned browser process ${entry}`);
+                } catch { /* already gone */ }
+            }
+        }
+    } catch { /* best effort */ }
+}
+
+/**
+ * Best-effort guess at WHY the browser is being spawned: the first caller
+ * outside forumClient.js on the stack (e.g. "postTopic (forumClient.js)" stays
+ * internal, so we walk up to "processAutopsyRequest (autopsyRequestMonitor.js)").
+ */
+function spawnReason() {
+    try {
+        const stack = new Error().stack.split('\n');
+        for (const line of stack.slice(2)) {
+            if (/forumClient\.js/.test(line) || /node_modules/.test(line) || /node:internal/.test(line)) continue;
+            const m = line.match(/at (?:async )?([^ (]+)(?: \(([^)]+)\))?/);
+            if (!m) continue;
+            const fn = (m[1] || '').replace(/^.*\/([^/]+)$/, '$1');
+            const file = (m[2] || '').replace(/\\/g, '/').split('/').pop() || '';
+            return file ? `${fn} (${file})` : fn;
+        }
+    } catch { /* ignore */ }
+    return 'first browser use';
+}
+
+/**
+ * Close the shared browser (if any) and reset the singleton, so a later call
+ * can relaunch. Used on graceful shutdown so pm2 restarts don't orphan Chromium.
+ */
+export async function closeSharedBrowser(reason = 'shutdown') {
+    const browser = _sharedBrowser;
+    if (!browser) return;
+    console.log(`[LOG] Destroying browser for ${reason}`);
+    try { await browser.close(); } catch { /* already closed */ }
+    _sharedBrowser = null;
+    _browserInitPromise = null;
+}
+
 async function getSharedBrowser() {
     if (_sharedBrowser) return _sharedBrowser;
     if (_browserInitPromise) return _browserInitPromise;
     _browserInitPromise = (async () => {
+        reapOrphanBrowsers();
+        console.log(`[LOG] Spawning BROWSER for ${spawnReason()}`);
         const browser = await chromium.launch({
             headless: process.env.HEADLESS !== 'false',
             args: [
@@ -191,6 +255,15 @@ class ForumClient {
         this.context = await browser.newContext(opts);
         this.page = await this.context.newPage();
 
+        // Activity hook — record every navigation so the dashboard can show
+        // what the browser is currently doing (scanning, posting, etc).
+        const rawGoto = this.page.goto.bind(this.page);
+        this.page.goto = async (url, opts) => {
+            const act = describeActivity(url);
+            logActivity(act.label, act.detail);
+            return rawGoto(url, opts);
+        };
+
         // Remove webdriver property to avoid detection
         await this.page.addInitScript(() => {
             Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
@@ -231,32 +304,6 @@ class ForumClient {
         return false;
     }
 
-    async close() {
-        const lock = await this._acquire('close');
-        try {
-        if (this.browser) {
-            try { await this.browser.close(); } catch { /* ignore */ }
-            this.browser = null;
-            this.context = null;
-            this.page = null;
-            console.log('[FORUM] 🛑 Browser closed');
-        }
-        } finally { lock.release(); }
-    }
-
-    // ── Session ──
-
-    async saveSession() {
-        if (!this.context) return;
-        const state = await this.context.storageState();
-        writeFileSync(this.sessionFile, JSON.stringify(state, null, 2), 'utf-8');
-        console.log(`[FORUM] 💾 Session saved to ${this.sessionFile}`);
-    }
-
-    hasSession() {
-        return existsSync(this.sessionFile);
-    }
-
     /**
      * Close this instance's browser context and page, releasing resources.
      * Does NOT close the shared browser process — other instances still use it.
@@ -272,6 +319,19 @@ class ForumClient {
         } catch { /* best effort */ }
         this.page = null;
         this.context = null;
+    }
+
+    // ── Session ──
+
+    async saveSession() {
+        if (!this.context) return;
+        const state = await this.context.storageState();
+        writeFileSync(this.sessionFile, JSON.stringify(state, null, 2), 'utf-8');
+        console.log(`[FORUM] 💾 Session saved to ${this.sessionFile}`);
+    }
+
+    hasSession() {
+        return existsSync(this.sessionFile);
     }
 
     /**
@@ -1629,6 +1689,111 @@ class ForumClient {
             const finalUrl = this.page.url();
             const success = finalUrl.includes('viewtopic.php');
             console.log(`[FORUM] ✏️ Title edit ${success ? '✅' : '⚠️'} — ${finalUrl}`);
+            return { ok: success, url: success ? finalUrl : null };
+        } finally {
+            lock.release();
+        }
+    }
+
+    /**
+     * Edit a post's content (and optional subject) in place.
+     * Powers self-serve "Edit & Repost" for deployed reports.
+     *
+     * @param {number|string} topicId - the topic containing the post
+     * @param {number|string} forumId - forum section ID
+     * @param {number|string|null} postId - the post to edit; when null, resolves the
+     *   topic's first post (used for whole-topic content edits)
+     * @param {string} newBbCode - replacement message content
+     * @param {{ title?: string|null, baseUrl?: string }} [opts]
+     * @returns {Promise<{ok: boolean, url?: string, reason?: string}>}
+     */
+    async editPostContent(topicId, forumId, postId, newBbCode, { title, baseUrl } = {}) {
+        const lock = await this._acquire('editPostContent');
+        try {
+            await this.ensureBrowser();
+            const domain = baseUrl || this.baseUrl;
+
+            // Resolve the target post id when not supplied (first post of the topic).
+            let targetPostId = postId;
+            if (!targetPostId) {
+                const topicUrl = `${domain}/viewtopic.php?t=${topicId}`;
+                await this.page.goto(topicUrl, { waitUntil: 'domcontentloaded', timeout: 180000 });
+                await this.page.waitForTimeout(2000);
+                targetPostId = await this.page.evaluate(() => {
+                    const links = document.querySelectorAll('a[href*="#p"]');
+                    for (const link of links) {
+                        const m = (link.getAttribute('href') || '').match(/[#&?]p=(\d+)/);
+                        if (m) return m[1];
+                    }
+                    return null;
+                }).catch(() => null);
+                if (!targetPostId) {
+                    console.log(`[FORUM] ❌ Could not find post ID for topic #${topicId}`);
+                    return { ok: false, reason: 'No post id found' };
+                }
+            }
+
+            const editUrl = `${domain}/posting.php?mode=edit&f=${forumId}&p=${targetPostId}`;
+            console.log(`[FORUM] ✏️ Editing post p=${targetPostId} (t=${topicId}, f=${forumId})`);
+            await this.page.goto(editUrl, { waitUntil: 'networkidle', timeout: 180000 });
+            await this.page.waitForTimeout(2000);
+
+            // Handle login redirect
+            let eUrl = this.page.url();
+            let eTitle = await this.page.title().catch(() => '');
+            if (eUrl.includes('mode=login') || eTitle.toLowerCase().includes('login')) {
+                console.log('[FORUM] ⚠️ Login on edit — re-authenticating');
+                await this.page.fill('input[name="username"]', this.username, { timeout: 10000 });
+                await this.page.fill('input[name="password"]', this.password, { timeout: 10000 });
+                await this.page.evaluate(() => {
+                    const btn = document.querySelector('input[type="submit"]') || document.querySelector('button[type="submit"]');
+                    if (btn) btn.click();
+                });
+                await this.page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
+                await this.page.waitForTimeout(3000);
+                await this.saveSession();
+                await this.page.goto(editUrl, { waitUntil: 'networkidle', timeout: 180000 });
+                await this.page.waitForTimeout(2000);
+            }
+
+            // Fill the message body (and optional subject).
+            await this.page.evaluate(({ bb, sub }) => {
+                const msg = document.querySelector('textarea[name="message"]');
+                if (msg) {
+                    msg.value = bb;
+                    msg.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+                if (sub != null) {
+                    const el = document.querySelector('input[name="subject"]');
+                    if (el) { el.value = sub; el.dispatchEvent(new Event('input', { bubbles: true })); }
+                }
+            }, { bb: newBbCode, sub: title != null ? title : null });
+
+            await this.page.waitForTimeout(500);
+
+            // Submit
+            const result = await this.page.evaluate(() => {
+                const form = document.querySelector('form[action*="posting.php"]');
+                if (!form) return { ok: false, reason: 'No form' };
+                const btn = form.querySelector(
+                    'input[type="submit"][name="post"], ' +
+                    'input[type="submit"][value="Submit"], ' +
+                    'button[type="submit"][name="post"]'
+                );
+                if (!btn) return { ok: false, reason: 'No button' };
+                btn.click();
+                return { ok: true };
+            });
+
+            if (!result.ok) {
+                console.log(`[FORUM] ❌ ${result.reason}`);
+                return { ok: false, reason: result.reason };
+            }
+
+            await this.page.waitForTimeout(5000);
+            const finalUrl = this.page.url();
+            const success = finalUrl.includes('viewtopic.php');
+            console.log(`[FORUM] ✏️ Content edit ${success ? '✅' : '⚠️'} — ${finalUrl}`);
             return { ok: success, url: success ? finalUrl : null };
         } finally {
             lock.release();

@@ -1,9 +1,11 @@
-import { appendFileSync, statSync, renameSync, existsSync } from 'fs';
-import { resolve } from 'path';
+import { appendFileSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from 'fs';
+import { resolve, join, basename } from 'path';
 
-const LOG_FILE = resolve(process.cwd(), 'log.txt');
-const MAX_LOG_SIZE = 1 * 1024 * 1024; // 1 MB
+const LOGS_DIR = resolve(process.cwd(), 'logs');
+const MAX_SESSION_SIZE = 25 * 1024 * 1024; // safety cap if a single session balloons
+const KEEP_SESSIONS = 12; // prune oldest session files, keep this many
 
+let currentFile = null;
 let initialized = false;
 
 /**
@@ -15,45 +17,66 @@ function timestamp() {
 }
 
 /**
- * Rotate log file if it exceeds the size limit
+ * Compact start-of-session stamp for the filename: 2026-08-28-163001
  */
-function rotateIfNeeded() {
-    try {
-        if (existsSync(LOG_FILE) && statSync(LOG_FILE).size > MAX_LOG_SIZE) {
-            const archived = LOG_FILE.replace('.txt', `.${Date.now()}.txt`);
-            renameSync(LOG_FILE, archived);
-            writeLine('[LOGGER] 🔄 Log file rotated (archived to ' + archived.split('\\').pop() + ')');
-        }
-    } catch {
-        // best effort
-    }
+function sessionStamp() {
+    const d = new Date();
+    const p = (n, l = 2) => String(n).padStart(l, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
 }
 
 /**
- * Write a single line to the log file
+ * Delete oldest session files beyond KEEP_SESSIONS so the logs dir stays tidy.
+ */
+function pruneOldSessions() {
+    try {
+        const files = readdirSync(LOGS_DIR)
+            .filter(f => /^(bot|api)-\d{4}-\d{2}-\d{2}-\d{6}(\.\d+)?\.log$/.test(f))
+            .sort();
+        while (files.length > KEEP_SESSIONS) {
+            const victim = files.shift();
+            try { rmSync(join(LOGS_DIR, victim)); } catch { /* already gone */ }
+        }
+    } catch { /* best effort */ }
+}
+
+/**
+ * Write a single line to the current session's log file.
+ * If a single session ever outgrows the safety cap, roll it to <name>.1
+ * (that file won't match the session regex, so pruning won't touch it).
  */
 function writeLine(message) {
+    if (!currentFile) return;
     try {
-        rotateIfNeeded();
-        appendFileSync(LOG_FILE, message + '\n', 'utf-8');
+        if (existsSync(currentFile) && statSync(currentFile).size > MAX_SESSION_SIZE) {
+            renameSync(currentFile, currentFile + '.1');
+        }
+        appendFileSync(currentFile, message + '\n', 'utf-8');
     } catch {
         // best effort — can't log the logger failure
     }
 }
 
 /**
- * Initialize the file logger.
- * Intercepts console.log, console.warn, console.error to dual-write
- * to stdout and the log file.
+ * Initialize the per-session file logger.
+ * Each process start opens a fresh log file (logs/<label>-<timestamp>.log)
+ * and intercepts console.log/warn/error to dual-write to stdout and that file.
+ *
+ * @param {string} label - 'bot' (index.js) or 'api' (morgue-api.js)
  */
-export function initLogger() {
+export function initLogger(label = 'bot') {
     if (initialized) return;
     initialized = true;
+
+    try { mkdirSync(LOGS_DIR, { recursive: true }); } catch { /* best effort */ }
+    pruneOldSessions();
+
+    currentFile = join(LOGS_DIR, `${label}-${sessionStamp()}.log`);
 
     const sep = '═'.repeat(60);
     writeLine('');
     writeLine(sep);
-    writeLine(`[LOGGER] 🚀 Bot session started at ${timestamp()}`);
+    writeLine(`[LOGGER] 🚀 ${label === 'api' ? 'Morgue API' : 'Bot'} session started at ${timestamp()} → logs/${basename(currentFile)}`);
     writeLine(sep);
 
     // Save original methods
@@ -63,37 +86,32 @@ export function initLogger() {
 
     console.log = (...args) => {
         const msg = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
-        const line = `[${timestamp()}] ${msg}`;
-        writeLine(line);
+        writeLine(`[${timestamp()}] ${msg}`);
         origLog.apply(console, args);
     };
 
     console.warn = (...args) => {
         const msg = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
-        const line = `[${timestamp()}] ⚠️ ${msg}`;
-        writeLine(line);
+        writeLine(`[${timestamp()}] ⚠️ ${msg}`);
         origWarn.apply(console, args);
     };
 
     console.error = (...args) => {
         const msg = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
-        const line = `[${timestamp()}] ❌ ${msg}`;
-        writeLine(line);
+        writeLine(`[${timestamp()}] ❌ ${msg}`);
         origError.apply(console, args);
     };
 
-    console.log('[LOGGER] ✅ File logger initialized —', LOG_FILE);
+    console.log('[LOGGER] ✅ File logger initialized —', currentFile);
 
     // Log uncaught exceptions to file before crashing
     process.on('uncaughtException', (error) => {
-        const line = `[${timestamp()}] 💥 UNCAUGHT EXCEPTION: ${error.message}\n${error.stack}`;
-        writeLine(line);
-        origError('[LOGGER] 💥 Uncaught exception written to log.txt');
+        writeLine(`[${timestamp()}] 💥 UNCAUGHT EXCEPTION: ${error.message}\n${error.stack}`);
+        origError('[LOGGER] 💥 Uncaught exception written to session log');
     });
 
     process.on('unhandledRejection', (reason) => {
-        const line = `[${timestamp()}] 💥 UNHANDLED REJECTION: ${reason}`;
-        writeLine(line);
-        origWarn('[LOGGER] 💥 Unhandled rejection written to log.txt');
+        writeLine(`[${timestamp()}] 💥 UNHANDLED REJECTION: ${reason}`);
+        origWarn('[LOGGER] 💥 Unhandled rejection written to session log');
     });
 }

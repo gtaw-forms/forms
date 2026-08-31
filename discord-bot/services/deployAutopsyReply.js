@@ -13,9 +13,12 @@ import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'disc
 import { logFnCall, sendWebhook, logStep, DeployProgressEmbed } from './deployLogger.js';
 import { notifySelfHeal, sendLogMessage } from './logChannel.js';
 import { state, C } from './deployState.js';
+import { isMaintenanceMode } from './deployQueue.js';
 import { setDeployStatus, markReportComplete } from './deployStatus.js';
 import { crosspostAutopsyToLssd, retryFailedLssdCrossposts, searchLssdRequestTopic } from './deployLssd.js';
 import { crosspostAutopsyToLspd } from './deployLspd.js';
+import { getAgencyForum, isAgencyFaction } from './agencyForums.js';
+import { notifyRequesterOfCompletion } from './requesterWebhook.js';
 import { clearAssignment, getRotationStatus } from './autopsyRotation.js';
 
 import { COMPLETION_TEMPLATE, buildCompletionBb } from './completionTemplate.js';
@@ -47,132 +50,160 @@ export { COMPLETION_TEMPLATE };
  * @returns {Promise<{ok: boolean, url: string|null, skipped?: boolean}>}
  */
 async function postLssdCombinedReply({ key, entry, reportData, completionBb, bbCode, progress, stepFailed }) {
-    const markLssdFailure = async (reason) => {
-        console.warn(`[AUTO-COMPLETE] LSSD crosspost for #${key} — ${reason}`);
-        await finishCompletionStep(key, 'lssdCombinedReply', false, reason);
-        if (state.dbRef) {
-            state.dbRef.child(`autopsy-requested/${key}`).update({
-                lssdCrosspostStatus: 'failed',
-                lssdCrosspostError: reason,
-                lssdCrosspostBbCode: bbCode,
-                lssdCrosspostOoc: entry.oocName || reportData.data?.decedentOOC || '',
-            }).catch(() => {});
-        }
-    };
-
-    const lssdRequestTopicId = entry.lssdRequestTopicId;
-
-    // Private cases (confidential autopsies) never crosspost to LSSD.
-    if (entry.isPrivate === true) {
-        console.log(`[AUTO-COMPLETE] Private case #${key} — skipping LSSD crosspost`);
-        await finishCompletionStep(key, 'lssdCombinedReply', true, 'Private case — LSSD crosspost skipped');
-        return { ok: true, url: null, skipped: true };
-    }
-
+    // ── Faction resolution FIRST so status/failure writers key per faction ──
     // The REQUEST record is authoritative for faction — the report's department
     // field is only a hint (MEs sometimes leave it on the wrong agency mid-batch).
+    // Registry factions (LSSD/SADCR/DAO) all live on lssd.gta.world and share the
+    // FORUM_LSSD_* credentials — see services/agencyForums.js. LSPD keeps its own
+    // separate crosspost step below.
     const rawDept = reportData.data?.department || '';
     const deptStr = (typeof rawDept === 'object' ? (rawDept.label || rawDept.value || '') : String(rawDept)).toLowerCase();
     const oocName = reportData.data?.decedentOOC || entry.oocName || '';
     const decedentName = reportData.data?.decedentName || entry.name || '';
     const entryFaction = (entry.faction || '').toLowerCase();
-    const titleTag = (/\[(lssd|lspd)\]/i.exec(entry.title || '') || [])[1]?.toLowerCase() || '';
-    const isLssdRequest = entryFaction === 'lssd' || titleTag === 'lssd' || deptStr.includes('lssd') || deptStr.includes('sheriff');
-    const lssdDept = deptStr.includes('lssd') || deptStr.includes('sheriff');
-    const lspdDept = deptStr.includes('lspd') || deptStr.includes('police');
-    if ((entryFaction === 'lssd' && lspdDept && !lssdDept) || (entryFaction === 'lspd' && lssdDept && !lspdDept)) {
+    const titleTag = (/\[(lssd|lspd|sadcr|dao)\]/i.exec(entry.title || '') || [])[1]?.toLowerCase() || '';
+
+    let effFaction = isAgencyFaction(entryFaction) ? entryFaction.toUpperCase()
+        : isAgencyFaction(titleTag) ? titleTag.toUpperCase()
+        : (deptStr.includes('lssd') || deptStr.includes('sheriff')) ? 'LSSD'
+        : null;
+    const cfgA = effFaction ? getAgencyForum(effFaction) : null;
+    // Firebase status-key prefix. LSSD keeps its exact legacy strings
+    // (lssdCrosspostStatus etc.); SADCR/DAO derive their own (sadcr* / dao*).
+    // The completion-step NAME stays 'lssdCombinedReply' for every registry
+    // faction so retryFailedCompletionSteps keeps a single branch.
+    const fx = effFaction ? effFaction.toLowerCase() : 'lssd';
+
+    // Faction mismatch sanity — trust the REQUEST record.
+    if ((entryFaction === 'lssd' && deptStr.includes('lspd') && !deptStr.includes('lssd') && !deptStr.includes('sheriff'))
+        || (entryFaction === 'lspd' && (deptStr.includes('lssd') || deptStr.includes('sheriff')))) {
         console.warn(`[AUTO-COMPLETE] Faction mismatch — request="${entryFaction}" but report department="${deptStr}". Trusting the request.`);
     }
 
-    // Searchable only if we have an OOC name or a non-generic decedent name.
-    // The actual search (scoped to the LSSD autopsy forum f=2263, trying
-    // "Name (( OOC ))" then the plain name) lives in searchLssdRequestTopic.
-    const searchable = oocName || (decedentName && !/^john\s*doe$/i.test(decedentName) ? decedentName : '');
+    const markLssdFailure = async (reason) => {
+        console.warn(`[AUTO-COMPLETE] ${fx.toUpperCase()} crosspost for #${key} — ${reason}`);
+        await finishCompletionStep(key, 'lssdCombinedReply', false, reason);
+        if (state.dbRef) {
+            state.dbRef.child(`autopsy-requested/${key}`).update({
+                [`${fx}CrosspostStatus`]: 'failed',
+                [`${fx}CrosspostError`]: reason,
+                [`${fx}CrosspostBbCode`]: bbCode,
+                [`${fx}CrosspostOoc`]: entry.oocName || reportData.data?.decedentOOC || '',
+            }).catch(() => {});
+        }
+    };
 
-    if (!isLssdRequest) {
-        await finishCompletionStep(key, 'lssdCombinedReply', true, 'No LSSD request topic (not an LSSD case)');
+    // Request topic id for the effective faction (lssdRequestTopicId |
+    // sadcrRequestTopicId | daoRequestTopicId — legacy LSSD name unchanged).
+    const lssdRequestTopicId = cfgA ? (entry[cfgA.topicField] || '') : '';
+
+    // Private cases (confidential autopsies) never crosspost to any agency forum.
+    if (entry.isPrivate === true) {
+        console.log(`[AUTO-COMPLETE] Private case #${key} — skipping LSSD crosspost`);
+        await finishCompletionStep(key, 'lssdCombinedReply', true, 'Private case — agency crosspost skipped');
+        return { ok: true, url: null, skipped: true };
+    }
+
+    // Not a registry faction (and no LSSD dept hint) — nothing to do here.
+    if (!cfgA) {
+        await finishCompletionStep(key, 'lssdCombinedReply', true, `No agency request topic (${effFaction || 'no registry faction'})`);
         return { ok: true, url: null };
     }
 
+    // Searchable only if we have an OOC name or a non-generic decedent name.
+    // The actual search (scoped to the faction's autopsy subforum, trying
+    // "Name (( OOC ))" then the plain name) lives in searchLssdRequestTopic.
+    const searchable = oocName || (decedentName && !/^john\s*doe$/i.test(decedentName) ? decedentName : '');
+
     if (!searchable) {
-        await markLssdFailure('LSSD case but no searchable name (no OOC / generic name) — force crosspost manually');
-        await progress.addStep('LSSD Completion + Report', 'fail', 'No searchable name');
+        await markLssdFailure(`${effFaction} case but no searchable name (no OOC / generic name) — force crosspost manually`);
+        await progress.addStep(`${effFaction} Completion + Report`, 'fail', 'No searchable name');
         return { ok: false, url: null };
     }
 
     // Combined reply: completion notice + full autopsy report in one post.
     const lssdCombinedBb = completionBb + '\n\n[hr][/hr]\n\n' + bbCode;
+    const agencyBaseUrl = cfgA.baseUrl;
+    const agencyForumId = cfgA.forumId;
 
     if (lssdRequestTopicId) {
-        await progress.addStep('LSSD Completion + Report', 'pending');
+        await progress.addStep(`${effFaction} Completion + Report`, 'pending');
         const lssdClient = createIsolatedClient('lssd-complete');
         try {
-            // Login to LSSD once for the combined reply
-            await lssdClient.login(process.env.FORUM_LSSD_USERNAME, process.env.FORUM_LSSD_PASSWORD, { force: true, baseUrl: 'https://lssd.gta.world' });
+            // Registry factions share the same forum account (all subforums of
+            // lssd.gta.world) — creds are picked per faction prefix (FORUM_LSSD_*).
+            await lssdClient.login(process.env[`FORUM_${cfgA.credPrefix}_USERNAME`], process.env[`FORUM_${cfgA.credPrefix}_PASSWORD`], { force: true, baseUrl: agencyBaseUrl });
 
-            console.log('[AUTO-COMPLETE] LSSD combined reply — posting completion + report to #' + lssdRequestTopicId);
-            const r = await lssdClient.replyToTopic(lssdRequestTopicId, 2263, lssdCombinedBb, { dryRun: false, baseUrl: 'https://lssd.gta.world' });
-            console.log('[AUTO-COMPLETE] LSSD combined reply — ' + (r.ok ? 'OK #' + lssdRequestTopicId : 'FAILED: ' + (r.reason || 'Unknown')));
-            await finishCompletionStep(key, 'lssdCombinedReply', r.ok, r.ok ? 'Completion + report to #' + lssdRequestTopicId : (r.reason || 'Unknown'));
-            await progress.addStep('LSSD Completion + Report', r.ok ? 'ok' : 'fail', r.ok ? '#' + lssdRequestTopicId : (r.reason || 'Failed'));
+            console.log(`[AUTO-COMPLETE] ${effFaction} combined reply — posting completion + report to #${lssdRequestTopicId}`);
+            const r = await lssdClient.replyToTopic(lssdRequestTopicId, agencyForumId, lssdCombinedBb, { dryRun: false, baseUrl: agencyBaseUrl });
+            console.log(`[AUTO-COMPLETE] ${effFaction} combined reply — ` + (r.ok ? 'OK #' + lssdRequestTopicId : 'FAILED: ' + (r.reason || 'Unknown')));
+            await finishCompletionStep(key, 'lssdCombinedReply', r.ok, r.ok ? `Completion + report to ${effFaction} #` + lssdRequestTopicId : (r.reason || 'Unknown'));
+            await progress.addStep(`${effFaction} Completion + Report`, r.ok ? 'ok' : 'fail', r.ok ? '#' + lssdRequestTopicId : (r.reason || 'Failed'));
             if (!r.ok) stepFailed.LSSD = true;
             return { ok: r.ok, url: r.ok ? (r.url || null) : null };
         } catch (e) {
-            console.error('[AUTO-COMPLETE] LSSD operation error: ' + e.message);
+            console.error(`[AUTO-COMPLETE] ${effFaction} operation error: ` + e.message);
             await finishCompletionStep(key, 'lssdCombinedReply', false, e.message);
-            await progress.addStep('LSSD Completion + Report', 'fail', e.message);
+            await progress.addStep(`${effFaction} Completion + Report`, 'fail', e.message);
             stepFailed.LSSD = true;
             return { ok: false, url: null };
         } finally {
-            // Note: we deliberately do NOT close the isolated client here.
-            // Closing the context while the health check is creating a
-            // page on the shared browser triggers harmless but noisy
-            // stealth plugin errors. GC will handle cleanup.
+            // Close the isolated client's context. Previously skipped to avoid
+            // noisy stealth plugin errors racing the health check, but that left
+            // renderer processes (one per context) alive forever — a ~200MB leak
+            // per operation. close() delays 1s for health-check page creation to
+            // settle, then suppresses all errors (proven by the fallback path below).
+            try { await lssdClient.close(); } catch {}
         }
     }
 
-    // Fallback: if no LSSD topic ID was saved during detection, try to find it now.
-    await progress.addStep('LSSD Completion + Report', 'pending');
+    // Fallback: if no request-topic ID was saved during detection, try to find it now.
+    await progress.addStep(`${effFaction} Completion + Report`, 'pending');
     const lssdClient = createIsolatedClient('lssd-complete');
     try {
-        console.log('[AUTO-COMPLETE] LSSD fallback — searching LSSD autopsy forum (f=2263)...');
-        await lssdClient.login(process.env.FORUM_LSSD_USERNAME, process.env.FORUM_LSSD_PASSWORD, { force: true, baseUrl: 'https://lssd.gta.world' });
-        const foundTopic = await searchLssdRequestTopic(lssdClient, { oocName, name: decedentName });
+        console.log(`[AUTO-COMPLETE] ${effFaction} fallback — searching ${effFaction} autopsy forum (f=${agencyForumId})...`);
+        await lssdClient.login(process.env[`FORUM_${cfgA.credPrefix}_USERNAME`], process.env[`FORUM_${cfgA.credPrefix}_PASSWORD`], { force: true, baseUrl: agencyBaseUrl });
+        const foundTopic = await searchLssdRequestTopic(lssdClient, { oocName, name: decedentName }, { forumId: agencyForumId, baseUrl: agencyBaseUrl });
         const fallbackTopicId = foundTopic?.topicId || null;
 
         if (fallbackTopicId) {
-            console.log('[AUTO-COMPLETE] LSSD fallback — found topic #' + fallbackTopicId);
+            console.log(`[AUTO-COMPLETE] ${effFaction} fallback — found topic #${fallbackTopicId}`);
             if (state.dbRef) {
-                state.dbRef.child(`autopsy-requested/${key}/lssdRequestTopicId`).set(String(fallbackTopicId)).catch(() => {});
+                state.dbRef.child(`autopsy-requested/${key}/${savedKeyField()}`).set(String(fallbackTopicId)).catch(() => {});
             }
-            const r = await lssdClient.replyToTopic(fallbackTopicId, 2263, lssdCombinedBb, { dryRun: false, baseUrl: 'https://lssd.gta.world' });
-            await finishCompletionStep(key, 'lssdCombinedReply', r.ok, r.ok ? 'Fallback completion + report to #' + fallbackTopicId : (r.reason || 'Unknown'));
-            await progress.addStep('LSSD Completion + Report', r.ok ? 'ok' : 'fail', r.ok ? '#' + fallbackTopicId : (r.reason || 'Failed'));
+            const r = await lssdClient.replyToTopic(fallbackTopicId, agencyForumId, lssdCombinedBb, { dryRun: false, baseUrl: agencyBaseUrl });
+            await finishCompletionStep(key, 'lssdCombinedReply', r.ok, r.ok ? `Fallback completion + report to #${fallbackTopicId}` : (r.reason || 'Unknown'));
+            await progress.addStep(`${effFaction} Completion + Report`, r.ok ? 'ok' : 'fail', r.ok ? '#' + fallbackTopicId : (r.reason || 'Failed'));
             if (!r.ok) { stepFailed.LSSD = true; await markLssdFailure('Completion + report reply failed: ' + (r.reason || 'Unknown')); }
             if (r.ok && state.dbRef) {
                 state.dbRef.child(`autopsy-requested/${key}`).update({
-                    lssdCrosspostStatus: 'completed',
-                    lssdCrosspostError: null,
-                    lssdRequestTopicId: String(fallbackTopicId),
-                    lssdCrosspostedAt: new Date().toISOString(),
+                    [`${fx}CrosspostStatus`]: 'completed',
+                    [`${fx}CrosspostError`]: null,
+                    [savedKeyField()]: String(fallbackTopicId),
+                    [`${fx}CrosspostedAt`]: new Date().toISOString(),
                 }).catch(() => {});
             }
             return { ok: r.ok, url: r.ok ? (r.url || null) : null };
         } else {
-            console.log('[AUTO-COMPLETE] LSSD fallback — no topic found for ' + (oocName || decedentName));
-            await markLssdFailure('LSSD request topic not found via search');
-            await progress.addStep('LSSD Completion + Report', 'fail', 'No LSSD topic found');
+            console.log(`[AUTO-COMPLETE] ${effFaction} fallback — no topic found for ` + (oocName || decedentName));
+            await markLssdFailure(`${effFaction} request topic not found via search`);
+            await progress.addStep(`${effFaction} Completion + Report`, 'fail', `No ${effFaction} topic found`);
             return { ok: false, url: null };
         }
     } catch (e) {
-        console.error('[AUTO-COMPLETE] LSSD fallback error: ' + e.message);
+        console.error(`[AUTO-COMPLETE] ${effFaction} fallback error: ` + e.message);
         await finishCompletionStep(key, 'lssdCombinedReply', false, e.message);
-        await progress.addStep('LSSD Completion + Report', 'fail', e.message);
+        await progress.addStep(`${effFaction} Completion + Report`, 'fail', e.message);
         stepFailed.LSSD = true;
         await markLssdFailure(e.message);
         return { ok: false, url: null };
     } finally {
         try { await lssdClient.close(); } catch {}
+    }
+
+    // Field holding the effective faction's saved request-topic id.
+    function savedKeyField() {
+        return cfgA.topicField; // lssdRequestTopicId | sadcrRequestTopicId | daoRequestTopicId
     }
 }
 
@@ -278,6 +309,13 @@ async function finishCompletionStep(topicId, stepName, ok, detail = '') {
  */
 export async function handleAutopsyReply(report) {
     const { authorId, key, report: reportData, db } = report;
+
+    // Respect maintenance mode — skip regardless of caller path
+    if (await isMaintenanceMode().catch(() => false)) {
+        console.log(`[AUTO]  ${key}  maintenance mode — skipping autopsy reply`);
+        return;
+    }
+
     const DRY = AUTOPSY_DRY_RUN;
 
     console.log(`[AUTO]  handleAutopsyReply called for ${key}  name: "${reportData.data?.decedentName}"`);
@@ -333,7 +371,7 @@ export async function handleAutopsyReply(report) {
     }
 
     const client = getForumClient();
-    const progress = new DeployProgressEmbed(state.discordClient, process.env.BOT_LOG_CHANNEL_ID);
+    const progress = new DeployProgressEmbed(state.discordClient, process.env.BOT_LOG_CHANNEL_ID, reportData.appBuild);
     if (report._progressMessageId) {
         await progress.resume(report._progressMessageId, report._progressChannelId || process.env.BOT_LOG_CHANNEL_ID, `Autopsy Report — ${reportData.originalKey || key}`);
     } else {
@@ -400,6 +438,67 @@ export async function handleAutopsyReply(report) {
         console.warn('[AUTO] Direct lookup failed:', e.message);
     }
 
+    // Multi-decedent fallback: multi records keep OOC/name + caseTopicId at the
+    // PER-CASE level (cases/<idx>), not the top level — so the top-level lookup
+    // above misses them (e.g. Marvion Futrell lives at request 9951 / cases/0,
+    // caseTopicId 9955). Scan the per-case data and use the tracked topic
+    // directly instead of prompting staff to pick.
+    if (!topicId) {
+        try {
+            const ooc = (reportData.data?.decedentOOC || "").trim();
+            const name = (reportData.data?.decedentName || "").trim();
+            const oocL = ooc.toLowerCase();
+            const nameL = name.toLowerCase();
+            const nameUsable = !!name && !/^john\s*doe$/i.test(name);
+            const allReqSnap = await db.ref("autopsy-requested").once("value");
+            const allReq = allReqSnap.val() || {};
+            const pickBest = (cur, cand) => {
+                if (!cur) return cand;
+                const cDone = !!cand.caseRec.completedAt;
+                const bDone = !!cur.caseRec.completedAt;
+                if (bDone && !cDone) return cand;
+                if (bDone === cDone) {
+                    const cNum = parseInt(cand.caseRec.caseNum, 10) || 0;
+                    const bNum = parseInt(cur.caseRec.caseNum, 10) || 0;
+                    if (cNum > bNum) return cand;
+                }
+                return cur;
+            };
+            let bestMulti = null; // { rkey, ci, caseRec }
+            // Pass 1 — exact OOC match (takes priority so a name-only "John Doe"
+            // tie-break can never override the specific decedent's case).
+            for (const [rkey, entry] of Object.entries(allReq)) {
+                if (String(entry.caseState || '') !== 'multi' || !entry.cases || typeof entry.cases !== 'object') continue;
+                for (const [ci, c] of Object.entries(entry.cases)) {
+                    if (!c || !c.caseTopicId) continue;
+                    const cOoc = String(c.oocName || '').trim().toLowerCase();
+                    if (!ooc || !cOoc || cOoc !== oocL) continue;
+                    bestMulti = pickBest(bestMulti, { rkey, ci: parseInt(ci, 10), caseRec: c });
+                }
+            }
+            // Pass 2 — name match (only if no OOC hit; never a generic "john doe").
+            if (!bestMulti) {
+                for (const [rkey, entry] of Object.entries(allReq)) {
+                    if (String(entry.caseState || '') !== 'multi' || !entry.cases || typeof entry.cases !== 'object') continue;
+                    for (const [ci, c] of Object.entries(entry.cases)) {
+                        if (!c || !c.caseTopicId) continue;
+                        const cName = String(c.name || '').trim().toLowerCase();
+                        if (!nameUsable || !cName || cName !== nameL) continue;
+                        bestMulti = pickBest(bestMulti, { rkey, ci: parseInt(ci, 10), caseRec: c });
+                    }
+                }
+            }
+            if (bestMulti) {
+                topicId = bestMulti.caseRec.caseTopicId;
+                foundTitle = bestMulti.caseRec.caseTitle || 'Case #' + topicId;
+                console.log(`[AUTO] Found multi-decedent caseTopicId=${topicId} (request #${bestMulti.rkey}, case ${bestMulti.ci}) — skipping forum search`);
+                await progress.addStep('Case Found', 'ok', '#' + topicId + ' ' + foundTitle);
+            }
+        } catch (e) {
+            console.warn('[AUTO] Multi-decedent direct lookup failed:', e.message);
+        }
+    }
+
     // Fall back to forum search if no direct topic found
     if (!topicId) {
         const caseThreads = await client.searchCaseManagement(searchTerm);
@@ -446,19 +545,29 @@ export async function handleAutopsyReply(report) {
                 `**Search:** \`${searchTerm}\``,
                 '',
                 'Multiple matching threads found. Pick the correct one:',
+                ...caseThreads.slice(0, 10).map((t, i) => `${i + 1}. **#${t.topicId}** — ${(t.title || '').trim() || '(no title)'}`),
             ].join('\n'))
             .setFooter({ text: `Expires in 5 min | ${pickId}` })
             .setTimestamp();
 
         const rows = [];
+        // Discord button labels cap at 80 chars — keep the case # and truncate the title
+        const buttonLabel = (t) => {
+            const title = (t.title || '').trim();
+            if (!title) return `#${t.topicId}`;
+            const suffix = ` #${t.topicId}`;
+            const maxTitle = 80 - suffix.length;
+            const trimmed = title.length > maxTitle ? title.slice(0, maxTitle - 1) + '…' : title;
+            return trimmed + suffix;
+        };
         // Split into rows of up to 3 buttons each (Discord limit: 5 per row)
         for (let i = 0; i < caseThreads.length; i += 3) {
             const chunk = caseThreads.slice(i, i + 3);
             const row = new ActionRowBuilder().addComponents(
-                chunk.map((t, j) =>
+                chunk.map((t) =>
                     new ButtonBuilder()
                         .setCustomId(`${pickId}_${t.topicId}`)
-                        .setLabel(`#${t.topicId}`)
+                        .setLabel(buttonLabel(t))
                         .setStyle(ButtonStyle.Primary)
                 )
             );
@@ -626,12 +735,14 @@ export async function handleAutopsyReply(report) {
                         const isPrivateEntry = entry.isPrivate === true;
 
                         console.log('[AUTO-COMPLETE] Marking autopsy request as completed in Firebase');
-                        if (caseRec) {
+                        const isMulti = caseRec != null;
+                        let allCasesDone = true;
+                        if (isMulti) {
                             // Per-case completion — the request stays open until
                             // every decedent's case has completed.
                             await ref.child(`cases/${caseIdx}`).update({ completedAt: new Date().toISOString(), completedBbCode: bbCode });
                             const casesSnap = await ref.child('cases').once('value');
-                            const allCasesDone = Object.values(casesSnap.val() || {}).every(c => c.completedAt);
+                            allCasesDone = Object.values(casesSnap.val() || {}).every(c => c.completedAt);
                             if (allCasesDone) {
                                 await ref.update({ completedAt: new Date().toISOString(), completedBbCode: bbCode });
                                 console.log('[AUTO-COMPLETE] All decedent cases complete — request marked completed');
@@ -651,7 +762,7 @@ export async function handleAutopsyReply(report) {
 
                         // ── Consolidated progress embed (one self-updating message per entry) ──
                         const caseName = caseRec?.name || caseRec?.oocName || entry.name || entry.oocName || key;
-                        const progress = new DeployProgressEmbed(state.discordClient, process.env.BOT_LOG_CHANNEL_ID);
+                        const progress = new DeployProgressEmbed(state.discordClient, process.env.BOT_LOG_CHANNEL_ID, entry.appBuild);
                         await progress.start(`Autopsy Completion — ${caseName}`);
 
                         const requesterName = entry.parsed?.requesterName || "Requesting Party";
@@ -668,35 +779,57 @@ export async function handleAutopsyReply(report) {
                             }).catch(() => {});
                         }
 
-                        // ── LSSD completion + report — posts FIRST for LSSD cases ──
-                        // The combined reply (completion notice + full report) goes out to
-                        // f=2263 before the PHMC completion notice so its topic URL can be
-                        // embedded in the f=265 reply below (LSSD_COMPLETION_LINK template).
-                        let completionBb = buildCompletionBb(caseTitle, requesterName, null);
-                        let lssdCompletionUrl = null;
+                        // ── Agency completion + report — posts FIRST for registry-faction cases ──
+                        // The combined reply (completion notice + full report) goes out to the
+                        // requesting faction's OWN subforum (LSSD f=2263 / SADCR f=2328 /
+                        // DAO f=2331 — all on lssd.gta.world) before the PHMC completion notice
+                        // so its topic URL can be embedded in the f=265 reply below.
+                        const completionFaction = isPrivateEntry
+                            ? 'private'
+                            : (String(entry.faction || '').toLowerCase()
+                                || (/\[(lssd|lspd|sadcr|dao)\]/i.exec(entry.title || '') || [])[1]?.toLowerCase()
+                                || null);
+                        const completionAgencyCfg = isAgencyFaction(completionFaction)
+                            ? getAgencyForum(completionFaction)
+                            : null;
+                        const completionFx = completionAgencyCfg ? completionFaction.toLowerCase() : 'lssd';
+                        const completionLspdUrl = completedLspdTopicId
+                            ? `https://lspd.gta.world/viewtopic.php?t=${completedLspdTopicId}`
+                            : null;
+                        let completionBb = buildCompletionBb(caseTitle, requesterName, { faction: completionFaction, lspdUrl: completionLspdUrl });
+                        let agencyCompletionUrl = null;
                         if (!isPrivateEntry) {
                             const lssdRes = await postLssdCombinedReply({
                                 key, entry, reportData, completionBb, bbCode, progress, stepFailed,
                             });
-                            lssdCompletionUrl = lssdRes.url;
-                            if (lssdRes.ok && lssdCompletionUrl && state.dbRef) {
+                            agencyCompletionUrl = lssdRes.url;
+                            if (lssdRes.ok && agencyCompletionUrl && state.dbRef) {
                                 await state.dbRef.child(`autopsy-requested/${key}`).update({
-                                    lssdCompletionUrl,
-                                    lssdCrosspostStatus: 'completed',
-                                    lssdCrosspostedAt: new Date().toISOString(),
+                                    [`${completionFx}CompletionUrl`]: agencyCompletionUrl,
+                                    [`${completionFx}CrosspostStatus`]: 'completed',
+                                    [`${completionFx}CrosspostedAt`]: new Date().toISOString(),
                                 }).catch(() => {});
                             }
-                            if (lssdCompletionUrl) completionBb = buildCompletionBb(caseTitle, requesterName, lssdCompletionUrl);
+                            if (agencyCompletionUrl) completionBb = buildCompletionBb(caseTitle, requesterName, { faction: completionFaction, lssdUrl: agencyCompletionUrl, lspdUrl: completionLspdUrl });
                         } else {
-                            await finishCompletionStep(key, 'lssdCombinedReply', true, 'Private case — LSSD crosspost skipped');
-                            await progress.addStep('LSSD Completion + Report', 'ok', 'Skipped (private case)');
+                            await finishCompletionStep(key, 'lssdCombinedReply', true, 'Private case — agency crosspost skipped');
+                            await progress.addStep('Agency Completion + Report', 'ok', 'Skipped (private case)');
                         }
 
                         // ── PHMC completion reply ──
                         // Runs after the LSSD post, carrying the direct LSSD link when one was posted.
+                        // Multi-decedent requests defer the "COMPLETED" notice until EVERY
+                        // decedent's case is done, so the requester never sees a premature
+                        // "We have completed the autopsy investigation" for an open request.
                         await progress.addStep('PHMC Reply', 'pending');
                         stepPromises.push((async () => {
                             const stepName = 'phmcCompletionReply';
+                            if (isMulti && !allCasesDone) {
+                                await startCompletionStep(key, stepName, 'Deferred — request has pending decedents');
+                                await finishCompletionStep(key, stepName, true, 'Deferred — not all decedent cases complete');
+                                await progress.addStep('PHMC Reply', 'ok', 'Deferred until all decedents complete');
+                                return;
+                            }
                             await startCompletionStep(key, stepName, 'Reply to #' + entry.topicId);
                             try {
                                 const r = await client.replyToTopic(entry.topicId, AUTOPSY_REQUEST_FORUM_ID, completionBb, { dryRun: false });
@@ -778,6 +911,14 @@ export async function handleAutopsyReply(report) {
                         await progress.addStep('DM Requester', 'pending');
                         stepPromises.push((async () => {
                             const dmClient = createIsolatedClient('dm');
+
+                            // Multi-decedent requests defer the DM until every decedent
+                            // is done — no premature "completed" DM for an open request.
+                            if (isMulti && !allCasesDone) {
+                                await progress.addStep('DM Requester', 'ok', 'Deferred until all decedents complete');
+                                try { await dmClient.close(); } catch {}
+                                return;
+                            }
 
                             // Resolve forum target for private pm_forum deliveries
                             let pmForumBaseUrl = null;
@@ -863,12 +1004,66 @@ export async function handleAutopsyReply(report) {
                                 await progress.addStep('DM Requester', 'fail', e.message);
                                 stepFailed.DM = true;
                             } finally {
-                                // Same reasoning as LSSD client — leaving context open avoids
-                                // noisy stealth plugin race with the health check.
+                                // Close the isolated DM client's context. Leaving it open
+                                // leaked a renderer process per autopsy completion — same
+                                // fix as the LSSD client above.
+                                try { await dmClient.close(); } catch {}
                             }
                         })());
 
-                        // Wait for all completion steps, then finalize
+                        // Requester Discord notification (CASELINK requests only) — see
+                        // services/requesterWebhook.js. Pings the officer when their numeric Discord
+                        // ID resolves, else greets by name. A blank faction webhook var (DAO default)
+                        // returns {skipped:true} and the step completes silently.
+                        if (entry.postedByCaselink === true && !isPrivateEntry) {
+                            await progress.addStep('Requester Discord Notification', 'pending');
+                            stepPromises.push((async () => {
+                                const stepName = 'requesterWebhook';
+                                if (isMulti && !allCasesDone) {
+                                    await startCompletionStep(key, stepName, 'Deferred — request has pending decedents');
+                                    await finishCompletionStep(key, stepName, true, 'Deferred — not all decedent cases complete');
+                                    await progress.addStep('Requester Discord Notification', 'ok', 'Deferred until all decedents complete');
+                                    return;
+                                }
+                                await startCompletionStep(key, stepName, 'POST requester-completion webhook');
+                                try {
+                                    let agencyTopicUrlForButton = null;
+                                    if (completionAgencyCfg) {
+                                        const tid = entry[completionAgencyCfg.topicField];
+                                        if (tid) agencyTopicUrlForButton = `${completionAgencyCfg.baseUrl}/viewtopic.php?t=${tid}`;
+                                    }
+                                    const res = await notifyRequesterOfCompletion(db, {
+                                        ...entry,
+                                        assignedTo: completingMe || entry.assignedTo || '',
+                                    }, {
+                                        caseNumber: caseRec?.caseNum ?? entry.caseNum ?? '',
+                                        caseTitle: completedCaseTitle,
+                                        faction: completionFaction ? String(completionFaction).toUpperCase() : '',
+                                        agencyTopicUrl: agencyTopicUrlForButton,
+                                        meName: completingMe || '',
+                                    });
+                                    const detail = res.ok
+                                        ? (res.testMode ? `Sent [TEST -> ${res.target}]` : `Sent -> ${res.target}`)
+                                        : (res.reason === 'test_url_missing' ? 'Test mode ON but TEST_URL empty'
+                                            : res.skipped ? `Skipped — ${res.reason}` : (res.reason || 'Send failed'));
+                                    const okFlag = !!res.ok;
+                                    const skippedFlag = !okFlag && !!res.skipped;
+                                    await finishCompletionStep(key, stepName, okFlag || skippedFlag, detail);
+                                    await progress.addStep('Requester Discord Notification', okFlag ? 'ok' : (skippedFlag ? 'skip' : 'fail'), detail);
+                                    if (!okFlag && !skippedFlag) stepFailed.REQUESTERWEBHOOK = true;
+                                } catch (e) {
+                                    await finishCompletionStep(key, stepName, false, e.message);
+                                    await progress.addStep('Requester Discord Notification', 'fail', e.message);
+                                    stepFailed.REQUESTERWEBHOOK = true;
+                                }
+                            })());
+                        } else {
+                            const skipWhy = isPrivateEntry ? 'Private case' : 'Not a CASELINK request';
+                            await finishCompletionStep(key, 'requesterWebhook', true, `${skipWhy} — webhook skipped`);
+                            await progress.addStep('Requester Discord Notification', 'skip', skipWhy);
+                        }
+
+// Wait for all completion steps, then finalize
                         const results = await Promise.allSettled(stepPromises);
                         const anyFailed = Object.keys(stepFailed).length > 0;
                         if (anyFailed) {
@@ -912,6 +1107,13 @@ export async function handleAutopsyReply(report) {
  */
 export async function retryFailedCompletionSteps(db) {
     logFnCall('autoDeploy', 'retryFailedCompletionSteps', 'Scanning for failed completion steps to retry');
+
+    // Respect maintenance mode — skip retries during an outage
+    if (await isMaintenanceMode().catch(() => false)) {
+        console.log('[AUTO]  maintenance mode — skipping completion-step retry scan');
+        return;
+    }
+
     const COOLDOWN_MS = 30 * 60 * 1000; // skip steps retried within the last 30 min
     try {
         const snap = await db.ref('autopsy-requested').once('value');
@@ -989,7 +1191,17 @@ export async function retryFailedCompletionSteps(db) {
             try {
                 const requesterName = entry.parsed?.requesterName || 'Requesting Party';
                 const caseTitle = entry.caseUrl || entry.title || 'Autopsy Case';
-                const completionBb = buildCompletionBb(caseTitle, requesterName, entry.lssdCompletionUrl);
+                const retryFaction = entry.isPrivate === true
+                    ? 'private'
+                    : (String(entry.faction || '').toLowerCase()
+                        || (/\[(lssd|lspd|sadcr|dao)\]/i.exec(entry.title || '') || [])[1]?.toLowerCase()
+                        || null);
+                const retryLspdUrl = entry.lspdTopicId ? `https://lspd.gta.world/viewtopic.php?t=${entry.lspdTopicId}` : null;
+                // Faction-prefixed completion URL (lssdCompletionUrl legacy key for LSSD;
+                // sadcrCompletionUrl / daoCompletionUrl for the newer registry factions).
+                const retryAgencyCfg = isAgencyFaction(retryFaction) ? getAgencyForum(retryFaction) : null;
+                const retryFx = retryAgencyCfg ? String(retryFaction).toLowerCase() : 'lssd';
+                const completionBb = buildCompletionBb(caseTitle, requesterName, { faction: retryFaction, lssdUrl: entry[`${retryFx}CompletionUrl`], lspdUrl: retryLspdUrl });
 
                 let success = false;
 
@@ -1010,9 +1222,14 @@ export async function retryFailedCompletionSteps(db) {
                     }
 
                 } else if (stepName === 'lssdCombinedReply') {
-                    const lssdTopicId = entry.lssdRequestTopicId;
+                    // Registry-faction branch — LSSD keeps legacy keys; SADCR/DAO resolve
+                    // their own subforum/topic-field via the agencyForums registry.
+                    const rCfg = isAgencyFaction(retryFaction) ? getAgencyForum(retryFaction)
+                        : null;
+                    const rFx = rCfg ? String(retryFaction).toLowerCase() : 'lssd';
+                    const lssdTopicId = rCfg ? entry[rCfg.topicField] : '';
                     if (!lssdTopicId) {
-                        console.log(`[AUTO-COMPLETE] [OK] Retry OK — ${stepName} for ${caseLabel}: not an LSSD case`);
+                        console.log(`[AUTO-COMPLETE] [OK] Retry OK — ${stepName} for ${caseLabel}: not a registry-agency case`);
                         success = true;
                     } else {
                         const reportBb = entry.completedBbCode || '';
@@ -1021,16 +1238,36 @@ export async function retryFailedCompletionSteps(db) {
                             // Mark as resolved — can't retry without the report content
                             success = true;
                         } else {
-                            await retryClient.login(process.env.FORUM_LSSD_USERNAME, process.env.FORUM_LSSD_PASSWORD, { force: true, baseUrl: 'https://lssd.gta.world' });
+                            await retryClient.login(process.env[`FORUM_${rCfg.credPrefix}_USERNAME`], process.env[`FORUM_${rCfg.credPrefix}_PASSWORD`], { force: true, baseUrl: rCfg.baseUrl });
                             const content = completionBb + '\n\n[hr][/hr]\n\n' + reportBb;
-                            console.log(`[AUTO-COMPLETE] Retrying LSSD completion + report to #${lssdTopicId}...`);
-                            const r = await retryClient.replyToTopic(lssdTopicId, 2263, content, { dryRun: false, baseUrl: 'https://lssd.gta.world' });
+                            console.log(`[AUTO-COMPLETE] Retrying ${rCfg === getAgencyForum('LSSD') ? 'LSSD' : String(retryFaction).toUpperCase()} completion + report to #${lssdTopicId}...`);
+                            const r = await retryClient.replyToTopic(lssdTopicId, rCfg.forumId, content, { dryRun: false, baseUrl: rCfg.baseUrl });
                             success = r.ok;
-                            console.log(`[AUTO-COMPLETE] LSSD completion + report retry — ${r.ok ? 'OK' : 'FAILED: ' + (r.reason || 'Unknown')}`);
+                            console.log(`[AUTO-COMPLETE] Agency completion + report retry — ${r.ok ? 'OK' : 'FAILED: ' + (r.reason || 'Unknown')}`);
                             if (r.ok && r.url && state.dbRef) {
-                                await state.dbRef.child(`autopsy-requested/${key}`).update({ lssdCompletionUrl: r.url }).catch(() => {});
+                                await state.dbRef.child(`autopsy-requested/${key}`).update({ [`${rFx}CompletionUrl`]: r.url }).catch(() => {});
                             }
                         }
+                    }
+
+                } else if (stepName === 'requesterWebhook') {
+                    // Stateless resend from entry fields — notifyRequesterOfCompletion
+                    // self-resolves faction topic deep-link, ME ping and requester tag.
+                    // Worst case (crash after send) is one duplicate message, the same
+                    // accepted trade-off as every other completion-step retry.
+                    try {
+                        const res = await notifyRequesterOfCompletion(db, entry, {
+                            caseNumber: entry.caseNum ?? '',
+                            caseTitle: entry.caseTitle || entry.title || '',
+                            faction: entry.faction ? String(entry.faction).toUpperCase() : '',
+                            meName: entry.assignedTo || '',
+                        });
+                        success = !!res.ok || !!res.skipped;
+                        if (!success) console.warn(`[AUTO-COMPLETE] Requester webhook retry failed: ${res.reason || 'Send failed'}`);
+                        else console.log(`[AUTO-COMPLETE] [OK] Retry OK — requesterWebhook for ${caseLabel}${res.testMode ? ` [TEST -> ${res.target}]` : ` -> ${res.target}`}`);
+                    } catch (e) {
+                        console.error(`[AUTO-COMPLETE] Requester webhook retry error for ${caseLabel}: ${e.message}`);
+                        success = false;
                     }
 
                 } else if (stepName === 'lssdCompletionReply' || stepName === 'lssdAutopsyReport') {

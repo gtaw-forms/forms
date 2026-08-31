@@ -58,6 +58,10 @@ export async function sendLogMessage(content, embed, { crash = false } = {}) {
         if (embed) {
             payload.embeds = [embed];
         }
+        // Explicitly allow user/role pings in the content (so <@id> notifications
+        // reliably tag staff). @here is only allowed for crash reports, never for
+        // routine notifications.
+        payload.allowedMentions = { parse: crash ? ['users', 'roles', 'here'] : ['users', 'roles'] };
 
         await withTimeout(channel.send(payload), 'channel send');
     } catch (err) {

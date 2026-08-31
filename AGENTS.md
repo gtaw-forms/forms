@@ -3,9 +3,14 @@
 > **Read `CLAUDE.md` for the project overview and workflows** — deploy matrix, VPS commands, project structure, UI architecture, and code conventions.
 > **Read the changelogs for what changed:** `changelog.md` (web app + Cloud Functions) and `discord-bot/changelog.md` (bot + VPS APIs). Keep this file as lean memory — **point, don't restate**.
 
+## Plans & planning docs
+
+- **Rule — plans live in `plan/`:** all plans and plan files go in a dedicated `plan/` folder at the repo root (e.g. `plan/plan.md`, `plan/<topic>-plan.md`). The whole `plan/` folder is **gitignored by default** — never commit plan files. Keep them local-only, or mirror the ones the bot needs to the VPS under `discord-bot/debug/`.
+
 ## Open plan
 
-- **`plan.md`** — Patient Name Autocomplete for Medical Records. VPS copy at `/opt/phmc-bot/discord-bot/debug/patient-name-autocomplete-plan.md`.
+- **`plan/plan.md`** — Patient Name Autocomplete for Medical Records. VPS copy at `/opt/phmc-bot/discord-bot/debug/patient-name-autocomplete-plan.md`.
+- **`plan/autopsy-caselink-webhook-plan.md`** — CASELINK requester completion webhooks + SADCR/DAO registry crossposting. SHIPPED & live (2026-08-26); plan file retained for the staging-runbook history + build checklist.
 
 ## Next session — pending deploys (2026-08-11)
 

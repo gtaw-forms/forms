@@ -309,6 +309,22 @@ export async function handleModal(interaction) {
 
         const bbPreview = bbcode.length > 800 ? bbcode.slice(0, 800) + '...' : bbcode;
 
+        // Rotation status for the preview — show surge/next-up when the request
+        // will be auto-assigned (no explicit ME marker).
+        let rotationField = null;
+        if (!state.me) {
+            try {
+                const rot = await getRotationStatus(db);
+                if (rot.configured) {
+                    rotationField = rot.surgeMode
+                        ? `**🔀 Surge mode active** — every ME has an active case. Will assign the **least-loaded** ME, ties broken by **oldest last-assigned**${rot.surgePick ? ` → next up: **${rot.surgePick}**` : ''}.`
+                        : `Rotation next up: **${rot.effectiveNext || 'none available'}**.`;
+                }
+            } catch (e) {
+                console.warn('[AUTO-REQ] Rotation status unavailable:', e.message);
+            }
+        }
+
         const embed = new EmbedBuilder()
             .setColor(0xffa500)
             .setTitle('Autopsy Request Preview (Dry Run)')
@@ -318,6 +334,7 @@ export async function handleModal(interaction) {
                 { name: 'Morgue Case #', value: state.caseId || '—', inline: true },
                 { name: 'Decedent', value: `${state.name || 'Unknown'} ((${state.ooc || ''}))`, inline: false },
                 { name: 'Section 3 Marker', value: state.me ? `ASSIGNED: ${state.me} for Final Autopsy Exams` : 'No assigned marker (rotation will pick)', inline: false },
+                ...(rotationField ? [{ name: 'Rotation Status', value: rotationField, inline: false }] : []),
                 { name: 'BBCode Preview', value: `\`\`\`${bbPreview}\`\`\``, inline: false },
             )
             .setFooter({ text: 'Nothing has been posted — Approve to submit to f=265.' })

@@ -61,19 +61,28 @@ async function runCctvFetch() {
         const child = spawn('node', ['fetch-all.js', '--headless'], {
             cwd: SCRIPT_PATH,
             stdio: ['ignore', 'pipe', 'pipe'],
+            // Own process group so we can kill the whole tree on timeout —
+            // SIGTERM to the node wrapper alone orphans the headless-browser
+            // grandchildren, which leak RAM on this small (1.8GB, no-swap) box.
+            detached: true,
         });
 
         let stdout = '';
         child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
         child.stderr.on('data', (chunk) => { stdout += chunk.toString(); }); // merge stderr too
 
+        const killTree = () => {
+            try { process.kill(-child.pid, 'SIGKILL'); } catch { /* already gone */ }
+        };
+
         const exitCode = await new Promise((resolve) => {
             const timeout = setTimeout(() => {
-                child.kill();
+                killTree();
                 resolve('TIMEOUT');
             }, 150_000); // 2.5 min timeout
             child.on('close', (code) => {
                 clearTimeout(timeout);
+                killTree(); // sweep any lingering browser grandchildren
                 resolve(code);
             });
         });

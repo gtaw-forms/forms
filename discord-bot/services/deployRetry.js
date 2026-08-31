@@ -4,6 +4,7 @@
 
 import { logFnCall } from './deployLogger.js';
 import { state, C } from './deployState.js';
+import { isMaintenanceMode } from './deployQueue.js';
 
 //  Retry Queue Backfill
 
@@ -74,6 +75,13 @@ export async function cleanupOldDeployed(db) {
 
 export async function checkRetryQueue() {
     logFnCall('deployRetry', 'checkRetryQueue', 'Checking retry queue');
+
+    // Respect maintenance mode — pause retries during an outage
+    if (await isMaintenanceMode().catch(() => false)) {
+        console.log('[RETRY]  Maintenance mode — skipping retry queue scan');
+        return;
+    }
+
     const db = state.dbRef;
     if (!db) return;
 

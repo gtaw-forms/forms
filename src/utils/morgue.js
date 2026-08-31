@@ -4,6 +4,22 @@ import { sanitizeMorgueText } from './textUtils';
 // Morgue Record Parsing
 // ---------------------------------------------------------------------------
 
+/**
+ * Extract a DNA profile code from morgue text, supporting BOTH the current
+ * "DNA PROFILE: DNA-<hex>" format and the legacy "DNA Profile<hex>" format.
+ * Preserves whichever format the source used (returns 'N/A' when absent).
+ */
+export function parseDnaProfile(text) {
+    const s = String(text || '');
+    // New format: "DNA PROFILE: DNA-00011C5E" (hyphen prefix + hex code).
+    const newMatch = s.match(/DNA PROFILE\s*:?\s*\n?\s*(DNA-[0-9A-F]{4,})/i);
+    if (newMatch) return newMatch[1].trim();
+    // Legacy format: "DNA Profile<hex>" (label + hex, no separator) or "DNA PROFILE: <hex>".
+    const legacyMatch = s.match(/DNA PROFILE\s*:?\s*\n?\s*([0-9A-F]{6,})/i);
+    if (legacyMatch) return legacyMatch[1].trim();
+    return 'N/A';
+}
+
 const MORGUE_MONTH_INDEX = { january: 0, february: 1, march: 2, april: 3, may: 4, june: 5, july: 6, august: 7, september: 8, october: 9, november: 10, december: 11 };
 
 /**
@@ -48,8 +64,9 @@ export const parseMorgueRecord = (text) => {
     record.timeOfDeathISO = morgueTimeToIso(record.timeOfDeath);
     record.causeOfDeath = extractField('CAUSE OF DEATH');
 
-    const dnaMatch = sanitizedText.match(/DNA PROFILE\s*\n?\s*([0-9A-F]{10,})/i);
-    record.dnaProfile = dnaMatch ? dnaMatch[1].trim() : 'N/A';
+    // DNA profile — supports BOTH the new "DNA PROFILE: DNA-<hex>" format and
+    // the legacy "DNA Profile<hex>" format (preserves whichever the server sends).
+    record.dnaProfile = parseDnaProfile(sanitizedText);
 
     const ageMatch = sanitizedText.match(/Estimated age:\s*([\s\S]*?)(?=\n[A-Z\s]{3,}:|Tattoos description:|FORENSIC DETAILS|AUTOPSY FINDINGS|Visible injuries:|$)/i);
     record.estimatedAge = ageMatch ? ageMatch[1].trim() : 'Unknown';

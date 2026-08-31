@@ -1,12 +1,12 @@
 /**
- * factionRosterSync.js — Daily LSPD/LSSD member roster sync.
+ * factionRosterSync.js — Daily LSPD/LSSD/SADCR member roster sync.
  *
- * Scrapes LSPD (g=44) and LSSD (g=66) phpBB group member lists
- * and saves them to local JSON files on the VPS. The files are
+ * Scrapes LSPD (g=44), LSSD (g=66), and SADCR (g=11) phpBB group member
+ * lists and saves them to local JSON files on the VPS. The files are
  * consumed by morgue-api.js for the /api/roster/check endpoint.
  *
- * Runs roughly every 4 hours (with random offset). Notifies bot-spam on completion.
- * Fires on bot startup if the last sync was >4h ago.
+ * Runs roughly every 12 hours (with random offset). Notifies bot-spam on completion.
+ * Fires on bot startup if the last sync was >12h ago.
  */
 
 import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'fs';
@@ -22,7 +22,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROSTER_DIR = resolve(__dirname, '..', 'data');
 const LSPD_GROUP_ID = 44;
 const LSSD_GROUP_ID = 66;
-const COOLDOWN_MS = 4 * 60 * 60 * 1000;  // 4 hours
+const SADCR_GROUP_ID = 11;
+const COOLDOWN_MS = 12 * 60 * 60 * 1000;  // 12 hours
 const SYNC_WINDOW_MS = 30 * 60 * 1000;  // + up to 30 min random offset
 
 const FACTION_CONFIG = {
@@ -31,12 +32,24 @@ const FACTION_CONFIG = {
         baseUrl: process.env.FORUM_LSPD_URL || 'https://lspd.gta.world',
         file: 'lspd-roster.json',
         label: 'LSPD',
+        usernameEnv: 'FORUM_LSPD_USERNAME',
+        passwordEnv: 'FORUM_LSPD_PASSWORD',
     },
     lssd: {
         groupId: LSSD_GROUP_ID,
         baseUrl: process.env.FORUM_LSSD_URL || 'https://lssd.gta.world',
         file: 'lssd-roster.json',
         label: 'LSSD',
+        usernameEnv: 'FORUM_LSSD_USERNAME',
+        passwordEnv: 'FORUM_LSSD_PASSWORD',
+    },
+    sadcr: {
+        groupId: SADCR_GROUP_ID,
+        baseUrl: process.env.FORUM_SADCR_URL || 'https://sadcr.gta.world',
+        file: 'sadcr-roster.json',
+        label: 'SADCR',
+        usernameEnv: 'FORUM_SADCR_USERNAME',
+        passwordEnv: 'FORUM_SADCR_PASSWORD',
     },
 };
 
@@ -82,8 +95,8 @@ async function scrapeFaction(config) {
     const client = createIsolatedClient(`roster-${config.label.toLowerCase()}`);
     try {
         await client.login(
-            config.label === 'LSPD' ? process.env.FORUM_LSPD_USERNAME : process.env.FORUM_LSSD_USERNAME,
-            config.label === 'LSPD' ? process.env.FORUM_LSPD_PASSWORD : process.env.FORUM_LSSD_PASSWORD,
+            process.env[config.usernameEnv],
+            process.env[config.passwordEnv],
             { force: true, baseUrl: config.baseUrl }
         );
 
@@ -123,15 +136,14 @@ export async function syncFactionRosters() {
 
     saveLastSyncTime();
 
-    const lspdCount = results.lspd?.length ?? 0;
-    const lssdCount = results.lssd?.length ?? 0;
-    console.log(`[ROSTER-SYNC] Sync complete — LSPD: ${lspdCount}, LSSD: ${lssdCount}`);
+    const counts = Object.keys(FACTION_CONFIG)
+        .map((key) => `${key.toUpperCase()}: ${results[key]?.length ?? 0}`)
+        .join(', ');
+    console.log(`[ROSTER-SYNC] Sync complete — ${counts}`);
 
     // Notify bot-spam channel
     try {
-        await sendLogMessage(
-            `[ROSTER-SYNC] Faction rosters synced — LSPD: **${lspdCount}**, LSSD: **${lssdCount}** members`
-        );
+        await sendLogMessage(`[ROSTER-SYNC] Faction rosters synced — ${counts} members`);
     } catch (err) {
         console.warn('[ROSTER-SYNC] Failed to send log notification:', err.message);
     }
@@ -156,8 +168,8 @@ function scheduleNextSync() {
 
 /**
  * Start the roster sync system. Called once on bot startup.
- * Syncs immediately if >24h since last sync, otherwise schedules
- * the next sync at the 24h mark.
+ * Syncs immediately if the last sync was longer ago than COOLDOWN_MS,
+ * otherwise schedules the next sync at the COOLDOWN_MS mark.
  */
 export function startFactionRosterSync() {
     console.log('[ROSTER-SYNC] Starting faction roster sync service...');
@@ -192,7 +204,7 @@ export function getFactionRoster(faction) {
 
 /**
  * Read roster sync status for the dashboard.
- * Returns { lastSyncAt, nextSyncAt, lspdCount, lssdCount } or null.
+ * Returns { lastSyncAt, nextSyncAt, lspdCount, lssdCount, sadcrCount } or null.
  */
 export function getRosterSyncStatus() {
     try {
@@ -207,12 +219,14 @@ export function getRosterSyncStatus() {
 
         const lspdData = getFactionRoster('lspd');
         const lssdData = getFactionRoster('lssd');
+        const sadcrData = getFactionRoster('sadcr');
 
         return {
             lastSyncAt: lastSyncAt || null,
             nextSyncAt: nextSyncAt || null,
             lspdCount: lspdData?.count ?? lspdData?.members?.length ?? 0,
             lssdCount: lssdData?.count ?? lssdData?.members?.length ?? 0,
+            sadcrCount: sadcrData?.count ?? sadcrData?.members?.length ?? 0,
         };
     } catch {
         return null;

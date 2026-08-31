@@ -36,3 +36,5 @@ export const triggerGetPatientNames = (data) => triggerFunction('getPatientNames
 export const triggerGetAgencyCredentials = () => triggerFunction('getAgencyCredentials', {});
 export const triggerGetCctvData = (data) => triggerFunction('getCctvData', data);
 export const triggerCctvFetch = () => triggerFunction('triggerCctvFetch', {});
+export const triggerSaveReportBBCode = (data) => triggerFunction('saveReportBBCode', data);
+export const triggerGetReportBBCode = (data) => triggerFunction('getReportBBCode', data);

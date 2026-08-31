@@ -15,6 +15,14 @@ export const LSSD_AUTOPSY_FORUM_ID = 2263;
 export const LSSD_BASE = 'https://lssd.gta.world';
 
 /**
+ * Normalize the db argument to a Reference for a path.
+ * `db` may be a firebase-admin Database (has `.ref`) or the bot's `state.dbRef`,
+ * which is a root Reference (has `.child`, no `.ref`) — calling `db.ref()` on it
+ * throws "db.ref is not a function", silently skipping the status write.
+ */
+const refFor = (db, path) => (typeof db.ref === 'function' ? db.ref(path) : db.child(path));
+
+/**
  * Search the dedicated LSSD autopsy forum (f=2263) for the request topic matching
  * a decedent. LSSD auto-crossposts their own requests, so we rarely have the topic
  * ID saved — this search is the fallback. Terms are tried in order:
@@ -27,9 +35,11 @@ export const LSSD_BASE = 'https://lssd.gta.world';
  *
  * @param {object} client — forum client already logged into the LSSD forum
  * @param {{oocName?: string, name?: string}} who — decedent OOC + character name
+ * @param {{forumId?: number, baseUrl?: string}} [opts] — forum override so SADCR/DAO
+ *   registries (same lssd.gta.world domain) reuse this search. Defaults to LSSD f=2263.
  * @returns {Promise<{topicId: string|number, title: string, term: string} | null>}
  */
-export async function searchLssdRequestTopic(client, { oocName = '', name = '' } = {}) {
+export async function searchLssdRequestTopic(client, { oocName = '', name = '' } = {}, { forumId = LSSD_AUTOPSY_FORUM_ID, baseUrl = LSSD_BASE } = {}) {
     const ooc = (oocName || '').trim();
     const decedent = (name || '').trim();
     const isGeneric = /^john\s*doe$/i.test(decedent);
@@ -46,7 +56,7 @@ export async function searchLssdRequestTopic(client, { oocName = '', name = '' }
     const oocL = ooc.toLowerCase();
     const decL = decedent.toLowerCase();
     for (const term of terms) {
-        const results = await client.searchForum(term, LSSD_AUTOPSY_FORUM_ID, { baseUrl: LSSD_BASE });
+        const results = await client.searchForum(term, forumId, { baseUrl });
         if (!results || results.length === 0) continue;
         const match = results.find(r => {
             const t = (r.title || '').toLowerCase();
@@ -156,7 +166,7 @@ async function writeStatus(phmcTopicId, db, status, extra) {
         for (const [k, v] of Object.entries(update)) {
             if (v !== undefined) clean[k] = v;
         }
-        await db.ref('autopsy-requested/' + phmcTopicId).update(clean);
+        await refFor(db, 'autopsy-requested/' + phmcTopicId).update(clean);
     } catch (err) {
         console.warn('[AUTO-CROSSPOST] Failed to write status:', err.message);
     }
@@ -170,7 +180,7 @@ export async function retryFailedLssdCrossposts(db) {
     logFnCall('deployLssd', 'retryFailedLssdCrossposts', 'Scanning for failed cross-posts');
     if (!db) return;
     try {
-        const snap = await db.ref('autopsy-requested').orderByChild('lssdCrosspostStatus').equalTo('failed').once('value');
+        const snap = await refFor(db, 'autopsy-requested').orderByChild('lssdCrosspostStatus').equalTo('failed').once('value');
         if (!snap.exists()) {
             console.log('[AUTO-CROSSPOST] No failed cross-posts to retry');
             return;
@@ -205,7 +215,7 @@ export async function retryFailedLssdCrossposts(db) {
                     const found = await searchLssdRequestTopic(client, { oocName: oocSearch, name: nameSearch });
                     if (found) {
                         console.log('[AUTO-CROSSPOST] Found LSSD topic #' + found.topicId + ' for ' + phmcTopicId);
-                        await db.ref('autopsy-requested/' + phmcTopicId + '/lssdRequestTopicId').set(String(found.topicId)).catch(() => {});
+                        await refFor(db, 'autopsy-requested/' + phmcTopicId + '/lssdRequestTopicId').set(String(found.topicId)).catch(() => {});
                         lssdTopicId = String(found.topicId);
                     } else {
                         console.log('[AUTO-CROSSPOST] No LSSD topic found for ' + phmcTopicId + ' — will retry next sweep');

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, lazy, Suspense, useRe
 import * as Sentry from "@sentry/react";
 import useGtaWorldAuth from "../../hooks/useGtaWorldAuth";
 import { useModal } from "../../contexts/ModalProvider";
-import { useData } from "../../contexts/DataContext";
+import { useData, isCoronerMember } from "../../contexts/DataContext";
 import FormFieldRenderer from './FormFieldRenderer';
 import LeftSidebarNav from '../UI/LeftSidebarNav';
 import useBbcodeGenerator from '../../hooks/useBbcodeGenerator';
@@ -143,8 +143,7 @@ export const FormHandler = () => {
 
   const { 
     agencyDataStore, 
-    phmcListData, 
-    coronerListData: originalCoronerListData,
+    factionListData,
     selectOptions: dataContextSelectOptions,
     formsData,
     hasFirebaseError,
@@ -171,7 +170,7 @@ export const FormHandler = () => {
     }
   }, [formsData]); // Run once when formsData is available
 
-  const { saveReport: saveNewReport, validateMembership } = useFormSaver(user, isAuthenticated, { phmcListData, coronerListData });
+  const { saveReport: saveNewReport, validateMembership } = useFormSaver(user, isAuthenticated, { factionListData });
   const modalCloseTimer = React.useRef(null);
   const { user: firebaseAuthUser } = useAuth();
   const firebaseUid = firebaseAuthUser?.uid || null;
@@ -275,14 +274,15 @@ export const FormHandler = () => {
   }, [dataContextSelectOptions, authSelectOptions, agencyDataStore]);
 
   const coronerListData = useMemo(() => {
+    const coroners = factionListData.filter(isCoronerMember);
     if (isDevelopment && selectedForm?.accessType === "Coroner") {
-        return [{ name: "Dr. Crime (Dev Coroner)", rank: "Chief Dev Examiner", badge: "DEV666" }, ...originalCoronerListData];
+        return [{ name: "Dr. Crime (Dev Coroner)", rank: "Chief Dev Examiner", badge: "DEV666" }, ...coroners];
     }
-    return originalCoronerListData;
-  }, [isDevelopment, selectedForm, originalCoronerListData]);
+    return coroners;
+  }, [isDevelopment, selectedForm, factionListData]);
 
   const employeeOptions = useMemo(() => {
-      let validPhmcData = phmcListData.filter(emp => emp && emp.name && typeof emp.name === 'string');
+      let validPhmcData = factionListData.filter(emp => emp && emp.name && typeof emp.name === 'string' && !isCoronerMember(emp));
       let validCoronerData = coronerListData.filter(emp => emp && emp.name && typeof emp.name === 'string');
 
       if (isDevelopment) {
@@ -329,16 +329,13 @@ export const FormHandler = () => {
           { label: 'PHMC Staff', options: phmcOptions },
           { label: 'Coroner Staff', options: coronerOptions }
       ];
-  }, [phmcListData, coronerListData, swappableCharacters]);
+  }, [factionListData, coronerListData, swappableCharacters]);
 
   const isFoundInStaffList = useMemo(() => {
     if (!characterName) return false;
-    const allNames = [
-      ...phmcListData.map(e => e.name),
-      ...coronerListData.map(e => e.name)
-    ].filter(Boolean).map(n => n.toLowerCase());
+    const allNames = factionListData.map(e => e.name).filter(Boolean).map(n => n.toLowerCase());
     return allNames.includes(characterName.toLowerCase());
-  }, [characterName, phmcListData, coronerListData]);
+  }, [characterName, factionListData]);
 
   const employeeType = useMemo(() => {
     if (selectedForm?.accessType === 'Coroner') return 'coroner';
@@ -381,7 +378,8 @@ export const FormHandler = () => {
     finalSelectOptions,
     agencyDataStore,
     user, // Pass the user object here
-    factionsData
+    factionsData,
+    factionListData
   );
 
   // Callbacks
@@ -599,7 +597,7 @@ export const FormHandler = () => {
     const updates = { [`${employeeType}Employee`]: name || '' };
 
     if (name) {
-      const fullData = [...phmcListData, ...coronerListData].find(e => e.name === name);
+      const fullData = factionListData.find(e => e.name === name);
       if (fullData) {
         updates[`${employeeType}Rank`] = fullData.rank ? cleanRankText(fullData.rank) : '';
         updates[`${employeeType}Badge`] = fullData.badge || '';
@@ -611,7 +609,7 @@ export const FormHandler = () => {
     }
 
     setFormValues(prev => ({ ...prev, ...updates }));
-  }, [employeeType, phmcListData, coronerListData, cleanRankText, setFormValues]);
+  }, [employeeType, factionListData, cleanRankText, setFormValues]);
 
 const handleClearForm = useCallback(() => {
     console.log("[FormHandler] 🗑️ handleClearForm triggered.");
@@ -638,7 +636,7 @@ const handleClearForm = useCallback(() => {
             const oauthName = factionData?.characterName;
             
             if (oauthName && factionData) {
-                const dbMatch = [...phmcListData, ...coronerListData].find(e =>
+                const dbMatch = factionListData.find(e =>
                     String(e.characterId) === String(factionData.characterId)
                 );
 
@@ -661,7 +659,7 @@ const handleClearForm = useCallback(() => {
     }
     setShowBBCode(false);
     showNotification('Form cleared!', 'info');
-  }, [formValues, setFormValues, selectedForm, showNotification, keepCredentials, isAuthenticated, user, phmcListData, coronerListData, cleanRankText]);
+  }, [formValues, setFormValues, selectedForm, showNotification, keepCredentials, isAuthenticated, user, factionListData, cleanRankText]);
 
   const copyAndSaveReport = useCallback(async () => {
     // Prevent saving BBCode generated for a different form
@@ -716,7 +714,7 @@ const handleClearForm = useCallback(() => {
       }
 
       // Medical record forms require a patient name for reliable forum search
-      const MEDICAL_FORM_IDS = ['patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical', 'session_notes', 'intensive_treatment', 'psych-eval', 'testing-compact-mode'];
+      const MEDICAL_FORM_IDS = ['patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical', 'session_notes', 'intensive_treatment', 'psych-eval', 'general_consultation'];
       const isMedicalRecord = selectedForm?.firebaseKey && MEDICAL_FORM_IDS.includes(selectedForm.firebaseKey);
       if (isMedicalRecord) {
         const patientName = formValues.decedentName || formValues.decedentname || formValues.patientName || '';
@@ -1018,8 +1016,7 @@ const handleClearForm = useCallback(() => {
       const currentFormBadge = currentFormValues[`${currentEmployeeType}Badge`];
       if (!currentFormEmployeeName || !currentFormRank || !currentFormBadge) {
         const resolved = resolveEmployeeCredentials(user, {
-          phmcListData,
-          coronerListData,
+          factionListData,
           cleanRank: cleanRankText,
         });
         if (resolved.employeeName) {
@@ -1042,7 +1039,7 @@ const handleClearForm = useCallback(() => {
       }
     });
 
-  }, [user, isAuthenticated, selectedForm, setFormValues, characterName, phmcListData, coronerListData, cleanRankText]);
+  }, [user, isAuthenticated, selectedForm, setFormValues, characterName, factionListData, cleanRankText]);
 
 
 
@@ -1494,7 +1491,7 @@ const handleClearForm = useCallback(() => {
   </div>
 )}
           {(() => {
-            const MEDICAL_FORM_IDS = ['patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical', 'session_notes', 'intensive_treatment', 'psych-eval', 'testing-compact-mode'];
+            const MEDICAL_FORM_IDS = ['patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical', 'session_notes', 'intensive_treatment', 'psych-eval', 'general_consultation'];
             if (selectedForm?.firebaseKey && MEDICAL_FORM_IDS.includes(selectedForm.firebaseKey) && botConsent?.[selectedForm.firebaseKey]) {
               return (
                 <div style={{ marginBottom: 8 }}>

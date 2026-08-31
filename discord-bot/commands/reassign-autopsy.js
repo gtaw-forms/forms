@@ -2,6 +2,7 @@ import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBu
 import firebase from '../services/firebase.js';
 import { getForumClient } from '../services/forumClient.js';
 import { reassignME } from '../services/autopsyRotation.js';
+import { notifyAssignment } from '../services/meDiscordNotify.js';
 
 export const data = new SlashCommandBuilder()
     .setName('reassign-autopsy')
@@ -44,7 +45,7 @@ export async function execute(interaction) {
             if (entry.title) hasTitle++;
             if (entry.title && entry.title.toLowerCase().includes('autopsy request')) isAutopsy++;
             if (!entry.completedAt) notCompleted++;
-            if (entry.assignedTo && !entry.completedAt && entry.title && entry.title.toLowerCase().includes('autopsy request')) {
+            if (entry.assignedTo && !entry.completedAt) {
                 activeCases.push({ topicId, ...entry });
             }
         }
@@ -214,10 +215,28 @@ export async function onMePick(interaction) {
 
         // Update Firebase
         await db.ref(`autopsy-requested/${topicId}/assignedTo`).set(newME);
+        // Persist the updated case title too — the forum topic title was just
+        // edited above, so keep the DB in sync (otherwise the stale old-ME
+        // title leaks into notifications / webhook embeds).
+        if (newTitle && newTitle !== oldTitle) {
+            await db.ref(`autopsy-requested/${topicId}/caseTitle`).set(newTitle).catch(err => {
+                console.warn(`[CMD] reassign: caseTitle sync failed: ${err.message}`);
+            });
+        }
 
         // Update active case counts in the rotation tracker
         await reassignME(db, entry.assignedTo || null, newME, topicId).catch(err => {
             console.warn(`[CMD] reassign: rotation tracking error: ${err.message}`);
+        });
+
+        // Ping the newly-assigned ME (Discord + webhook) so they know they've
+        // been reassigned this case — same path as an initial assignment.
+        const caseUrl = `${process.env.FORUM_BASE_URL}/viewtopic.php?t=${topicIdNum}`;
+        await notifyAssignment(db, newME, decedentName || oldTitle, caseUrl, {
+            label: 'Autopsy Case Reassigned',
+            embedTitle: '🔬 Autopsy Case Reassigned',
+        }).catch(err => {
+            console.warn(`[CMD] reassign: notifyAssignment failed: ${err.message}`);
         });
 
         const embed = new EmbedBuilder()

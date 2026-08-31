@@ -93,7 +93,8 @@ export async function runDeploy(type, data) {
         'session_notes': 'phmcEmployee',
         'intensive_treatment': 'phmcEmployee',
         'psych-eval': 'phmcEmployee',
-        'testing-compact-mode': 'phmcEmployee',
+        'general_consultation': 'phmcEmployee',
+        'testing-compact-mode': 'phmcEmployee', // legacy rename alias
     };
     const expectedField = EMPLOYEE_FIELD_BY_FORM[formId] || null;
     let employeeMissing = false;

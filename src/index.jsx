@@ -15,7 +15,8 @@ import { ModalProvider } from './contexts/ModalProvider.jsx';
 import { useNotification } from './contexts/NotificationContext';
 import * as Sentry from "@sentry/react";
 import ErrorBoundary from './components/UI/ErrorBoundary';
-import { sendDiscordErrorWebhook, getLastInputInteraction, getCurrentFormType, initConsoleInterceptor, getUserOAuthIdentity } from './utils/logging';
+import { sendDiscordErrorWebhook, getLastInputInteraction, getCurrentFormType, initConsoleInterceptor, getUserOAuthIdentity, isIndexedDBCascadeError } from './utils/logging';
+import { checkIndexedDBAvailability, clearSiteData } from './utils/idbCache';
 
 // --- Navigation Tracking ---
 const navigationHistory = [];
@@ -107,6 +108,11 @@ init({
   tracePropagationTargets: ["localhost", "https://forms.phmc.io", /^\//],
   beforeSend(event) {
     if (event.exception) {
+      // Drop the Firebase IndexedDB cascade (quota/disk-full fallout). The
+      // startup probe reports the root cause once as a tagged event instead.
+      const excValue = event.exception.values?.[0]?.value || '';
+      if (isIndexedDBCascadeError(excValue)) return null;
+
       const userIdentity = getUserOAuthIdentity();
       event.tags = {
         ...event.tags,
@@ -205,6 +211,57 @@ const Root = () => {
             }
         };
         checkSentryConnectivity();
+    }, [showNotification, removeNotification]);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        checkIndexedDBAvailability().then(({ available, error }) => {
+            if (cancelled || available) return;
+            // Dismissed once this session — don't nag on every reload.
+            if (sessionStorage.getItem('idbWarningDismissed')) return;
+
+            const id = showNotification(
+                "Your browser storage appears to be full or unavailable. Offline caches and auto-login may not work until it's fixed. Free up disk space, or clear this site's cached data.",
+                'warning',
+                0,
+                {
+                    key: 'idb-unavailable',
+                    actions: [
+                        {
+                            label: 'Clear site data',
+                            handler: async () => {
+                                try {
+                                    await clearSiteData();
+                                } catch (clearError) {
+                                    console.warn('[Storage] Failed to clear site data:', clearError);
+                                }
+                                window.location.reload();
+                            },
+                        },
+                        {
+                            label: 'Dismiss',
+                            handler: () => {
+                                sessionStorage.setItem('idbWarningDismissed', '1');
+                                removeNotification(id);
+                            },
+                        },
+                    ],
+                }
+            );
+
+            // Single, tagged root-cause event (the cascade is filtered in beforeSend).
+            Sentry.captureMessage('[Storage] IndexedDB unavailable', {
+                level: 'warning',
+                tags: { storage: 'idb_unavailable' },
+                extra: {
+                    error: error?.message || String(error),
+                    action_offered: 'clear_site_data',
+                },
+            });
+        }).catch(() => {});
+
+        return () => { cancelled = true; };
     }, [showNotification, removeNotification]);
 
     return <App />;

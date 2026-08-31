@@ -8,6 +8,7 @@ import { useAuth } from './AuthContext';
 import { triggerRefreshGtawUser } from '../services/firebaseFunctions';
 import { useInactivityReload } from '../hooks/useInactivityReload';
 import { useNotification } from './NotificationContext.jsx';
+import { logIdentityRefresh } from '../utils/logging';
 import {
     initiateGtaWorldLogin,
     handleOAuthCallback,
@@ -523,6 +524,95 @@ export const GtaWorldAuthProvider = ({ children }) => {
         validateSession();
     }, [authLoading]);
 
+    // ── BACKGROUND IDENTITY PROFILE REFRESH ──
+    // On a revisit, silently re-sync the GTAW profile so the form's
+    // coroner/PHMC credentials auto-fill without a manual log-out/in (users
+    // reported that "logging out and back in" fixes blank credentials). Bounded
+    // retries; only *prompts* re-auth if it still can't resolve. Never
+    // auto-logs-out. Exposes identityRefreshStatus for a "Welcome back, verifying
+    // your credentials" marker in the UI.
+    const [identityRefreshStatus, setIdentityRefreshStatus] = useState('idle'); // idle | refreshing | success | failed
+    const IDENTITY_REFRESH_MAX = 2;
+    const IDENTITY_REFRESH_COOLDOWN_MS = 12 * 60 * 60 * 1000; // 12h periodic re-sync
+    const identityAttemptsKey = 'identityRefreshAttempts';
+    const identityLastKey = 'lastIdentityRefreshAt';
+
+    useEffect(() => {
+        if (!user || isGoogleAdmin || isStaff || authLoading) return;
+        if (user?.loginRole === 'non-employee') return;
+
+        const faction = user.faction || null;
+        const factionStale = !!faction && !(faction.characterId || faction.id);
+        const lastRefresh = Number(localStorage.getItem(identityLastKey) || 0);
+        const needsPeriodic = user?.isFactionMember === true && (Date.now() - lastRefresh) > IDENTITY_REFRESH_COOLDOWN_MS;
+
+        // Healthy session — no-op (no refresh, no log).
+        if (!factionStale && !needsPeriodic) return;
+
+        const attempts = Number(sessionStorage.getItem(identityAttemptsKey) || 0);
+        if (attempts >= IDENTITY_REFRESH_MAX) {
+            // Exhausted this session's budget. Prompt (once) only for the stale
+            // case; periodic re-sync simply waits for the next visit.
+            if (factionStale) {
+                showNotification('Your identity couldn\u2019t be refreshed — please log out and back in to restore report signing.', 'warning');
+            }
+            return;
+        }
+        const attempt = attempts + 1;
+        sessionStorage.setItem(identityAttemptsKey, String(attempt));
+
+        let accessToken = null;
+        try {
+            accessToken = getAccessToken();
+        } catch (err) {
+            console.warn('[IdentityRefresh] No access token for profile refresh:', err?.message || err);
+            return;
+        }
+        if (!accessToken) return;
+
+        const trigger = factionStale ? 'stale-faction' : 'periodic-revisit';
+        const characterName = faction?.characterName || user?.activeCharacter?.characterName || user?.characterName || null;
+        setIdentityRefreshStatus('refreshing');
+
+        triggerRefreshGtawUser({ accessToken })
+            .then((res) => {
+                if (res?.success && res.user) {
+                    const refreshedUser = { ...res.user, loginRole: user.loginRole || 'employee' };
+                    setUser(refreshedUser);
+                    storeUser(refreshedUser);
+                    localStorage.setItem(identityLastKey, String(Date.now()));
+                    setIdentityRefreshStatus('success');
+                    logIdentityRefresh({ username: user.username, characterName, trigger, attempt, maxAttempts: IDENTITY_REFRESH_MAX, matchedBy: 'id', success: true });
+                    // Re-run the roster sync so the fresh character flows into
+                    // the app's credential sync and the form auto-fills.
+                    const syncFn = httpsCallable(functions, 'triggerFactionSync');
+                    syncFn().catch((err) => {
+                        if (!err?.code?.includes('permission-denied')) console.error('[IdentityRefresh] faction sync after refresh failed:', err?.message || err);
+                    });
+                } else {
+                    console.warn('[IdentityRefresh] refreshGtawUser returned no user:', res);
+                    setIdentityRefreshStatus('failed');
+                    logIdentityRefresh({ username: user.username, characterName, trigger, attempt, maxAttempts: IDENTITY_REFRESH_MAX, matchedBy: 'none', success: false });
+                    if (attempt >= IDENTITY_REFRESH_MAX && factionStale) {
+                        showNotification('Your identity couldn\u2019t be refreshed — please log out and back in to restore report signing.', 'warning');
+                    }
+                }
+            })
+            .catch((err) => {
+                console.warn('[IdentityRefresh] Profile refresh failed:', err?.message || err);
+                setIdentityRefreshStatus('failed');
+                logIdentityRefresh({ username: user.username, characterName, trigger, attempt, maxAttempts: IDENTITY_REFRESH_MAX, matchedBy: 'none', success: false, promptedReauth: attempt >= IDENTITY_REFRESH_MAX });
+                if (attempt >= IDENTITY_REFRESH_MAX) {
+                    showNotification('Your identity couldn\u2019t be refreshed — please log out and back in to restore report signing.', 'warning');
+                }
+            })
+            .finally(() => {
+                // Clear the marker shortly after it resolves so it doesn't linger.
+                setTimeout(() => setIdentityRefreshStatus((s) => (s === 'success' || s === 'failed' ? 'idle' : s)), 4000);
+            });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [user?.id, user?.loginRole, isGoogleAdmin, isStaff, authLoading]);
+
     // Normalize a raw API character object so it always has a characterName property.
     // The GTA World API returns characters in multiple formats:
     //   { id, name } or { firstname, lastname } or { characterId, characterName }.
@@ -604,11 +694,12 @@ export const GtaWorldAuthProvider = ({ children }) => {
         updateFactionData,
         triggerFactionSync,
         credentialsLoading,
+        identityRefreshStatus,
     }), [
         user, isLoading, authLoading, error, isValidatingSession, sessionLostReason, login, handleLogout, processCallback,
         clearError, isGoogleAdmin, firebaseUser, firebaseIsPhmcMember, firebaseAccessLevel,
         firebasePermissions, activeCharacter, swappableCharacters, swapCharacter, updateFactionData,
-        triggerFactionSync, credentialsLoading
+        triggerFactionSync, credentialsLoading, identityRefreshStatus
     ]);
 
     return (
