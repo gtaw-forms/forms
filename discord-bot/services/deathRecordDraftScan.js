@@ -540,26 +540,35 @@ export function startCKListener(db) {
         initMorgueCache(db).catch(() => {});
     }
 
-    _knownPassiveCKKeys = new Set();
+_knownPassiveCKKeys = new Set();
 
-    console.log(`[DRAFT] Passive CK listener active on newSavedReports — skipping reports saved before 01/JUL/2026`);
+    // P2: watch the slim `unprocessedCKs` index (written by the web app on every
+    // CK save) instead of the full `newSavedReports` node. The old listener
+    // downloaded ~5.7MB on every connect + streamed every user save; this only
+    // streams new CK entries (tiny) and reads each matching report scoped.
+    console.log(`[DRAFT] Passive CK listener active on unprocessedCKs (slim index) — no full newSavedReports read`);
 
-    db.ref('newSavedReports').on('value', (snap) => {
-        snap.forEach((authorSnap) => {
-            const authorId = authorSnap.key;
-            authorSnap.forEach((reportSnap) => {
-                const reportKey = reportSnap.key;
-                if (_knownPassiveCKKeys.has(reportKey)) return;
-                _knownPassiveCKKeys.add(reportKey);
+    db.ref('unprocessedCKs').on('child_added', (childSnap) => {
+        const entry = childSnap.val();
+        const reportKey = childSnap.key;
+        if (!entry || _knownPassiveCKKeys.has(reportKey)) return;
+        _knownPassiveCKKeys.add(reportKey);
+        if (entry.timestamp && entry.timestamp < CK_EPOCH) return;
 
+        const authorId = entry.authorId;
+        if (!authorId) return;
+        const base = (entry.reportPath === 'scheduledReports' || entry.reportPath === 'newSavedReports')
+            ? entry.reportPath : 'newSavedReports';
+
+        db.ref(`${base}/${authorId}/${reportKey}`).once('value')
+            .then((reportSnap) => {
+                if (!reportSnap.exists()) return;
                 const reportData = reportSnap.val();
-                if (reportData.timestamp && reportData.timestamp < CK_EPOCH) return;
-
                 if (reportData.formId === 'coroner-report' || reportData.formId === 'mass-ftality-test') {
                     passivCKCheck(db, authorId, reportKey, reportData);
                 }
-            });
-        });
+            })
+            .catch((err) => console.error('[DRAFT] [ERR] Passive CK report read:', err.message));
     });
 
     console.log('[DRAFT] [OK] Passive CK listener active');
@@ -626,12 +635,17 @@ export async function scanAndDraftCKs(db, options = {}) {
 
     results.total = ckReports.length;
 
-    const morgueSnap = await db.ref('morgue-records').once('value').catch(() => null);
-    const allMorgueRecords = [];
-    if (morgueSnap?.exists()) {
-        morgueSnap.forEach((child) => {
-            allMorgueRecords.push({ ...child.val(), firebaseKey: child.key });
-        });
+// P1: read the VPS-local morgue mirror instead of the full RTDB node.
+    let allMorgueRecords = [];
+    const { loadLocalMorgueList } = await import('./localMorgueData.js');
+    allMorgueRecords = loadLocalMorgueList();
+    if (allMorgueRecords.length === 0) {
+        const morgueSnap = await db.ref('morgue-records').once('value').catch(() => null);
+        if (morgueSnap?.exists()) {
+            morgueSnap.forEach((child) => {
+                allMorgueRecords.push({ ...child.val(), firebaseKey: child.key });
+            });
+        }
     }
 
     for (const { authorId, reportKey, reportData } of ckReports) {
@@ -746,4 +760,75 @@ export async function scanAndDraftCKs(db, options = {}) {
     }
 
     return results;
+}
+
+// -- Post-posting forum verification --
+// After a death record is approved, wait VERIFY_DELAY_MS (30 min) so either the
+// bot's auto-post OR a staff member's manual post has time to land, then scan
+// the Death Records forum to confirm the record actually appears there. Marked
+// `verified` when found, or flagged for manual review when not.
+
+export const DEATH_RECORD_VERIFY_FORUM_ID = 404; // matches where death records post
+export const VERIFY_DELAY_MS = 30 * 60 * 1000;
+
+export async function verifyPostedDeathRecords(db) {
+    const now = Date.now();
+    const snap = await db.ref(DRAFT_TRACK_PATH).orderByChild('verifyAfter').endAt(now).once('value');
+    if (!snap.exists()) {
+        console.log('[DRAFT-VERIFY] No death records awaiting forum verification');
+        return;
+    }
+
+    const entries = [];
+    snap.forEach((child) => entries.push({ key: child.key, val: child.val() }));
+
+    const { getForumClient } = await import('./forumClient.js');
+    let verified = 0, flagged = 0, skipped = 0;
+
+    for (const { key, val } of entries) {
+if (val.status === 'denied' || val.verified === true || val.verificationFailed === true) { skipped++; continue; }
+        // Only verify REAL posts — simulated/DRY approvals have no forum topic.
+        if (val.status !== 'approved') { skipped++; continue; }
+
+        let found = null;
+        try {
+            const client = getForumClient();
+            await client.login(null, null, { force: false, baseUrl: process.env.FORUM_BASE_URL });
+            const topics = await client.getForumTopics(DEATH_RECORD_VERIFY_FORUM_ID, { baseUrl: process.env.FORUM_BASE_URL });
+            const target = String(val.title || '').trim().toLowerCase();
+            found = (topics || []).find(t => String(t.title || '').trim().toLowerCase() === target)
+                || (topics || []).find(t => target && String(t.title || '').toLowerCase().includes(target.slice(0, 30)))
+                || null;
+        } catch (err) {
+            console.warn(`[DRAFT-VERIFY] Forum scan error for ${key}: ${err.message}`);
+            skipped++;
+            continue;
+        }
+
+        if (found) {
+            await db.ref(`${DRAFT_TRACK_PATH}/${key}`).update({
+                verified: true,
+                verifiedAt: Date.now(),
+                verifiedTopicId: found.topicId,
+            });
+            verified++;
+            console.log(`[DRAFT-VERIFY] ${key} VERIFIED in f=${DEATH_RECORD_VERIFY_FORUM_ID} (t=${found.topicId})`);
+        } else {
+            await db.ref(`${DRAFT_TRACK_PATH}/${key}`).update({
+                verificationFailed: true,
+                verificationAttemptedAt: Date.now(),
+            });
+            flagged++;
+            console.warn(`[DRAFT-VERIFY] ${key} NOT FOUND in f=${DEATH_RECORD_VERIFY_FORUM_ID}`);
+            try {
+                await sendLogMessage(null, {
+                    title: '?? Death Record Not Verified',
+                    description: `**${val.title || key}**\nApproved at ${new Date(val.deployedAt || 0).toUTCString()}, but NOT found in the Death Records forum (f=${DEATH_RECORD_VERIFY_FORUM_ID}).\nThe post may have failed or landed elsewhere � please check manually.`,
+                    color: 0xe74c3c,
+                });
+            } catch (e) {}
+        }
+    }
+
+    console.log(`[DRAFT-VERIFY] Sweep: ${verified} verified, ${flagged} flagged, ${skipped} skipped`);
 }

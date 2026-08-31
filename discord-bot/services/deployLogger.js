@@ -96,9 +96,10 @@ export async function logStep(label, detail, { color = 0x007bff, isFinal = false
  *   await progress.finalize('complete' | 'failed');
  */
 export class DeployProgressEmbed {
-    constructor(client, channelId) {
+    constructor(client, channelId, buildLabel) {
         this.client = client;
         this.channelId = channelId;
+        this.buildLabel = buildLabel || null;
         this.messageId = null;
         this.steps = [];
         this.status = 'pending';
@@ -192,7 +193,7 @@ export class DeployProgressEmbed {
             .setColor(color)
             .setTitle(this.title)
             .setDescription(desc)
-            .setFooter({ text: this.status === 'pending' ? 'Deploying...' : this.status === 'complete' ? 'Complete' : 'Failed' })
+            .setFooter({ text: `${this.status === 'pending' ? 'Deploying...' : this.status === 'complete' ? 'Complete' : 'Failed'}${this.buildLabel ? ` · client build ${this.buildLabel}` : ''}` })
             .setTimestamp();
     }
 }

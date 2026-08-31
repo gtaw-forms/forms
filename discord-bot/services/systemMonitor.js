@@ -38,7 +38,9 @@ async function checkSystemResources() {
         console.log(`[MONITOR] System: CPU=${loadPct.toFixed(1)}%  RAM=${memPct.toFixed(1)}%  DISK=${diskPct}%`);
 
         if (loadPct > 80) alerts.push({ title: '🔴 High CPU Load', description: `CPU at **${loadPct.toFixed(1)}%** (load avg: ${loadAvg}, cores: ${cpuCores})`, color: 0xe74c3c });
-        if (memPct > 85) alerts.push({ title: '🔴 High Memory Usage', description: `RAM at **${memPct.toFixed(1)}%**`, color: 0xe67e22 });
+        // 70% not 85% — this box has only 1.8GB RAM and no swap, so it was
+        // already in danger well before the old 85% threshold would fire.
+        if (memPct > 70) alerts.push({ title: '🔴 High Memory Usage', description: `RAM at **${memPct.toFixed(1)}%**`, color: 0xe67e22 });
         if (diskPct > 90) alerts.push({ title: '🔴 Low Disk Space', description: `Disk at **${diskPct}%**`, color: 0xe74c3c });
     } catch (err) { console.warn('[MONITOR] System resource check failed:', err.message); }
     return alerts;
@@ -422,30 +424,37 @@ async function cleanupOldData(db) {
 
 // ── Main Health Check Runner ──
 
-export async function runHealthCheck(db) {
-    console.log('[MONITOR] 🔍 Running system health checks...');
+export async function runHealthCheck(db, { skipForums = false } = {}) {
+    console.log(`[MONITOR] 🔍 Running system health checks...${skipForums ? ' (forums skipped — cached status healthy)' : ''}`);
 
     const monitoringRef = db.ref('monitoring');
     const snapshot = await monitoringRef.once('value');
     const previousState = snapshot.val() || {};
 
-    // Run checks in parallel
-    const [sysAlerts, cfResult, gtawResult, forumResults] = await Promise.all([
+    // Run checks in parallel. Forum latency is browser-based (Playwright) —
+    // skip it on startup when cached forum status was healthy, since a restart
+    // doesn't mean the forums changed. The scheduled cycle re-checks normally.
+    const checks = [
         checkSystemResources(),
         checkCloudflare(db, previousState),
         checkGtawUcp(db, previousState),
-        checkForumLatency(),
-    ]);
+    ];
+    if (!skipForums) {
+        checks.push(checkForumLatency());
+    }
+    const [sysAlerts, cfResult, gtawResult, forumResults] = await Promise.all(checks);
 
     const allAlerts = [...sysAlerts, ...cfResult.alerts, ...gtawResult.alerts];
     const allUpdates = { ...cfResult.updates, ...gtawResult.updates };
 
     // Save forum results to Firebase (dashboard reads from here)
-    const forumState = {};
-    for (const f of forumResults) {
-        forumState[f.name] = { status: f.status, latency: f.latency, lastChecked: Date.now() };
+    if (forumResults) {
+        const forumState = {};
+        for (const f of forumResults) {
+            forumState[f.name] = { status: f.status, latency: f.latency, lastChecked: Date.now() };
+        }
+        allUpdates.forums = forumState;
     }
-    allUpdates.forums = forumState;
 
     // Persist state
     if (Object.keys(allUpdates).length > 0) {
@@ -478,12 +487,15 @@ export function startSystemMonitor() {
     firebase.init();
     const db = firebase.db;
 
-    console.log('[MONITOR] ✅ System monitor active (3-hour cycle).');
+    console.log('[MONITOR] ✅ System monitor active (2-hour cycle).');
 
-    // Run immediately on startup
-    const runAll = async () => {
+    // Run immediately on startup. Browser-based forum latency checks are only
+    // re-run at boot if the cached status was NOT healthy — a restart doesn't
+    // mean the forums changed, and opening 3 Playwright pages at boot is churn
+    // we just reduced. The scheduled cycle re-checks forums every time.
+    const runAll = async (opts = {}) => {
         try {
-            await runHealthCheck(db);
+            await runHealthCheck(db, opts);
         } catch (err) {
             console.error('[MONITOR] Health check error:', err.message);
         }
@@ -507,7 +519,16 @@ export function startSystemMonitor() {
         }
     };
 
-    // Run now, then every 2 hours
-    runAll();
+    // Run now, then every 2 hours. On the first run, skip forum checks if the
+    // cached monitoring state shows all forums healthy (avoids startup browser churn).
+    (async () => {
+        let skipForums = false;
+        try {
+            const cached = (await db.ref('monitoring/forums').once('value')).val() || {};
+            const statuses = Object.values(cached).map(f => f?.status).filter(Boolean);
+            skipForums = statuses.length > 0 && statuses.every(s => s === 'Good');
+        } catch { /* assume need to check */ }
+        await runAll({ skipForums });
+    })();
     setInterval(runAll, 2 * 60 * 60 * 1000);
 }

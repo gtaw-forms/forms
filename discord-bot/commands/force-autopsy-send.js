@@ -66,7 +66,13 @@ export async function execute(interaction) {
         // 1. Send completion reply to request topic
         const requesterName = matched.parsed?.requesterName || "Requesting Party";
         const caseTitle = matched.caseUrl || matched.title || "Autopsy Case";
-        const completionBb = buildCompletionBb(caseTitle, requesterName, null);
+        const forceFaction = matched.isPrivate === true
+            ? 'private'
+            : (String(matched.faction || '').toLowerCase()
+                || (/\[(lssd|lspd)\]/i.exec(matched.title || '') || [])[1]?.toLowerCase()
+                || null);
+        const forceLspdUrl = matched.lspdTopicId ? `https://lspd.gta.world/viewtopic.php?t=${matched.lspdTopicId}` : null;
+        const completionBb = buildCompletionBb(caseTitle, requesterName, { faction: forceFaction, lspdUrl: forceLspdUrl });
 
         console.log(`[FORCE-AUTO] Posting completion reply to request topic #${matchedId}...`);
         const replyResult = await client.replyToTopic(matchedId, AUTOPSY_REQUEST_FORUM_ID, completionBb, { dryRun: false, baseUrl: PHMC_BASE });

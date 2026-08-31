@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { database } from '../firebase';
 import { ref, get } from 'firebase/database';
+import { triggerGetReportBBCode } from '../services/firebaseFunctions';
 import * as Sentry from "@sentry/react";
 import { useNotification } from '../contexts/NotificationContext';
 import { useData } from '../contexts/DataContext';
@@ -14,7 +15,7 @@ const BBCODE_PATH = isLocalHost ? 'scheduledReportsBBCode' : 'newSavedReportBBCo
 
 export const useReportLoader = () => {
     const { showNotification, removeNotification } = useNotification();
-    const { factionsData, coronerListData, phmcListData, sendDataRequestLog } = useData();
+    const { factionListData, sendDataRequestLog } = useData();
     const { user: gtaWorldUser, isAuthenticated: isGtaAuthenticated } = useGtaWorldAuth();
 
     const [savedReports, setSavedReports] = useState([]);
@@ -22,22 +23,13 @@ export const useReportLoader = () => {
     const [selectedUserForSavedReports, setSelectedUserForSavedReports] = useState(null);
 
     const findEmployeeDetails = useCallback((employeeName) => {
-        if (factionsData && factionsData['364'] && factionsData['364'].members) {
-            const allMembers = Object.values(factionsData['364'].members);
-            const employee = allMembers.find(member => 
-                (member.characterName && member.characterName === employeeName) || 
-                (member.name && member.name === employeeName)
-            );
-            if (employee) return employee;
-        }
-
-        // Fallback to legacy lists if not found in the new system
-        const legacyCoroner = coronerListData.find(c => c.name === employeeName);
-        if (legacyCoroner) return legacyCoroner;
-        
-        const legacyPhmc = phmcListData.find(p => p.name === employeeName);
-        return legacyPhmc || null;
-    }, [factionsData, coronerListData, phmcListData]);
+        if (!employeeName) return null;
+        const employee = factionListData.find(member =>
+            (member.characterName && member.characterName === employeeName) ||
+            (member.name && member.name === employeeName)
+        );
+        return employee || null;
+    }, [factionListData]);
 
     const loadUserSavedReports = useCallback(async (userId) => {
         if (!userId) {
@@ -53,11 +45,13 @@ export const useReportLoader = () => {
         const sanitizedUserId = comprehensiveSanitize(userId);
         const legacyReportsRef = ref(database, `savedReports/${sanitizedUserId}`);
         const newReportsRef = ref(database, `${REPORTS_PATH}/${sanitizedUserId}`);
+        const scheduledRef = ref(database, `scheduledReports/${sanitizedUserId}`);
 
         try {
-            const [legacySnapshot, newSnapshot] = await Promise.all([
+            const [legacySnapshot, newSnapshot, scheduledSnapshot] = await Promise.all([
                 get(legacyReportsRef),
-                get(newReportsRef)
+                get(newReportsRef),
+                get(scheduledRef)
             ]);
 
             let allReports = [];
@@ -88,6 +82,19 @@ export const useReportLoader = () => {
                     key: key // The firebase key
                 }));
                 allReports.push(...newReports);
+            }
+
+            // Deploy-tracked reports live under scheduledReports (bot queue) — the
+            // deployed ones carry hasdeployed/deployStatus/deployUrl there. Include
+            // them so the UI can show deploy status + "Edit & Repost".
+            if (scheduledSnapshot.exists()) {
+                const schedData = scheduledSnapshot.val();
+                const schedReports = Object.keys(schedData).map(key => ({
+                    ...schedData[key],
+                    key: key,
+                    _src: 'scheduled',
+                }));
+                allReports.push(...schedReports);
             }
 
             removeNotification(loadingNotifId);
@@ -126,9 +133,15 @@ export const useReportLoader = () => {
             ? `savedReports/${sanitizedUserId}/${reportFirebaseKey}`
             : `${REPORTS_PATH}/${sanitizedUserId}/${reportFirebaseKey}`;
 
-        const bbCodePath = isLegacyReport
+        let bbCodePath = isLegacyReport
             ? `savedReportBBCode/${sanitizedUserId}/${reportFirebaseKey}`
             : `${BBCODE_PATH}/${sanitizedUserId}/${reportFirebaseKey}`;
+
+        // Deploy-tracked reports (from the bot queue) read/write scheduledReports.
+        if (report._src === 'scheduled') {
+            reportPath = `scheduledReports/${sanitizedUserId}/${reportFirebaseKey}`;
+            bbCodePath = `scheduledReportsBBCode/${sanitizedUserId}/${reportFirebaseKey}`;
+        }
         
         const reportRef = ref(database, reportPath);
         const bbCodeRef = ref(database, bbCodePath);
@@ -139,10 +152,26 @@ export const useReportLoader = () => {
         }
 
         try {
-            const [reportSnapshot, bbCodeSnapshot] = await Promise.all([
-                get(reportRef),
-                get(bbCodeRef)
-            ]);
+            const reportSnapshot = await get(reportRef);
+
+            // P2: saved-report BBCode now lives on the VPS (newSavedReportBBCode
+            // migrated off RTDB). Try the Cloud Function first for the live
+            // newSavedReports store; fall back to RTDB for legacy reports.
+            let bbCodeSnapshot = null;
+            const useVpsBbcode = !isLegacyReport && report._src !== 'scheduled' && !isLocalHost && bbCodePath.startsWith(BBCODE_PATH);
+            if (useVpsBbcode) {
+                let vpsBbCode = '';
+                try {
+                    const res = await triggerGetReportBBCode({ author: sanitizedUserId, key: reportFirebaseKey });
+                    if (res && typeof res.bbCode === 'string' && res.bbCode) vpsBbCode = res.bbCode;
+                } catch (e) { /* fall through to RTDB */ }
+                if (vpsBbCode) {
+                    bbCodeSnapshot = { exists: () => true, val: () => ({ bbCode: vpsBbCode }) };
+                }
+            }
+            if (!bbCodeSnapshot) {
+                bbCodeSnapshot = await get(bbCodeRef);
+            }
 
             if (reportSnapshot.exists()) {
                 const reportData = reportSnapshot.val();

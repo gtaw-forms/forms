@@ -79,10 +79,10 @@ export async function setMaintenanceMode(enabled, db) {
                     if (!state.knownReportKeys) return;
                     state.knownReportKeys.add(reportKey);
                     const item = { authorId, key: reportKey, report: reportData, db };
-                    const formId = reportData.formId;
+                    const formId = reportData.formId === 'testing-compact-mode' ? 'general_consultation' : reportData.formId;
                     if (formId === 'coroner_email') consentGateAndEnqueue('pm', item, formId);
                     else if (['death_record', 'mass-ftality-test', 'coroner-report'].includes(formId)) consentGateAndEnqueue('topic', item, formId);
-                    else if (['patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical', 'session_notes', 'intensive_treatment', 'psych-eval', 'testing-compact-mode'].includes(formId)) consentGateAndEnqueue('medical-record', item, formId);
+                    else if (['patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical', 'session_notes', 'intensive_treatment', 'psych-eval', 'general_consultation'].includes(formId)) consentGateAndEnqueue('medical-record', item, formId);
                     else if (formId === 'autopsy') consentGateAndEnqueue('autopsy-reply', item, formId);
                     requeued++;
                 });
@@ -175,7 +175,7 @@ export async function enqueue(type, data) {
     // Post a unified progress embed (will be edited by the deploy handler later)
     let progressMessageId = null;
     try {
-        const embed = new DeployProgressEmbed(state.discordClient, process.env.BOT_LOG_CHANNEL_ID);
+        const embed = new DeployProgressEmbed(state.discordClient, process.env.BOT_LOG_CHANNEL_ID, data?.report?.appBuild);
         const minutes = Math.round(C.DEFER_MS / 60000);
         const displayLabel = patientName ? `${label} — ${patientName}` : label;
         await embed.start(`Queued: ${displayLabel} — deploys ~${deployTime} (${minutes} min)`);
@@ -275,7 +275,7 @@ export function getQueuedDeployments() {
         const remaining = Math.max(0, Math.round((entry.fireTime - now) / 1000));
         const formId = entry.data.report?.formId || '';
         let forumLabel;
-        if (['patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical', 'session_notes', 'intensive_treatment', 'psych-eval', 'testing-compact-mode'].includes(formId)) forumLabel = 'Medical Records';
+        if (['patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical', 'session_notes', 'intensive_treatment', 'psych-eval', 'general_consultation'].includes(formId)) forumLabel = 'Medical Records';
         else if (entry.type === 'topic' || entry.type === 'medical-record') {
             const MAP = { 'coroner-report': 'Coroner Reports', 'death_record': 'Death Records', 'mass-ftality-test': 'Mass Fatality', 'autopsy': 'Autopsy' };
             forumLabel = MAP[formId] || 'PHMC Forum';

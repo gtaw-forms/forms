@@ -16,6 +16,14 @@ const LSPD_BASE = 'https://lspd.gta.world';
 const LSPD_FORUM_ID = 1361;
 
 /**
+ * Normalize the db argument to a Reference for a path.
+ * `db` may be a firebase-admin Database (has `.ref`) or the bot's `state.dbRef`,
+ * which is a root Reference (has `.child`, no `.ref`) — calling `db.ref()` on it
+ * throws "db.ref is not a function", silently skipping the status write.
+ */
+const refFor = (db, path) => (typeof db.ref === 'function' ? db.ref(path) : db.child(path));
+
+/**
  * Cross-post a completed autopsy to the LSPD forum.
  * Creates a new topic with the case title, posts the completed report as a reply.
  *
@@ -115,7 +123,7 @@ async function writeStatus(phmcTopicId, db, status, extra) {
         for (const [k, v] of Object.entries(update)) {
             if (v !== undefined) clean[k] = v;
         }
-        await db.ref('autopsy-requested/' + phmcTopicId).update(clean);
+        await refFor(db, 'autopsy-requested/' + phmcTopicId).update(clean);
     } catch (err) {
         console.warn('[LSPD-XP] Failed to write status:', err.message);
     }
@@ -128,7 +136,7 @@ export async function retryFailedLspdCrossposts(db) {
     logFnCall('deployLspd', 'retryFailedLspdCrossposts', 'Scanning for failed LSPD cross-posts');
     if (!db) return;
     try {
-        const snap = await db.ref('autopsy-requested').orderByChild('lspdCrosspostStatus').equalTo('failed').once('value');
+        const snap = await refFor(db, 'autopsy-requested').orderByChild('lspdCrosspostStatus').equalTo('failed').once('value');
         if (!snap.exists()) {
             console.log('[LSPD-XP] No failed cross-posts to retry');
             return;

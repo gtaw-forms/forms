@@ -2,6 +2,26 @@ import * as Sentry from "@sentry/react";
 import { triggerWebhookProxy } from '../services/firebaseFunctions';
 
 // ---------------------------------------------------------------------------
+// IndexedDB Cascade Error Filtering
+// ---------------------------------------------------------------------------
+// When a user's browser/disk can't open IndexedDB (quota/disk full), Firebase
+// internals keep firing idb-get/idb-set against the dead connection and every
+// aborted transaction surfaces as an unhandled AbortError. These are all the
+// SAME root cause — filter them so only the one tagged event survives.
+const IDB_CASCADE_PATTERNS = [
+    /The transaction was aborted,?/i,
+    /database connection is closing/i,
+    /Encountered full disk while opening backing store/i,
+    /Failed to execute 'transaction' on 'IDBDatabase'/i,
+    /app\/idb-(get|set)/i,
+];
+
+export const isIndexedDBCascadeError = (error) => {
+    const message = String(error?.message ?? error ?? '');
+    return IDB_CASCADE_PATTERNS.some(re => re.test(message));
+};
+
+// ---------------------------------------------------------------------------
 // User Context Helpers
 // ---------------------------------------------------------------------------
 
@@ -33,7 +53,11 @@ export const getUserOAuthIdentity = () => {
             username,
             characterName,
             characterId,
-            faction: faction?.factionName || faction?.name || null
+            // The server `faction` object only carries characterName/characterId/
+            // rank/scriptRank (no factionName/name), so deriving the label from
+            // factionName/name always rendered "Unknown". Fall back to the
+            // membership flag so the report is truthful when faction exists.
+            faction: faction?.factionName || faction?.name || (user.isFactionMember ? 'PHMC' : null)
         };
     } catch (error) {
         console.warn('Failed to get user OAuth identity:', error);
@@ -141,19 +165,11 @@ export const logAuthErrorToDiscord = async (error, context) => {
       fields: [
         {
           name: 'Error Message',
-          value: `
-
-${error.message || 'No message'}
-
-`,
+          value: clampField(`\n\n${error.message || 'No message'}\n\n`),
         },
         {
           name: 'Stack Trace',
-          value: `
-
-${error.stack || 'No stack trace'}
-
-`,
+          value: clampField(`\n\n${error.stack || 'No stack trace'}\n\n`),
         },
       ],
       timestamp: new Date().toISOString(),
@@ -170,6 +186,47 @@ ${error.stack || 'No stack trace'}
     await triggerWebhookProxy('auth', payload);
   } catch (loggingError) {
     console.error('Failed to log auth error to Discord:', loggingError);
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Identity Refresh Logger
+// ---------------------------------------------------------------------------
+
+let lastIdentityRefreshLog = { username: '', at: 0 };
+const IDENTITY_REFRESH_LOG_COOLDOWN_MS = 60 * 1000;
+
+/**
+ * Log a background identity profile refresh to the Discord admin webhook.
+ * Fired on each attempt so the sequence is traceable; deduped per user (60s)
+ * so a page-load loop can't flood the channel.
+ */
+export const logIdentityRefresh = async ({ username, characterName, trigger, attempt, maxAttempts, matchedBy, success, promptedReauth = false }) => {
+  const now = Date.now();
+  if (username && lastIdentityRefreshLog.username === username && (now - lastIdentityRefreshLog.at) < IDENTITY_REFRESH_LOG_COOLDOWN_MS) {
+    return;
+  }
+  lastIdentityRefreshLog = { username: username || '', at: now };
+
+  try {
+    const embed = {
+      title: 'Identity Refresh',
+      color: success ? 0x2ecc71 : 0xffc107,
+      description: `**User:** ${username || 'Unknown'}\n**Character:** ${characterName || 'N/A'}\n\nVisited site, previously authenticated, refreshing profile.`,
+      fields: [
+        { name: 'Trigger', value: trigger || 'unknown', inline: true },
+        { name: 'Attempt', value: `${attempt}/${maxAttempts}`, inline: true },
+        { name: 'Matched by', value: matchedBy || 'none', inline: true },
+        { name: 'Success', value: success ? 'yes' : 'no', inline: true },
+        ...(promptedReauth ? [{ name: 'Prompt', value: 'Re-auth notification shown to user', inline: false }] : []),
+      ],
+      timestamp: new Date().toISOString(),
+      footer: { text: 'PHMC Forms - Identity Refresh' },
+    };
+
+    await triggerWebhookProxy('admin', { embeds: [embed] });
+  } catch (err) {
+    console.warn('[IdentityRefresh] Failed to log to Discord:', err?.message || err);
   }
 };
 
@@ -277,10 +334,19 @@ export const initConsoleInterceptor = (isSentryBlockedProvider) => {
 
 let lastDiscordErrorMessage = '';
 let lastDiscordErrorTimestamp = 0;
+const recentDiscordErrors = new Map(); // message -> last-sent timestamp (dedupes alternating/repeated errors)
 let lastDiscordErrorStack = '';
 let isProcessingDiscordQueue = false;
 let discordErrorWebhookQueue = [];
 let errorTimestamps = [];
+
+// Discord embed field values cap at 1024 chars; names at 256. Oversized fields
+// get rejected with HTTP 400 `{"embeds": ["0"]}` — the cause of webhook-send
+// failures on long navigation histories / client info / stacks.
+const clampField = (value, max = 1024) => {
+    const s = String(value ?? '');
+    return s.length > max ? s.slice(0, max - 3) + '...' : s;
+};
 
 const processDiscordErrorQueue = async () => {
     if (isProcessingDiscordQueue || discordErrorWebhookQueue.length === 0) return;
@@ -290,7 +356,10 @@ const processDiscordErrorQueue = async () => {
     try {
         await triggerWebhookProxy('error', payload);
     } catch (e) {
-        console.error("CRITICAL: Failed to send Discord error webhook.", e);
+        // Marked so the console interceptor does NOT re-forward this as another
+        // "unhandled error" (which would recurse: report failure → report the
+        // failure → ...).
+        console.error("[Discord Error Webhook] CRITICAL: Failed to send Discord error webhook.", e);
     } finally {
         setTimeout(() => {
             isProcessingDiscordQueue = false;
@@ -316,6 +385,13 @@ export const sendDiscordErrorWebhook = (errorDetails, sentryBlocked = false) => 
     const errorMessage = String(errorDetails.message || '').substring(0, 1000);
     const errorStack = String(errorDetails.stack || '').substring(0, 1000);
 
+    // Suppress the Firebase IndexedDB cascade (same root cause every time) —
+    // the startup probe reports it once as a tagged event instead.
+    if (isIndexedDBCascadeError(errorMessage)) {
+        console.warn('[Discord Error Webhook] Suppressing IndexedDB cascade error:', errorMessage);
+        return;
+    }
+
     const normalizeErrorMessage = (msg) => {
         return msg.replace(/^(TypeError|ReferenceError|SyntaxError|RangeError|URIError|EvalError|InternalError):\s*/i, '');
     };
@@ -327,6 +403,22 @@ export const sendDiscordErrorWebhook = (errorDetails, sentryBlocked = false) => 
     ) {
         console.warn('[Discord Error Webhook] Duplicate error suppressed:', errorMessage);
         return;
+    }
+
+    // Message-keyed dedup — collapses retry bursts that ALTERNATE between two
+    // messages (e.g. a callable wrapper + its DataContext catch), which the
+    // last-only check above can't catch. One report per distinct message per window.
+    const dedupKey = normalizedErrorMessage || errorMessage;
+    const lastSentForMessage = recentDiscordErrors.get(dedupKey) || 0;
+    if (now - lastSentForMessage < ERROR_RATE_LIMIT_WINDOW) {
+        console.warn('[Discord Error Webhook] Repeated error suppressed (dedup):', errorMessage);
+        return;
+    }
+    recentDiscordErrors.set(dedupKey, now);
+    if (recentDiscordErrors.size > 50) {
+        for (const [k, v] of recentDiscordErrors) {
+            if (now - v >= ERROR_RATE_LIMIT_WINDOW) recentDiscordErrors.delete(k);
+        }
     }
 
     errorTimestamps.push(now);
@@ -349,19 +441,19 @@ export const sendDiscordErrorWebhook = (errorDetails, sentryBlocked = false) => 
         description: errorDetails.isLogicalError ? "A logical error or data inconsistency was detected by the application." : "An unhandled error was caught by the global error handler.",
         color: errorDetails.isLogicalError ? 0x3498db : (sentryBlocked ? 0xFFA500 : 0xDE354C),
         fields: [
-            { name: "Error Type", value: errorDetails.isLogicalError ? "Logical/Data" : (errorDetails.isButtonClickError ? "UI Button Interaction" : (errorDetails.isInputFieldError ? "Input Field Interaction" : "General")), inline: true },
-            userIdentity ? { name: "User Identity", value: `**Username:** \`${userIdentity.username || 'Unknown'}\`\n**Character:** \`${userIdentity.characterName || 'Unknown'}\`\n**Character ID:** \`${userIdentity.characterId || 'Unknown'}\`\n**Faction:** \`${userIdentity.faction || 'Unknown'}\``, inline: false } : null,
-            { name: "Error Message", value: `\`${errorMessage}\``, inline: false },
-            { name: "Context / Location", value: `**${errorDetails.context || errorDetails.source || "Unknown Location"}**`, inline: true },
-            !errorDetails.isLogicalError ? { name: "Line/Col", value: `L${errorDetails.lineno || "N/A"}:C${errorDetails.colno || "N/A"}`, inline: true } : null,
-            { name: "User Agent", value: `\`${navigator.userAgent}\``, inline: false },
-            sentryEventId ? { name: "Sentry Trace/Event ID", value: `\`${sentryEventId}\``, inline: false } : null,
+            { name: "Error Type", value: clampField(errorDetails.isLogicalError ? "Logical/Data" : (errorDetails.isButtonClickError ? "UI Button Interaction" : (errorDetails.isInputFieldError ? "Input Field Interaction" : "General"))), inline: true },
+            userIdentity ? { name: "User Identity", value: clampField(`**Username:** \`${userIdentity.username || 'Unknown'}\`\n**Character:** \`${userIdentity.characterName || 'Unknown'}\`\n**Character ID:** \`${userIdentity.characterId || 'Unknown'}\`\n**Faction:** \`${userIdentity.faction || 'Unknown'}\``), inline: false } : null,
+            { name: "Error Message", value: clampField(`\`${errorMessage}\``), inline: false },
+            { name: "Context / Location", value: clampField(`**${errorDetails.context || errorDetails.source || "Unknown Location"}**`), inline: true },
+            !errorDetails.isLogicalError ? { name: "Line/Col", value: clampField(`L${errorDetails.lineno || "N/A"}:C${errorDetails.colno || "N/A"}`), inline: true } : null,
+            { name: "User Agent", value: clampField(`\`${navigator.userAgent}\``), inline: false },
+            sentryEventId ? { name: "Sentry Trace/Event ID", value: clampField(`\`${sentryEventId}\``), inline: false } : null,
             errorDetails.navigationHistory && errorDetails.navigationHistory.length > 0 ? {
                 name: "Navigation History (Last 15)",
-                value: `\`\`\`\n${errorDetails.navigationHistory.map(h => `[${h.timestamp}] (${h.type}) ${h.path}`).join('\n')}\n\`\`\``,
+                value: clampField(`\`\`\`\n${errorDetails.navigationHistory.map(h => `[${h.timestamp}] (${h.type}) ${h.path}`).join('\n')}\n\`\`\``),
                 inline: false
             } : null,
-            errorDetails.clientInfo ? { name: "Client Info", value: `\`\`\`json\n${JSON.stringify(errorDetails.clientInfo, null, 2)}\n\`\`\``, inline: false } : null,
+            errorDetails.clientInfo ? { name: "Client Info", value: clampField(`\`\`\`json\n${JSON.stringify(errorDetails.clientInfo, null, 2)}\n\`\`\``), inline: false } : null,
         ].filter(Boolean),
         timestamp: new Date().toISOString(),
         footer: { text: `PHMC Tools - Global Error Handler` }

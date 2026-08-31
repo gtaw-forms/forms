@@ -50,6 +50,11 @@ const AdminDashboard = ({
     const [mapEnabled, setMapEnabled] = useState(false);
     const [maintenanceActive, setMaintenanceActive] = useState(false);
     const [maintenanceMessage, setMaintenanceMessage] = useState('');
+    const [splashActive, setSplashActive] = useState(false);
+    const [splashTitle, setSplashTitle] = useState('');
+    const [splashMessage, setSplashMessage] = useState('');
+    const [splashEta, setSplashEta] = useState('');
+    const [splashPauseQueue, setSplashPauseQueue] = useState(true);
     const [isSavingMaintenance, setIsSavingMaintenance] = useState(false);
     const [morgueBannerText, setMorgueBannerText] = useState('');
     const [morgueBannerType, setMorgueBannerType] = useState('info');
@@ -144,6 +149,10 @@ const AdminDashboard = ({
                 const data = snapshot.val();
                 setMaintenanceActive(!!data.active);
                 setMaintenanceMessage(data.message || '');
+                setSplashActive(!!data.splash?.active);
+                setSplashTitle(data.splash?.title || '');
+                setSplashMessage(data.splash?.message || '');
+                setSplashEta(data.splash?.eta || '');
             }
         };
         loadMaintenance();
@@ -437,9 +446,21 @@ const AdminDashboard = ({
             await set(dbRef, {
                 active: maintenanceActive,
                 message: maintenanceMessage.trim(),
+                splash: {
+                    active: splashActive,
+                    title: splashTitle.trim(),
+                    message: splashMessage.trim(),
+                    eta: splashEta.trim(),
+                    updatedBy: `admin:${currentUser?.email || 'unknown'}`,
+                    updatedAt: Date.now(),
+                },
                 updatedAt: Date.now(),
                 updatedBy: currentUser?.email || 'unknown',
             });
+            if (splashPauseQueue) {
+                const queueRef = ref(getDatabase(), 'appMetadata/botMaintenance');
+                await set(queueRef, !!splashActive);
+            }
             showInAppNotification(
                 maintenanceActive ? '🔧 Maintenance mode enabled.' : '✅ Maintenance mode disabled.',
                 'success'
@@ -712,6 +733,67 @@ const AdminDashboard = ({
                                                 )}
                                             </button>
                                         </div>
+                                    </div>
+
+                                    <div className="admin-section-title mt-4"><i className="fas fa-exclamation-triangle me-2 text-warning" />Maintenance Splash Screen</div>
+                                    <p className="text-muted" style={{ fontSize: '0.9rem' }}>
+                                        Full-screen overlay shown to all users during major maintenance / upstream outages. Public users see a hard splash; PHMC staff get a "Continue to dashboard" button.
+                                    </p>
+                                    <div className="form-check form-switch mb-4">
+                                        <input
+                                            className="form-check-input"
+                                            type="checkbox"
+                                            role="switch"
+                                            id="splashToggle"
+                                            checked={splashActive}
+                                            onChange={(e) => setSplashActive(e.target.checked)}
+                                            style={{ transform: 'scale(1.5)', marginRight: '12px', cursor: 'pointer' }}
+                                        />
+                                        <label className="form-check-label fw-bold" htmlFor="splashToggle" style={{ fontSize: '1.1rem' }}>
+                                            {splashActive ? '🚧 Splash Screen Active' : 'Splash Screen Off'}
+                                        </label>
+                                    </div>
+                                    <div className="mb-3">
+                                        <label className="form-label fw-bold">Title</label>
+                                        <input
+                                            className="form-control bg-dark border-secondary text-white"
+                                            placeholder="e.g. Major Maintenance"
+                                            value={splashTitle}
+                                            onChange={(e) => setSplashTitle(e.target.value)}
+                                        />
+                                    </div>
+                                    <div className="mb-3">
+                                        <label className="form-label fw-bold">Message</label>
+                                        <textarea
+                                            className="form-control bg-dark border-secondary text-white"
+                                            rows={3}
+                                            placeholder="e.g. Upstream forum provider is experiencing an outage. Report submission is temporarily unavailable."
+                                            value={splashMessage}
+                                            onChange={(e) => setSplashMessage(e.target.value)}
+                                        />
+                                    </div>
+                                    <div className="mb-3">
+                                        <label className="form-label fw-bold">ETA (optional)</label>
+                                        <input
+                                            className="form-control bg-dark border-secondary text-white"
+                                            placeholder="e.g. approx. 2 hours"
+                                            value={splashEta}
+                                            onChange={(e) => setSplashEta(e.target.value)}
+                                        />
+                                    </div>
+                                    <div className="form-check form-switch mb-4">
+                                        <input
+                                            className="form-check-input"
+                                            type="checkbox"
+                                            role="switch"
+                                            id="splashPauseQueueToggle"
+                                            checked={splashPauseQueue}
+                                            onChange={(e) => setSplashPauseQueue(e.target.checked)}
+                                            style={{ transform: 'scale(1.3)', marginRight: '10px', cursor: 'pointer' }}
+                                        />
+                                        <label className="form-check-label" htmlFor="splashPauseQueueToggle">
+                                            Also pause bot deploy queues while splash is active
+                                        </label>
                                     </div>
 
                                     <hr className="my-4 border-secondary" />

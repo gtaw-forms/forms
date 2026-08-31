@@ -8,6 +8,22 @@ bot that auto-deploys reports to phpBB forums.
 Developed with agentic coding; changes are manually reviewed by a developer and
 tested to sufficient standards.
 
+## Documentation
+
+Forking or deploying this project? Start here:
+
+- **[Setup Guide](setup/SETUP.md)** — prerequisites, fork, install, configure, run locally
+- **[Agent Setup Prompt](setup/AGENT-SETUP-PROMPT.md)** — a ready-to-paste prompt for an AI agent to configure + run the fork
+- **[Architecture](setup/ARCHITECTURE.md)** — how the web app, bot, morgue-api, and Cloud Functions fit together
+- **[Configuration](setup/CONFIGURATION.md)** — every env var across web / bot / functions
+- **[Secrets](setup/SECRETS.md)** — the GCP Secrets Manager schema (`PHMC_CONFIG` + GTAW tokens)
+- **[Authentication](setup/AUTHENTICATION.md)** — GTA World OAuth + Email/Password login setup
+- **[Deployment](setup/DEPLOYMENT.md)** — VPS + pm2, gh-pages, functions, rules
+- **[Data Model](setup/DATA-MODEL.md)** — the Realtime Database layout
+- **[Schema](setup/SCHEMA.md)** — field-level reference for the key RTDB nodes
+- **[Customization](setup/CUSTOMIZATION.md)** — adding forms, commands, forum accounts
+- **[Troubleshooting](setup/TROUBLESHOOTING.md)** — common issues and fixes
+
 ## Repo Layout
 
 ```

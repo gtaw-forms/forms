@@ -14,6 +14,7 @@ import { logFnCall, DeployProgressEmbed, notifyDeployFailure } from './deployLog
 import { state } from './deployState.js';
 import { setDeployStatus, markReportComplete } from './deployStatus.js';
 import { upsertPatient, findPatientIndexEntry, removePatientIndexEntry } from './patientIndex.js';
+import { isMaintenanceMode } from './deployQueue.js';
 
 // ── Safety env vars ──
 const MEDICAL_RECORD_DRY_RUN = process.env.MEDICAL_RECORD_DRY_RUN !== 'false';
@@ -72,11 +73,18 @@ async function getNextPatientId(client, db) {
  */
 export async function handleMedicalRecord(report) {
     const { authorId, key, report: reportData, db } = report;
+
+    // Respect maintenance mode — skip regardless of caller path
+    if (await isMaintenanceMode().catch(() => false)) {
+        console.log(`[AUTO]  ${key}  maintenance mode — skipping medical record`);
+        return;
+    }
+
     const DRY_REPLY = process.env.DRY_REPLY !== 'false';
     const isDryRun = MEDICAL_RECORD_DRY_RUN;
 
     // ── Progress embed ──
-    const progress = new DeployProgressEmbed(state.discordClient, process.env.BOT_LOG_CHANNEL_ID);
+    const progress = new DeployProgressEmbed(state.discordClient, process.env.BOT_LOG_CHANNEL_ID, reportData.appBuild);
     if (report._progressMessageId) {
         await progress.resume(report._progressMessageId, report._progressChannelId || process.env.BOT_LOG_CHANNEL_ID, `Medical Record — ${reportData.originalKey || key}`);
     } else {

@@ -1,0 +1,13 @@
+{
+  "me": "MEDICAL_EXAMINER_NAME",
+  "discordId": "DISCORD_USER_ID",
+  "case": {
+    "title": "Case 000 - Decedent Name (( OOC Name )) [FACTION]",
+    "number": "000",
+    "decedent": "Decedent Name",
+    "ooc": "OOC Name",
+    "url": "https://phmc.gta.world/viewtopic.php?t=00000",
+    "deadline": "2026-01-01 (CK — 72h)",
+    "note": "Optional note to the ME"
+  }
+}

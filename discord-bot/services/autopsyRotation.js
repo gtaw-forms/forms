@@ -81,6 +81,23 @@ function hasAlternativeInRotation(rotation, position, skipSteps, activeCounts, l
     return false;
 }
 
+/**
+ * DEV TEST MODE — runtime-forced ME assignment for safe pipeline testing.
+ *
+ * When AUTOPSY_DEV_TEST=true, EVERY new autopsy case (fair rotation, surge and
+ * supervised "ASSIGNED:" overrides alike) is assigned to AUTOPSY_DEV_TEST_ME
+ * instead of walking the rotation. Toggled live via /enable-dev-autopsy, which
+ * also persists both vars to .env so the mode survives restarts.
+ */
+export function isDevTestActive() {
+    return String(process.env.AUTOPSY_DEV_TEST || '').toLowerCase() === 'true';
+}
+
+export function getDevTestME() {
+    if (!isDevTestActive()) return null;
+    return String(process.env.AUTOPSY_DEV_TEST_ME || 'Alyson Frost').trim() || 'Alyson Frost';
+}
+
 // ── Core ──
 
 /**
@@ -100,9 +117,9 @@ function hasAlternativeInRotation(rotation, position, skipSteps, activeCounts, l
  * @returns {Promise<string|null>} assigned ME username, or null if none available
  */
 export async function selectME(db, topicId, caseNum) {
-    // DEV TEST MODE: force all assignments to Alyson Frost
-    if (process.env.AUTOPSY_DEV_TEST === 'true') {
-        const devName = 'Alyson Frost';
+    // DEV TEST MODE: force all assignments to the configured dev ME (default Alyson Frost)
+    const devName = getDevTestME();
+    if (devName) {
         console.log('[ROTATION] DEV TEST — assigning to ' + devName);
         await recordAssignment(db, devName, topicId, caseNum);
         return devName;
@@ -270,6 +287,25 @@ export async function getRotationStatus(db) {
         // If everyone's busy/LOA, no effective next
     }
 
+    // Surge detection + deterministic surge pick (mirrors selectME Phase 2):
+    // when every non-LOA ME has ≥1 active case, the next case goes to the
+    // least-loaded ME; ties are broken by the oldest lastAssigned (never
+    // assigned counts as oldest), preserving rotation order for exact ties.
+    const nonLoa = list.filter((m) => !loaSet.has(m.toLowerCase()));
+    let surgeMode = false;
+    let surgePick = null;
+    if (nonLoa.length > 0) {
+        const minCount = Math.min(...nonLoa.map((m) => assignments[m.toLowerCase()]?.active || 0));
+        surgeMode = minCount >= 1;
+        if (surgeMode) {
+            const tied = nonLoa.filter((m) => (assignments[m.toLowerCase()]?.active || 0) === minCount);
+            surgePick = tied.reduce((best, m) => {
+                const ts = assignments[m.toLowerCase()]?.lastAssigned || 0;
+                return ts < (assignments[best.toLowerCase()]?.lastAssigned || 0) ? m : best;
+            }, tied[0]);
+        }
+    }
+
     const meStatus = list.map((name, idx) => {
         const ml = name.toLowerCase();
         const assignData = assignments[ml] || {};
@@ -290,6 +326,8 @@ export async function getRotationStatus(db) {
         effectiveNext: effectiveNextName,
         effectiveNextIdx,
         meStatus,
+        surgeMode,
+        surgePick,
         configured: rotation !== null,
     };
 }

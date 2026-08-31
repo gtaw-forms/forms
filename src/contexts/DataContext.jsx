@@ -61,6 +61,13 @@ export const useData = () => {
     return useContext(DataContext);
 };
 
+// Rank-string keywords that classify a PHMC faction member as Coroner staff.
+// Used only where the coroner distinction is still needed (legacy UI grouping,
+// diagnostics) — the roster itself is a single list (factionListData).
+export const CORONER_KEYWORDS = ['Coroner', 'Examiner', 'Attendant'];
+
+export const isCoronerMember = (member) => CORONER_KEYWORDS.some((kw) => (member?.rank || '').includes(kw));
+
 export const DataProvider = ({ children }) => {
     const { user, isAuthenticated } = useGtaWorldAuth();
         const { showNotification, removeNotification } = useNotification();
@@ -70,12 +77,12 @@ export const DataProvider = ({ children }) => {
     const [selectOptions, setSelectOptions] = useState({});
     const [morgueRecords, setMorgueRecords] = useState([]);
     const [isLoadingData, setIsLoadingData] = useState(true);
+  const [morgueLoading, setMorgueLoading] = useState(false);
     const [pendingRefreshInfo, setPendingRefreshInfo] = useState(null);
 
     const debounceTimers = useRef({});
 
 const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarningTriggered);
-    const CORONER_KEYWORDS = ['Coroner', 'Examiner', 'Attendant'];
     const updateCacheSegment = useCallback(async (segment, data) => {
         // Update memory cache
         dataCache.current[segment] = data;
@@ -192,6 +199,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
     const [dataLoaded, setDataLoaded] = useState(false);
     const firebaseListeners = useRef({});
     const morgueRecordsLoadedRef = useRef(false);
+  const morgueFetchInFlightRef = useRef(null);
 
     // Cache configuration
     const CACHE_PREFIX = 'firebaseCache';
@@ -339,6 +347,11 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
 
     // Lazy-load morgue records on demand (not fetched during initial app load)
     const loadMorgueRecords = useCallback(async () => {
+        // In-flight dedup: concurrent callers (auth init + sidebar + autopsy modal)
+        // share one fetch instead of each firing a fresh Cloud Function call.
+        if (morgueFetchInFlightRef.current) return morgueFetchInFlightRef.current;
+        setMorgueLoading(true);
+        morgueFetchInFlightRef.current = (async () => {
         setMorgueRecordsError(null); // Clear any previous error
 
         // Already loaded — return cached data
@@ -436,6 +449,8 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
 
             return null;
         }
+        })().finally(() => { morgueFetchInFlightRef.current = null; setMorgueLoading(false); });
+        return morgueFetchInFlightRef.current;
     }, [updateCacheSegment, webhooks, isAuthenticated, user]);
 
     // Remove a single morgue record from in-memory cache + state (no re-fetch)
@@ -1131,21 +1146,23 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
             prevAuthRef.current = isAuthenticated;
         }, [isAuthenticated, loadData, setupFirebaseListeners]);
 
-        const phmcListData = useMemo(() => {
-            // PHMC FACTION = 364, filtered by excluding CORONER categories
+        const factionListData = useMemo(() => {
+            // Single enriched roster for PHMC (faction 364). Roster records store
+            // the character id as the record KEY — surface it as `characterId` so
+            // id-based identity matching works (badge/SN lookups). The legacy
+            // phmcListData/coronerListData split is removed; callers that need the
+            // coroner distinction use isCoronerMember().
             if (!factionsData['364'] || typeof factionsData['364'].members !== 'object' || !factionsData['364'].members) {
-                    console.debug('[DataContext] phmcListData: Faction data empty or malformed');
+                    console.debug('[DataContext] factionListData: Faction data empty or malformed');
                 return [];
             }
-    
+
             const allMembers = Object.entries(factionsData['364'].members).map(([charId, member]) => ({
                 ...member,
-                // Roster records store the character id as the KEY — surface it
-                // so id-based identity matching works (badge/SN lookups).
                 characterId: member.characterId || charId,
                 _rosterKey: charId,
             }));
-            
+
             // Add verified admins to the list
             const adminMembers = Object.values(verifiedAdmins).map(admin => ({
                 characterName: admin.username,
@@ -1153,81 +1170,28 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                 rank: admin.role || 'Senior Management',
                 isElevated: true,
                 badge: `ADM-${admin.id}`,
-                characterId: admin.id
+                characterId: admin.id,
             }));
 
             const combinedMembers = [...allMembers, ...adminMembers];
 
-            const normalizedMembers = combinedMembers.map(member => ({
+            return combinedMembers.map(member => ({
                 ...member,
                 name: member.characterName || member.name || member.displayName || member.username || 'Unknown',
                 rank: member.rank || '',
+                category: member.rank || '',
             }));
-    
-            let dataSource = normalizedMembers.filter(member =>
-                !CORONER_KEYWORDS.some(kw => member.rank.includes(kw))
-            ).map(member => ({ ...member, category: member.rank }));
-            
-            return dataSource;
         }, [factionsData, verifiedAdmins]);
-            
-        // DEPRICATED - USE IN VERY LIMITED APPLICATIONS
-        const coronerListData = useMemo(() => {
-        // PHMC FACTION = 364, filtered by CORONER categories
-        if (!factionsData['364'] || typeof factionsData['364'].members !== 'object' || !factionsData['364'].members) {
-            console.debug('[DataContext] coronerListData: Faction data empty or malformed');
-            return [];
-        }
-
-        // Use faction data if available, otherwise use legacy data
-        let dataSource = [];
-        if (factionsData['364'] && factionsData['364'].members) {
-            const allMembers = Object.entries(factionsData['364'].members).map(([charId, member]) => ({
-                ...member,
-                characterId: member.characterId || charId,
-                _rosterKey: charId,
-            }));
-            
-            // Add verified admins to coroner list too
-            const adminMembers = Object.values(verifiedAdmins).map(admin => ({
-                characterName: admin.username,
-                name: admin.username,
-                rank: 'GTAW STAFF',
-                isElevated: true,
-                badge: `ADM-${admin.id}`,
-                characterId: admin.id
-            }));
-
-            const combinedMembers = [...allMembers, ...adminMembers];
-
-            const normalizedMembers = combinedMembers.map(member => ({
-                ...member,
-                name: member.characterName || member.name || member.displayName || member.username || 'Unknown',
-                rank: member.rank || '',
-            }));
-
-
-            dataSource = normalizedMembers.filter(member =>
-                CORONER_KEYWORDS.some(kw => member.rank.includes(kw))
-            ).map(member => {
-                // Now that we have only coroners, find the best category for grouping
-                const category = member.rank || 'Coroner';
-                return { ...member, category };
-            });
-            console.debug('[DataContext] coronerListData using FACTION data:', dataSource.length, 'members');
-        }
-        return dataSource;
-    }, [factionsData, verifiedAdmins]);
 
 
     const value = {
         factionsData,
         formsData,
-        phmcListData: phmcListData || [],
-        coronerListData: coronerListData || [],
+        factionListData: factionListData || [],
         agencyDataStore,
         selectOptions,
-        isLoadingData,
+isLoadingData,
+        morgueLoading,
         refreshSegments,
         updateNow,
         pendingRefreshInfo,

@@ -39,8 +39,6 @@ build/*
 # firebase
 firebase-admin-key.json
 
-# bot runtime data (roster / ban-state / patient index JSON on the VPS)
-discord-bot/data/
 
 
 # Sentry Config File
@@ -50,8 +48,16 @@ discord-bot/data/
 tools/
 tools/service-account.json
 docs/
+
+# plans / plan files (keep local, never commit)
+plan/
 # functions (Firebase Cloud Functions API/proxy endpoints)#
 functions
 # AI context artifact
 changelog.md
+
+# Personal AdGuard Home metrics integration (kept out of public forks)
+discord-bot/aghMetrics.js
+discord-bot/services/aghMetrics.js
+discord-bot/commands/agh-dashboard.js
 

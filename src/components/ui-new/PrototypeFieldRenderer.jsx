@@ -9,6 +9,7 @@ import { sanitizeMorgueText } from '../../utils/textUtils';
 import { getUtcFormattedDateTime, getUtcFormattedTime } from '../../utils/dateTimeUtils';
 import { formatCharacterNameForDisplay } from '../../utils/identityUtils';
 import { triggerCheckOfficerName } from '../../services/firebaseFunctions';
+import { useNotification } from '../../contexts/NotificationContext';
 
 // Debug logger — only logs when running the Vite dev server. Keeps the noisy
 // per-render / per-keystroke officer-search logs out of the production bundle.
@@ -36,7 +37,7 @@ const PrototypeFieldRenderer = ({
       const months = {
         jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
         jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12',
-        january: '01', february: '02', march: '03', april: '04', may: '05', june: '06',
+        january: '01', february: '02', march: '03', april: '04', june: '06',
         july: '07', august: '08', september: '09', october: '10', november: '11', december: '12',
       };
       const m = months[dateMatch[2].toLowerCase()] || '??';
@@ -1083,7 +1084,10 @@ const PrototypeFieldRenderer = ({
 /* ─── Officer Search Component (extracted so hooks are at top level) ─── */
 const OfficerSearch = ({ field, value, onChange, allValues, onFieldChange = () => {}, agencyOptions, noCheckbox = false, disabled, hideDeptSelect = false, hideLabel = false, inline = false }) => {
   const reqOn = noCheckbox ? true : !!value;
-  const officerName = noCheckbox ? (typeof value === 'string' ? value.trim() : '') : (reqOn ? (typeof value === 'string' ? value.trim() : '') : '');
+  // Keep the RAW (untrimmed) value for the input so multi-word names with spaces
+  // can be typed; trim only for the search trigger.
+  const rawValue = typeof value === 'string' ? value : '';
+  const officerName = rawValue.trim();
   // When embedded in a checkbox pattern, `disabled` is passed explicitly; otherwise
   // the input is gated by the Requested checkbox.
   const inputDisabled = disabled !== undefined ? disabled : (noCheckbox ? false : !reqOn);
@@ -1094,6 +1098,15 @@ const OfficerSearch = ({ field, value, onChange, allValues, onFieldChange = () =
     { value: 'dao', label: 'District Attorney Office' },
   ];
   const currentDept = allValues?.department || allValues?.requestingOfficerDepartment || '';
+  const deptRaw = currentDept && typeof currentDept === 'object' ? (currentDept.value || currentDept.label || '') : currentDept;
+  const deptCode = String(deptRaw || '').toLowerCase();
+  // Roster lookup exists for LSPD/LSSD/SADCR. A BLANK department means
+  // auto-detect — search those rosters regardless. Only departments with no
+  // roster at all (DAO, …) are pure manual entry (no roster API call).
+  const supportsRosterCode = (code) => Boolean(code && (code.includes('lspd') || code.includes('lssd')
+    || code.includes('sadcr') || code.includes('corrections')
+    || code.includes('police') || code.includes('sheriff')));
+  const rosterSearchable = !deptCode || supportsRosterCode(deptCode);
 
   const [searchResults, setSearchResults] = useState([]);
   const [waiting, setWaiting] = useState(false);
@@ -1101,8 +1114,29 @@ const OfficerSearch = ({ field, value, onChange, allValues, onFieldChange = () =
   const [noMatch, setNoMatch] = useState(false);
   const lastSearched = useRef('');
   const userTypedRef = useRef(false);
+  const { showNotification } = useNotification();
+
+  // Toast (not inline bubble) so the layout stays aligned — tells the user the
+  // field is free manual entry when the selected department has no roster
+  // lookup. Fires on user interaction (focus the name input / pick a manual
+  // department), never on mount, and dedupes by key so it can't stack.
+  const notifyManualEntry = useCallback(() => {
+    if (!rosterSearchable) {
+      showNotification('Manual entry — you can type any officer name. Roster lookup is available for LSPD, LSSD, and SADCR.', 'info-circle', 4000, { key: 'officer-manual-entry' });
+    }
+  }, [rosterSearchable, showNotification]);
+
+  // A roster search that finds nothing becomes a toast (not a layout-breaking
+  // banner) — the user can keep typing the name manually or adjust it.
+  useEffect(() => {
+    if (noMatch && !searching && rosterSearchable) {
+      showNotification('No matches found — is this an alternative account? You can type the officer name manually.', 'exclamation-triangle', 4000, { key: 'officer-no-match' });
+    }
+  }, [noMatch, searching, rosterSearchable, showNotification]);
 
   useEffect(() => {
+    // Departments without a roster have no lookup — free manual entry.
+    if (!rosterSearchable) { setSearchResults([]); setNoMatch(false); setWaiting(false); return; }
     if (!reqOn || officerName.length < 3) { setSearchResults([]); setNoMatch(false); setWaiting(false); return; }
     if (officerName === lastSearched.current) { setWaiting(false); return; }
 
@@ -1144,7 +1178,7 @@ const OfficerSearch = ({ field, value, onChange, allValues, onFieldChange = () =
       setSearching(false);
     }, 2000);
     return () => clearTimeout(timer);
-  }, [officerName, currentDept, reqOn]);
+  }, [officerName, currentDept, reqOn, rosterSearchable]);
 
   return (
     <div className={inline ? '' : `field${field.layout !== 'compact-50' ? ' full' : ''}`} style={{ position: 'relative', ...(inline ? { flex: '1 1 200px' } : {}) }}>
@@ -1159,7 +1193,8 @@ const OfficerSearch = ({ field, value, onChange, allValues, onFieldChange = () =
       )}
       <div style={{ display: 'flex', gap: 8 }}>
         <div style={{ position: 'relative', flex: 1 }}>
-          <input type="text" value={officerName}
+          <input type="text" value={reqOn ? rawValue : ''}
+            onFocus={notifyManualEntry}
             onChange={e => { devLog(`[OfficerSearch] Input changed: "${e.target.value}"`); userTypedRef.current = true; lastSearched.current = ''; setNoMatch(false); onChange(e.target.value); }}
             placeholder={field.placeholder || 'Officer Name'}
             disabled={inputDisabled}
@@ -1189,19 +1224,13 @@ const OfficerSearch = ({ field, value, onChange, allValues, onFieldChange = () =
         </div>
         {!hideDeptSelect && (
           <select value={currentDept}
-            onChange={e => { onFieldChange('department', e.target.value); onFieldChange('requestingOfficerDepartment', e.target.value); }}
+            onChange={e => { const code = String(e.target.value || '').toLowerCase(); if (!supportsRosterCode(code)) notifyManualEntry(); onFieldChange('department', e.target.value); onFieldChange('requestingOfficerDepartment', e.target.value); }}
             style={{ flex: 1, background: 'var(--bg-surface)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 8, padding: '10px 12px', fontSize: 13 }}>
             <option value="">— Requesting Department —</option>
             {deptOptions.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
           </select>
         )}
       </div>
-      {noMatch && !searching && (
-        <div style={{ marginTop: 6, padding: '8px 12px', borderRadius: 6, background: 'var(--amber-dim)', border: '1px solid var(--amber)', color: 'var(--amber)', fontSize: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <i className="fas fa-user-slash" />
-          <span>No matches found — is this an alternative account?</span>
-        </div>
-      )}
     </div>
   );
 };

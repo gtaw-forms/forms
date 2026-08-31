@@ -1,21 +1,22 @@
 import { useCallback } from 'react';
 import { database } from '../firebase';
-import { ref, set, runTransaction } from 'firebase/database';
+import { ref, set, update, runTransaction } from 'firebase/database';
+import { triggerSaveReportBBCode } from '../services/firebaseFunctions';
 import * as Sentry from "@sentry/react";
-import { getCharacterName, getCharacterID, resolveEmployeeCredentials } from '../utils/identityUtils';
-import { cleanRankText } from '../utils/textUtils';
-import { comprehensiveSanitize } from '../utils/textUtils';
+import { getCharacterName, getCharacterID, resolveEmployeeCredentials, getOAuthShapeFlags } from '../utils/identityUtils';
+import { cleanRankText, comprehensiveSanitize } from '../utils/textUtils';
 import { triggerGetPatientNames } from '../services/firebaseFunctions';
 import { useNotification } from '../contexts/NotificationContext';
 import { reportLogicalError } from '../utils/logging';
 import { useAuth } from '../contexts/AuthContext';
 import { checkConsentDirect } from './useConsent';
+import { getAppBuildId } from '../utils/buildVersion';
 
 const isLocalHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
 const deployTrackedForms = ['coroner-report', 'coroner_email', 'death_record', 'autopsy', 'mass-ftality-test',
     'patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical',
-    'session_notes', 'intensive_treatment', 'psych-eval', 'testing-compact-mode'];
+    'session_notes', 'intensive_treatment', 'psych-eval', 'general_consultation'];
 
 export function getReportBasePath(formFirebaseKey, botDeployOptedIn = false) {
   if (deployTrackedForms.includes(formFirebaseKey)) {
@@ -132,7 +133,7 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated, rosterData = {}) 
     const { isFactionMember } = useGtaWorldAuthContext();
     const { user: authUser } = useAuth();
     const firebaseUid = authUser?.uid || null;
-    const { phmcListData = [], coronerListData = [] } = rosterData;
+    const { factionListData = [], resolvedCredentials = null } = rosterData;
 
     const validateMembership = useCallback(() => {
         // --- LOCALHOST DEVELOPMENT BYPASS ---
@@ -307,33 +308,99 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated, rosterData = {}) 
         // If the form's employee fields are empty but we have OAuth data,
         // resolve them from the roster right before saving. A saved report
         // with blank coronerEmployee/Rank/Badge is what shipped blanks to the
-        // forum (Xavier Bogdanovic case).
+        // forum (Xavier Bogdanovic case). Resolution is authoritative at save
+        // time (fresh from gtaWorldUser + factionListData), not dependent on
+        // the async auto-fill effect having flushed into formValues.
         const dataToSave = { ...formValues };
+        // Stale-vs-current build diagnostics: stamp which client bundle produced
+        // this report so we can detect users on outdated builds.
+        dataToSave.appBuild = getAppBuildId();
         if (gtaWorldUser && isGtaAuthenticated && selectedForm?.accessType) {
             const empType = selectedForm.accessType === 'Coroner' ? 'coroner' : 'phmc';
-            const needsEmployee = !String(dataToSave[`${empType}Employee`] || '').trim();
-            const needsRank = !String(dataToSave[`${empType}Rank`] || '').trim();
-            const needsBadge = !String(dataToSave[`${empType}Badge`] || '').trim();
-            if (needsEmployee || needsRank || needsBadge) {
-                const resolved = resolveEmployeeCredentials(gtaWorldUser, {
-                    phmcListData,
-                    coronerListData,
+            const preEmployee = String(dataToSave[`${empType}Employee`] || '').trim();
+            const preRank = String(dataToSave[`${empType}Rank`] || '').trim();
+            const preBadge = String(dataToSave[`${empType}Badge`] || '').trim();
+            const needsEmployee = !preEmployee;
+            const needsRank = !preRank;
+            const needsBadge = !preBadge;
+            // Always resolve at save time (authoritative) so a WRONG/stale badge
+            // already on the form is corrected — not just blanks filled. The
+            // roster key is the only valid badge; a stale account id (e.g. 43132)
+            // must be replaced with the roster key (e.g. 5573) when the stored
+            // employee name matches the resolved roster record.
+            const currentName = getCharacterName(gtaWorldUser);
+            const usedMemo = !!(resolvedCredentials && resolvedCredentials.employeeName === currentName);
+            const resolved = usedMemo
+                ? resolvedCredentials
+                : resolveEmployeeCredentials(gtaWorldUser, {
+                    factionListData,
                     cleanRank: cleanRankText,
                 });
+            const employeeMatches = !!preEmployee && String(resolved?.employeeName || '').trim().toLowerCase() === preEmployee.toLowerCase();
+            const badgeMismatch = employeeMatches && !!resolved?.badge && !!preBadge && preBadge !== String(resolved.badge).trim();
+            const rankMismatch = employeeMatches && !!resolved?.rank && !!preRank && preRank !== String(resolved.rank).trim();
+            if (needsEmployee || needsRank || needsBadge || badgeMismatch || rankMismatch) {
+                const missingFields = [
+                    needsEmployee && 'employee',
+                    needsRank && 'rank',
+                    needsBadge && 'badge',
+                ].filter(Boolean);
+                const oauthShape = getOAuthShapeFlags(gtaWorldUser);
+                const diagBase = {
+                    formId: selectedForm.firebaseKey,
+                    formName: selectedForm.name || null,
+                    reportKey: sanitizedKey,
+                    reportAuthor: currentAuthor || null,
+                    decedentName: dataToSave.decedentName || dataToSave.patientName || null,
+                    accessType: selectedForm.accessType || null,
+                    employeeType: empType,
+                    source: 'useFormSaver',
+                    uiPath: resolvedCredentials != null ? 'ui-new' : 'legacy-or-no-memo',
+                    missingFields,
+                    formValuesBefore: {
+                        employee: preEmployee || null,
+                        rank: preRank || null,
+                        badge: preBadge || null,
+                    },
+                    matchedBy: resolved.matchedBy,
+                    employeeName: resolved.employeeName || null,
+                    oauthCharacterId: resolved.oauthCharacterId || null,
+                    rosterKey: resolved.rosterKey || null,
+                    rosterCount: factionListData.length,
+                    hasRoster: factionListData.length > 0,
+                    ...oauthShape,
+                    resolvedFromMemo: usedMemo,
+                    memoPresent: !!resolvedCredentials,
+                    corrected: { badge: badgeMismatch, rank: rankMismatch },
+                };
                 if (resolved.employeeName) {
                     if (needsEmployee) dataToSave[`${empType}Employee`] = resolved.employeeName;
-                    if (needsRank) dataToSave[`${empType}Rank`] = resolved.rank;
-                    if (needsBadge) dataToSave[`${empType}Badge`] = resolved.badge;
+                    if (needsRank || rankMismatch) dataToSave[`${empType}Rank`] = resolved.rank;
+                    if (needsBadge || badgeMismatch) dataToSave[`${empType}Badge`] = resolved.badge;
                     dataToSave[`${empType}Discord`] = resolved.discord;
                     dataToSave[`${empType}PHNumber`] = resolved.phNumber;
                     dataToSave[`${empType}FirstName`] = resolved.firstName;
                     dataToSave[`${empType}LastName`] = resolved.lastName;
-                    console.warn(`[useFormSaver] Fix C credential merge applied for ${resolved.employeeName} (matchedBy: ${resolved.matchedBy})`);
+                    console.warn(`[useFormSaver] Fix C credential merge applied for ${resolved.employeeName} (matchedBy: ${resolved.matchedBy})`, { missingFields, corrected: { badge: badgeMismatch, rank: rankMismatch } });
                     reportLogicalError("CredentialFallbackApplied", "Save-time credential backfill from OAuth/roster", {
-                        formId: selectedForm.firebaseKey,
-                        employeeType: empType,
-                        matchedBy: resolved.matchedBy,
-                        employeeName: resolved.employeeName,
+                        ...diagBase,
+                        savedEmployee: dataToSave[`${empType}Employee`] || null,
+                        savedRank: dataToSave[`${empType}Rank`] || null,
+                        savedBadge: dataToSave[`${empType}Badge`] || null,
+                        stillMissing: [
+                            !String(dataToSave[`${empType}Employee`] || '').trim() && 'employee',
+                            !String(dataToSave[`${empType}Rank`] || '').trim() && 'rank',
+                            !String(dataToSave[`${empType}Badge`] || '').trim() && 'badge',
+                        ].filter(Boolean),
+                    });
+                } else {
+                    console.warn('[useFormSaver] Credential backfill needed but resolver returned no employeeName', diagBase);
+                    reportLogicalError("CredentialFallbackFailed", "Save-time credential backfill could not resolve employee from OAuth/roster", {
+                        ...diagBase,
+                        savedEmployee: dataToSave[`${empType}Employee`] || null,
+                        savedRank: dataToSave[`${empType}Rank`] || null,
+                        savedBadge: dataToSave[`${empType}Badge`] || null,
+                        stillMissing: missingFields,
                     });
                 }
             }
@@ -344,7 +411,7 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated, rosterData = {}) 
         // (decedentName) is missing — e.g. the old legacy auto-fill stamped the
         // author's name into patientName only (Paolina Russo / 1919 incident) —
         // resolve the name from the patient index by ID. Never blocks saving.
-        const MEDICAL_SAVE_IDS = ['patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical', 'session_notes', 'intensive_treatment', 'psych-eval', 'testing-compact-mode'];
+        const MEDICAL_SAVE_IDS = ['patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical', 'session_notes', 'intensive_treatment', 'psych-eval', 'general_consultation'];
         const isMedicalSave = MEDICAL_SAVE_IDS.includes(selectedForm.firebaseKey);
         if (isMedicalSave && !String(dataToSave.decedentName || '').trim() && String(dataToSave.patientID || '').trim().length >= 2) {
             try {
@@ -360,6 +427,32 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated, rosterData = {}) 
             } catch (err) {
                 console.warn('[useFormSaver] Patient-ID lookup failed (saving without name resolution):', err?.message || err);
             }
+        }
+
+        // ── Edit & Repost: apply changes to an already-deployed report in place ──
+        // The ME fixed the form after a deploy; instead of enqueueing a fresh deploy,
+        // write the updated data + BBCode and queue a `reportEdits` request that the
+        // bot worker applies to the original forum post (no duplicate post).
+        if (options.editDeployedReport) {
+            const editAuthor = sanitizedAuthorId;
+            const editKey = options.editDeployedReport.key;
+            if (!editKey) {
+                return { success: false, error: 'Missing edit report key.' };
+            }
+            await update(ref(database, `scheduledReports/${editAuthor}/${editKey}`), {
+                data: sanitizeForFirebase(dataToSave),
+                originalKey: finalTitle,
+                updatedAt: Date.now(),
+                deployMessage: 'Edit queued — the bot will update the forum post in place.',
+            });
+            await set(ref(database, `scheduledReportsBBCode/${editAuthor}/${editKey}`), { bbCode, updatedAt: Date.now() });
+            await set(ref(database, `reportEdits/${editAuthor}/${editKey}`), {
+                status: 'requested',
+                requestedAt: new Date().toISOString(),
+                requestedBy: gtaWorldUser?.username || currentAuthor || 'unknown',
+            });
+            console.warn(`[useFormSaver] Edit & Repost queued for ${editAuthor}/${editKey}`);
+            return { success: true, editQueued: true, message: 'Edit requested' };
         }
 
         const reportDataToSave = {
@@ -429,10 +522,21 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated, rosterData = {}) 
             // Save both main report data and BBCode data in parallel
             // We use individual sets here to be safe, though a multi-path update at root would be more atomic.
             // given existing imports, we stick to set/runTransaction.
-            
+
+            // P2: BBCode for the saved-reports store lives on the VPS (via Cloud
+            // Function → morgue-api), not RTDB newSavedReportBBCode (~11MB node).
+            // scheduledReportsBBCode stays on RTDB — the bot deploy pipeline reads it.
+            const writeStoredBBCode = (authorId, reportKey, code) =>
+                triggerSaveReportBBCode({ author: authorId, key: reportKey, bbCode: code })
+                    .catch(() => set(ref(database, `newSavedReportBBCode/${authorId}/${reportKey}`), { bbCode: code }));
+
+            const bbCodePromise = bbCodeBasePath === 'scheduledReportsBBCode'
+                ? set(bbCodeRef, { bbCode: bbCode })
+                : writeStoredBBCode(sanitizedAuthorId, sanitizedKey, bbCode);
+
             const promises = [
                 set(reportRef, reportDataToSave),
-                set(bbCodeRef, { bbCode: bbCode }),
+                bbCodePromise,
                 ...(!isLocalHost ? [runTransaction(userReportCountRef, (currentCount) => (currentCount || 0) + 1)] : []),
             ];
 
@@ -440,9 +544,8 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated, rosterData = {}) 
             // so the Saved Reports modal can find it.
             if (hasConsent && !isLocalHost && isDeployTracked) {
                 const liveReportRef = ref(database, `newSavedReports/${sanitizedAuthorId}/${sanitizedKey}`);
-                const liveBBCodeRef = ref(database, `newSavedReportBBCode/${sanitizedAuthorId}/${sanitizedKey}`);
                 promises.push(set(liveReportRef, reportDataToSave));
-                promises.push(set(liveBBCodeRef, { bbCode: bbCode }));
+                promises.push(writeStoredBBCode(sanitizedAuthorId, sanitizedKey, bbCode));
             }
 
             if (selectedForm.firebaseKey === 'coroner-report' && reportDataToSave.isCK && !reportDataToSave.processed) {
@@ -528,7 +631,7 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated, rosterData = {}) 
                         ],
                         timestamp: new Date().toISOString(),
                         footer: {
-                            text: `FormID: ${webhookPayload.formId} | ReportKey: ${webhookPayload.reportKey}`
+                            text: `FormID: ${webhookPayload.formId} | ReportKey: ${webhookPayload.reportKey} | Build: ${getAppBuildId() || 'unknown'}`
                         }
                     }]
                 };
@@ -637,7 +740,7 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated, rosterData = {}) 
             }
             return { success: false, error: error.message };
         }
-    }, [gtaWorldUser, isGtaAuthenticated, authUser, showNotification]);
+    }, [gtaWorldUser, isGtaAuthenticated, authUser, showNotification, factionListData, resolvedCredentials]);
 
     return { saveReport, validateMembership };
 };

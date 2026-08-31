@@ -88,13 +88,34 @@ export async function execute(interaction) {
         entries.forEach((e) => factions.set(e.faction || '?', (factions.get(e.faction || '?') || 0) + 1));
 
         // ── By ME (assignments) ──
+        // Multi-decedent requests (caseState 'multi') hold ONE assignment per
+        // decedent under cases/<idx>/assignedTo — the top-level assignedTo is the
+        // comma-joined aggregate for dashboards. Count each per-case assignment
+        // against its own ME so "Anne Carter, Alyson Frost" doesn't become a
+        // merged row.
         const mes = new Map();
+        const bumpMe = (name, done) => {
+            if (!name) return;
+            if (!mes.has(name)) mes.set(name, { a: 0, p: 0 });
+            mes.get(name).a++;
+            if (done) mes.get(name).p++;
+        };
+        const caseDone = (c) => !!c.completedAt || String(c.caseState || '').toLowerCase() === 'complete';
+
         entries.forEach((e) => {
+            if (String(e.caseState || '') === 'multi') {
+                const cases = e.cases && typeof e.cases === 'object' ? Object.values(e.cases) : [];
+                if (cases.length > 0) {
+                    cases.forEach((c) => bumpMe(c && c.assignedTo, c ? caseDone(c) : false));
+                    return;
+                }
+                // Legacy multi without per-case records — split the aggregate.
+                String(e.assignedTo || '').split(',').map((s) => s.trim()).filter(Boolean)
+                    .forEach((n) => bumpMe(n, isProcessed(e)));
+                return;
+            }
             if (!e.assignedTo) return;
-            const me = e.assignedTo;
-            if (!mes.has(me)) mes.set(me, { a: 0, p: 0 });
-            mes.get(me).a++;
-            if (isProcessed(e)) mes.get(me).p++;
+            bumpMe(e.assignedTo, isProcessed(e));
         });
         const meLines = [...mes.entries()].sort((a, b) => b[1].a - a[1].a).slice(0, 8)
             .map(([n, c]) => `${n}: ${c.a} assigned / ${c.p} done`);

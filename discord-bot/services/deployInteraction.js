@@ -8,6 +8,7 @@ import { logFnCall, sendWebhook, logStep } from './deployLogger.js';
 import { state, C } from './deployState.js';
 import { setDeployStatus, markReportComplete } from './deployStatus.js';
 import { crosspostAutopsyToLssd } from './deployLssd.js';
+import { crosspostAutopsyToLspd } from './deployLspd.js';
 import { clearAssignment } from './autopsyRotation.js';
 import { buildCompletionBb } from './completionTemplate.js';
 
@@ -104,72 +105,168 @@ export async function resolveAutopsyTopic(interaction) {
             // Mark as completed in autopsy-requested
             let completedTopicId = null;
             let completedLssdTopicId = null;
+            let completedLspdTopicId = null;
+            let completionCaseTitle = null;
+            let completionCaseTopicId = null;
             try {
                 const ooc = (reportData.data?.decedentOOC || '').trim();
+                const name = (reportData.data?.decedentName || '').trim();
                 console.log('[AUTO-COMPLETE] Parsed OOC name from report');
-                if (ooc && state.dbRef) {
-                    const arSnap = await state.dbRef.child('autopsy-requested').orderByChild('oocName').equalTo(ooc).once('value');
-                    if (arSnap.exists()) {
-                        arSnap.forEach((child) => {
-                            const entry = child.val();
-                            completedTopicId = child.key;
-                            completedLssdTopicId = entry.lssdRequestTopicId;
-                            if (entry.completedAt) return;
+
+                if (state.dbRef) {
+                    // STRONGEST match: the case topic we just replied to (unique).
+                    // Also covers multi-decedent records whose caseTopicId lives at
+                    // cases/<idx> — the old top-level oocName-only lookup missed them
+                    // and left multi cases never-completed/never-crossposted.
+                    const topicKey = String(topicId);
+                    const allReqSnap = await state.dbRef.child('autopsy-requested').once('value');
+                    const allReq = allReqSnap.val() || {};
+                    let matched = null; // { key, entry, ci, caseRec }
+                    outer:
+                    for (const [key, entry] of Object.entries(allReq)) {
+                        if (String(entry.caseState || '') === 'multi' && entry.cases && typeof entry.cases === 'object') {
+                            for (const [ci, c] of Object.entries(entry.cases)) {
+                                if (String(c.caseTopicId) === topicKey) {
+                                    matched = { key, entry, ci: parseInt(ci, 10), caseRec: c };
+                                    break outer;
+                                }
+                            }
+                        } else if (String(entry.caseTopicId) === topicKey) {
+                            matched = { key, entry, ci: null, caseRec: null };
+                            break outer;
+                        }
+                    }
+
+                    // Fallback: match by OOC name (top-level, then multi per-case).
+                    if (!matched && ooc) {
+                        const byOoc = await state.dbRef.child('autopsy-requested').orderByChild('oocName').equalTo(ooc).once('value');
+                        if (byOoc.exists()) {
+                            byOoc.forEach((child) => {
+                                if (matched) return;
+                                const entry = child.val();
+                                if (String(entry.caseState || '') === 'multi') return; // handled below
+                                matched = { key: child.key, entry, ci: null, caseRec: null };
+                            });
+                        }
+                        if (!matched) {
+                            const oocL = ooc.toLowerCase();
+                            for (const [key, entry] of Object.entries(allReq)) {
+                                if (String(entry.caseState || '') !== 'multi' || !entry.cases || typeof entry.cases !== 'object') continue;
+                                for (const [ci, c] of Object.entries(entry.cases)) {
+                                    if (String(c.oocName || '').trim().toLowerCase() === oocL) {
+                                        matched = { key, entry, ci: parseInt(ci, 10), caseRec: c };
+                                        break;
+                                    }
+                                }
+                                if (matched) break;
+                            }
+                        }
+                    }
+
+                    if (matched) {
+                        const { key, entry, ci, caseRec } = matched;
+                        const alreadyDone = caseRec ? !!caseRec.completedAt : !!entry.completedAt;
+                        if (alreadyDone) {
+                            console.log('[AUTO-COMPLETE] #' + key + (caseRec ? ' case ' + ci : '') + ' already completed — skipping');
+                        } else {
+                            completedTopicId = key;
+                            completedLssdTopicId = entry.lssdRequestTopicId || caseRec?.lssdRequestTopicId || null;
+                            completedLspdTopicId = entry.lspdTopicId || caseRec?.lspdTopicId || null;
+                            completionCaseTitle = ((caseRec?.caseTitle || entry.caseUrl || entry.title || 'Autopsy Case')).replace(/\s*[-–—]\s*UNASSIGNED\s*$/i, '');
+                            completionCaseTopicId = caseRec?.caseTopicId || entry.caseTopicId || null;
 
                             // Private cases have no public request topic and never crosspost.
-                            // The main completion flow (deployAutopsyReply) handles their
-                            // delivery (optional pm_forum DM) — skip entirely here.
+                            // Mark them completed but skip the public reply + crossposts.
                             if (entry.isPrivate === true) {
-                                console.log('[AUTO-COMPLETE] Private case #' + child.key + ' — skipping public reply + LSSD crosspost in interaction path');
-                                return;
-                            }
+                                console.log('[AUTO-COMPLETE] Private case #' + key + ' — marking completed, skipping public reply + crossposts');
+                                if (caseRec) {
+                                    await state.dbRef.child(`autopsy-requested/${key}/cases/${ci}`).update({ completedAt: new Date().toISOString(), completedBbCode: bbCode });
+                                    const casesSnap = await state.dbRef.child(`autopsy-requested/${key}/cases`).once('value');
+                                    const allDone = Object.values(casesSnap.val() || {}).every(c => c.completedAt);
+                                    if (allDone) await state.dbRef.child(`autopsy-requested/${key}`).update({ completedAt: new Date().toISOString(), completedBbCode: bbCode });
+                                } else {
+                                    await state.dbRef.child(`autopsy-requested/${key}`).update({ completedAt: new Date().toISOString(), completedBbCode: bbCode });
+                                }
+                                const completingMe = caseRec?.assignedTo || entry.assignedTo;
+                                if (completingMe) clearAssignment(db, completingMe, key).catch(err => console.warn(`[AUTO-COMPLETE] rotation tracking error: ${err.message}`));
+                                console.log('[AUTO] Marked private autopsy-requested #' + key + ' as completed');
+                            } else {
+                                console.log('[AUTO-COMPLETE] Marking autopsy request as completed in Firebase');
+                                const requesterName = entry.parsed?.requesterName || 'Requesting Party';
+                                const completionFaction = entry.isPrivate === true
+                                    ? 'private'
+                                    : (String(entry.faction || '').toLowerCase()
+                                        || (/\[(lssd|lspd)\]/i.exec(entry.title || '') || [])[1]?.toLowerCase()
+                                        || null);
+                                const completionLspdUrl = completedLspdTopicId
+                                    ? `https://lspd.gta.world/viewtopic.php?t=${completedLspdTopicId}`
+                                    : null;
+                                const completionBb = buildCompletionBb(completionCaseTitle, requesterName, { faction: completionFaction, lspdUrl: completionLspdUrl });
 
-                            console.log('[AUTO-COMPLETE] Marking autopsy request as completed in Firebase');
-                            const requesterName = entry.parsed?.requesterName || 'Requesting Party';
-                            const caseTitle = (entry.caseUrl || entry.title || 'Autopsy Case').replace(/\s*[-–—]\s*UNASSIGNED\s*$/i, '');
-                            const completionBb = buildCompletionBb(caseTitle, requesterName, null);
+                                const isMulti = caseRec != null;
+                                let allCasesDone = true;
+                                if (isMulti) {
+                                    // Per-case completion — the request stays open until
+                                    // every decedent's case has completed.
+                                    await state.dbRef.child(`autopsy-requested/${key}/cases/${ci}`).update({ completedAt: new Date().toISOString(), completedBbCode: bbCode });
+                                    const casesSnap = await state.dbRef.child(`autopsy-requested/${key}/cases`).once('value');
+                                    allCasesDone = Object.values(casesSnap.val() || {}).every(c => c.completedAt);
+                                    if (allCasesDone) await state.dbRef.child(`autopsy-requested/${key}`).update({ completedAt: new Date().toISOString(), completedBbCode: bbCode });
+                                } else {
+                                    await state.dbRef.child(`autopsy-requested/${key}`).update({ completedAt: new Date().toISOString(), completedBbCode: bbCode });
+                                }
+                                console.log('[AUTO] Marked autopsy-requested #' + key + ' as completed');
 
-                            child.ref.update({ completedAt: new Date().toISOString(), completedBbCode: bbCode });
-                            console.log('[AUTO] Marked autopsy-requested #' + child.key + ' as completed');
+                                // Decrement the ME's active case count in the rotation tracker
+                                const completingMe = caseRec?.assignedTo || entry.assignedTo;
+                                if (completingMe) {
+                                    clearAssignment(db, completingMe, key).catch(err => console.warn(`[AUTO-COMPLETE] rotation tracking error: ${err.message}`));
+                                }
 
-                            // Decrement the ME's active case count in the rotation tracker
-                            if (entry.assignedTo) {
-                                clearAssignment(db, entry.assignedTo, child.key).catch(err => {
-                                    console.warn(`[AUTO-COMPLETE] rotation tracking error: ${err.message}`);
-                                });
-                            }
-
-                            // Reply with completion notice
-                            console.log('[AUTO-COMPLETE] Sending completion reply to request topic #' + entry.topicId);
-                            client.replyToTopic(entry.topicId, C.AUTOPSY_REQUEST_FORUM_ID, completionBb, { dryRun: false })
-                                .then((r) => {
-                                    if (r.ok) console.log('[AUTO] Completion reply posted to request #' + entry.topicId);
-                                    else console.warn('[AUTO] Completion reply to request #' + entry.topicId + ' failed');
-                                })
-                                .catch((e) => console.warn('[AUTO] Completion reply error:', e.message));
-
-                            // DM the requester via forum username
-                            client.getTopicPoster(entry.topicId, { baseUrl: process.env.FORUM_BASE_URL })
-                                .then((forumUser) => {
-                                    let dmTarget = requesterName || '';
-                                    if (!dmTarget || dmTarget === 'Requesting Party' || dmTarget.toLowerCase().includes('bot')) {
-                                        dmTarget = forumUser || '';
-                                    }
-                                    if (!dmTarget || dmTarget === 'Requesting Party' || dmTarget.toLowerCase().includes('bot')) {
-                                        console.log('[AUTO-COMPLETE] No valid DM target — skipping DM');
-                                        return;
-                                    }
-                                    const dmSubject = entry.title || 'Autopsy Request - Completed';
-                                    console.log('[AUTO-COMPLETE] Sending DM to ' + dmTarget);
-                                    client.sendPM(dmTarget, dmSubject, bbCode)
+                                // Reply with completion notice — deferred for multi until EVERY
+                                // decedent's case is done so the requester never sees a premature
+                                // "We have completed the autopsy investigation" for an open request.
+                                const requestTopicId = entry.topicId || caseRec?.topicId || null;
+                                if (requestTopicId && (!isMulti || allCasesDone)) {
+                                    console.log('[AUTO-COMPLETE] Sending completion reply to request topic #' + requestTopicId);
+                                    client.replyToTopic(requestTopicId, C.AUTOPSY_REQUEST_FORUM_ID, completionBb, { dryRun: false })
                                         .then((r) => {
-                                            if (r.ok) console.log('[AUTO] DM sent to ' + dmTarget);
-                                            else console.warn('[AUTO] DM to ' + dmTarget + ' failed');
+                                            if (r.ok) console.log('[AUTO] Completion reply posted to request #' + requestTopicId);
+                                            else console.warn('[AUTO] Completion reply to request #' + requestTopicId + ' failed');
                                         })
-                                        .catch((e) => console.warn('[AUTO] DM error:', e.message));
-                                })
-                                .catch((e) => console.warn('[AUTO] Topic poster lookup error:', e.message));
-                        });
+                                        .catch((e) => console.warn('[AUTO] Completion reply error:', e.message));
+                                } else if (requestTopicId) {
+                                    console.log('[AUTO-COMPLETE] Deferring completion reply to request #' + requestTopicId + ' until all decedents complete');
+                                }
+
+                                // DM the requester via forum username (deferred for multi
+                                // until every decedent's case is done)
+                                if (!isMulti || allCasesDone) {
+                                    client.getTopicPoster(entry.topicId, { baseUrl: process.env.FORUM_BASE_URL })
+                                        .then((forumUser) => {
+                                            let dmTarget = requesterName || '';
+                                            if (!dmTarget || dmTarget === 'Requesting Party' || dmTarget.toLowerCase().includes('bot')) {
+                                                dmTarget = forumUser || '';
+                                            }
+                                            if (!dmTarget || dmTarget === 'Requesting Party' || dmTarget.toLowerCase().includes('bot')) {
+                                                console.log('[AUTO-COMPLETE] No valid DM target — skipping DM');
+                                                return;
+                                            }
+                                            const dmSubject = entry.title || 'Autopsy Request - Completed';
+                                            console.log('[AUTO-COMPLETE] Sending DM to ' + dmTarget);
+                                            client.sendPM(dmTarget, dmSubject, bbCode)
+                                                .then((r) => {
+                                                    if (r.ok) console.log('[AUTO] DM sent to ' + dmTarget);
+                                                    else console.warn('[AUTO] DM to ' + dmTarget + ' failed');
+                                                })
+                                                .catch((e) => console.warn('[AUTO] DM error:', e.message));
+                                        })
+                                        .catch((e) => console.warn('[AUTO] Topic poster lookup error:', e.message));
+                                } else {
+                                    console.log('[AUTO-COMPLETE] Deferring DM until all decedents complete');
+                                }
+                            }
+                        }
                     }
                 }
             } catch (e) {
@@ -177,8 +274,19 @@ export async function resolveAutopsyTopic(interaction) {
             }
 
             // LSSD cross-post
-            console.log('[AUTO-COMPLETE] LSSD cross-post triggered');
-            crosspostAutopsyToLssd(reportData, bbCode, completedTopicId, db, completedLssdTopicId).catch(() => {});
+            if (completedTopicId) {
+                console.log('[AUTO-COMPLETE] LSSD cross-post triggered');
+                crosspostAutopsyToLssd(reportData, bbCode, completedTopicId, db, completedLssdTopicId).catch(() => {});
+            }
+            // LSPD cross-post (was missing — posts the completed report to the
+            // LSPD certified-copy topic created at detection time).
+            if (completedTopicId) {
+                console.log('[AUTO-COMPLETE] LSPD cross-post triggered');
+                crosspostAutopsyToLspd(reportData, bbCode, completedTopicId, db, completedLspdTopicId, {
+                    caseTitle: completionCaseTitle || reportData.originalKey || 'Autopsy Case',
+                    caseTopicId: completionCaseTopicId || topicId,
+                }).catch(() => {});
+            }
         } else {
             await logStep(' Autopsy Posted But Status Update Failed', 'Reply was posted at [View Reply](<' + result.url + '>) but the Firebase status update did not verify.', { color: 0xffc107, isFinal: true });
         }

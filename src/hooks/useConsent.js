@@ -19,7 +19,7 @@ export const DEPLOY_TRACKED_FORMS = [
     'physical_evaluation',
     'staff-patient-file',
     'surgical',
-    'testing-compact-mode',
+    'general_consultation',
     // Mental Health
     'session_notes',
     'intensive_treatment',
@@ -39,7 +39,7 @@ export const FORM_LABELS = {
     physical_evaluation:    'Physical Evaluation',
     'staff-patient-file':   'Staff-Patient File',
     surgical:               'Surgical',
-    'testing-compact-mode': 'General Consultation',
+    'general_consultation': 'General Consultation',
     // Mental Health
     session_notes:        'Session Notes',
     intensive_treatment:  'Intensive Treatment',
@@ -61,7 +61,7 @@ export const FORM_SECTIONS = {
         'physical_evaluation',
         'staff-patient-file',
         'surgical',
-        'testing-compact-mode',
+        'general_consultation',
     ],
     'Mental Health': [
         'session_notes',

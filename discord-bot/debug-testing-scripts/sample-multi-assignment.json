@@ -1,0 +1,25 @@
+{
+  "content": "A multi-decedent autopsy request has been assigned — one case per decedent.",
+  "cases": [
+    {
+      "me": "Anne Carter",
+      "title": "Case 485 - John Doe ((Marvion Futrell)) [LSPD]",
+      "number": "485",
+      "decedent": "John Doe",
+      "ooc": "Marvion Futrell",
+      "url": "https://phmc.gta.world/viewtopic.php?t=9955",
+      "deadline": "2026-08-17 (CK — 72h)",
+      "note": "Reply to the case thread with the autopsy report."
+    },
+    {
+      "me": "Alyson Frost",
+      "title": "Case 486 - John Doe ((Dylan Bongo)) [LSPD]",
+      "number": "486",
+      "decedent": "John Doe",
+      "ooc": "Dylan Bongo",
+      "url": "https://phmc.gta.world/viewtopic.php?t=9956",
+      "deadline": "2026-08-17 (CK — 72h)",
+      "note": "Reply to the case thread with the autopsy report."
+    }
+  ]
+}

@@ -16,16 +16,17 @@
 import firebase from './firebase.js';
 import { getForumClient } from './forumClient.js';
 import { searchLssdRequestTopic } from './deployLssd.js';
+import { getAgencyForum, isAgencyFaction } from './agencyForums.js';
 import { sendLogMessage, notifySelfHeal } from './logChannel.js';
-import { selectME, initializeRotationFromGroup, syncRotationFromGroup } from './autopsyRotation.js';
+import { selectME, initializeRotationFromGroup, syncRotationFromGroup, getDevTestME, isDevTestActive } from './autopsyRotation.js';
+import { DeployProgressEmbed } from './deployLogger.js';
+import { state as deployState } from './deployState.js';
 
 // ── Constants ──
 
 const PHMC_FORUM_ID = 265;
 const PHMC_BASE = 'https://phmc.gta.world';
-const LSSD_FORUM_ID = 2263;
 const LSSD_BASE = 'https://lssd.gta.world';
-const LSSD_AUTOPSY_POST_URL = 'https://lssd.gta.world/posting.php?mode=post&f=2263';
 const CHECK_INTERVAL_MS = parseInt(process.env.AUTOPSY_MONITOR_INTERVAL || '', 10) || 15 * 60 * 1000;
 
 // Ack status field names in Firebase. Kebab-case for visibility when browsing
@@ -34,14 +35,34 @@ export const ACK_FIELD_NAMES = {
     phmc: 'phmc-acknowledge-reply',
     lssd: 'lssd-acknowledge-reply',
     lspd: 'lspd-acknowledge-reply',
+    sadcr: 'sadcr-acknowledge-reply',
+    dao: 'dao-acknowledge-reply',
 };
 
 // Autopsy Request - Name ((OOC Name)) - [LSPD/LSSD]  OR  [Autopsy Request] Name [Faction]
 // Supports: various dash chars, with/without brackets, with/without ((OOC)).
+// Faction tags now include SADCR and DAO (their requests previously fell into
+// the body-fallback path with an empty faction).
 // The name group is a non-empty string WITHOUT parens, so it stops at the first
 // ((...)) pair. Extra ((...)) groups (e.g. "((Discord Name: ...))") after the
 // OOC are skipped by (?:\(\([^)]*\)\)[\s\S]*?)? before the faction tag.
-const TITLE_REGEX = /^(?:\[)?Autopsy\s+Request(?:\])?\s*[-–—]?\s*([^()[\]"']+)(?:\s*\(\(([^()]*)\)\))?[\s\S]*?\[?(LSPD|LSSD)\]?/i;
+const TITLE_REGEX = /^(?:\[)?Autopsy\s+Request(?:\])?\s*[-–—]?\s*([^()[\]"']+)(?:\s*\(\(([^()]*)\)\))?[\s\S]*?\[?(LSPD|LSSD|SADCR|DAO)\]?/i;
+
+/**
+ * Map a free-text "Department / Assignment" value onto a faction key.
+ * Order matters — check the specific agencies before the broad LSSD keyword
+ * (SADCR/DAO forums physically live on the lssd domain but are NOT LSSD).
+ * @param {string} deptRaw
+ * @returns {string} 'LSSD' | 'LSPD' | 'SADCR' | 'DAO' | ''
+ */
+function factionFromDept(deptRaw) {
+    const d = String(deptRaw || '').toLowerCase();
+    if (/\bdistrict\s+attorney\b|\bdao\b/.test(d)) return 'DAO';
+    if (/\bsadcr\b|\bcorrections\b/.test(d)) return 'SADCR';
+    if (/lssd|sheriff|lasd/.test(d)) return 'LSSD';
+    if (/lspd|\bpolice\b/.test(d)) return 'LSPD';
+    return '';
+}
 
 // ── State ──
 
@@ -79,6 +100,74 @@ async function sendWebhookSummary(message) {
     } catch (err) {
         console.error('[AUTOPSY-MON] Failed to send notification:', err.message);
     }
+}
+
+// ── Single Live Progress Embed Per Request ──
+
+// In-memory progress instances, keyed by request topicId. Survives across
+// monitor cycles so the state machine resumes the SAME embed without re-reading
+// Firebase; after a restart, the persisted progressMessageId + progressSteps
+// (preserved on the entry by the caller) restore the embed's full history.
+const _progressCache = new Map();
+
+class AutopsyProgress {
+    constructor(db, topicId) {
+        this.db = db;
+        this.topicId = topicId;
+        this.embed = null;
+        this.failed = false;
+        this.steps = [];
+    }
+
+    /**
+     * Start (or resume) the single live-updating embed for this request.
+     * @returns {Promise<boolean>} true when the embed is editable
+     */
+    async init(title, existingEntry = {}) {
+        this.embed = new DeployProgressEmbed(deployState.discordClient, process.env.BOT_LOG_CHANNEL_ID);
+        const savedSteps = Array.isArray(existingEntry.progressSteps) ? existingEntry.progressSteps : [];
+        if (savedSteps.length > 0) this.steps = savedSteps;
+        this.embed.steps = this.steps;
+
+        const msgId = existingEntry.progressMessageId || '';
+        const channelId = existingEntry.progressChannelId || process.env.BOT_LOG_CHANNEL_ID || '';
+        if (msgId && channelId) {
+            await this.embed.resume(msgId, channelId, title);
+        }
+        if (!this.embed.messageId) {
+            await this.embed.start(title);
+            if (this.embed.messageId) {
+                await this.db.ref(`autopsy-requested/${this.topicId}/progressMessageId`).set(this.embed.messageId).catch(() => {});
+                await this.db.ref(`autopsy-requested/${this.topicId}/progressChannelId`).set(this.embed.channelId).catch(() => {});
+            }
+        }
+        return !!this.embed.messageId;
+    }
+
+    async addStep(name, status, detail = '') {
+        if (!this.embed) return;
+        if (status === 'fail') this.failed = true;
+        await this.embed.addStep(name, status, detail);
+        await this.db.ref(`autopsy-requested/${this.topicId}/progressSteps`).set(this.steps).catch(() => {});
+    }
+
+    async finalize(status) {
+        if (!this.embed) return;
+        const final = status || (this.failed ? 'failed' : 'complete');
+        await this.embed.finalize(final);
+        await this.db.ref(`autopsy-requested/${this.topicId}/progressFinalized`).set(final).catch(() => {});
+        _progressCache.delete(this.topicId);
+    }
+}
+
+async function getAutopsyProgress(db, topicId, title, existingEntry = {}) {
+    const cached = _progressCache.get(topicId);
+    if (cached) return cached;
+    const progress = new AutopsyProgress(db, topicId);
+    const ready = await progress.init(title, existingEntry);
+    if (!ready) return null;
+    _progressCache.set(topicId, progress);
+    return progress;
 }
 
 // ── Title Parsing ──
@@ -135,6 +224,138 @@ function parseTopicTitle(title) {
     };
     splitDecedents(parsed);
     return parsed;
+}
+
+// ── Agency Request Topic Resolution (LSSD / SADCR / DAO — shared lssd.gta.world) ──
+
+/**
+ * Thin wrapper over searchLssdRequestTopic targeting any registry forum.
+ * (SADCR f=2328 and DAO f=2331 are subforums of the same lssd domain, so the
+ * LSSD search client and login work unchanged.)
+ */
+async function searchAgencyRequestTopic(client, { oocName, name }, cfg) {
+    return searchLssdRequestTopic(client, { oocName, name }, { forumId: cfg.forumId, baseUrl: cfg.baseUrl });
+}
+
+/**
+ * Find (or conservatively create) the request topic for an autopsy request on
+ * the requesting faction's own forum. Mirrors the original LSSD-only flow:
+ *
+ *   1. Reuse a preserved topic id from a previous cycle (reset-safe).
+ *   2. Search the faction forum for a matching existing topic ("Name (( OOC ))"
+ *      first, then the plain name) — CASELINK creates its own topics.
+ *   3. Nothing found → resolve the PHMC topic poster. CASELINK poster → skip
+ *      creation (never duplicate). Unresolvable poster → skip conservatively
+ *      (recovery sweep / manual handling covers it). Human poster → one final
+ *      re-search to close the CASELINK race window, then create a "certified
+ *      copy" topic containing the raw request BBCode and persist
+ *      <faction>RequestTopicId + created-by-bot + crosspostStatus flags.
+ *
+ * @param {object} p
+ * @param {object} p.db — Firebase Admin RTDB
+ * @param {string|number} p.topicId — PHMC request topic id (record key)
+ * @param {string} p.faction — 'LSSD' | 'SADCR' | 'DAO'
+ * @param {string} [p.oocName] [p.name] — decedent OOC / IC names for matching
+ * @param {string} [p.requestBbCode] — raw request BBCode (certified copy body)
+ * @param {string} [p.caseLabelLine] — case title/label shown in the copy body
+ * @param {string} [p.existingTopicId] — preserved faction topic id, if any
+ * @param {string} [p.requesterPoster] — PHMC topic poster (avoids re-fetch)
+ * @returns {Promise<{topicId: string|null}>}
+ */
+async function ensureAgencyRequestTopic({
+    db, topicId, faction, oocName = '', name = '',
+    requestBbCode = '', caseLabelLine = '', existingTopicId = '', requesterPoster = '',
+}) {
+    const cfg = getAgencyForum(faction);
+    if (!cfg) return { topicId: null };
+    const factionLower = String(faction).toLowerCase();
+    const facTag = String(faction).toUpperCase();
+
+    // 1. Preserved topic id (e.g. reset-tool run) — reuse, never duplicate.
+    if (existingTopicId) {
+        console.log(`[AUTOPSY-MON] Reusing existing ${String(faction).toUpperCase()} request topic #${existingTopicId}`);
+        return { topicId: String(existingTopicId) };
+    }
+
+    const client = getForumClient();
+    try {
+        await client.login(
+            process.env[`FORUM_${cfg.credPrefix}_USERNAME`],
+            process.env[`FORUM_${cfg.credPrefix}_PASSWORD`],
+            { force: true, baseUrl: cfg.baseUrl }
+        );
+    } catch (err) {
+        console.warn(`[AUTOPSY-MON] Step 3 — ${String(faction).toUpperCase()} forum login error: ${err.message}`);
+        return { topicId: null };
+    }
+
+    // 2. Search for an existing request topic on the faction forum.
+    try {
+        const found = await searchAgencyRequestTopic(client, { oocName, name }, cfg);
+        if (found) {
+            console.log(`[AUTOPSY-MON] Found ${String(faction).toUpperCase()} topic #${found.topicId} for acknowledgement`);
+            db.ref(`autopsy-requested/${topicId}/${cfg.topicField}`).set(found.topicId).catch(() => {});
+            return { topicId: found.topicId };
+        }
+        console.log(`[AUTOPSY-MON] Step 3 — ${String(faction).toUpperCase()} topic search returned no results for ${oocName || name}; checking poster for CASELINK...`);
+    } catch (err) {
+        console.warn(`[AUTOPSY-MON] Step 3 — ${String(faction).toUpperCase()} topic search error: ${err.message}`);
+        return { topicId: null };
+    }
+
+    // 3. Nothing found — resolve the PHMC poster before creating anything.
+    let poster = requesterPoster;
+    if (!poster) {
+        try {
+            poster = await getForumClient().getTopicPoster(topicId, { baseUrl: PHMC_BASE }) || '';
+        } catch { poster = ''; }
+    }
+    const isCaselink = !!(poster && /caselink/i.test(poster));
+    console.log(`[AUTOPSY-MON] Step 3 — PHMC request poster: "${poster || 'unknown'}" (caselink: ${isCaselink})`);
+
+    if (isCaselink) {
+        console.log(`[AUTOPSY-MON] Step 3 — CASELINK request — ${String(faction).toUpperCase()} creates its own topic; skipping creation to avoid duplication`);
+        return { topicId: null };
+    }
+    if (!poster) {
+        console.warn(`[AUTOPSY-MON] Step 3 — Could not resolve request poster — skipping ${String(faction).toUpperCase()} topic creation to avoid duplicating a potential CASELINK topic. Handle manually or via recovery sweep.`);
+        return { topicId: null };
+    }
+
+    // Human request — close the CASELINK race window with one more search,
+    // then post the certified-copy topic with the RAW request BBCode verbatim.
+    try {
+        const recheck = await searchAgencyRequestTopic(client, { oocName, name }, cfg);
+        if (recheck) {
+            console.log(`[AUTOPSY-MON] Step 3 — ${String(faction).toUpperCase()} topic appeared during recheck: #${recheck.topicId}`);
+            db.ref(`autopsy-requested/${topicId}/${cfg.topicField}`).set(recheck.topicId).catch(() => {});
+            return { topicId: recheck.topicId };
+        }
+
+        const topicTitle = `Autopsy Request - ${name}${oocName ? ` ((${oocName}))` : ''} [${facTag}]`;
+        const topicBody = requestBbCode
+            ? `[divbox=white][center][b][size=170]AUTOPSY REQUEST — CERTIFIED COPY [/size][/b][/center][hr][/hr]\n${requestBbCode}\n[hr][/hr][b]Case:[/b] ${caseLabelLine}\n[b]Status:[/b] Under Investigation\n[/divbox]`
+            : `[divbox=white][b]Autopsy Request[/b]\n[b]Decedent:[/b] ${name}${oocName ? ` ((${oocName}))` : ''}\n[b]Case:[/b] ${caseLabelLine}\n[b]Status:[/b] Under Investigation\n[/divbox]`;
+        const postUrl = `${cfg.baseUrl}/posting.php?mode=post&f=${cfg.forumId}`;
+        const res = await client.postTopic(cfg.forumId, topicTitle, topicBody, postUrl);
+        if (res.ok) {
+            const tM = res.url.match(/[?&]t=(\d+)/);
+            if (tM) {
+                const newTopicId = tM[1];
+                console.log(`[AUTOPSY-MON] Created ${facTag} request topic #${newTopicId} for non-caselink request`);
+                db.ref(`autopsy-requested/${topicId}/${cfg.topicField}`).set(newTopicId).catch(() => {});
+                db.ref(`autopsy-requested/${topicId}/${factionLower}RequestCreatedByBot`).set(true).catch(() => {});
+                db.ref(`autopsy-requested/${topicId}/${factionLower}CrosspostStatus`).set('pending').catch(() => {});
+                return { topicId: newTopicId };
+            }
+            console.warn(`[AUTOPSY-MON] Step 3 — ${facTag} topic created but could not extract topic ID from URL: ${res.url}`);
+        } else {
+            console.warn(`[AUTOPSY-MON] Step 3 — ${facTag} topic creation failed: ${res.reason || 'unknown'}`);
+        }
+    } catch (err) {
+        console.warn(`[AUTOPSY-MON] Step 3 — ${facTag} topic creation error: ${err.message}`);
+    }
+    return { topicId: null };
 }
 
 // ── Forum Check ──
@@ -224,7 +445,8 @@ export async function checkForNewRequests() {
                         const bodyFields = parseAutopsyRequestBbcode(bbcode);
                         const deptRaw = (bodyFields.requesterDept || '').trim();
                         const nameRaw = (bodyFields.decedentName || '').trim();
-                        const hasDept = deptRaw.toLowerCase().includes('lssd') || deptRaw.toLowerCase().includes('lspd');
+                        // Registry factions (LSSD/LSPD/SADCR/DAO) — see factionFromDept.
+                        const hasDept = !!factionFromDept(deptRaw);
                         const hasName = !!nameRaw;
 
                         // Reject template/placeholder bodies — not real requests.
@@ -248,9 +470,7 @@ export async function checkForNewRequests() {
                             parsed = {
                                 name: cleanName,
                                 oocName: (oocMatch && oocMatch[1] ? oocMatch[1].trim() : ''),
-                                faction: deptRaw.toLowerCase().includes('lssd') ? 'LSSD'
-                                    : deptRaw.toLowerCase().includes('lspd') ? 'LSPD'
-                                    : '',
+                                faction: factionFromDept(deptRaw),
                             };
                             splitDecedents(parsed);
                             parsedBbFields = bodyFields;
@@ -283,6 +503,25 @@ export async function checkForNewRequests() {
 
             // --- New matching request found ---
 
+            // ── Requester identity (resolved at detection time, reused later) ──
+            // The forum username of whoever posted the request ("CASELINK [Bot]"
+            // vs a human officer) gates BOTH the agency-topic duplication guard
+            // and the completion webhook. Looked up here once so Step 3 never
+            // needs its own ad-hoc fetch.
+            let requesterPoster = prevEntry?.requesterPoster || '';
+            try {
+                const phmcClient = getForumClient();
+                await phmcClient.ensureBrowser();
+                const freshPoster = await phmcClient.getTopicPoster(topic.topicId, { baseUrl: PHMC_BASE });
+                if (freshPoster) requesterPoster = String(freshPoster);
+            } catch (err) {
+                console.warn(`[AUTOPSY-MON] Poster lookup failed for #${topic.topicId}: ${err.message}`);
+            }
+            const postedByCaselink = !!(requesterPoster && /caselink/i.test(requesterPoster));
+            if (requesterPoster) {
+                console.log(`[AUTOPSY-MON] Request poster for #${topic.topicId}: "${requesterPoster}" (caselink: ${postedByCaselink})`);
+            }
+
             const entry = {
                 title: topic.title,
                 name: parsed.name,
@@ -294,13 +533,29 @@ export async function checkForNewRequests() {
                 wasMatch: true,
                 // If the body fallback already parsed the request, persist those fields
                 // with the entry (a later `set` here would otherwise overwrite them).
-                ...(requestBbCode ? { requestBbCode, parsed: parsedBbFields } : {}),
+                ...(requestBbCode ? {
+                    requestBbCode,
+                    parsed: parsedBbFields,
+                    ...(parsedBbFields.requesterDiscord ? { requesterDiscordTag: parsedBbFields.requesterDiscord } : {}),
+                } : {}),
                 // Preserve crosspost topic ids across reprocessing so a re-run
-                // REUSES the existing LSPD/LSSD topics instead of duplicating them
+                // REUSES the existing LSPD/LSSD/SADCR/DAO topics instead of duplicating them
                 // (e.g. resetting a botched request to re-run with a fixed parser).
                 ...(prevEntry?.lspdTopicId ? { lspdTopicId: prevEntry.lspdTopicId } : {}),
                 ...(prevEntry?.lssdRequestTopicId ? { lssdRequestTopicId: prevEntry.lssdRequestTopicId } : {}),
                 ...(prevEntry?.lssdRequestCreatedByBot ? { lssdRequestCreatedByBot: true } : {}),
+                ...(prevEntry?.sadcrRequestTopicId ? { sadcrRequestTopicId: prevEntry.sadcrRequestTopicId } : {}),
+                ...(prevEntry?.daoRequestTopicId ? { daoRequestTopicId: prevEntry.daoRequestTopicId } : {}),
+                ...(prevEntry?.requesterDiscordTag ? { requesterDiscordTag: prevEntry.requesterDiscordTag } : {}),
+                // Requester identity fields (poster lookup re-runs each cycle only
+                // while no caseState exists; never write a false over a true).
+                ...(requesterPoster ? { requesterPoster } : {}),
+                ...(postedByCaselink ? { postedByCaselink: true } : {}),
+                // Preserve the live progress embed so reprocessing/restarts
+                // RESUME the same Discord message instead of posting a new one.
+                ...(prevEntry?.progressMessageId ? { progressMessageId: prevEntry.progressMessageId } : {}),
+                ...(prevEntry?.progressChannelId ? { progressChannelId: prevEntry.progressChannelId } : {}),
+                ...(prevEntry?.progressSteps ? { progressSteps: prevEntry.progressSteps } : {}),
             };
 
             await _db.ref(`autopsy-requested/${topic.topicId}`).set(entry);
@@ -319,6 +574,12 @@ export async function checkForNewRequests() {
                     requestBbCode = bbcode;
                     // Save the raw request BBCode for later crosspost use (LSPD/LSSD forum topics)
                     await _db.ref(`autopsy-requested/${topic.topicId}/requestBbCode`).set(bbcode).catch(() => {});
+                    // Requester Discord contact string (username or numeric ID) —
+                    // consumed by the completion webhook for the requester ping.
+                    if (parsedBbFields.requesterDiscord) {
+                        entry.requesterDiscordTag = parsedBbFields.requesterDiscord;
+                        await _db.ref(`autopsy-requested/${topic.topicId}/requesterDiscordTag`).set(parsedBbFields.requesterDiscord).catch(() => {});
+                    }
                     if (Object.keys(parsedBbFields).length > 0) {
                         await _db.ref(`autopsy-requested/${topic.topicId}/parsed`).set(parsedBbFields);
                         console.log(`[AUTOPSY-MON] Parsed ${Object.keys(parsedBbFields).length} fields from request`);
@@ -400,13 +661,24 @@ export async function checkForNewRequests() {
                     continue;
                 }
 
+                // Consolidated live progress embed (one self-updating message per
+                // request — replaces the old "Autopsy Case Created" webhook, owner
+                // ping, and "New Autopsy Request Detected" notifications).
+                const progress = await getAutopsyProgress(_db, topic.topicId, `Autopsy Case — ${parsed.name}${oocPart}${factionTag}`, existingEntry);
+                if (progress) await progress.addStep('Autopsy Case Detected', 'ok', 'Fetching Information');
+
                 // Step 1: Create case topic in f=266
                 if (state === '') {
                     console.log(`[AUTOPSY-MON] Creating case: "${caseTitle}"`);
+                    if (progress) await progress.addStep('FOUND: CASE', 'pending');
                     const cc = getForumClient();
                     const result = await cc.quoteAndPost(topic.topicId, 265, 266, caseTitle, { baseUrl: PHMC_BASE });
                     if (!result.ok) {
                         console.warn(`[AUTOPSY-MON] Case creation failed: ${result.reason || 'unknown'}`);
+                        if (progress) {
+                            await progress.addStep('FOUND: CASE', 'fail', result.reason || 'unknown');
+                            await progress.finalize();
+                        }
                         newRequests.push(entry);
                         continue;
                     }
@@ -416,16 +688,19 @@ export async function checkForNewRequests() {
                     if (tMatch) await caseRef.child('caseTopicId').set(tMatch[1]);
                     await caseRef.child('caseTitle').set(caseTitle);
                     await setState('case_created');
+                    if (progress) {
+                        await progress.addStep('FOUND: CASE', 'ok', caseTitle);
+                        await progress.addStep('POSTED TO CASE MANAGEMENT', 'ok', result.url);
+                    }
                 }
 
                 const caseUrl = existingEntry.caseUrl || (await caseRef.child('caseUrl').once('value')).val() || '';
 
                 // Step 2: Assign ME via fair rotation
-                // assignedName is declared here (loop scope) so the notification
-                // block and Step 3 below can read it regardless of the state path.
                 let assignedName = null;
                 if (state === 'case_created') {
                     await setState('me_assigned');
+                    if (progress) await progress.addStep('ASSIGNED MEDICAL EXAMINER', 'pending');
                     const cc = getForumClient();
                     try {
                         // Fetch group members (needed for user IDs in BBCode and to optionally init rotation)
@@ -448,10 +723,15 @@ export async function checkForNewRequests() {
                         // Supervised final-autopsy requests carry an explicit
                         // "ASSIGNED: <ME> for Final Autopsy Exams" marker — honor it
                         // (unless that ME is on LOA), otherwise use the fair rotation.
+                        // DEV TEST MODE outranks BOTH — every case goes to the forced ME.
+                        const devForcedME = getDevTestME();
                         const overrideRaw = (parsedBbFields.assignedOverride || '').trim();
                         const overrideName = overrideRaw.replace(/\s+for\s+Final\s+Autopsy\s+Exams.*$/i, '').trim();
                         const overrideLoa = overrideName ? loaSet.has(overrideName.toLowerCase()) : false;
-                        if (overrideName && !overrideLoa) {
+                        if (devForcedME) {
+                            assignedName = devForcedME;
+                            console.log(`[AUTOPSY-MON] DEV TEST MODE — forcing ${devForcedME} for #${topic.topicId}${overrideName ? ' (overriding supervised ASSIGNED marker)' : ''}`);
+                        } else if (overrideName && !overrideLoa) {
                             assignedName = overrideName;
                             console.log(`[AUTOPSY-MON] Assigned-override ME for #${topic.topicId}: ${assignedName}`);
                         } else {
@@ -483,118 +763,70 @@ export async function checkForNewRequests() {
                                     // Tag the assigned ME on Discord (if a mapping exists)
                                     try {
                                         const { notifyAssignment } = await import('./meDiscordNotify.js');
-                                        await notifyAssignment(_db, assignedName, newTitle || caseTitle, caseUrl);
+                                        await notifyAssignment(_db, assignedName, newTitle || caseTitle, caseUrl, {
+                                            decedent: parsed.name,
+                                            ooc: parsed.oocName,
+                                            caseNumber: caseNum,
+                                            deathType: parsed.deathType,
+                                        });
                                     } catch (err) {
                                         console.warn(`[AUTOPSY-MON] ME Discord notify failed: ${err.message}`);
                                     }
+                                    if (progress) await progress.addStep('ASSIGNED MEDICAL EXAMINER', 'ok', assignedName);
                                 } else {
                                     const reason = replyResult.reason || replyResult.url || 'unknown';
                                     console.warn(`[AUTOPSY-MON] Assignment reply failed for ${assignedName} — reason: ${reason} — will retry next cycle`);
                                     await caseRef.child('assignmentReplyStatus').set('failed').catch(() => {});
                                     // Reset caseState so the state machine retries this on the next cycle
                                     await caseRef.child('caseState').set('case_created').catch(() => {});
+                                    if (progress) await progress.addStep('ASSIGNED MEDICAL EXAMINER', 'fail', 'Assignment reply failed — will retry next cycle');
                                 }
                             }
                         } else {
                             console.log('[AUTOPSY-MON] No ME available to assign — check rotation list and LOA status');
+                            if (progress) await progress.addStep('ASSIGNED MEDICAL EXAMINER', 'fail', 'No ME available — check rotation/LOA');
                         }
                     } catch (err) {
                         console.error(`[AUTOPSY-MON] Assignment error: ${err.message}`);
+                        if (progress) await progress.addStep('ASSIGNED MEDICAL EXAMINER', 'fail', err.message);
                     }
-                }
-
-                // ── Consolidated notification (fires once after assignment completes) ──
-                const assignedLabel = assignedName ? `- ${assignedName}` : '- UNASSIGNED';
-                const notifTitle = caseTitle
-                    ? caseTitle.replace('- UNASSIGNED', assignedLabel)
-                    : `Case ${caseNumStr} - ${parsed.name}${oocPart}${factionTag} ${assignedLabel}`;
-                const finalCaseUrl = caseUrl || (await caseRef.child('caseUrl').once('value')).val() || '';
-                await sendWebhookSummary(`**Autopsy Case Created**\n${notifTitle}\n${finalCaseUrl}`);
-                const ownerId = process.env.BOT_OWNER_ID || '';
-                if (ownerId) {
-                    const ping = assignedName ? `Assigned to: ${assignedName}` : 'No ME available — still UNASSIGNED';
-                    await sendLogMessage(`<@${ownerId}> Autopsy case posted: ${notifTitle} — ${ping}`, null);
                 }
 
                 // Step 3: Send acknowledgement reply
                 if (state === 'me_assigned') {
                     try {
                         const requesterName = parsedBbFields.requesterName || parsed.name || '';
-                        let lssdAckTopicId = null;
+                        let agencyAckTopicId = null;   // request topic on the faction's own forum
+                        let agencyFactionKey = null;   // 'LSSD' | 'SADCR' | 'DAO'
                         let lspdTopicId = null;  // declared here for access in the ack call below
 
-                        // --- LSSD: Search for existing request topic for acknowledgement reply ---
-                        // LSSD auto-crossposts their own requests (CASELINK), so we search the
-                        // dedicated LSSD autopsy forum (f=2263) — "Name (( OOC ))" first, then plain name.
-                        // If no topic exists AND the request is NOT from CASELINK (a human officer
-                        // who only posted on the PHMC forum), create the LSSD topic ourselves so the
-                        // completion crosspost always has a target. We NEVER create one for CASELINK
-                        // requests — CASELINK creates its own topic, and duplicating it would break
-                        // the LSSD tracking.
-                        if (parsed.faction === 'LSSD' && (parsed.oocName || parsed.name)) {
-                            try {
-                                const lssdClient = getForumClient();
-                                await lssdClient.login(process.env.FORUM_LSSD_USERNAME, process.env.FORUM_LSSD_PASSWORD, { force: true, baseUrl: LSSD_BASE });
-                                const lssdResult = await searchLssdRequestTopic(lssdClient, { oocName: parsed.oocName, name: parsed.name });
-                                if (lssdResult) {
-                                    lssdAckTopicId = lssdResult.topicId;
-                                    console.log('[AUTOPSY-MON] Found LSSD topic #' + lssdAckTopicId + ' for acknowledgement');
-                                    _db.ref('autopsy-requested/' + topic.topicId + '/lssdRequestTopicId').set(lssdAckTopicId).catch(() => {});
-                                } else {
-                                    console.log('[AUTOPSY-MON] Step 3 — LSSD topic search returned no results for ' + (parsed.oocName || parsed.name) + '; checking poster for CASELINK...');
-                                    // Only create the topic when we can POSITIVELY confirm the PHMC
-                                    // request poster is a human (not CASELINK). If the poster can't be
-                                    // resolved, skip creation to guarantee we never duplicate a
-                                    // CASELINK topic — the recovery sweep / manual handling covers it.
-                                    try {
-                                        const phmcClient = getForumClient();
-                                        const poster = await phmcClient.getTopicPoster(topic.topicId, { baseUrl: PHMC_BASE });
-                                        const isCaselink = !!(poster && /caselink/i.test(poster));
-                                        console.log('[AUTOPSY-MON] Step 3 — PHMC request poster: "' + (poster || 'unknown') + '" (caselink: ' + isCaselink + ')');
-
-                                        if (isCaselink) {
-                                            console.log('[AUTOPSY-MON] Step 3 — CASELINK request — LSSD creates its own topic; skipping creation to avoid duplication');
-                                        } else if (!poster) {
-                                            console.warn('[AUTOPSY-MON] Step 3 — Could not resolve request poster — skipping LSSD topic creation to avoid duplicating a potential CASELINK topic. Handle manually or via recovery sweep.');
-                                        } else {
-                                            // Non-caselink (human) request. Re-search once more right
-                                            // before creating to close any CASELINK race window.
-                                            const recheck = await searchLssdRequestTopic(lssdClient, { oocName: parsed.oocName, name: parsed.name });
-                                            if (recheck) {
-                                                lssdAckTopicId = recheck.topicId;
-                                                console.log('[AUTOPSY-MON] Step 3 — LSSD topic appeared during recheck: #' + lssdAckTopicId);
-                                                _db.ref('autopsy-requested/' + topic.topicId + '/lssdRequestTopicId').set(lssdAckTopicId).catch(() => {});
-                                            } else {
-                                                const lssdTopicTitle = 'Autopsy Request - ' + parsed.name + (parsed.oocName ? ' ((' + parsed.oocName + '))' : '') + ' [LSSD]';
-                                                const lssdTopicBody = requestBbCode
-                                                    ? '[divbox=white][center][b][size=170]AUTOPSY REQUEST — CERTIFIED COPY [/size][/b][/center][hr][/hr]\n' + requestBbCode + '\n[hr][/hr][b]Case:[/b] ' + caseTitle + '\n[b]Status:[/b] Under Investigation\n[/divbox]'
-                                                    : '[divbox=white][b]Autopsy Request[/b]\n[b]Decedent:[/b] ' + parsed.name + (parsed.oocName ? ' ((' + parsed.oocName + '))' : '') + '\n[b]Case:[/b] ' + caseTitle + '\n[b]Status:[/b] Under Investigation\n[/divbox]';
-                                                const lssdPostResult = await lssdClient.postTopic(LSSD_FORUM_ID, lssdTopicTitle, lssdTopicBody, LSSD_AUTOPSY_POST_URL);
-                                                if (lssdPostResult.ok) {
-                                                    const tM = lssdPostResult.url.match(/[?&]t=(\d+)/);
-                                                    if (tM) {
-                                                        lssdAckTopicId = tM[1];
-                                                        console.log('[AUTOPSY-MON] Created LSSD topic #' + lssdAckTopicId + ' for non-caselink request');
-                                                        _db.ref('autopsy-requested/' + topic.topicId + '/lssdRequestTopicId').set(lssdAckTopicId).catch(() => {});
-                                                        _db.ref('autopsy-requested/' + topic.topicId + '/lssdRequestCreatedByBot').set(true).catch(() => {});
-                                                        _db.ref('autopsy-requested/' + topic.topicId + '/lssdCrosspostStatus').set('pending').catch(() => {});
-                                                    } else {
-                                                        console.warn('[AUTOPSY-MON] Step 3 — LSSD topic created but could not extract topic ID from URL: ' + lssdPostResult.url);
-                                                    }
-                                                } else {
-                                                    console.warn('[AUTOPSY-MON] Step 3 — LSSD topic creation failed: ' + (lssdPostResult.reason || 'unknown'));
-                                                }
-                                            }
-                                        }
-                                    } catch (err) {
-                                        console.warn('[AUTOPSY-MON] Step 3 — LSSD topic creation error: ' + err.message);
-                                    }
-                                }
-                            } catch (err) {
-                                console.warn('[AUTOPSY-MON] LSSD ack search error: ' + err.message);
-                            }
+                        // --- Agency crosspost: locate/create the request topic on the faction's own forum ---
+                        // LSSD/SADCR/DAO are registry factions whose forums ALL sit on lssd.gta.world,
+                        // so one pipeline serves them: search-first ("Name (( OOC ))" then plain name)
+                        // because CASELINK posts its own topics; creation happens ONLY for requests
+                        // whose PHMC poster positively resolves to a human account (never duplicate a
+                        // CASELINK topic; unresolvable posters defer to recovery/manual).
+                        // The raw request BBCode goes in verbatim inside the certified-copy shell.
+                        if (isAgencyFaction(parsed.faction) && (parsed.oocName || parsed.name)) {
+                            const cfgA = getAgencyForum(parsed.faction);
+                            const existingAgencyTopicId = existingEntry[cfgA.topicField]
+                                || (await caseRef.child(cfgA.topicField).once('value')).val()
+                                || '';
+                            const ensured = await ensureAgencyRequestTopic({
+                                db: _db,
+                                topicId: topic.topicId,
+                                faction: parsed.faction,
+                                oocName: parsed.oocName,
+                                name: parsed.name,
+                                requestBbCode,
+                                caseLabelLine: caseTitle,
+                                existingTopicId: existingAgencyTopicId,
+                                requesterPoster: entry.requesterPoster || existingEntry.requesterPoster || '',
+                            });
+                            agencyAckTopicId = ensured.topicId;
+                            agencyFactionKey = String(parsed.faction).toUpperCase();
                         } else {
-                            console.log('[AUTOPSY-MON] Step 3 — LSSD topic search skipped (faction=' + (parsed.faction || 'none') + ', oocName=' + (parsed.oocName || 'none') + ', name=' + (parsed.name || 'none') + ')');
+                            console.log('[AUTOPSY-MON] Step 3 — Agency crosspost skipped (faction=' + (parsed.faction || 'none') + ', oocName=' + (parsed.oocName || 'none') + ', name=' + (parsed.name || 'none') + ')');
                         }
 
                         // --- LSPD: Create topic on LSPD forum f=1361 immediately on detection ---
@@ -635,16 +867,19 @@ export async function checkForNewRequests() {
                             console.log('[AUTOPSY-MON] Step 3 — LSPD topic creation skipped (faction=' + (parsed.faction || 'none') + ')');
                         }
 
-                        // --- Send acknowledgement reply to PHMC + crosspost to LSSD/LSPD forums ---
-                        const ackResult = await sendAutopsyAcknowledgement(topic.topicId, requesterName, null, {
-                            baseUrl: PHMC_BASE,
-                            lssdTopicId: lssdAckTopicId,
-                            lspdTopicId: lspdTopicId
-                        });
+                        // --- Send acknowledgement reply to PHMC + the faction's own forum + LSPD ---
+                        const ackOpts = { baseUrl: PHMC_BASE, lspdTopicId };
+                        if (agencyFactionKey === 'LSSD') ackOpts.lssdTopicId = agencyAckTopicId;
+                        else if (agencyFactionKey) {
+                            // SADCR/DAO ride the generic registry branch (own subforum, shared login)
+                            ackOpts.agencyTopicId = agencyAckTopicId;
+                            ackOpts.agencyFaction = agencyFactionKey;
+                        }
+                        const ackResult = await sendAutopsyAcknowledgement(topic.topicId, requesterName, null, ackOpts);
 
                         // Log which ack targets were hit
                         if (ackResult.phmc) console.log('[AUTOPSY-MON] Acknowledgement sent to PHMC #' + topic.topicId);
-                        if (ackResult.lssd) console.log('[AUTOPSY-MON] Acknowledgement sent to LSSD #' + lssdAckTopicId);
+                        if (agencyFactionKey && ackResult[agencyFactionKey.toLowerCase()]) console.log('[AUTOPSY-MON] Acknowledgement sent to ' + agencyFactionKey + ' #' + agencyAckTopicId);
                         if (ackResult.lspd) console.log('[AUTOPSY-MON] Acknowledgement sent to LSPD #' + lspdTopicId);
 
                         // Save ack status to Firebase for retry tracking.
@@ -669,6 +904,30 @@ export async function checkForNewRequests() {
                             console.log(`[AUTOPSY-MON] ACK status saved for #${topic.topicId}: ` + Object.entries(ackStatus).map(([f, s]) => `${f}=${s}`).join(', '));
                         }
 
+                        // ── Crosspost step on the live progress embed ──
+                        if (progress) {
+                            if (parsed.faction === 'LSPD') {
+                                const url = lspdTopicId ? `https://lspd.gta.world/viewtopic.php?t=${lspdTopicId}` : '';
+                                if (ackResult.lspd === true) await progress.addStep('CROSSPOSTED TO LSPD', 'ok', url || 'Certified copy posted');
+                                else if (ackResult.lspd === false) await progress.addStep('CROSSPOSTED TO LSPD', 'fail', url ? `Ack failed — ${url}` : 'Ack failed');
+                                else await progress.addStep('CROSSPOSTED TO LSPD', 'skip', 'No LSPD certified copy for this request');
+                            } else if (parsed.faction === 'LSSD') {
+                                const url = agencyAckTopicId ? `https://lssd.gta.world/viewtopic.php?t=${agencyAckTopicId}` : '';
+                                if (ackResult.lssd === true) await progress.addStep('CROSSPOSTED TO LSSD', 'ok', url || 'Certified copy posted');
+                                else if (ackResult.lssd === false) await progress.addStep('CROSSPOSTED TO LSSD', 'fail', url ? `Ack failed — ${url}` : 'Ack failed');
+                                else await progress.addStep('CROSSPOSTED TO LSSD', 'skip', 'No LSSD certified copy for this request');
+                            } else if (isAgencyFaction(parsed.faction)) {
+                                // SADCR/DAO — same shape as the LSSD branch, faction-keyed.
+                                const cfgP = getAgencyForum(parsed.faction);
+                                const url = agencyAckTopicId ? `${cfgP.baseUrl}/viewtopic.php?t=${agencyAckTopicId}` : '';
+                                const okFlag = ackResult[String(parsed.faction).toLowerCase()];
+                                const lbl = `CROSSPOSTED TO ${String(parsed.faction).toUpperCase()}`;
+                                if (okFlag === true) await progress.addStep(lbl, 'ok', url || 'Certified copy posted');
+                                else if (okFlag === false) await progress.addStep(lbl, 'fail', url ? `Ack failed — ${url}` : 'Ack failed');
+                                else await progress.addStep(lbl, 'skip', 'No certified copy for this request');
+                            }
+                        }
+
                         await setState('ack_sent');
                     } catch (err) {
                         console.warn('[AUTOPSY-MON] Acknowledgement error: ' + err.message);
@@ -678,7 +937,7 @@ export async function checkForNewRequests() {
                 // Step 4: Update counters
                 if (state === 'ack_sent') {
                     try {
-                        const countKey = parsed.faction === 'LSPD' ? 'LSPD' : 'LSSD';
+                        const countKey = ['LSPD', 'LSSD', 'SADCR', 'DAO'].includes(parsed.faction) ? parsed.faction : 'OTHER';
                         const countRef = _db.ref(`autopsy-requests/${countKey}/count`);
                         const countSnap = await countRef.once('value');
                         const newCount = (countSnap.val() || 0) + 1;
@@ -689,6 +948,7 @@ export async function checkForNewRequests() {
                         console.warn(`[AUTOPSY-MON] Counter update: ${err.message}`);
                     }
                     await setState('complete');
+                    if (progress) await progress.finalize();
                 }
 
             } catch (err) {
@@ -719,23 +979,11 @@ export async function checkForNewRequests() {
             return;
         }
 
-        // Subsequent cycles — notify for each new request
-        for (const req of newRequests) {
-            await sendNotification(
-                'New Autopsy Request Detected',
-                `**Name:** ${req.name} ((${req.oocName}))\n` +
-                `**Faction:** ${req.faction}\n` +
-                `**Topic:** [${req.title}](<${req.topicUrl}>)`,
-                0x00bcd4
-            );
-        }
-
-        // Send summary to the deploy webhook (spam channel)
+        // Subsequent cycles — each new request already got its own live
+        // progress embed during processing (case created → ME assigned →
+        // crossposted), so no per-request or batch notification is needed here.
         if (newRequests.length > 0) {
-            await sendWebhookSummary(
-                `**Autopsy Request Monitor — New Requests**\n` +
-                `_${newRequests.length} new request(s) saved to Firebase_`
-            );
+            console.log(`[AUTOPSY-MON] ${newRequests.length} new request(s) processed this cycle`);
         } else {
             console.log('[AUTOPSY-MON] No new autopsy requests found');
         }
@@ -772,6 +1020,10 @@ async function processMultiDecedentRequest({ db, topic, parsed, decedents, reque
     // Marker so the detection loop skips this topic on later cycles.
     await rootRef.child('caseState').set('multi').catch(() => {});
     await rootRef.child('decedentCount').set(decedents.length).catch(() => {});
+
+    // Consolidated live progress embed (one self-updating message per request).
+    const progress = isDryRun ? null : await getAutopsyProgress(db, topicId, `Autopsy Case — ${parsed.name}${parsed.oocName ? ` ((${parsed.oocName}))` : ''}`, existing);
+    if (progress) await progress.addStep('Autopsy Case Detected', 'ok', `Fetching Information — ${decedents.length} decedent(s)`);
 
     // ── Shared case-number base (one lookup, sequential per decedent) ──
     let caseBase = existing.caseNum ? parseInt(String(existing.caseNum), 10) : 0;
@@ -825,10 +1077,12 @@ async function processMultiDecedentRequest({ db, topic, parsed, decedents, reque
         // ── Step 1: Create the case topic in f=266 ──
         if (caseState === '') {
             console.log(`[AUTOPSY-MON] Creating case: "${caseTitle}"`);
+            if (progress) await progress.addStep('FOUND: CASE', 'pending', `Decedent ${i + 1}/${decedents.length} — ${decedent.name}`);
             const cc = getForumClient();
             const result = await cc.quoteAndPost(topic.topicId, 265, 266, caseTitle, { baseUrl: PHMC_BASE });
             if (!result.ok) {
                 console.warn(`[AUTOPSY-MON] Case creation failed: ${result.reason || 'unknown'}`);
+                if (progress) await progress.addStep('FOUND: CASE', 'fail', `${decedent.name} — ${result.reason || 'unknown'}`);
                 continue;
             }
             console.log(`[AUTOPSY-MON] Case created: ${result.url}`);
@@ -838,6 +1092,10 @@ async function processMultiDecedentRequest({ db, topic, parsed, decedents, reque
             await caseRef.child('caseTitle').set(caseTitle);
             await caseRef.child('caseNum').set(caseNum);
             await caseRef.child('caseState').set('case_created');
+            if (progress) {
+                await progress.addStep('FOUND: CASE', 'ok', caseTitle);
+                await progress.addStep('POSTED TO CASE MANAGEMENT', 'ok', result.url);
+            }
         }
 
         const caseUrl = existingCase.caseUrl || (await caseRef.child('caseUrl').once('value')).val() || '';
@@ -846,6 +1104,7 @@ async function processMultiDecedentRequest({ db, topic, parsed, decedents, reque
         let assignedName = null;
         if (caseState === 'case_created' || (!existingCase.caseState && caseUrl)) {
             await caseRef.child('caseState').set('me_assigned');
+            if (progress) await progress.addStep('ASSIGNED MEDICAL EXAMINER', 'pending', `Decedent ${i + 1}/${decedents.length} — ${decedent.name}`);
             const cc = getForumClient();
             try {
                 const memberList = await cc.getGroupMembers(50, { baseUrl: PHMC_BASE, exclude: ['PHMC Forms Bot'], paginate: true });
@@ -860,10 +1119,15 @@ async function processMultiDecedentRequest({ db, topic, parsed, decedents, reque
                     try { await sendLogMessage(`[ROTATION] ${msg}`); } catch { /* ignore */ }
                 }
 
+                // DEV TEST MODE outranks supervised overrides + rotation here too.
+                const devForcedME = getDevTestME();
                 const overrideRaw = (parsedBbFields.assignedOverride || '').trim();
                 const overrideName = overrideRaw.replace(/\s+for\s+Final\s+Autopsy\s+Exams.*$/i, '').trim();
                 const overrideLoa = overrideName ? loaSet.has(overrideName.toLowerCase()) : false;
-                if (overrideName && !overrideLoa) {
+                if (devForcedME) {
+                    assignedName = devForcedME;
+                    console.log(`[AUTOPSY-MON] DEV TEST MODE — forcing ${devForcedME} for #${topicId}/${i}${overrideName ? ' (overriding supervised ASSIGNED marker)' : ''}`);
+                } else if (overrideName && !overrideLoa) {
                     assignedName = overrideName;
                     console.log(`[AUTOPSY-MON] Assigned-override ME for #${topicId}/${i}: ${assignedName}`);
                 } else {
@@ -891,34 +1155,32 @@ async function processMultiDecedentRequest({ db, topic, parsed, decedents, reque
                             assignedNames.push(assignedName);
                             try {
                                 const { notifyAssignment } = await import('./meDiscordNotify.js');
-                                await notifyAssignment(db, assignedName, newTitle || caseTitle, caseUrl);
+                                await notifyAssignment(db, assignedName, newTitle || caseTitle, caseUrl, {
+                                    decedent: decedent.name,
+                                    ooc: decedent.oocName,
+                                    caseNumber: caseNum,
+                                    deathType: decedent.deathType || parsed.deathType,
+                                });
                             } catch (err) {
                                 console.warn(`[AUTOPSY-MON] ME Discord notify failed: ${err.message}`);
                             }
+                            if (progress) await progress.addStep('ASSIGNED MEDICAL EXAMINER', 'ok', assignedName);
                         } else {
                             const reason = replyResult.reason || replyResult.url || 'unknown';
                             console.warn(`[AUTOPSY-MON] Assignment reply failed for ${assignedName} — reason: ${reason} — will retry next cycle`);
                             await caseRef.child('assignmentReplyStatus').set('failed').catch(() => {});
                             await caseRef.child('caseState').set('case_created').catch(() => {});
+                            if (progress) await progress.addStep('ASSIGNED MEDICAL EXAMINER', 'fail', 'Assignment reply failed — will retry next cycle');
                         }
                     }
                 } else {
                     console.log('[AUTOPSY-MON] No ME available to assign — check rotation list and LOA status');
+                    if (progress) await progress.addStep('ASSIGNED MEDICAL EXAMINER', 'fail', 'No ME available — check rotation/LOA');
                 }
             } catch (err) {
                 console.error(`[AUTOPSY-MON] Assignment error: ${err.message}`);
+                if (progress) await progress.addStep('ASSIGNED MEDICAL EXAMINER', 'fail', err.message);
             }
-        }
-
-        // ── Per-case notification ──
-        const caseAssigned = (await caseRef.child('assignedTo').once('value')).val() || null;
-        const assignedLabel = caseAssigned ? `- ${caseAssigned}` : '- UNASSIGNED';
-        const notifTitle = caseTitle.replace('- UNASSIGNED', assignedLabel);
-        await sendWebhookSummary(`**Autopsy Case Created**\n${notifTitle}\n${caseUrl}`);
-        const ownerId = process.env.BOT_OWNER_ID || '';
-        if (ownerId) {
-            const ping = caseAssigned ? `Assigned to: ${caseAssigned}` : 'No ME available — still UNASSIGNED';
-            await sendLogMessage(`<@${ownerId}> Autopsy case posted: ${notifTitle} — ${ping}`, null);
         }
     }
 
@@ -936,62 +1198,31 @@ async function processMultiDecedentRequest({ db, topic, parsed, decedents, reque
             try {
                 const requesterName = parsedBbFields.requesterName || parsed.name || '';
                 const displayTitle = caseTitles[0] || `Case - ${parsed.name} ((${parsed.oocName}))`;
-                let lssdAckTopicId = null;
+                let agencyAckTopicId = null;   // request topic on the faction's own forum
+                let agencyFactionKey = null;   // 'LSSD' | 'SADCR' | 'DAO'
                 let lspdTopicId = null;
 
-                // --- LSSD: search for existing request topic for acknowledgement reply ---
-                if (parsed.faction === 'LSSD' && (parsed.oocName || parsed.name)) {
-                    try {
-                        const lssdClient = getForumClient();
-                        await lssdClient.login(process.env.FORUM_LSSD_USERNAME, process.env.FORUM_LSSD_PASSWORD, { force: true, baseUrl: LSSD_BASE });
-                        const lssdResult = await searchLssdRequestTopic(lssdClient, { oocName: parsed.oocName, name: parsed.name });
-                        if (lssdResult) {
-                            lssdAckTopicId = lssdResult.topicId;
-                            console.log('[AUTOPSY-MON] Found LSSD topic #' + lssdAckTopicId + ' for acknowledgement');
-                            db.ref(`autopsy-requested/${topicId}/lssdRequestTopicId`).set(lssdAckTopicId).catch(() => {});
-                        } else {
-                            console.log('[AUTOPSY-MON] Step 3 — LSSD topic search returned no results; checking poster for CASELINK...');
-                            try {
-                                const phmcClient = getForumClient();
-                                const poster = await phmcClient.getTopicPoster(topic.topicId, { baseUrl: PHMC_BASE });
-                                const isCaselink = !!(poster && /caselink/i.test(poster));
-                                if (isCaselink) {
-                                    console.log('[AUTOPSY-MON] Step 3 — CASELINK request — skipping LSSD topic creation to avoid duplication');
-                                } else if (!poster) {
-                                    console.warn('[AUTOPSY-MON] Step 3 — Could not resolve request poster — skipping LSSD topic creation');
-                                } else {
-                                    const recheck = await searchLssdRequestTopic(lssdClient, { oocName: parsed.oocName, name: parsed.name });
-                                    if (recheck) {
-                                        lssdAckTopicId = recheck.topicId;
-                                        db.ref(`autopsy-requested/${topicId}/lssdRequestTopicId`).set(lssdAckTopicId).catch(() => {});
-                                    } else {
-                                        const lssdTopicTitle = 'Autopsy Request - ' + parsed.name + (parsed.oocName ? ' ((' + parsed.oocName + '))' : '') + ' [LSSD]';
-                                        const lssdTopicBody = requestBbCode
-                                            ? '[divbox=white][center][b][size=170]AUTOPSY REQUEST — CERTIFIED COPY [/size][/b][/center][hr][/hr]\n' + requestBbCode + '\n[hr][/hr][b]Cases:[/b] ' + caseTitles.join(' | ') + '\n[b]Status:[/b] Under Investigation\n[/divbox]'
-                                            : '[divbox=white][b]Autopsy Request[/b]\n[b]Decedent:[/b] ' + parsed.name + (parsed.oocName ? ' ((' + parsed.oocName + '))' : '') + '\n[b]Cases:[/b] ' + caseTitles.join(' | ') + '\n[b]Status:[/b] Under Investigation\n[/divbox]';
-                                        const lssdPostResult = await lssdClient.postTopic(LSSD_FORUM_ID, lssdTopicTitle, lssdTopicBody, LSSD_AUTOPSY_POST_URL);
-                                        if (lssdPostResult.ok) {
-                                            const tM = lssdPostResult.url.match(/[?&]t=(\d+)/);
-                                            if (tM) {
-                                                lssdAckTopicId = tM[1];
-                                                db.ref(`autopsy-requested/${topicId}/lssdRequestTopicId`).set(lssdAckTopicId).catch(() => {});
-                                                db.ref(`autopsy-requested/${topicId}/lssdRequestCreatedByBot`).set(true).catch(() => {});
-                                                db.ref(`autopsy-requested/${topicId}/lssdCrosspostStatus`).set('pending').catch(() => {});
-                                            }
-                                        } else {
-                                            console.warn('[AUTOPSY-MON] Step 3 — LSSD topic creation failed: ' + (lssdPostResult.reason || 'unknown'));
-                                        }
-                                    }
-                                }
-                            } catch (err) {
-                                console.warn('[AUTOPSY-MON] Step 3 — LSSD topic creation error: ' + err.message);
-                            }
-                        }
-                    } catch (err) {
-                        console.warn('[AUTOPSY-MON] LSSD ack search error: ' + err.message);
-                    }
+                // --- Agency crosspost (registry factions share one pipeline) ---
+                if (isAgencyFaction(parsed.faction) && (parsed.oocName || parsed.name)) {
+                    const cfgA = getAgencyForum(parsed.faction);
+                    const existingAgencyTopicId = existing[cfgA.topicField]
+                        || (await rootRef.child(cfgA.topicField).once('value')).val()
+                        || '';
+                    const ensured = await ensureAgencyRequestTopic({
+                        db,
+                        topicId,
+                        faction: parsed.faction,
+                        oocName: parsed.oocName,
+                        name: parsed.name,
+                        requestBbCode,
+                        caseLabelLine: caseTitles.join(' | '),
+                        existingTopicId: existingAgencyTopicId,
+                        requesterPoster: existing.requesterPoster || '',
+                    });
+                    agencyAckTopicId = ensured.topicId;
+                    agencyFactionKey = String(parsed.faction).toUpperCase();
                 } else {
-                    console.log('[AUTOPSY-MON] Step 3 — LSSD topic search skipped (faction=' + (parsed.faction || 'none') + ')');
+                    console.log('[AUTOPSY-MON] Step 3 — Agency crosspost skipped (faction=' + (parsed.faction || 'none') + ')');
                 }
 
                 // --- LSPD: Create topic on LSPD forum f=1361 ---
@@ -1029,15 +1260,17 @@ async function processMultiDecedentRequest({ db, topic, parsed, decedents, reque
                     console.log('[AUTOPSY-MON] Step 3 — LSPD topic creation skipped (faction=' + (parsed.faction || 'none') + ')');
                 }
 
-                // --- Send acknowledgement reply to PHMC + crosspost to LSSD/LSPD forums ---
-                const ackResult = await sendAutopsyAcknowledgement(topic.topicId, requesterName, null, {
-                    baseUrl: PHMC_BASE,
-                    lssdTopicId: lssdAckTopicId,
-                    lspdTopicId: lspdTopicId,
-                });
+                // --- Send acknowledgement reply to PHMC + the faction's own forum + LSPD ---
+                const ackOpts = { baseUrl: PHMC_BASE, lspdTopicId };
+                if (agencyFactionKey === 'LSSD') ackOpts.lssdTopicId = agencyAckTopicId;
+                else if (agencyFactionKey) {
+                    ackOpts.agencyTopicId = agencyAckTopicId;
+                    ackOpts.agencyFaction = agencyFactionKey;
+                }
+                const ackResult = await sendAutopsyAcknowledgement(topic.topicId, requesterName, null, ackOpts);
 
                 if (ackResult.phmc) console.log('[AUTOPSY-MON] Acknowledgement sent to PHMC #' + topic.topicId);
-                if (ackResult.lssd) console.log('[AUTOPSY-MON] Acknowledgement sent to LSSD #' + lssdAckTopicId);
+                if (agencyFactionKey && ackResult[agencyFactionKey.toLowerCase()]) console.log('[AUTOPSY-MON] Acknowledgement sent to ' + agencyFactionKey + ' #' + agencyAckTopicId);
                 if (ackResult.lspd) console.log('[AUTOPSY-MON] Acknowledgement sent to LSPD #' + lspdTopicId);
 
                 const ackStatus = {};
@@ -1059,6 +1292,30 @@ async function processMultiDecedentRequest({ db, topic, parsed, decedents, reque
                 }
 
                 await rootRef.child('multiAckState').set('ack_sent').catch(() => {});
+
+                // ── Crosspost step on the live progress embed ──
+                if (progress) {
+                    if (parsed.faction === 'LSPD') {
+                        const url = lspdTopicId ? `https://lspd.gta.world/viewtopic.php?t=${lspdTopicId}` : '';
+                        if (ackResult.lspd === true) await progress.addStep('CROSSPOSTED TO LSPD', 'ok', url || 'Certified copy posted');
+                        else if (ackResult.lspd === false) await progress.addStep('CROSSPOSTED TO LSPD', 'fail', url ? `Ack failed — ${url}` : 'Ack failed');
+                        else await progress.addStep('CROSSPOSTED TO LSPD', 'skip', 'No LSPD certified copy for this request');
+                    } else if (parsed.faction === 'LSSD') {
+                        const url = agencyAckTopicId ? `https://lssd.gta.world/viewtopic.php?t=${agencyAckTopicId}` : '';
+                        if (ackResult.lssd === true) await progress.addStep('CROSSPOSTED TO LSSD', 'ok', url || 'Certified copy posted');
+                        else if (ackResult.lssd === false) await progress.addStep('CROSSPOSTED TO LSSD', 'fail', url ? `Ack failed — ${url}` : 'Ack failed');
+                        else await progress.addStep('CROSSPOSTED TO LSSD', 'skip', 'No LSSD certified copy for this request');
+                    } else if (isAgencyFaction(parsed.faction)) {
+                        // SADCR/DAO — faction-keyed mirror of the LSSD branch.
+                        const cfgP = getAgencyForum(parsed.faction);
+                        const url = agencyAckTopicId ? `${cfgP.baseUrl}/viewtopic.php?t=${agencyAckTopicId}` : '';
+                        const okFlag = ackResult[String(parsed.faction).toLowerCase()];
+                        const lbl = `CROSSPOSTED TO ${String(parsed.faction).toUpperCase()}`;
+                        if (okFlag === true) await progress.addStep(lbl, 'ok', url || 'Certified copy posted');
+                        else if (okFlag === false) await progress.addStep(lbl, 'fail', url ? `Ack failed — ${url}` : 'Ack failed');
+                        else await progress.addStep(lbl, 'skip', 'No certified copy for this request');
+                    }
+                }
             } catch (err) {
                 console.warn('[AUTOPSY-MON] Acknowledgement error: ' + err.message);
             }
@@ -1067,7 +1324,7 @@ async function processMultiDecedentRequest({ db, topic, parsed, decedents, reque
         // ── Step 4 (once per request): update counters ──
         if (multiAckState === 'ack_sent' || (await rootRef.child('multiAckState').once('value')).val() === 'ack_sent') {
             try {
-                const countKey = parsed.faction === 'LSPD' ? 'LSPD' : 'LSSD';
+                const countKey = ['LSPD', 'LSSD', 'SADCR', 'DAO'].includes(parsed.faction) ? parsed.faction : 'OTHER';
                 const countRef = db.ref(`autopsy-requests/${countKey}/count`);
                 const countSnap = await countRef.once('value');
                 const newCount = (countSnap.val() || 0) + 1;
@@ -1078,6 +1335,7 @@ async function processMultiDecedentRequest({ db, topic, parsed, decedents, reque
                 console.warn(`[AUTOPSY-MON] Counter update: ${err.message}`);
             }
             await rootRef.child('multiComplete').set(true).catch(() => {});
+            if (progress) await progress.finalize();
         }
     }
 }
@@ -1187,6 +1445,18 @@ export function parseAutopsyRequestBbcode(bbcode) {
             if (m1) fields.requesterName = m1[1].trim();
             const m3 = trimmed.match(/3\.\)\s*Department\s*\/\s*Assignment:\s*(.+)/i);
             if (m3) fields.requesterDept = m3[1].trim();
+            // Contact Information line — "(( Discord Name: ._diaaa ))" or a numeric
+            // "Discord ID:". BBCode tags are already stripped, so the raw value is
+            // e.g. "._diaaa ))" → trim the wrapping parens off. This is a USERNAME
+            // string, not necessarily a mentionable snowflake; resolution to a
+            // real ping lives in services/requesterWebhook.js.
+            const mDis = trimmed.match(/Discord(?:\s*(?:Name|ID|Tag|Username))?\s*:\s*(.+)/i);
+            if (mDis && !fields.requesterDiscord) {
+                fields.requesterDiscord = mDis[1]
+                    .replace(/\)+\s*$/, '')
+                    .replace(/^\(+/, '')
+                    .trim();
+            }
         }
 
         if (currentSection === 'details') {
@@ -1235,10 +1505,17 @@ Website: [url][color=#808080]www.phmc.health[/color][/url][/size]
 [br][/br][/divbox]`;
 
 /**
- * Send an acknowledgement reply to the autopsy request topic (and LSSD/LSPD if applicable).
+ * Send an acknowledgement reply to the autopsy request topic (and the requesting
+ * faction's own forum if applicable).
  * Called after case creation + assignment in the detection flow.
+ *
+ * Agency targets:
+ *   - lssdTopicId    → LSSD f=2263 (legacy explicit param, unchanged behavior)
+ *   - agencyTopicId + agencyFaction → generic registry branch for SADCR/DAO
+ *     (their forums share the lssd.gta.world domain and FORUM_LSSD_* credentials —
+ *     see services/agencyForums.js)
  */
-export async function sendAutopsyAcknowledgement(topicId, requesterName, bbCode, { baseUrl, lssdTopicId, lspdTopicId } = {}) {
+export async function sendAutopsyAcknowledgement(topicId, requesterName, bbCode, { baseUrl, lssdTopicId, lspdTopicId, agencyTopicId, agencyFaction } = {}) {
     const client = getForumClient();
     const name = requesterName || 'Requesting Party';
     const ackBbcode = ACK_TEMPLATE.replace('REQUESTING_NAME', name);
@@ -1266,6 +1543,24 @@ export async function sendAutopsyAcknowledgement(topicId, requesterName, bbCode,
         }
     } else {
         console.log('[AUTOPSY-MON] Step 3 — LSSD ack reply skipped (no LSSD topic ID)');
+    }
+
+    // Generic registry branch — SADCR/DAO acknowledgement on their own subforum.
+    // Reaches here when the monitor resolved the faction request topic via
+    // ensureAgencyRequestTopic (not the legacy LSSD param path).
+    if (!lssdTopicId && agencyTopicId && agencyFaction) {
+        const cfgA = getAgencyForum(agencyFaction);
+        if (cfgA) {
+            try {
+                const client_ag = getForumClient();
+                await client_ag.login(process.env[`FORUM_${cfgA.credPrefix}_USERNAME`], process.env[`FORUM_${cfgA.credPrefix}_PASSWORD`], { force: true, baseUrl: cfgA.baseUrl });
+                const r = await client_ag.replyToTopic(agencyTopicId, cfgA.forumId, ackBbcode, { dryRun: false, baseUrl: cfgA.baseUrl });
+                results[agencyFaction.toLowerCase()] = r.ok;
+                console.log(`[AUTOPSY-MON] Ack reply to ${String(agencyFaction).toUpperCase()} #${agencyTopicId}: ${r.ok ? 'OK' : 'FAIL'}`);
+            } catch (err) {
+                console.error(`[AUTOPSY-MON] Ack ${String(agencyFaction).toUpperCase()} reply failed: ${err.message}`);
+            }
+        }
     }
 
     // Reply to LSPD forum if a topic ID was provided
@@ -1384,15 +1679,31 @@ export async function retryFailedAssignmentReplies(db, { entries, memberList } =
     const ref = db || _db;
     if (!ref) return;
     try {
+        if (!entries) {
+            const snap = await ref.ref('autopsy-requested').once('value');
+            entries = snap.val() || {};
+        }
+
+        // Scan FIRST without touching the browser: only fetch the ME roster and
+        // force a login when an entry genuinely needs a retry. A quiet heartbeat
+        // with nothing to fix should do zero forum work (no memberlist, no login).
+        const needsRetry = (e) => {
+            if (!e || e.completedAt) return false;
+            if (e.caseState === 'multi' && e.cases) {
+                return Object.values(e.cases).some(c => c && c.assignedTo &&
+                    c.assignmentReplyStatus !== 'completed' && c.assignmentReplyStatus !== 'attempting' && c.caseTopicId);
+            }
+            return !!(e.assignedTo && e.assignmentReplyStatus !== 'completed' &&
+                e.assignmentReplyStatus !== 'attempting' && e.caseTopicId);
+        };
+        const hasRetries = Object.values(entries).some(needsRetry);
+        if (!hasRetries) return;
+
         const cc = getForumClient();
         // Force a PHMC session — the default client may have been left on LSPD/LSSD
         // by earlier heartbeat checks (retryMissingLspdCrossposts force-logs it to LSPD).
         await cc.login(null, null, { force: true, baseUrl: PHMC_BASE });
 
-        if (!entries) {
-            const snap = await ref.ref('autopsy-requested').once('value');
-            entries = snap.val() || {};
-        }
         if (!memberList) {
             try {
                 memberList = await cc.getGroupMembers(50, { baseUrl: PHMC_BASE, exclude: ['PHMC Forms Bot'], paginate: true });
@@ -1576,6 +1887,13 @@ export function startAutopsyRequestMonitor() {
     // Initialize rotation list from forum group on startup (no-op if already configured)
     // This runs async — doesn't block the first check cycle
     initializeRotationAtStartup();
+
+    // Loud startup reminder when DEV TEST assignment forcing is active.
+    if (isDevTestActive()) {
+        const devMsg = `[DEV TEST] Autopsy assignments FORCED to ${getDevTestME()} — fair rotation + supervised overrides bypassed`;
+        console.warn('[AUTOPSY-MON] ' + devMsg);
+        Promise.resolve(sendLogMessage(devMsg)).catch(() => { /* non-fatal */ });
+    }
 
     // Run the first check immediately.
     // On restart, pending cases with partial state will resume from where they left off.

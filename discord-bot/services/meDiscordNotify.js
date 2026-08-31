@@ -7,6 +7,7 @@
  */
 
 import { sendLogMessage } from './logChannel.js';
+import { notifyAssignmentWebhook, assignmentWebhookConfigured, forwardAssignmentWebhook, PHMC_FORWARD_WEBHOOK_URL } from './assignmentWebhook.js';
 
 /**
  * Look up a Discord user ID for a given forum username.
@@ -40,8 +41,12 @@ export async function setDiscordMapping(db, forumName, discordUserId) {
 }
 
 /**
- * Send an assignment notification to the bot-spam channel.
- * Pings the Discord user if a mapping exists, otherwise just tags the name.
+ * Send an assignment notification to the ME.
+ *
+ * When ASSIGNMENT_WEBHOOK_URL is configured, the ME is pinged on the assignment
+ * webhook (rich embed + View Case / PHMC Forms buttons) and the log-channel message
+ * is posted WITHOUT the mention so the ME is never pinged twice. Without a webhook
+ * config it falls back to the legacy log-channel ping.
  *
  * @param {import('firebase-admin').database.Database} db
  * @param {string} assignedName — forum username of the ME
@@ -49,20 +54,48 @@ export async function setDiscordMapping(db, forumName, discordUserId) {
  * @param {string} [caseUrl] — link to the case topic
  * @param {object} [options]
  * @param {boolean} [options.isMassAutopsy=false]
+ * @param {string} [options.decedent] — decedent name (webhook embed)
+ * @param {string} [options.ooc] — decedent OOC name (webhook embed)
+ * @param {string|number} [options.caseNumber]
+ * @param {string} [options.deathType] — "CK"/"PK" for the wait window label
  */
-export async function notifyAssignment(db, assignedName, caseTitle, caseUrl, { isMassAutopsy = false } = {}) {
+export async function notifyAssignment(db, assignedName, caseTitle, caseUrl, {
+    isMassAutopsy = false, decedent, ooc, caseNumber, deathType, label, embedTitle,
+} = {}) {
     try {
         const discordId = await getDiscordId(db, assignedName);
-        const mention = discordId ? `<@${discordId}>` : `**${assignedName}**`;
-        const label = isMassAutopsy ? 'Mass Autopsy' : 'Autopsy Assignment';
-
+        const resolvedLabel = label || (isMassAutopsy ? 'Mass Autopsy' : 'Autopsy Assignment');
         const titleLine = caseUrl ? `[${caseTitle}](${caseUrl})` : caseTitle;
 
+        const webhookMode = assignmentWebhookConfigured();
+        if (webhookMode) {
+            await notifyAssignmentWebhook({
+                me: assignedName, discordId, caseTitle, caseNumber,
+                decedent, ooc, caseUrl, deathType,
+                title: embedTitle || (isMassAutopsy ? '🔬 Mass Autopsy Assigned' : '🔬 Autopsy Case Assigned'),
+            });
+        }
+
+        // Auto-forward to the PHMC Discord forwarding webhook (same template as
+        // /forward-autopsy-notify) so assigned autopsies are posted there without
+        // a manual command. Non-blocking — failures are logged, never thrown.
+        try {
+            await forwardAssignmentWebhook(PHMC_FORWARD_WEBHOOK_URL, {
+                me: assignedName, discordId, caseTitle, caseNumber,
+                decedent, ooc, caseUrl, deathType,
+                title: embedTitle || (isMassAutopsy ? '🔬 Mass Autopsy Assigned' : '🔬 Autopsy Case Assigned'),
+            });
+        } catch (e) {
+            console.warn(`[ME-NOTIFY] Auto-forward failed for ${assignedName}: ${e.message}`);
+        }
+
+        // Webhook mode already pinged — never mention again here.
+        const mention = (webhookMode || !discordId) ? `**${assignedName}**` : `<@${discordId}>`;
         await sendLogMessage(
-            `${mention} — **${label}**: ${titleLine}`,
+            `${mention} — **${resolvedLabel}**: ${titleLine}`,
             null
         );
-        console.log(`[ME-NOTIFY] Notified ${assignedName} → ${discordId ? `<@${discordId}>` : '(no Discord mapping)'} for ${caseTitle}`);
+        console.log(`[ME-NOTIFY] Notified ${assignedName} → ${discordId ? `<@${discordId}>` : '(no Discord mapping)'} for ${caseTitle}${webhookMode ? ' (webhook ping)' : ''}`);
     } catch (err) {
         console.warn(`[ME-NOTIFY] Failed to notify ${assignedName}: ${err.message}`);
     }

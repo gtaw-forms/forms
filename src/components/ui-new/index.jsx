@@ -7,6 +7,7 @@ import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import { evaluateFieldVisibility } from '../../utils/formValidation';
 import { resolveEmployeeCredentials } from '../../utils/identityUtils';
 import useBbcodeGenerator from '../../hooks/useBbcodeGenerator';
+import useFormTranslation from '../../hooks/useFormTranslation';
 import { useFormSaver } from '../../hooks/useFormSaver';
 import { useReportAttachment } from '../../hooks/useReportAttachment';
 import { useConsent, DEPLOY_TRACKED_FORMS, FORM_SECTIONS, FORM_LABELS } from '../../hooks/useConsent';
@@ -14,9 +15,11 @@ import { useAgencyCredentials } from '../../hooks/useAgencyCredentials';
 import { useReportLoader } from '../../hooks/useReportLoader';
 import { useReportActions } from '../../hooks/useReportActions';
 import SavedReportsModal from '../Modals/SavedReportsModal';
+import FixDeployedReportModal from '../Modals/FixDeployedReportModal';
 import AssignedAutopsiesModal from '../Modals/AssignedAutopsiesModal';
 import MapModal from '../Modals/MapModal';
 import PrototypeFieldRenderer from './PrototypeFieldRenderer';
+import SurgicalDiagramModal from './SurgicalDiagramModal';
 import PatientSearch from './PatientSearch';
 import MorgueBrowser from './MorgueBrowser';
 import EmsPanel from './EmsPanel';
@@ -35,7 +38,7 @@ import phmcLogo from '../../assets/phmc.png';
  * branded sidebar, top bar, and tabbed right panel.
  * Route: /ui-prototype
  */
-const NewUIPrototype = () => {
+const NewUIPrototype = ({ basicMode = false }) => {
   const [activeMiscTab, setActiveMiscTab] = useState('profile');
   const [showCharSwitch, setShowCharSwitch] = useState(false);
   const [showLoginDialog, setShowLoginDialog] = useState(false);
@@ -52,8 +55,8 @@ const NewUIPrototype = () => {
   const [emsOpen, setEmsOpen] = useState(false);
   const [emsCollapsed, setEmsCollapsed] = useState(new Set());
 
-  const { formsData, morgueRecords, isLoadingData, morgueRecordsError, loadMorgueRecords, factionsData, agencyDataStore, selectOptions: dataContextSelectOptions, phmcListData, coronerListData, lsccData } = useData();
-  const { user: realUser, isAuthenticated: realIsAuthenticated, characterName, swappableCharacters, factionData, isPhmcMember: realIsPhmcMember, accessLevel: realAccessLevel, login, logout, swapCharacter, canSwapCharacters, isLoading: authLoading, error: authError, credentialsLoading } = useGtaWorldAuth();
+  const { formsData, morgueRecords, isLoadingData, morgueLoading, morgueRecordsError, loadMorgueRecords, factionsData, agencyDataStore, selectOptions: dataContextSelectOptions, factionListData, lsccData } = useData();
+  const { user: realUser, isAuthenticated: realIsAuthenticated, characterName, swappableCharacters, factionData, isPhmcMember: realIsPhmcMember, accessLevel: realAccessLevel, login, logout, swapCharacter, canSwapCharacters, isLoading: authLoading, error: authError, credentialsLoading, identityRefreshStatus } = useGtaWorldAuth();
 
   // ── Initial auth check — show loader until auth is fully resolved ──
   const [authChecking, setAuthChecking] = useState(true);
@@ -103,7 +106,7 @@ const NewUIPrototype = () => {
   const isMedicalExaminer = isLocalhostDev || (factionData?.rank || '').toLowerCase().includes('medical examiner');
   const { showNotification, removeNotification } = useNotification();
   const { openImagePreview } = useModal();
-  const { handleImageUpload } = useImageUpload(showNotification, () => {});
+  const { handleImageUpload, isUploading: isSigUploading } = useImageUpload(showNotification, () => {});
 
   // ── Sign in handler ──
   const handleLogin = (role) => {
@@ -316,16 +319,69 @@ const NewUIPrototype = () => {
   }, []);
 
 
-  // ── BBCode Generator ──
-  const { generatedBBCode, generatedTitle, showBBCode, setShowBBCode, generateBBCode, clearBBCode } = useBbcodeGenerator(
-    selectedForm, formValues, finalSelectOptions, agencyDataStore, user, factionsData
+  // ── Translations (community i18n) ──
+  const { availableLangs, lang, setLang, translation } = useFormTranslation(selectedForm?.firebaseKey);
+
+  // A translated view of the selected form: same field names/ids/types (data +
+  // bot stay intact), with name/description/labels/placeholders/template swapped
+  // for the active language. Used ONLY for rendering + BBCode generation;
+  // `selectedForm` remains the source of truth for logic (save, deploy, access).
+  const formForRender = useMemo(() => {
+    if (!translation || !selectedForm) return selectedForm;
+    const tFields = translation.fields || {};
+    return {
+      ...selectedForm,
+      name: translation.formName || selectedForm.name,
+      formDescription: translation.formDescription || selectedForm.formDescription,
+      template: translation.template || selectedForm.template,
+      fields: (selectedForm.fields || []).map(f => {
+        const ov = tFields[f.name];
+        if (!ov) return f;
+        return {
+          ...f,
+          label: ov.label != null ? ov.label : f.label,
+          placeholder: ov.placeholder != null ? ov.placeholder : f.placeholder,
+          content: ov.content != null ? ov.content : f.content,
+          buttonLabel: ov.buttonLabel != null ? ov.buttonLabel : f.buttonLabel,
+        };
+      }),
+    };
+  }, [translation, selectedForm]);
+
+  // ── Clean rank text ──
+  // Strips BBCode-ish brackets/parens and leading/trailing dashes (e.g.
+  // "Medical Examiner -" -> "Medical Examiner"), then collapses whitespace.
+  const cleanRankText = useCallback((rank) => {
+    if (!rank) return '';
+    return String(rank)
+      .replace(/\[.*?\]/g, '')
+      .replace(/\(.*?\)/g, '')
+      .replace(/^\s*[-–—]\s*|\s*[-–—]\s*$/g, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+  }, []);
+
+  // Fix A: resolve credentials synchronously this render (not via an async
+  // effect writing setFormValues) so the save handler never reads stale state.
+  // Computed BEFORE the BBCode generator so the generator's fallback can use
+  // the same memo — this is the authoritative resolver that the save-time
+  // backfill relies on, and it provably matches.
+  const resolvedCredentials = useMemo(
+    () => (isAuthenticated && selectedForm?.accessType && user
+      ? resolveEmployeeCredentials(user, { factionListData, cleanRank: cleanRankText })
+      : null),
+    [user, isAuthenticated, selectedForm, factionListData, cleanRankText]
   );
 
-  // ── Form Saver ──
-  const { saveReport, validateMembership } = useFormSaver(user, isAuthenticated, { phmcListData, coronerListData });
+  // ── BBCode Generator ──
+  const { generatedBBCode, generatedTitle, showBBCode, setShowBBCode, generateBBCode, clearBBCode } = useBbcodeGenerator(
+    formForRender, formValues, finalSelectOptions, agencyDataStore, user, factionsData, factionListData, resolvedCredentials
+  );
+
+  const { saveReport, validateMembership } = useFormSaver(user, isAuthenticated, { factionListData, resolvedCredentials });
 
   // ── Medical record patient name gate ──
-  const MEDICAL_FORM_IDS = ['patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical', 'session_notes', 'intensive_treatment', 'psych-eval', 'testing-compact-mode'];
+  const MEDICAL_FORM_IDS = ['patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical', 'session_notes', 'intensive_treatment', 'psych-eval', 'general_consultation'];
   const isMedicalRecord = selectedForm?.firebaseKey && MEDICAL_FORM_IDS.includes(selectedForm.firebaseKey);
 
   // ── Patient ID → name validation (bidirectional patient lookup) ──
@@ -373,19 +429,6 @@ const NewUIPrototype = () => {
   const signedInIdentity = characterName || user?.faction?.characterName || user?.activeCharacter?.characterName || user?.username || '';
   const isOwnNameAsPatient = !!patientName.trim() && !!signedInIdentity &&
     patientName.trim().toLowerCase() === String(signedInIdentity).trim().toLowerCase();
-
-  // ── Clean rank text ──
-  // Strips BBCode-ish brackets/parens and leading/trailing dashes (e.g.
-  // "Medical Examiner -" -> "Medical Examiner"), then collapses whitespace.
-  const cleanRankText = useCallback((rank) => {
-    if (!rank) return '';
-    return String(rank)
-      .replace(/\[.*?\]/g, '')
-      .replace(/\(.*?\)/g, '')
-      .replace(/^\s*[-–—]\s*|\s*[-–—]\s*$/g, '')
-      .replace(/\s{2,}/g, ' ')
-      .trim();
-  }, []);
 
   // ── Progress stamp ──
   const fillableTypes = ['input', 'textarea', 'select', 'multi_select', 'checkbox', 'radio', 'timer', 'employee_select', 'multi_employee_select', 'dynamic_text_list', 'requesting_officer', 'medicine_block', 'body_tampered'];
@@ -448,6 +491,109 @@ const NewUIPrototype = () => {
     }
   }, [selectedForm?.firebaseKey]);
 
+  // ── Draft backups (safety net for accidental clears) ──
+  // form_progression is DELETED on "Clear Form", so before wiping we push the
+  // draft onto a per-form stack of restore points (each tagged with the clear
+  // time + a summary of key fields). Backups are cleared after a successful save.
+  const BACKUPS_KEY_PREFIX = 'form_progression_backups_';
+  const MAX_BACKUPS = 6;
+  const BACKUP_TTL_MS = 48 * 60 * 60 * 1000; // backups are temporary — auto-delete after 48h
+
+  const loadBackups = (formKey) => {
+    try {
+      const raw = localStorage.getItem(BACKUPS_KEY_PREFIX + formKey);
+      const arr = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(arr)) return [];
+      const now = Date.now();
+      const fresh = arr.filter(b => b && b.ts && (now - b.ts) <= BACKUP_TTL_MS);
+      if (fresh.length !== arr.length) persistBackups(formKey, fresh); // prune expired
+      return fresh;
+    } catch { return []; }
+  };
+
+  const persistBackups = (formKey, arr) => {
+    try { localStorage.setItem(BACKUPS_KEY_PREFIX + formKey, JSON.stringify(arr)); } catch { /* ignore */ }
+  };
+
+  const [formBackups, setFormBackups] = useState([]);
+  const [backupMenuOpen, setBackupMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (selectedForm?.firebaseKey) {
+      setFormBackups(loadBackups(selectedForm.firebaseKey));
+    } else {
+      setFormBackups([]);
+    }
+    setBackupMenuOpen(false);
+  }, [selectedForm?.firebaseKey]);
+
+  const summarizeDraft = (data) => {
+    const pick = (keys) => {
+      for (const k of keys) {
+        const v = data?.[k];
+        if (v != null && String(v).trim()) return String(v).trim();
+      }
+      return '';
+    };
+    const name = pick(['decedentName', 'patientName', 'caseTitle', 'name']) || '(unnamed)';
+    const ooc = pick(['decedentOOC', 'oocName']);
+    const dept = pick(['department', 'agency', 'faction', 'placeOfDeath', 'location']);
+    return [name, ooc ? `((${ooc}))` : '', dept].filter(Boolean).join(' · ');
+  };
+
+  const formatClearTime = (ts) => {
+    const s = Math.floor((Date.now() - ts) / 1000);
+    if (s < 60) return 'just now';
+    if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+    if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+    return new Date(ts).toLocaleDateString();
+  };
+
+  const handleClearForm = () => {
+    if (selectedForm?.firebaseKey && Object.keys(formValues).length > 0) {
+      const entry = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5), ts: Date.now(), data: formValues };
+      const next = [entry, ...loadBackups(selectedForm.firebaseKey)].slice(0, MAX_BACKUPS);
+      persistBackups(selectedForm.firebaseKey, next);
+      setFormBackups(next);
+      showNotification('Draft backed up — restore it anytime from the top of this form.', 'check-circle');
+    }
+    setFormValues({});
+    clearBBCode();
+    if (selectedForm?.firebaseKey) localStorage.removeItem(`form_progression_${selectedForm.firebaseKey}`);
+  };
+
+  const restoreBackup = (entry) => {
+    if (!selectedForm?.firebaseKey) return;
+    try {
+      setFormValues(prev => {
+        const merged = { ...entry.data };
+        CREDENTIAL_KEYS.forEach(k => { if (prev[k]) merged[k] = prev[k]; });
+        return merged;
+      });
+      const next = formBackups.filter(b => b.id !== entry.id);
+      persistBackups(selectedForm.firebaseKey, next);
+      setFormBackups(next);
+      setBackupMenuOpen(false);
+      showNotification('Draft restored from backup.', 'check-circle');
+    } catch { /* ignore */ }
+  };
+
+  const dismissBackups = () => {
+    if (selectedForm?.firebaseKey) {
+      try { localStorage.removeItem(BACKUPS_KEY_PREFIX + selectedForm.firebaseKey); } catch { /* ignore */ }
+    }
+    setFormBackups([]);
+    setBackupMenuOpen(false);
+  };
+
+  const clearFormBackups = () => {
+    if (selectedForm?.firebaseKey) {
+      try { localStorage.removeItem(BACKUPS_KEY_PREFIX + selectedForm.firebaseKey); } catch { /* ignore */ }
+    }
+    setFormBackups([]);
+    setBackupMenuOpen(false);
+  };
+
   // ── Sync OAuth employee credentials into formValues ──
   useEffect(() => {
     if (!selectedForm || !isAuthenticated) return;
@@ -460,42 +606,47 @@ const NewUIPrototype = () => {
       const currentFormRank = currentFormValues[`${currentEmployeeType}Rank`];
       const currentFormBadge = currentFormValues[`${currentEmployeeType}Badge`];
 
-      // Only re-resolve when something is missing — never overwrite a name the
-      // user deliberately typed when the resolved value differs (e.g. a
-      // different employee selected on a shared report).
-      if (
-        !currentFormEmployeeName ||
-        !currentFormRank ||
-        !currentFormBadge
-      ) {
-        // Single source of truth — same breadth as author resolution
-        // (getCharacterData), roster match by id or name, badge = roster key.
-        const resolved = resolveEmployeeCredentials(user, {
-          phmcListData,
-          coronerListData,
-          cleanRank: cleanRankText,
-        });
-        if (!resolved.employeeName) return currentFormValues;
+      const name = String(currentFormEmployeeName || '').trim();
+      const rank = String(currentFormRank || '').trim();
+      const badge = String(currentFormBadge || '').trim();
 
-        const updates = {};
-        if (!currentFormEmployeeName) updates[`${currentEmployeeType}Employee`] = resolved.employeeName;
-        if (!currentFormRank) updates[`${currentEmployeeType}Rank`] = resolved.rank;
-        if (!currentFormBadge) updates[`${currentEmployeeType}Badge`] = resolved.badge;
-        updates[`${currentEmployeeType}Discord`] = resolved.discord;
-        updates[`${currentEmployeeType}PHNumber`] = resolved.phNumber;
-        updates[`${currentEmployeeType}FirstName`] = resolved.firstName;
-        updates[`${currentEmployeeType}LastName`] = resolved.lastName;
+      // Single source of truth — same breadth as author resolution
+      // (getCharacterData), roster match by id or name, badge = roster key.
+      // Never overwrite a name the user deliberately typed when the resolved
+      // value differs (e.g. a different employee on a shared report) — but DO
+      // correct a wrong/stale badge/rank when the stored employee matches the
+      // resolved roster record (the account-id-as-badge leak, e.g. 43132 -> 5573).
+      const resolved = resolveEmployeeCredentials(user, {
+        factionListData,
+        cleanRank: cleanRankText,
+      });
+      if (!resolved.employeeName) return currentFormValues;
 
-        if (Object.keys(updates).length > 0) {
-          if (resolved.matchedBy === 'none') {
-            console.warn('[CredentialSync] No roster match for', resolved.employeeName, '— rank/badge may be blank until roster syncs.');
-          }
-          return { ...currentFormValues, ...updates };
+      const employeeMatches = !!name && name.toLowerCase() === String(resolved.employeeName).trim().toLowerCase();
+      const badgeMismatch = employeeMatches && !!resolved.badge && !!badge && badge !== String(resolved.badge).trim();
+      const rankMismatch = employeeMatches && !!resolved.rank && !!rank && rank !== String(resolved.rank).trim();
+
+      const updates = {};
+      if (!name) updates[`${currentEmployeeType}Employee`] = resolved.employeeName;
+      if (!rank || rankMismatch) updates[`${currentEmployeeType}Rank`] = resolved.rank;
+      if (!badge || badgeMismatch) updates[`${currentEmployeeType}Badge`] = resolved.badge;
+      updates[`${currentEmployeeType}Discord`] = resolved.discord;
+      updates[`${currentEmployeeType}PHNumber`] = resolved.phNumber;
+      updates[`${currentEmployeeType}FirstName`] = resolved.firstName;
+      updates[`${currentEmployeeType}LastName`] = resolved.lastName;
+
+      if (Object.keys(updates).length > 0) {
+        if (resolved.matchedBy === 'none') {
+          console.warn('[CredentialSync] No roster match for', resolved.employeeName, '— rank/badge may be blank until roster syncs.');
         }
+        if (badgeMismatch || rankMismatch) {
+          console.warn(`[CredentialSync] Corrected stale credentials for ${resolved.employeeName} (matchedBy: ${resolved.matchedBy})`, { badgeMismatch, rankMismatch, fromBadge: badge || null, toBadge: resolved.badge || null, fromRank: rank || null, toRank: resolved.rank || null });
+        }
+        return { ...currentFormValues, ...updates };
       }
       return currentFormValues;
     });
-  }, [user, isAuthenticated, selectedForm, phmcListData, coronerListData, cleanRankText]);
+  }, [user, isAuthenticated, selectedForm, factionListData, cleanRankText]);
 
   // Live UTC clock
   const fmtUtc = (d) => { const p = n => n.toString().padStart(2,'0'); return `${d.getUTCFullYear()}-${p(d.getUTCMonth()+1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())} UTC`; };
@@ -586,6 +737,10 @@ const NewUIPrototype = () => {
   const { savedReports, isLoadingReports, loadUserSavedReports, loadReportForUser } = useReportLoader();
   const { deleteReportForUser } = useReportActions();
 
+  // ── Fix Deployed Report (Edit & Repost) ──
+  const [editingDeployedReport, setEditingDeployedReport] = useState(null); // { key, label }
+  const [showFixDeployedReport, setShowFixDeployedReport] = useState(false);
+
   // Wrapper to properly populate form fields when loading a saved report
   const handleLoadReport = useCallback((report, userId) => {
     return loadReportForUser(
@@ -661,9 +816,85 @@ const NewUIPrototype = () => {
     });
   };
 
-  const activeForm = selectedForm;
+  const activeForm = formForRender;
   const displayName = characterName || user?.username || 'Guest';
   const userRole = cleanRankText(factionData?.rank) || cleanRankText(user?.faction?.rank) || 'Employee';
+
+  // ── Employee image signature (non-DMEC PHMC Staff forms) ──
+  // Toggle at the top of the form -> modal to paste the signature URL -> preview
+  // -> approve. Stored in formValues.phmcSignature + persisted per character.
+  const DMEC_CORONER_FORMS = ['autopsy', 'coroner-report', 'coroner_email', 'death_record', 'mass-ftality-test'];
+  const signatureEnabled = !!selectedForm && !DMEC_CORONER_FORMS.includes(selectedForm.firebaseKey);
+  const [sigOpen, setSigOpen] = useState(false);
+  const [sigUrl, setSigUrl] = useState('');
+  const sigStorageKey = `phmcSignature_${(characterName || '').trim().toLowerCase()}`;
+
+  const isSurgicalDev = selectedForm?.firebaseKey === 'surgical' && ['localhost', '127.0.0.1'].includes(window.location.hostname);
+  const [surgicalDiagramOpen, setSurgicalDiagramOpen] = useState(false);
+  const [surgicalDiagram, setSurgicalDiagram] = useState({ imageType: 'male', texts: [], shapes: [] });
+
+  // Auto-fill the approved signature for this character from a previous session.
+  useEffect(() => {
+    if (!signatureEnabled) return;
+    try {
+      const saved = localStorage.getItem(sigStorageKey);
+      console.log('[SIGTRACE] auto-fill effect', { signatureEnabled, sigStorageKey, saved: saved ? saved.slice(0, 60) : null });
+      if (saved && /^https?:\/\/\S+\.(png|jpe?g|gif|webp)(\?\S*)?$/i.test(saved)) {
+        setFormValues(prev => {
+          if (prev.phmcSignature === saved) return prev;
+          console.log('[SIGTRACE] auto-fill SETTING phmcSignature from localStorage →', saved.slice(0, 60), '| prev was', (prev.phmcSignature || '').slice(0, 60) || '(empty)');
+          return { ...prev, phmcSignature: saved };
+        });
+      } else {
+        console.log('[SIGTRACE] auto-fill: no valid saved signature, leaving formValues.phmcSignature =', (formValues.phmcSignature || '').slice(0, 60) || '(empty)');
+      }
+    } catch (e) { console.error('[SIGTRACE] auto-fill error', e); }
+  }, [sigStorageKey, signatureEnabled, formValues.phmcSignature]);
+
+  const openSignatureModal = () => {
+    setSigUrl(String(formValues.phmcSignature || ''));
+    setSigOpen(true);
+  };
+
+  const approveSignature = () => {
+    const url = String(sigUrl || '').trim();
+    const pass = /^https?:\/\/\S+\.(png|jpe?g|gif|webp)(\?\S*)?$/i.test(url);
+    console.log('[SIGTRACE] approveSignature called', { url, pass, sigUrlType: typeof sigUrl, sigUrl, sigStorageKey });
+    if (!pass) return;
+    setFormValues(prev => ({ ...prev, phmcSignature: url }));
+    try { localStorage.setItem(sigStorageKey, url); } catch { /* ignore */ }
+    console.log('[SIGTRACE] phmcSignature SET in formValues →', url, '| stored under', sigStorageKey);
+    setSigOpen(false);
+  };
+
+  const handleSigPaste = async (e) => {
+    const items = e && e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item && item.type && item.type.indexOf('image') === 0) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (!file) return;
+        try {
+          const urls = await handleImageUpload(file, 'phmcSignature');
+          if (urls && urls[0]) setSigUrl(urls[0]?.url || '');
+        } catch (err) {
+          showNotification('Signature paste failed: ' + (err?.message || err), 'error');
+        }
+        return;
+      }
+    }
+  };
+
+  const clearSignature = () => {
+    console.log('[SIGTRACE] clearSignature called — removing phmcSignature from formValues + localStorage', { sigStorageKey });
+    setFormValues(prev => {
+      const next = { ...prev };
+      delete next.phmcSignature;
+      return next;
+    });
+    try { localStorage.removeItem(sigStorageKey); } catch { /* ignore */ }
+  };
 
   return (
     <div className="app">
@@ -685,50 +916,62 @@ const NewUIPrototype = () => {
           </div>
         </div>
         <div className="form-tree">
-          <div className={`cat${!collapsedCats.has('Tools') ? ' open' : ''}`}>
-            <div className="cat-head" onClick={() => toggleCat('Tools')}><span>Morgue Intake Records</span><span className="chev">▶</span></div>
+          <div className="cat open">
+            <div className="cat-head"><span><i className="fas fa-language" style={{ marginRight: 6, color: 'var(--teal)' }} />Translations</span></div>
             <div className="cat-items">
-              <div onClick={() => { setActiveView('morgue'); setSelectedForm(null); setFormValues({}); }}
-                className={`form-item${activeView === 'morgue' ? ' active' : ''}`}>
-                <span className="dot" />Morgue Records
+              <div onClick={() => navigateTo('/translate')} className="form-item">
+                <span className="dot" />Translate Forms
               </div>
             </div>
           </div>
-
-          {/* ── EMS Protocols — own top-level category ── */}
-          <div className={`cat ems-root${emsOpen ? ' open' : ''}`}>
-            <div className="cat-head" onClick={toggleEms}><span>EMS Protocols</span><span className="chev">▶</span></div>
-            <div className="cat-items">
-              {filteredEmsProtocols.map(cat => (
-                <div key={cat.category} className={`cat ems-subcat${!emsCollapsed.has(cat.category) ? ' open' : ''}`}>
-                  <div className="cat-head ems-subhead" onClick={() => toggleEmsCat(cat.category)}>
-                    {cat.category} ({cat.protocols.length})<span className="chev">▶</span>
-                  </div>
-                  <div className="cat-items">
-                    {cat.protocols.map(p => (
-                      <div key={p.id}
-                        onClick={() => { setSelectedEmsProtocol(p); setActiveView('ems'); setSelectedForm(null); setFormValues({}); }}
-                        className={`form-item ems-protocol${selectedEmsProtocol?.id === p.id && activeView === 'ems' ? ' active' : ''}`}>
-                        <span className="dot" />{p.name}
-                      </div>
-                    ))}
+          {!basicMode && (
+            <>
+              <div className={`cat${!collapsedCats.has('Tools') ? ' open' : ''}`}>
+                <div className="cat-head" onClick={() => toggleCat('Tools')}><span>Morgue Intake Records</span><span className="chev">▶</span></div>
+                <div className="cat-items">
+                  <div onClick={() => { setActiveView('morgue'); setSelectedForm(null); setFormValues({}); }}
+                    className={`form-item${activeView === 'morgue' ? ' active' : ''}`}>
+                    <span className="dot" />Morgue Records
                   </div>
                 </div>
-              ))}
-              {filteredEmsProtocols.length === 0 && (
-                <div className="ems-empty">No protocols match.</div>
-              )}
-            </div>
-          </div>
-
-          <div className={`cat${!collapsedCats.has('Administration') ? ' open' : ''}`}>
-            <div className="cat-head" onClick={() => toggleCat('Administration')}><span>Administration</span><span className="chev">▶</span></div>
-            <div className="cat-items">
-              <div onClick={() => navigateTo('/admin')} className="form-item">
-                <span className="dot" />Admin Panel
               </div>
-            </div>
-          </div>
+
+              {/* ── EMS Protocols — own top-level category ── */}
+              <div className={`cat ems-root${emsOpen ? ' open' : ''}`}>
+                <div className="cat-head" onClick={toggleEms}><span>EMS Protocols</span><span className="chev">▶</span></div>
+                <div className="cat-items">
+                  {filteredEmsProtocols.map(cat => (
+                    <div key={cat.category} className={`cat ems-subcat${!emsCollapsed.has(cat.category) ? ' open' : ''}`}>
+                      <div className="cat-head ems-subhead" onClick={() => toggleEmsCat(cat.category)}>
+                        {cat.category} ({cat.protocols.length})<span className="chev">▶</span>
+                      </div>
+                      <div className="cat-items">
+                        {cat.protocols.map(p => (
+                          <div key={p.id}
+                            onClick={() => { setSelectedEmsProtocol(p); setActiveView('ems'); setSelectedForm(null); setFormValues({}); }}
+                            className={`form-item ems-protocol${selectedEmsProtocol?.id === p.id && activeView === 'ems' ? ' active' : ''}`}>
+                            <span className="dot" />{p.name}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  {filteredEmsProtocols.length === 0 && (
+                    <div className="ems-empty">No protocols match.</div>
+                  )}
+                </div>
+              </div>
+
+              <div className={`cat${!collapsedCats.has('Administration') ? ' open' : ''}`}>
+                <div className="cat-head" onClick={() => toggleCat('Administration')}><span>Administration</span><span className="chev">▶</span></div>
+                <div className="cat-items">
+                  <div onClick={() => navigateTo('/admin')} className="form-item">
+                    <span className="dot" />Admin Panel
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
           {Object.entries(groupedForms).map(([cat, forms]) => (
             <div key={cat} className={`cat${!collapsedCats.has(cat) ? ' open' : ''}`}>
               <div className="cat-head" onClick={() => toggleCat(cat)}><span>{cat}</span><span className="chev">▶</span></div>
@@ -760,6 +1003,19 @@ const NewUIPrototype = () => {
           <div className="topbar-title">
             <h1>{activeView === 'morgue' ? 'Morgue Records' : activeView === 'ems' ? 'LS County EMS Protocols' : activeForm?.name || 'No Form Selected'}</h1>
             {activeView === 'morgue' ? <span className="case-tag">Database</span> : activeView === 'ems' ? <span className="case-tag">Protocols</span> : activeForm && <span className="case-tag">{activeForm.accessType || 'General'}</span>}
+            {availableLangs.length > 0 && activeView === 'forms' && (
+              <select
+                value={lang}
+                onChange={(e) => { setLang(e.target.value); clearBBCode(); }}
+                title="Form language"
+                style={{ marginLeft: 10, background: 'var(--bg-surface)', border: '1px solid var(--border-accent)', color: 'var(--text)', borderRadius: 6, padding: '4px 8px', fontSize: 12 }}
+              >
+                <option value="">English (default)</option>
+                {availableLangs.map(({ code, langName }) => (
+                  <option key={code} value={code}>{langName}</option>
+                ))}
+              </select>
+            )}
           </div>
           <div className="topbar-center">
             <ServiceStatusTicker />
@@ -853,7 +1109,7 @@ const NewUIPrototype = () => {
               <EmsPanel protocol={selectedEmsProtocol} injuries={emsInjuries} selectedInjury={selectedEmsInjury}
                 onSelectInjury={setSelectedEmsInjury} onClearInjury={() => setSelectedEmsInjury(null)} />
             ) : activeView === 'morgue' ? (
-              <MorgueBrowser records={morgueRecords || []} isLoading={isLoadingData} loadRecords={loadMorgueRecords} showNotification={showNotification}
+              <MorgueBrowser records={morgueRecords || []} isLoading={morgueLoading || isLoadingData} loadRecords={loadMorgueRecords} showNotification={showNotification}
                 isAuthenticated={isAuthenticated} characterName={characterName} user={realUser} />
             ) : activeForm ? (
               <>
@@ -878,6 +1134,60 @@ const NewUIPrototype = () => {
                   )}
                 </div>
                 <div className="doc-body">
+                  {formBackups.length > 0 && selectedForm && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, padding: '8px 12px', background: 'var(--bg-elevated)', border: '1px solid var(--amber)', borderRadius: 8 }}>
+                      <i className="fas fa-history" style={{ color: 'var(--amber)' }} />
+                      <span style={{ fontSize: 12, color: 'var(--text)', flex: 1, minWidth: 0 }}>
+                        {formBackups.length} cleared draft{formBackups.length !== 1 ? 's' : ''} backed up (auto-delete after 48h) — restore to recover your work (incl. pasted images).
+                      </span>
+                      <div style={{ position: 'relative' }}>
+                        <button className="btn btn-primary" style={{ fontSize: 12, padding: '6px 14px', whiteSpace: 'nowrap' }} onClick={() => setBackupMenuOpen(o => !o)}>
+                          <i className="fas fa-undo me-1" />Restore progress
+                          <i className={`fas fa-chevron-${backupMenuOpen ? 'up' : 'down'}`} style={{ marginLeft: 6, fontSize: 9 }} />
+                        </button>
+                        {backupMenuOpen && (
+                          <div style={{ position: 'absolute', right: 0, top: 'calc(100% + 4px)', minWidth: 280, maxHeight: formBackups.length > 4 ? 280 : 'none', overflowY: formBackups.length > 4 ? 'auto' : 'visible', background: 'var(--bg-elevated)', border: '1px solid var(--border-accent)', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.5)', zIndex: 60 }}>
+                            {formBackups.map((b, i) => (
+                              <button key={b.id} onClick={() => restoreBackup(b)} style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2, width: '100%', padding: '8px 12px', background: 'transparent', border: 'none', borderBottom: i < formBackups.length - 1 ? '1px solid var(--border)' : 'none', cursor: 'pointer', textAlign: 'left' }}>
+                                <span style={{ fontSize: 12, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 260 }}>
+                                  <i className="fas fa-undo me-1" style={{ color: 'var(--amber)', fontSize: 10 }} />
+                                  {summarizeDraft(b.data)}
+                                </span>
+                                <span style={{ fontSize: 10, color: 'var(--text-faint)', fontFamily: 'var(--mono)' }}>
+                                  <i className="fas fa-clock me-1" style={{ fontSize: 9 }} />Cleared {formatClearTime(b.ts)}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <button className="btn btn-ghost" style={{ fontSize: 12, padding: '6px 10px', whiteSpace: 'nowrap' }} onClick={dismissBackups}>
+                        Dismiss
+                      </button>
+                    </div>
+                  )}
+                  {signatureEnabled && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, padding: '8px 12px', background: 'var(--bg-elevated)', border: '1px solid var(--border-accent)', borderRadius: 8 }}>
+<label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12.5, color: 'var(--text)', whiteSpace: 'nowrap', margin: 0 }}>
+                        <input
+                          type="checkbox"
+                          checked={!!formValues.phmcSignature}
+                          onChange={(e) => { if (e.target.checked) { openSignatureModal(); } else { clearSignature(); } }}
+                          style={{ width: 15, height: 15, margin: 0, flexShrink: 0, verticalAlign: 'middle' }}
+                        />
+                        <i className="fas fa-signature" style={{ color: 'var(--teal)', fontSize: 13, flexShrink: 0, display: 'inline-block' }} />
+                        Use employee signature
+                      </label>
+                      {formValues.phmcSignature ? (
+                        <>
+                          <img src={formValues.phmcSignature} alt="signature" style={{ height: 34, maxWidth: 180, objectFit: 'contain', borderRadius: 4, background: '#fff', padding: 2 }} />
+                          <button onClick={openSignatureModal} style={{ background: 'transparent', border: 'none', color: 'var(--teal)', cursor: 'pointer', fontSize: 12 }}>Change</button>
+                        </>
+                      ) : (
+                        <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>Not set — report will show the typed employee name.</span>
+                      )}
+                    </div>
+                  )}
                   <div className="field-grid">
                     {(activeForm.fields || []).filter(f => evaluateFieldVisibility(f, formValues)).map(field => (
                       <div key={field.name} className={!field.layout || field.layout === 'full' ? 'full' : ''} style={{ display: 'contents' }}>
@@ -900,6 +1210,22 @@ const NewUIPrototype = () => {
                       </div>
                     ))}
                   </div>
+                  {isSurgicalDev && (
+                    <div style={{ marginTop: 14, padding: '10px 12px', background: 'var(--bg-elevated)', border: '1px dashed var(--amber)', borderRadius: 8 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <i className="fas fa-syringe" style={{ color: 'var(--amber)' }} />
+                        <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)' }}>
+                          Surgical Diagram <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--amber)', fontFamily: 'var(--mono)', marginLeft: 6 }}>DEV</span>
+                        </span>
+                        <button className="btn btn-primary" style={{ marginLeft: 'auto', fontSize: 12, padding: '6px 14px' }} onClick={() => setSurgicalDiagramOpen(true)}>
+                          <i className="fas fa-edit me-1" />Annotate
+                        </button>
+                      </div>
+                      <p style={{ fontSize: 11, color: 'var(--text-faint)', margin: '6px 0 0' }}>
+                        Full-screen annotation layer over the body silhouette — optional, visual only. Male/female toggle, free text, drag, resize.
+                      </p>
+                    </div>
+                  )}
                 </div>
                 <div className="doc-footer" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, maxWidth: 300 }}>
@@ -910,7 +1236,7 @@ const NewUIPrototype = () => {
                       {filledFields}/{totalFields}
                     </span>
                   </div>
-                  <button className="btn btn-ghost" onClick={() => { setFormValues({}); clearBBCode(); if (selectedForm?.firebaseKey) localStorage.removeItem(`form_progression_${selectedForm.firebaseKey}`); }}>
+                  <button className="btn btn-ghost" onClick={handleClearForm}>
                     <i className="fas fa-trash-alt me-1" /> Clear Form
                   </button>
                 </div>
@@ -925,17 +1251,35 @@ const NewUIPrototype = () => {
 
           {/* ─── RIGHT PANEL ─── */}
           <div className="right-panel">
-            <div className="panel-card">
-              <div className="panel-tabs">
-                <div onClick={() => setActiveMiscTab('profile')}
-                  className={`panel-tab${activeMiscTab === 'profile' ? ' active' : ''}`}>
-                  <i className="fas fa-user-circle" /> Profile
+              <div className="panel-card">
+                {basicMode ? (
+                  <div className="panel-section active">
+                    <div className="id-badge">
+                      <div className="id-avatar" style={{ background: 'var(--bg-surface)', color: 'var(--text-faint)', border: '1px solid var(--border-accent)' }}>
+                        <i className="fas fa-file-alt" />
+                      </div>
+                      <div>
+                        <div className="id-name">PHMC Forms</div>
+                        <div className="id-role">Basic Mode — Generate Forms</div>
+                      </div>
+                    </div>
+                    <div className="patient-note" style={{ background: 'var(--bg-surface)', color: 'var(--text-faint)', border: '1px solid var(--border)', marginTop: 14 }}>
+                      <span>ℹ️</span>
+                      <span>Select a form, fill it out, and use <strong>Preview</strong> to generate the BBCode. Sign-in is not required.</span>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                <div className="panel-tabs">
+                  <div onClick={() => setActiveMiscTab('profile')}
+                    className={`panel-tab${activeMiscTab === 'profile' ? ' active' : ''}`}>
+                    <i className="fas fa-user-circle" /> Profile
+                  </div>
+                  <div onClick={() => setActiveMiscTab('misc')}
+                    className={`panel-tab${activeMiscTab === 'misc' ? ' active' : ''}`}>
+                    <i className="fas fa-cogs" /> Misc
+                  </div>
                 </div>
-                <div onClick={() => setActiveMiscTab('misc')}
-                  className={`panel-tab${activeMiscTab === 'misc' ? ' active' : ''}`}>
-                  <i className="fas fa-cogs" /> Misc
-                </div>
-              </div>
 
               {activeMiscTab === 'profile' && (
                 <div className="panel-section active">
@@ -954,6 +1298,18 @@ const NewUIPrototype = () => {
                   </div>
                   {isAuthenticated && (
                     <>
+                      {identityRefreshStatus === 'refreshing' && (
+                        <div className="patient-note" style={{ background: 'var(--teal-dim)', color: 'var(--teal)', border: '1px solid var(--teal)', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div style={{
+                            width: 14, height: 14, borderRadius: '50%', flexShrink: 0,
+                            border: '2px solid var(--teal-dim)', borderTopColor: 'var(--teal)',
+                            animation: 'spin 0.8s linear infinite',
+                          }} />
+                          <span>
+                            Welcome back {cleanRankText(factionData?.rank) ? `${cleanRankText(factionData?.rank)} ` : ''}{characterName || realUser?.username || 'Member'}, verifying your credentials&hellip;
+                          </span>
+                        </div>
+                      )}
                       {!isPhmcMember && !factionData?.rank && (
                         <div className="patient-note" style={{ background: 'var(--amber-dim)', color: 'var(--amber)', border: '1px solid rgba(232,163,61,0.25)', marginBottom: 14 }}>
                           <span>ℹ️</span>
@@ -1006,7 +1362,23 @@ const NewUIPrototype = () => {
                         </div>
                       </div>
                       {/* Switch / Sign Out row */}
-                      <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                {editingDeployedReport && (
+                  <div style={{
+                    marginBottom: 8, padding: '7px 9px', borderRadius: 6, fontSize: 11.5,
+                    background: 'var(--teal-dim)', border: '1px solid var(--teal)', color: 'var(--teal)',
+                    display: 'flex', gap: 6, alignItems: 'center',
+                  }}>
+                    <i className="fas fa-pen" />
+                    <span>
+                      Editing deployed report{editingDeployedReport.label ? `: ${editingDeployedReport.label}` : ''} —
+                      Save will queue an in-place forum edit (no duplicate).
+                    </span>
+                    <button onClick={() => setEditingDeployedReport(null)} style={{ marginLeft: 'auto', background: 'transparent', border: 'none', color: 'var(--teal)', cursor: 'pointer', fontSize: 12 }} title="Cancel edit">
+                      ✕
+                    </button>
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
                         {canSwapCharacters && (
                           <div ref={charSwitchRef} style={{ position: 'relative', flex: 1 }}>
                             <button className="btn btn-ghost" style={{ width: '100%', justifyContent: 'center', fontSize: 12 }}
@@ -1145,6 +1517,12 @@ const NewUIPrototype = () => {
                     <div><div className="misc-title">Saved Reports</div><div className="misc-sub">Load, attach, or delete drafts</div></div>
                     <div className="arrow">›</div>
                   </div>
+                  <div className="misc-item fix-deployed"
+                    onClick={() => setShowFixDeployedReport(true)}>
+                    <div className="misc-icon"><i className="fas fa-pen" /></div>
+                    <div><div className="misc-title">Fix Deployed Report</div><div className="misc-sub">Edit a posted report in place</div></div>
+                    <div className="arrow">›</div>
+                  </div>
                   <div className="misc-item business-card"
                     onClick={() => setShowBusinessCard(true)}>
                     <div className="misc-icon"><i className="fas fa-id-card" /></div>
@@ -1174,6 +1552,8 @@ const NewUIPrototype = () => {
                   </div>
                 </div>
               )}
+                  </>
+                )}
             </div>
 
             <div className="panel-card" style={{ overflow: 'visible' }}>
@@ -1241,13 +1621,31 @@ const NewUIPrototype = () => {
                     )}
                   </div>
                 )}
-                {bbcodeToolsVisible && (
+                {bbcodeToolsVisible && (() => {
+                  const tpl = String(activeForm?.template || '');
+                  const missing = (activeForm?.fields || [])
+                    .filter(f => tpl.includes(`{{${f.name}}}`))
+                    .filter(f => {
+                      const v = formValues[f.name];
+                      return v === undefined || v === null || (typeof v === 'string' && !v.trim()) || (Array.isArray(v) && !v.length);
+                    })
+                    .map(f => f.label || f.name);
+                  if (tpl.includes('{{phmcSignature}}') && !String(formValues.phmcSignature || '').trim()) missing.push('Employee Signature');
+                  return (
+                  <div>
+                  {showBBCode && missing.length > 0 && (
+                    <div style={{ marginBottom: 6, padding: '6px 10px', borderRadius: 6, background: 'var(--bg-surface)', border: '1px solid var(--amber)', color: 'var(--amber)', fontSize: 11, lineHeight: 1.5 }}>
+                      <i className="fas fa-exclamation-triangle me-1" />Missing fields: <strong>{missing.join(' · ')}</strong>
+                    </div>
+                  )}
                 <pre className="bbcode-pre" style={{ maxHeight: showBBCode ? '200px' : '60px' }}>
                   {showBBCode && generatedBBCode
                     ? generatedBBCode
                     : 'Select a form, fill it out, and click "Generate BBCode" to preview it here.'}
                 </pre>
-                )}
+                  </div>
+                  );
+                })()}
                 <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
                   {bbcodeToolsVisible && (
                   <button className="btn btn-ghost" style={{ flex: 1, fontSize: 12, justifyContent: 'center', borderColor: 'var(--teal)', color: 'var(--teal)' }} onClick={() => {
@@ -1257,6 +1655,7 @@ const NewUIPrototype = () => {
                     <i className="fas fa-code me-1" /> Preview
                   </button>
                   )}
+                  {!basicMode && (
                   <button className="btn btn-ghost" style={{ flex: 1, fontSize: 12, justifyContent: 'center' }}
                     onClick={async () => {
                       // Validate required fields (only checks fields the form actually has)
@@ -1288,33 +1687,45 @@ const NewUIPrototype = () => {
                         showNotification('Failed to generate BBCode. Check form fields.', 'error');
                         return;
                       }
-                      const result = await saveReport(selectedForm, formValues, title, bbcode);
+                      const result = await saveReport(
+                        selectedForm, formValues, title, bbcode,
+                        editingDeployedReport ? { editDeployedReport: editingDeployedReport } : {}
+                      );
                       if (result.success) {
-                        const isAutoDeploy = isDeployTracked && formConsent;
-                        if (isAutoDeploy) {
-                          setDeployCountdown({ endTime: Date.now() + 150000, label: title || selectedForm?.name || 'Report' });
+                        clearFormBackups();
+                        if (editingDeployedReport) {
+                          setEditingDeployedReport(null);
+                          showNotification('Edit queued — the bot will update the forum post in place.', 'check-circle');
+                        } else {
+                          const isAutoDeploy = isDeployTracked && formConsent;
+                          if (isAutoDeploy) {
+                            setDeployCountdown({ endTime: Date.now() + 150000, label: title || selectedForm?.name || 'Report' });
+                          }
+                          const isManualDeploy = isDeployTracked && !formConsent;
+                          if (isManualDeploy) {
+                            const textToCopy = Array.isArray(bbcode) ? bbcode.join('\n\n[PART_BREAK]\n\n') : bbcode;
+                            navigator.clipboard.writeText(textToCopy).catch(() => {});
+                          }
+                          const deployStatus = isAutoDeploy
+                            ? 'Queued for auto-deploy'
+                            : (isManualDeploy ? 'Saved & BBCode copied (post manually)' : 'Saved (not deploy-tracked)');
+                          const reportLabel = title || selectedForm?.name || 'Report';
+                          showNotification(
+                            `${reportLabel} — ${deployStatus}`,
+                            isAutoDeploy ? 'cloud-upload-alt' : 'save',
+                            isAutoDeploy ? 8000 : 5000
+                          );
                         }
-                        const isManualDeploy = isDeployTracked && !formConsent;
-                        if (isManualDeploy) {
-                          const textToCopy = Array.isArray(bbcode) ? bbcode.join('\n\n[PART_BREAK]\n\n') : bbcode;
-                          navigator.clipboard.writeText(textToCopy).catch(() => {});
-                        }
-                        const deployStatus = isAutoDeploy
-                          ? 'Queued for auto-deploy'
-                          : (isManualDeploy ? 'Saved & BBCode copied (post manually)' : 'Saved (not deploy-tracked)');
-                        const reportLabel = title || selectedForm?.name || 'Report';
-                        showNotification(
-                          `${reportLabel} — ${deployStatus}`,
-                          isAutoDeploy ? 'cloud-upload-alt' : 'save',
-                          isAutoDeploy ? 8000 : 5000
-                        );
                       } else {
                         showNotification('Save failed: ' + (result.error || 'unknown error'), 'error');
                       }
                     }}>
-                    <i className={`fas ${isDeployTracked && !formConsent ? 'fa-copy' : 'fa-cloud-upload-alt'} me-1`} />
-                    {isDeployTracked && !formConsent ? 'Save & Copy BBCode' : 'Save & Queue'}
+                    <i className={`fas ${editingDeployedReport ? 'fa-pen' : (isDeployTracked && !formConsent ? 'fa-copy' : 'fa-cloud-upload-alt')} me-1`} />
+                    {editingDeployedReport
+                      ? 'Save & Edit Deployed Post'
+                      : (isDeployTracked && !formConsent ? 'Save & Copy BBCode' : 'Save & Queue')}
                   </button>
+                  )}
                 </div>
                 {bbcodeToolsVisible && generatedBBCode && !(isDeployTracked && !formConsent) && (
                   <button className="btn btn-ghost" style={{ width: '100%', marginTop: 6, fontSize: 12 }}
@@ -1322,6 +1733,8 @@ const NewUIPrototype = () => {
                     <i className="fas fa-copy me-1" /> Copy BBCode
                   </button>
                 )}
+                {!basicMode && (
+                <>
                 {showManualPostGuide && isCoronerEmail && (
                   <div style={{ marginTop: 10, padding: '8px 10px', borderRadius: 6, background: 'var(--bg-surface)', border: '1px solid var(--amber)', color: 'var(--text-muted)', fontSize: 10.5, lineHeight: 1.5 }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -1418,6 +1831,8 @@ const NewUIPrototype = () => {
                     </div>
                   );
                 })()}
+                </>
+                )}
               </div>
             </div>
           </div>
@@ -1425,6 +1840,64 @@ const NewUIPrototype = () => {
       </div>
 
       {/* ─── Modals ─── */}
+      {sigOpen && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 10001, background: 'rgba(6,10,18,0.82)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }} onClick={() => setSigOpen(false)}>
+          <div style={{ maxWidth: 420, width: '100%', background: 'var(--bg-elevated)', border: '1px solid var(--border-accent)', borderRadius: 12, padding: 20 }} onClick={e => e.stopPropagation()} onPaste={handleSigPaste}>
+            <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 4 }}><i className="fas fa-signature" style={{ marginRight: 6, color: 'var(--teal)' }} />Employee Signature</div>
+            <p style={{ fontSize: 11.5, color: 'var(--text-faint)', margin: '0 0 12px' }}>Paste your signature image (Ctrl+V) or its URL, or upload an image. It will be shown on this report's sign-off in place of the typed employee name.</p>
+            <input
+              value={sigUrl}
+              onChange={e => setSigUrl(e.target.value)}
+              placeholder="Paste image (Ctrl+V) or enter https://…/signature.png"
+              style={{ width: '100%', background: 'var(--bg-surface)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, padding: '9px 11px', fontSize: 12.5, boxSizing: 'border-box' }}
+            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>or</span>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, cursor: 'pointer', background: 'var(--bg-surface)', border: '1px dashed var(--border-accent)', borderRadius: 6, padding: '7px 12px', fontSize: 12, color: 'var(--teal)' }}>
+                <i className="fas fa-upload" style={{ fontSize: 12, lineHeight: 1 }} />
+                {isSigUploading ? 'Uploading…' : 'Upload image'}
+                <input
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  disabled={isSigUploading}
+                  onChange={async (e) => {
+                    if (!e.target.files || e.target.files.length === 0) return;
+                    try {
+                      const urls = await handleImageUpload(e, 'phmcSignature');
+                      if (urls && urls[0]) setSigUrl(urls[0]?.url || '');
+                    } catch (err) {
+                      showNotification('Signature upload failed: ' + (err?.message || err), 'error');
+                    } finally {
+                      e.target.value = '';
+                    }
+                  }}
+                />
+              </label>
+            </div>
+            {/^https?:\/\/\S+\.(png|jpe?g|gif|webp)(\?\S*)?$/i.test(String(sigUrl || '').trim()) && (
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontSize: 11, color: 'var(--text-faint)', marginBottom: 4 }}>Preview:</div>
+                <div style={{ background: '#fff', borderRadius: 6, padding: 8, textAlign: 'center' }}>
+                  <img src={String(sigUrl || '').trim()} alt="signature preview" style={{ maxHeight: 120, maxWidth: '100%', objectFit: 'contain' }} />
+                </div>
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8, marginTop: 14, justifyContent: 'flex-end' }}>
+              <button onClick={() => setSigOpen(false)} style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, padding: '8px 14px', fontSize: 12.5, cursor: 'pointer' }}>Cancel</button>
+              <button onClick={approveSignature} disabled={!/^https?:\/\/\S+\.(png|jpe?g|gif|webp)(\?\S*)?$/i.test(String(sigUrl || '').trim())} style={{ background: 'var(--teal-dim)', border: '1px solid var(--teal)', color: 'var(--teal)', borderRadius: 6, padding: '8px 14px', fontSize: 12.5, cursor: 'pointer', opacity: /^https?:\/\/\S+\.(png|jpe?g|gif|webp)(\?\S*)?$/i.test(String(sigUrl || '').trim()) ? 1 : 0.4 }}>Approve</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {isSurgicalDev && surgicalDiagramOpen && (
+        <SurgicalDiagramModal
+          show={surgicalDiagramOpen}
+          onClose={() => setSurgicalDiagramOpen(false)}
+          data={surgicalDiagram}
+          onChange={setSurgicalDiagram}
+        />
+      )}
       <AssignedAutopsiesModal
         show={showAssignedAutopsies}
         onClose={() => setShowAssignedAutopsies(false)}
@@ -1526,6 +1999,16 @@ const NewUIPrototype = () => {
         reportSelectionFilter={reportSelectionFilter}
         handleReportSelectedForAttachment={handleReportSelectedForAttachment}
         pendingReportAttachmentCallback={pendingReportAttachmentCallback.current}
+      />
+      <FixDeployedReportModal
+        show={showFixDeployedReport}
+        onHide={() => setShowFixDeployedReport(false)}
+        reports={savedReports}
+        isLoadingReports={isLoadingReports}
+        currentUserId={characterName}
+        onLoadReports={loadUserSavedReports}
+        loadReport={handleLoadReport}
+        onEditReport={(meta) => setEditingDeployedReport(meta)}
       />
       {/* ─── Sign In Role Dialog ─── */}
       {showLoginDialog && (

@@ -3,9 +3,10 @@ import { useState, useCallback } from 'react';
 import * as Sentry from "@sentry/react";
 import { getDepartmentFullName } from '../utils/bbcodeHelpers';
 import generateDecedentBBCode from '../phmc-bbcode-generators/generateMassFatality';
-import { formatCharacterNameForDisplay, getCharacterName } from '../utils/identityUtils';
+import { formatCharacterNameForDisplay, resolveEmployeeCredentials, getOAuthShapeFlags } from '../utils/identityUtils';
+import { cleanRankText } from '../utils/textUtils';
 
-const useBbcodeGenerator = (selectedForm, formValues, finalSelectOptions, agencyDataStore, gtaWorldUser, factionsData) => {
+const useBbcodeGenerator = (selectedForm, formValues, finalSelectOptions, agencyDataStore, gtaWorldUser, factionsData, factionListData = [], resolvedCredentials = null) => {
   const [generatedBBCode, setGeneratedBBCode] = useState("");
   const [generatedTitle, setGeneratedTitle] = useState("");
   const [showBBCode, setShowBBCode] = useState(false);
@@ -171,7 +172,13 @@ const formatToNorthAmericanDate = (isoDateTime) => {
             return;
           }
           const faction = gtaWorldUser?.faction || null;
-          const firstChar = Array.isArray(gtaWorldUser?.character) ? gtaWorldUser.character[0] : null;
+          const oauthShape = getOAuthShapeFlags(gtaWorldUser);
+          const rootChars = gtaWorldUser?.character || gtaWorldUser?.characters;
+          const userDataChars = gtaWorldUser?.userData?.character || gtaWorldUser?.userData?.characters;
+          const firstChar = (Array.isArray(rootChars) && rootChars[0])
+            || (Array.isArray(userDataChars) && userDataChars[0])
+            || null;
+          const firstCharData = firstChar?.character || firstChar;
           Sentry.captureMessage(`[BBCode] ${reason}`, {
             level: 'error',
             tags: {
@@ -179,12 +186,14 @@ const formatToNorthAmericanDate = (isoDateTime) => {
               reason,
               has_gtaw_user: String(!!gtaWorldUser),
               has_faction: String(!!faction),
-              is_faction_member: String(gtaWorldUser?.isFactionMember ?? 'unknown'),
-              login_role: gtaWorldUser?.loginRole || 'unknown',
+              is_faction_member: String(oauthShape.isFactionMember ?? 'unknown'),
+              login_role: oauthShape.loginRole || 'unknown',
             },
             extra: {
-              form_id: selectedForm?.id,
-              form_name: selectedForm?.name,
+              source: 'useBbcodeGenerator',
+              form_id: selectedForm?.id || selectedForm?.firebaseKey || null,
+              form_name: selectedForm?.name || null,
+              access_type: selectedForm?.accessType || null,
               hostname: window.location.hostname,
               faction_keys: faction ? Object.keys(faction) : null,
               faction_character_name: faction?.characterName || null,
@@ -193,16 +202,23 @@ const formatToNorthAmericanDate = (isoDateTime) => {
               faction_rank: faction?.rank || null,
               faction_script_rank: faction?.scriptRank ?? null,
               oauth_username: gtaWorldUser?.username || null,
-              has_active_character: String(!!gtaWorldUser?.activeCharacter),
+              account_id: oauthShape.accountId,
+              has_active_character: String(oauthShape.activeCharacterPresent),
               active_character_name: gtaWorldUser?.activeCharacter?.characterName || null,
-              has_character_array: String(Array.isArray(gtaWorldUser?.character) && gtaWorldUser.character.length > 0),
-              first_character_name: firstChar?.name || firstChar?.characterName || (firstChar ? `${firstChar.firstname || ''} ${firstChar.lastname || ''}`.trim() : null),
-              first_character_id: firstChar?.id ?? firstChar?.characterId ?? null,
+              has_character_array: String(oauthShape.hasCharacterArray),
+              has_user_data_character_array: String(oauthShape.hasUserDataCharacterArray),
+              has_all_faction_characters: String(oauthShape.hasAllFactionCharacters),
+              first_character_name: firstCharData?.name || firstCharData?.characterName || (firstCharData ? `${firstCharData.firstname || ''} ${firstCharData.lastname || ''}`.trim() : null),
+              first_character_id: firstCharData?.id ?? firstCharData?.characterId ?? null,
+              roster_count: Array.isArray(factionListData) ? factionListData.length : 0,
               form_coroner_employee: formValues?.coronerEmployee || null,
               form_coroner_rank: formValues?.coronerRank || null,
               form_coroner_badge: formValues?.coronerBadge || null,
               form_coroner_first_name: formValues?.coronerFirstName || null,
               form_coroner_last_name: formValues?.coronerLastName || null,
+              form_phmc_employee: formValues?.phmcEmployee || null,
+              form_phmc_rank: formValues?.phmcRank || null,
+              form_phmc_badge: formValues?.phmcBadge || null,
               ...extra,
             },
           });
@@ -243,11 +259,59 @@ const formatToNorthAmericanDate = (isoDateTime) => {
         }
 
         if ((fieldDef?.type === 'employee_select' || commonEmployeeFields.includes(key)) && typeof processedValue === 'string') {
-          const match = findMemberAcrossFactions(processedValue);
-          if (match) {
-            acc[key] = `${match.rank} ${formatCharacterNameForDisplay(processedValue)} (SN: ${match.sn})`;
+          if (/\(SN:/i.test(processedValue)) {
+            // Already rendered in the standard identity format — never re-wrap.
+            acc[key] = processedValue.trim();
           } else {
-            acc[key] = formatCharacterNameForDisplay(processedValue);
+            const match = findMemberAcrossFactions(processedValue);
+            const displayName = formatCharacterNameForDisplay(processedValue);
+            if (match) {
+              acc[key] = `${match.rank} ${displayName} (SN: ${match.sn})`;
+            } else {
+              // Fallback: the standard format is king even when the roster
+              // lookup misses (factionsData not loaded yet / name mismatch).
+              // Rebuild the identity from the form's sibling credential fields,
+              // then from the authoritative OAuth/roster resolver (same source
+              // the save-time backfill uses) when those are blank — so a
+              // "Performed by" line never ships a bare name.
+              const siblingRankKey = { coronerEmployee: 'coronerRank', phmcEmployee: 'phmcRank' }[key] || `${key}Rank`;
+              const siblingBadgeKey = { coronerEmployee: 'coronerBadge', phmcEmployee: 'phmcBadge' }[key] || `${key}Badge`;
+              const pick = (v) => {
+                if (v == null) return '';
+                if (typeof v === 'object') return (v && (v.value || v.label)) || '';
+                return String(v);
+              };
+              let cleanedRank = cleanRankText(pick(formValues[siblingRankKey]));
+              let badge = pick(formValues[siblingBadgeKey]);
+              // Only attribute the signed-in ME's OWN identity (coronerEmployee /
+              // phmcEmployee) to their own fields — NEVER to requestingOfficer /
+              // investigator / etc., or the ME's rank+SN get stamped onto another
+              // person's name (e.g. "Coroner Investigator Supervisor Catalina Romero
+              // (SN: 159303)").
+              const isOwnIdentity = key === 'coronerEmployee' || key === 'phmcEmployee';
+              if (isOwnIdentity && (!cleanedRank || !badge)) {
+                // Prefer the render-time resolved-credentials memo (the same
+                // authoritative resolver the save-time backfill uses — proven to
+                // match), then fall back to a fresh resolve.
+                if (resolvedCredentials?.employeeName) {
+                  if (!cleanedRank) cleanedRank = cleanRankText(resolvedCredentials.rank);
+                  if (!badge) badge = String(resolvedCredentials.badge || '');
+                }
+                if (!cleanedRank || !badge) {
+                  const resolved = resolveEmployeeCredentials(gtaWorldUser, { factionListData, cleanRank: cleanRankText });
+                  if (resolved?.employeeName) {
+                    if (!cleanedRank) cleanedRank = cleanRankText(resolved.rank);
+                    if (!badge) badge = String(resolved.badge || '');
+                  }
+                  if (!cleanedRank || !badge) {
+                    console.warn(`[BBCode] ${key} degraded to bare name — resolved.employeeName=${resolved?.employeeName || 'null'} matchedBy=${resolved?.matchedBy || 'n/a'} rosterSize=${(factionListData || []).length} user=${gtaWorldUser ? 'present' : 'null'}`);
+                  }
+                }
+              }
+              acc[key] = cleanedRank
+                ? (badge ? `${cleanedRank} ${displayName} (SN: ${badge})` : `${cleanedRank} ${displayName}`)
+                : displayName;
+            }
           }
         } else if (fieldDef && fieldDef.type === 'multi_employee_select' && Array.isArray(processedValue)) {
           acc[key] = processedValue.map(name => {
@@ -305,24 +369,76 @@ const formatToNorthAmericanDate = (isoDateTime) => {
       // If an authenticated, non-dev user somehow reaches BBCode generation
       // with empty employee identity (credential-sync race or a stale
       // progression restore), resolve it here from OAuth + roster so a live
-      // post never ships blanks. Never reintroduces Local* for real logins.
+      // post never ships blanks. Uses the SAME resolver as the save path
+      // (Fix C) so rank is cleaned and badge = roster key — no drift between
+      // the preview and the saved/posted report (Fix D).
       if (gtaWorldUser && !isLocalInstance) {
         const empType = selectedForm?.accessType === 'Coroner' ? 'coroner' : 'phmc';
-        const needsName = !processedFormValues[`${empType}Employee`];
-        const needsRank = !processedFormValues[`${empType}Rank`];
-        const needsBadge = !processedFormValues[`${empType}Badge`];
+        const preEmployee = String(processedFormValues[`${empType}Employee`] || '').trim();
+        const preRank = String(processedFormValues[`${empType}Rank`] || '').trim();
+        const preBadge = String(processedFormValues[`${empType}Badge`] || '').trim();
+        const needsName = !preEmployee;
+        const needsRank = !preRank;
+        const needsBadge = !preBadge;
         if (needsName || needsRank || needsBadge) {
-          const oauthName = getCharacterName(gtaWorldUser);
-          if (oauthName && oauthName !== 'GTAW User') {
-            const rosterMatch = findMemberAcrossFactions(oauthName);
-            if (needsName) processedFormValues[`${empType}Employee`] = oauthName;
-            if (needsRank) processedFormValues[`${empType}Rank`] = rosterMatch?.rank || gtaWorldUser?.faction?.rank || '';
-            if (needsBadge) processedFormValues[`${empType}Badge`] = rosterMatch?.sn || gtaWorldUser?.faction?.characterId || '';
+          const resolved = resolveEmployeeCredentials(gtaWorldUser, {
+            factionListData,
+            cleanRank: cleanRankText,
+          });
+          const missingFields = [
+            needsName && 'employee',
+            needsRank && 'rank',
+            needsBadge && 'badge',
+          ].filter(Boolean);
+          if (resolved.employeeName) {
+            if (needsName) processedFormValues[`${empType}Employee`] = resolved.employeeName;
+            if (needsRank) processedFormValues[`${empType}Rank`] = resolved.rank;
+            if (needsBadge) processedFormValues[`${empType}Badge`] = resolved.badge;
+            // Normalize a bare-name coronerEmployee into the standard identity
+            // format. The reducer's employee fallback can degrade to a bare name
+            // if the roster wasn't loaded at that moment; if we can resolve now,
+            // stamp the rank + SN so mass-fatality/coroner reports never ship a
+            // naked name (e.g. "The Sadie Voss, arrived…").
+            const nameField = `${empType}Employee`;
+            const curName = String(processedFormValues[nameField] || '').trim();
+            if (curName && !/\(SN:/i.test(curName) && cleanRankText(resolved.rank)) {
+              processedFormValues[nameField] =
+                `${cleanRankText(resolved.rank)} ${curName}${resolved.badge ? ` (SN: ${resolved.badge})` : ''}`;
+            }
             captureCoronerCredentialDiagnostic('CredentialFallbackApplied', {
               employee_type: empType,
-              matched_by: rosterMatch ? 'name' : 'none',
-              roster_badge: rosterMatch?.sn || null,
-              oauth_name: oauthName,
+              missing_fields: missingFields,
+              form_values_before: {
+                employee: preEmployee || null,
+                rank: preRank || null,
+                badge: preBadge || null,
+              },
+              matched_by: resolved.matchedBy,
+              oauth_name: resolved.employeeName,
+              oauth_character_id: resolved.oauthCharacterId || null,
+              roster_key: resolved.rosterKey || null,
+              roster_badge: resolved.badge || null,
+              resolved_rank: resolved.rank || null,
+              still_missing: [
+                !String(processedFormValues[`${empType}Employee`] || '').trim() && 'employee',
+                !String(processedFormValues[`${empType}Rank`] || '').trim() && 'rank',
+                !String(processedFormValues[`${empType}Badge`] || '').trim() && 'badge',
+              ].filter(Boolean),
+            });
+          } else {
+            captureCoronerCredentialDiagnostic('CredentialFallbackFailed', {
+              employee_type: empType,
+              missing_fields: missingFields,
+              form_values_before: {
+                employee: preEmployee || null,
+                rank: preRank || null,
+                badge: preBadge || null,
+              },
+              matched_by: resolved.matchedBy,
+              oauth_name: null,
+              oauth_character_id: resolved.oauthCharacterId || null,
+              roster_key: null,
+              still_missing: missingFields,
             });
           }
         }
@@ -748,6 +864,18 @@ const formatToNorthAmericanDate = (isoDateTime) => {
           if (!bbcode.includes(placeholder)) return;
           const value = processedFormValues[key];
 
+          // Employee image signature — {{phmcSignature}} / {{coronerSignature}}:
+          // render the approved signature URL as an inline image when set.
+          if (/Signature$/i.test(key)) {
+            console.log('[SIGTRACE] generator signature key', { key, valueType: typeof value, value: typeof value === 'string' ? value.slice(0, 60) : JSON.stringify(value), placeholderInTemplate: bbcode.includes(placeholder), validUrl: typeof value === 'string' && /^https?:\/\/\S+\.(png|jpe?g|gif|webp)(\?\S*)?$/i.test(value.trim()) });
+          }
+          if (/Signature$/i.test(key) && typeof value === 'string' && /^https?:\/\/\S+\.(png|jpe?g|gif|webp)(\?\S*)?$/i.test(value.trim())) {
+              bbcode = bbcode.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"), `[img]${value.trim()}[/img]`);
+              console.log('[SIGTRACE] generator REPLACED', placeholder, 'with [img]');
+              return;
+          }
+          if (/Signature$/i.test(key)) { console.log('[SIGTRACE] generator DROPPED/left', placeholder, '— value empty/invalid'); return; }
+
           // Preserve patientID/PATIENT_ID/patientId placeholder if empty —
           // the bot fills it later via handleMedicalRecord (auto-assign or extract from topic title).
           if ((key === 'patientID' || key === 'PATIENT_ID' || key === 'patientId') && (!value || value === '')) {
@@ -874,7 +1002,7 @@ const formatToNorthAmericanDate = (isoDateTime) => {
 
     // Return the generated values so callers (e.g. Save & Queue) can use them synchronously
     return { bbcode, finalTitle };
-  }, [selectedForm, formValues, finalSelectOptions, agencyDataStore, gtaWorldUser, factionsData]);
+  }, [selectedForm, formValues, finalSelectOptions, agencyDataStore, gtaWorldUser, factionsData, factionListData, resolvedCredentials]);
 
   const clearBBCode = useCallback(() => {
     setGeneratedBBCode("");

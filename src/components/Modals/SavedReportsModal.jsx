@@ -13,6 +13,14 @@ const AVAILABLE_FORMS = [
 
 const STORAGE_KEY = 'savedReportsFormFilter';
 
+const deployStatusColor = (status) => {
+    const s = String(status || '').toLowerCase();
+    if (s === 'deployed' || s === 'edited') return '#33D6C0';
+    if (s === 'queued' || s === 'pending' || s === 'searching' || s === 'replying') return '#f0b429';
+    if (s === 'failed' || s === 'failed_permanent' || s === 'error' || s === 'topic_not_found' || s.includes('fail')) return '#f85149';
+    return '#8b949e';
+};
+
 const SavedReportsModal = ({ 
     show, 
     onHide, 
@@ -328,6 +336,7 @@ const SavedReportsModal = ({
                                         <th style={{ padding: '15px', textAlign: 'left', color: '#8b949e', fontWeight: '600' }}>Name / Identifier</th>
                                         <th style={{ padding: '15px', textAlign: 'left', color: '#8b949e', fontWeight: '600' }}>OOC Names</th>
                                         <th style={{ padding: '15px', textAlign: 'left', color: '#8b949e', fontWeight: '600' }}>Date Saved</th>
+                                        <th style={{ padding: '15px', textAlign: 'left', color: '#8b949e', fontWeight: '600' }}>Status</th>
                                         <th style={{ padding: '15px', textAlign: 'right', color: '#8b949e', fontWeight: '600' }}>Actions</th>
                                     </tr>
                                 </thead>
@@ -341,6 +350,17 @@ const SavedReportsModal = ({
                                                     {oocNames ? oocNames.join(', ') : <span style={{ fontStyle: 'italic' }}>No OOC</span>}
                                                 </td>
                                                 <td style={{ padding: '15px', color: '#8b949e' }}>{new Date(report.timestamp).toLocaleString()}</td>
+                                                <td style={{ padding: '15px', color: '#8b949e', fontSize: '0.9em' }}>
+                                                    <span style={{ color: deployStatusColor(report.deployStatus) }}>
+                                                        {report.deployStatus || (report.hasdeployed ? 'Deployed' : 'Saved')}
+                                                    </span>
+                                                    {report.deployUrl && (
+                                                        <a href={report.deployUrl} target="_blank" rel="noopener noreferrer"
+                                                            style={{ display: 'block', color: '#33D6C0', fontSize: '0.85em' }}>
+                                                            View post ↗
+                                                        </a>
+                                                    )}
+                                                </td>
                                                 <td style={{ padding: '15px', textAlign: 'right' }}>
                                                     <Button 
                                                         variant="primary" 

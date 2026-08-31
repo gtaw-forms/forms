@@ -18,10 +18,18 @@ export const getCharacterData = (gtaWorldUser) => {
         window.gtawDebugLogged = true;
     }
 
-    if (gtaWorldUser.faction) {
-        const factionChar = gtaWorldUser.faction;
+    const factionChar = gtaWorldUser.faction || null;
+    const factionId = factionChar ? (factionChar.characterId || factionChar.id || null) : null;
+
+    // When the faction object carries a character id, it is the authoritative
+    // active character. NEVER fall back to gtaWorldUser.id — that is the UCP
+    // account id (character[].memberid), not a character id, and emitting it as
+    // gtawCharacterId/badge ships the account id (e.g. 43132 instead of the
+    // roster key 5573). When faction is present but has no id (stale session),
+    // fall through to the character-array resolution below.
+    if (factionChar && factionId) {
         return {
-            id: factionChar.characterId || factionChar.id || gtaWorldUser.id,
+            id: String(factionId),
             firstname: factionChar.firstname || '',
             lastname: factionChar.lastname || '',
             fullName: factionChar.characterName || `${factionChar.firstname || ''} ${factionChar.lastname || ''}`.trim() || gtaWorldUser.username,
@@ -47,28 +55,30 @@ export const getCharacterData = (gtaWorldUser) => {
             if (match) character = match.character || match;
         }
 
-        const charId = String(character.characterId || character.id);
+        const charId = character.characterId || character.id || null;
         const factionMatch = factionChars.find(fc => {
             const fcData = fc.character || fc;
             const fcId = String(fcData.characterId || fcData.id);
-            return fcId === charId;
+            return fcId === String(charId);
         });
 
         return {
-            id: charId,
+            id: charId ? String(charId) : null,
             firstname: character.firstname || '',
             lastname: character.lastname || '',
-            fullName: character.characterName || character.name || `${character.firstname || ''} ${character.lastname || ''}`.trim() || factionMatch?.character?.characterName,
+            fullName: character.characterName || character.name || `${character.firstname || ''} ${character.lastname || ''}`.trim() || factionMatch?.character?.characterName || gtaWorldUser.username,
             memberid: gtaWorldUser.id,
             rank: factionMatch?.character?.rank || character.rank
         };
     }
 
+    // No faction id, no character array — return the name but NO character id.
+    // The account id (gtaWorldUser.id) is never a character id.
     return {
-        id: gtaWorldUser.id,
-        firstname: '',
-        lastname: '',
-        fullName: gtaWorldUser.username || 'GTAW User',
+        id: null,
+        firstname: factionChar?.firstname || '',
+        lastname: factionChar?.lastname || '',
+        fullName: factionChar?.characterName || gtaWorldUser.username || 'GTAW User',
         memberid: gtaWorldUser.id
     };
 };
@@ -140,10 +150,16 @@ export const getDisplayRank = (gtaWorldUser, factionsData) => {
 // via getCharacterData() — the old narrow sync chain then left
 // coronerEmployee / coronerRank / coronerBadge blank in saved reports.
 //
+// Params:
+//   { factionListData } — the unified PHMC roster (factions/364 members,
+//     enriched with `characterId`/`_rosterKey`; see DataContext factionListData).
+//   { cleanRank } — rank normalizer (e.g. cleanRankText); applied to the rank.
+//
 // Returns:
-//   { employeeName, rank, badge, discord, phNumber, firstName, lastName, matchedBy }
+//   { employeeName, rank, badge, discord, phNumber, firstName, lastName, matchedBy,
+//     oauthCharacterId, rosterKey }
 //   matchedBy: 'id' | 'name' | 'none'
-export const resolveEmployeeCredentials = (gtaWorldUser, { phmcListData = [], coronerListData = [], cleanRank = null } = {}) => {
+export const resolveEmployeeCredentials = (gtaWorldUser, { factionListData = [], cleanRank = null } = {}) => {
     const empty = {
         employeeName: null,
         rank: '',
@@ -153,11 +169,16 @@ export const resolveEmployeeCredentials = (gtaWorldUser, { phmcListData = [], co
         firstName: '',
         lastName: '',
         matchedBy: 'none',
+        oauthCharacterId: null,
+        rosterKey: null,
     };
     if (!gtaWorldUser) return empty;
 
-    // 1. Name — same breadth as getCharacterData()/getCharacterName() (the
-    //    author-resolution path that always worked).
+    // 1. Name + active-character id — same breadth as getCharacterData()/
+    //    getCharacterName() (the author-resolution path that always worked).
+    //    characterData.id resolves the ACTIVE character (via the OAuth
+    //    character[] / userData.character[] array matched by characterName),
+    //    not just faction or character[0].
     const characterData = getCharacterData(gtaWorldUser);
     const oauthName = characterData?.fullName
         || gtaWorldUser?.faction?.characterName
@@ -167,10 +188,9 @@ export const resolveEmployeeCredentials = (gtaWorldUser, { phmcListData = [], co
     if (!oauthName || oauthName === 'GTAW User') return empty;
 
     const factionDataInner = gtaWorldUser?.faction || gtaWorldUser?.activeCharacter || null;
-    const oauthCharacterId = factionDataInner?.characterId || factionDataInner?.id
-        || gtaWorldUser?.character?.[0]?.characterId || gtaWorldUser?.character?.[0]?.id || null;
+    const oauthCharacterId = characterData?.id || factionDataInner?.characterId || factionDataInner?.id || null;
 
-    const allEmployees = [...phmcListData, ...coronerListData];
+    const allEmployees = factionListData;
     const normalizeId = (v) => (v == null || v === '' ? null : String(v));
     const oauthIdStr = normalizeId(oauthCharacterId);
 
@@ -195,14 +215,22 @@ export const resolveEmployeeCredentials = (gtaWorldUser, { phmcListData = [], co
     }
 
     const cleanRankFn = (rank) => (cleanRank ? cleanRank(String(rank)) : String(rank || '').trim());
-    const rawRank = factionDataInner?.rank
-        ? factionDataInner.rank
-        : (factionDataInner?.scriptRank || dbMatch?.rank || '');
+    // Prefer the verified roster rank (ground truth), then the OAuth faction rank.
+    const rawRank = dbMatch?.rank
+        || factionDataInner?.rank
+        || (factionDataInner?.scriptRank ? String(factionDataInner.scriptRank) : '')
+        || '';
     // Badge = the roster record KEY when we have a roster match. Never use the
-    // raw gtawCharacterId when it is only the UCP account id (Fix F).
+    // raw gtawCharacterId when it is only the UCP account id (Fix F), and never
+    // fall back to factionDataInner.characterId — when there is no roster match
+    // that value can be a stale/account id (e.g. 43132 instead of 5573), so it
+    // must resolve to '' and be backfilled at save time once the roster loads.
+    const rosterKey = dbMatch
+        ? (normalizeId(dbMatch._rosterKey) || normalizeId(dbMatch.characterId) || normalizeId(dbMatch.id) || null)
+        : null;
     const resolvedBadge = dbMatch
-        ? (normalizeId(dbMatch.characterId) || normalizeId(dbMatch.id) || dbMatch.badge || '')
-        : (normalizeId(factionDataInner?.characterId) || factionDataInner?.badge || '');
+        ? (rosterKey || dbMatch.badge || '')
+        : '';
 
     return {
         employeeName: oauthName,
@@ -213,6 +241,38 @@ export const resolveEmployeeCredentials = (gtaWorldUser, { phmcListData = [], co
         firstName: factionDataInner?.firstname || characterData?.firstname || (oauthName.split(' ')[0] || ''),
         lastName: factionDataInner?.lastname || characterData?.lastname || (oauthName.split(' ').slice(1).join(' ') || ''),
         matchedBy,
+        oauthCharacterId: oauthIdStr,
+        rosterKey,
+    };
+};
+
+// OAuth payload shape flags for credential diagnostics (Discord/Sentry).
+// Checks every path getCharacterData() walks so "hasCharacterArray: false"
+// is not a false negative when characters live under userData.character[].
+export const getOAuthShapeFlags = (gtaWorldUser) => {
+    if (!gtaWorldUser) {
+        return {
+            factionPresent: false,
+            activeCharacterPresent: false,
+            hasCharacterArray: false,
+            hasUserDataCharacterArray: false,
+            hasAllFactionCharacters: false,
+            isFactionMember: null,
+            loginRole: null,
+            accountId: null,
+        };
+    }
+    const rootChars = gtaWorldUser?.character || gtaWorldUser?.characters;
+    const userDataChars = gtaWorldUser?.userData?.character || gtaWorldUser?.userData?.characters;
+    return {
+        factionPresent: !!gtaWorldUser.faction,
+        activeCharacterPresent: !!gtaWorldUser.activeCharacter,
+        hasCharacterArray: Array.isArray(rootChars) && rootChars.length > 0,
+        hasUserDataCharacterArray: Array.isArray(userDataChars) && userDataChars.length > 0,
+        hasAllFactionCharacters: Array.isArray(gtaWorldUser.allFactionCharacters) && gtaWorldUser.allFactionCharacters.length > 0,
+        isFactionMember: gtaWorldUser.isFactionMember ?? null,
+        loginRole: gtaWorldUser.loginRole || null,
+        accountId: gtaWorldUser.id != null ? String(gtaWorldUser.id) : null,
     };
 };
 

@@ -23,4 +23,4 @@ export { handleDraftButton, handleEditModal, handleEditFieldsModal } from './dea
 
 export { createFaceDraft, handleFaceButton, handleFaceEditModal } from './deathRecordDraftFace.js';
 
-export { processCKReport, startMorgueListener, getPendingMorgueRecords, recheckMorgueForDraft, passivCKCheck, startCKListener, scanAndDraftCKs, recoverInterruptedDeathRecordApprovals } from './deathRecordDraftScan.js';
+export { processCKReport, startMorgueListener, getPendingMorgueRecords, recheckMorgueForDraft, passivCKCheck, startCKListener, scanAndDraftCKs, recoverInterruptedDeathRecordApprovals, verifyPostedDeathRecords, VERIFY_DELAY_MS } from './deathRecordDraftScan.js';

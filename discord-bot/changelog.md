@@ -1,5 +1,401 @@
 # PHMC Discord Bot — Changelog
 
+## 2026-08-31 — AGH integration made optional (kept out of public forks)
+
+### Changed
+- **AdGuard Home metrics integration is now optional** — the AGH files
+  (`services/aghMetrics.js`, `commands/agh-dashboard.js`, root `aghMetrics.js`)
+  are **personal and gitignored**; they are not part of a public fork. `index.js`
+  now guards every AGH import (`agh-dashboard` command data, `startAghMetrics`,
+  `agh_refresh` button, command registration) with try/catch, so the bot boots
+  cleanly when the files are absent. On this VPS they're still present → AGH
+  dashboard unaffected (verified: `[AGH] ✅ metrics manager active`).
+- VPS: created `/opt/phmc-bot/discord-bot/.private/` (hidden) and moved the
+  redundant root `aghMetrics.js` duplicate there (`aghMetrics-root-copy.js`);
+  the live `services/` + `commands/` copies remain.
+- Deployed: SCP `index.js` + `pm2 restart phmc-bot` (↺51, online).
+
+## 2026-08-30 (2) — RTDB egress reduction (P1 + P2 stage 1)
+
+### Changed (RTDB download, ~300-500MB/day investigation)
+- **P1 — bot morgue reads → VPS-local mirror** (`services/localMorgueData.js` + `deathRecordDraftCache.js` + `deathRecordDraftScan.js`): `initMorgueCache`, the `findMorgueRecord` fallback, and `scanAndDraftCKs` now load from the VPS `morgue-data.json` (same `{ caseId }` shape as RTDB) instead of full `db.ref('morgue-records')` reads (~5.5MB each). RTDB is the fallback if the mirror is missing.
+- **P2 stage 1 — passive-CK listener no longer holds a full `newSavedReports` subscription** (`deathRecordDraftScan.js`): the old `on('value')` downloaded the whole 5.7MB `newSavedReports` node on every connect and streamed every user save. It now watches the **slim `unprocessedCKs` index** (written by the web app on every CK save) via `child_added`, and reads each matching report scoped (`newSavedReports/<author>/<key>`).
+
+### Notes
+- RTDB inventory: `newSavedReportBBCode` 11.2MB, `newSavedReports` 5.7MB, `morgue-records` 5.5MB (mirrored to VPS). Remaining P2 stages: migrate `newSavedReportBBCode` off RTDB (VPS + Cloud Function), paginate the admin full-node reads (`EmployeeManager`/`DatabaseEditor`).
+- Deployed: SCP `localMorgueData.js`, `deathRecordDraftCache.js`, `deathRecordDraftScan.js` + `pm2 restart phmc-bot`.
+
+## 2026-08-30 — morgue-api: valid API keys exempt from IP bans
+
+### Fixed
+- **Cloud Function `getMorgueRecords` intermittently failing with `functions/internal`.** The morgue-api had permanently banned 21 Google-range IPs (34.x/35.x) as "SCAN-*"; Cloud Functions egresses from **rotating shared Google IPs**, so when the function's egress landed on a banned IP it got 403 → the callable threw `internal` → the web app logged the error on every login → Discord error-webhook flood.
+- **Requests carrying a valid `x-api-key` are now exempt from IP-ban + suspicious-block + 404-strike logic** (`morgue-api.js` security middleware, `req.hasValidApiKey`). Authorized clients are never IP-reputation blocked; keyless scanners still get 403/banned. Verified: banned-IP + valid key → 200, banned-IP + no key → 401.
+- Cleared the 21 Google-range bans from `data/ban-state.json` (50 scanner IPs remain). Deployed + `pm2 restart morgue-api`.
+
+## 2026-08-28 — per-session log files + dashboard "what is it doing"
+
+### Added
+- **Per-session log files** (`services/logger.js`) — each process start now opens a fresh `logs/bot-<timestamp>.log` (index.js) / `logs/api-<timestamp>.log` (morgue-api.js) instead of one shared `log.txt`. Old sessions auto-pruned (keeps the newest 12); 25MB safety cap rolls a runaway session to `<name>.1`. morgue-api.js now uses the file logger too (was console-only → pm2).
+- **Activity log** (`services/activityLog.js`) — in-memory ring buffer of the last browser navigation, fed by a `page.goto` hook in `forumClient.js` `ensureBrowser` (single shared page, so one hook covers all scanning/posting/login activity).
+- **Dashboard VPS Resources breakdown** (`services/vpsStats.js` + `dashboardManager.js`) —
+  - Chrome now classified by Chromium `--type` (main/renderer/gpu/zygote/network/utility/broker) so `chrome ×7` reads as `main 1 · renderer 2 · gpu 1 · zygote 1 · …` — i.e. **one** Playwright browser, not 7.
+  - Node classified by script (bot / morgue-api / pm2 / other).
+  - New **`Currently`** line shows the last activity + how long ago (e.g. `scanning forum (phmc.gta.world/viewforum.php) · 2m ago`).
+
+### Notes
+- Verified on VPS: chrome ×6 → `main 1 · zygote 2 · gpu 1 · utility 1 · renderer 1`; node shows bot + morgue-api (+ generic `node` for pm2 daemon/helper processes — self-counting inflates this slightly while a diagnostic script runs).
+- Deployed: SCP `logger.js`, `activityLog.js`, `vpsStats.js`, `dashboardManager.js`, `forumClient.js`, `morgue-api.js` + `pm2 restart phmc-bot` / `pm2 restart morgue-api`.
+
+## 2026-08-28 (2) — orphan browser reap guard
+
+### Fixed
+- **Orphaned Chromium reaping** (`forumClient.js`) — `getSharedBrowser()` now kills any `chrome-headless-shell` whose parent is dead (PPID 1) before launching, so abrupt bot deaths (`uncaughtException` → `exit(1)`, SIGKILL) can no longer leave zombie browser trees behind. This was the cause of a transient `chrome ×12 (main 2)` on the dashboard: a restart overlap where the old process's browser lingered beside the new one. Only one browser is ever created in code (all ForumClient instances — including isolated agency clients — share `getSharedBrowser`); there is intentionally no "second Currently" line. Verified post-restart: chrome ×6 (one tree).
+- Deployed: SCP `forumClient.js` + `pm2 restart phmc-bot`.
+
+## 2026-08-28 (3) — browser lifecycle logs + lazy ME-roster fetch
+
+### Added
+- **Browser lifecycle logging** (`forumClient.js`) — the shared browser now logs `[LOG] Spawning BROWSER for <reason>` (first external caller on the stack, e.g. `checkForNewRequests (autopsyRequestMonitor.js)`) and `[LOG] Destroying browser for <reason>` via new exported `closeSharedBrowser()`. `index.js` now handles SIGTERM/SIGINT: closes the browser gracefully before exiting, so pm2 restarts stop orphaning Chromium (verified: `🛑 SIGINT received` → `Destroying browser for shutdown`).
+
+### Changed
+- **ME roster (`memberlist.php?g=50`) no longer fetched every 10-min heartbeat** (`autopsyRequestMonitor.js` `retryFailedAssignmentReplies`) — it now scans `autopsy-requested` *first* and only forces a PHMC login + paginates the ME group when at least one assignment reply genuinely needs a retry. A quiet heartbeat does zero forum work. The roster is still fetched on: new-request ME assignment, startup rotation init, and the assign/reassign/mass commands.
+- Deployed: SCP `forumClient.js`, `index.js`, `autopsyRequestMonitor.js` + `pm2 restart phmc-bot`.
+
+## 2026-08-28 (5) — form key rename: `testing-compact-mode` → `general_consultation`
+
+### Changed
+- Renamed the General Consultation form key `testing-compact-mode` → `general_consultation` in `global-stats.js`, `autoDeploy.js`, `deployExecutor.js`, `deployQueue.js`. Deployed + `pm2 restart phmc-bot`.
+- **Legacy aliases added** so any report still carrying the old `formId` routes/deploys correctly (deployQueue normalizes on load; autoDeploy normalizes in both enqueue + dev-report paths; deployExecutor employee-field map keeps the old key).
+
+## 2026-08-28 (4) — dashboard activity refresh every 5s
+
+### Changed
+- **VPS Resources field refresh 30s → 5s** (`dashboardManager.js`) — the `Currently — …` line (and CPU/MEM/procs) now update every 5s. Discord's docs rate-limit message endpoints (edit included) to **5 requests/5s per channel**; 1 edit per 5s uses ~20% of that bucket, so it's safe. Verified running.
+- Deployed: SCP `dashboardManager.js` + `pm2 restart phmc-bot`.
+
+## 2026-08-27 (2) — roster sync interval + startup health-check reduction + VPS infra
+
+### Changed
+- **Roster sync 4h → 12h** (`factionRosterSync.js`) — `COOLDOWN_MS` now 12h (+ up to 30min random offset); dashboard label and startup logic updated. Rosters update twice a day instead of six.
+- **Startup health checks skip healthy forums** (`systemMonitor.js`) — on boot, `runHealthCheck` no longer runs the 3 Playwright forum checks if the cached `monitoring/forums` status is all `Good`. A restart doesn't mean the forums changed, and boot previously opened several browser pages needlessly (contributing to the renderer churn). Forums are still re-checked every 2h cycle, and still re-checked at boot if any forum was flagged down.
+
+### Infrastructure
+- **VPS firewall enabled (ufw)** — allow 22/80/3001/tcp + 41641/udp + `tailscale0`; default-deny inbound. CUPS snap disabled (was listening publicly on :631).
+- **AdGuard Home v0.107.79 installed on the VPS** (`/opt/AdGuardHome`, GPG-verified, systemd service) — DNS served over a private **Tailscale** tunnel only (bind `100.84.161.69` + `127.0.0.1`, never public IP), access allowlisted to tailnet/loopback, Quad9 DoH upstream, AdGuard DNS + AdAway blocklists. See `plan/adguard-home-vps.md` for the runbook.
+
+## 2026-08-27 — live VPS CPU/MEM stats on dashboard + Playwright context leak fixes
+
+### Added
+- **VPS Resources field on the dashboard** (`dashboardManager.js` + new `vpsStats.js`) — the system dashboard embed now shows CPU%, load, MEM/swap usage, uptime, and node/chrome process counts. Refreshed every **30s** via a lightweight in-place message edit (Discord's ~5 edits/5s per channel limit means 1 edit/30s is trivially safe); the heavy forums/queue data stays on the 5-min cycle. Chrome proc count doubles as a live leak monitor for the context fix below.
+
+### Fixed
+- **LSSD/DM isolated clients now close their context** (`deployAutopsyReply.js`) — the `finally` blocks on the LSSD completion client and the DM client deliberately skipped `close()` ("GC will handle cleanup"), which left one Chromium **renderer process (~150–240MB) alive per autopsy completion indefinitely**. Live VPS inspection showed 4 stale renderers totalling ~1.09GB RSS (bot up 21h) — the main driver of the 1.8GB VPS being memory-saturated. Both blocks now `try { await client.close(); } catch {}`, matching the already-correct fallback path. `close()` (forumClient.js) already delays 1s for health-check page creation and suppresses errors, so the original stealth-race concern no longer applies.
+- **Removed dead duplicate `close()` in `ForumClient`** (`forumClient.js`) — two `close()` methods existed; the first was shadowed by the second and referenced a non-existent `this.browser`. Left only the context/page-closing implementation.
+- **Immediate relief on VPS:** `pm2 restart phmc-bot` reclaims all leaked renderer memory (single shared browser process torn down and relaunched).
+
+### Notes
+- Files: SCP `services/dashboardManager.js`, `services/vpsStats.js`, `services/deployAutopsyReply.js`, `services/forumClient.js` + `pm2 restart phmc-bot`.
+- VPS stats module smoke-tested on the host (CPU/mem/swap/uptime/proc counts all sane).
+
+## 2026-08-26 (3) — completion webhook refinements, DAO live, `/forward-autopsy-complete`, morgue hardening
+
+### Added
+- **`/forward-autopsy-complete`** (owner-only) — manual send/re-send of the requester completion notification through the **REAL** faction webhook (`ignoreTestMode` bypass on `getFactionWebhookUrl`). Destination precedence: explicit `webhook:` option > real faction var; blank faction var = refused with guidance before anything sends. Same payload as the automatic flow (origin-aware copy, intranet links, CASELINK/Records button deep-link). Roles post-cutover: recovery of failed sends, retro-fit notifications for pre-feature cases, corrections via `faction:` override. Registered in both the REST payload and handler map.
+- **DAO webhook wired** — `AUTOPSY_REQUESTER_WEBHOOK_DAO` now set on VPS + mirrored locally; all three registry factions live. Verified by `/forward-autopsy-complete case:10025` → real DAO channel (`OK`), plus an automatic test-routed send to dev.
+- **Morgue API scanner defense expansion** (`morgue-api.js`) — after live junk-probe logs (`hassio` double-encoded traversal, Cognito/JMeter/mesh probes): new instant-ban patterns `SCAN-hassio/cognito/jmeter/runscript/supervisor/mesh-probe` + `SCAN-traversal-encoded` (`%252e`-class encodings missed before); generic **path-enumeration ban** — ≥12 DISTINCT unknown API paths in 10 min = instant permanent ban (`SCAN-path-enumeration`), repeat-hammering one path stays un-punished; **trust guard** — loopback always trusted + optional `MORGUE_API_TRUSTED_IPS`, so our own probes can never self-ban. Live-verified: loopback probes stay clean 404s; enumeration probe #13 → `403 permanently banned`; hassio single probe → instant ban. Test tools shipped: `scanner-ban-test.mjs`, `banstate-remove.mjs`.
+- **Morgue search typo-tolerance (API)** — `searchLocalRecords()` is now per-word tolerant: adjacent-transposition swaps + one-char deletions ("autospy" resolves "Autopsy"). Root-caused a CASELINK "Not in morgue" false negative to their own typo + IC-vs-OOC name mismatch (records store `Unknown (( OOC ))`); documented query semantics for their dev.
+
+### Fixed
+- **Assigned Autopsies modal morgue matching** (`AssignedAutopsiesModal.jsx`) — same root cause on the web side: strict substring match missed typo'd OOC terms entirely ("john doe" can never match an anonymized record). Added word-level fuzzy fallback (`haystackMatchesTerm`) feeding the existing location/date/time scorer at slightly lower weight; error copy changed from misleading "Not in morgue — contact an ME." to "No morgue match — intake may not exist yet."
+- **PHMC Inbox button URL** — `ucp.php?i=pm&mode=inbox` → correct `?i=pm&folder=inbox` (shared constant `PHMC_INBOX_URL`; applies to every payload path).
+- **RTDB data repair (one-shot)** — `tools/fix-autospy-typo.cjs` fixed CASELINK's "Autospy Test" typo inside `autopsy-requested/10025` (title, oocName, caseTitle, parsed tree, requestBbCode). Forum topics intentionally untouched so CASELINK tracking stays consistent with what they posted.
+
+### Changed
+- **Completion payload copy is channel-aware** (CASELINK dev feedback) — only CASELINK-posted requests may say "CASELINK": automatic flow fires solely for those today (gate unchanged), but human-origin payloads render "**…**A full copy has been sent to your PHMC inbox, and it is available under your [agency intranet](<…>)" with an "Autopsy Records" button instead; unknown-faction edge degrades to plain-text phrasing rather than dead `[link](<null>)`. Flag rides persisted `postedByCaselink`; `mimic-requester-webhook.mjs --human` previews the branch. CASELINK wording additionally gained "[your SD Intranet](<…>)" inline link (same recordUrl backing the button — text and action never disagree).
+
+### Notes
+- Files: SCP `services/requesterWebhook.js`, `commands/forward-autopsy-complete.js`, `morgue-api.js`, `index.js`, `.env.example` (+ restart `phmc-bot` and `morgue-api`).
+- Validator from this session: `node debug-testing-scripts/list-guild-commands.mjs` proves registration against Discord's API directly (41→42 commands).
+- Key rotation reminder outstanding (token, forum passwords ×4 sharing one value, FACE key, morgue keys, webhook URLs seen in session transcripts).
+- Status: dev-test assignment OFF; `AUTOPSY_REQUESTER_WEBHOOK_TEST_MODE=true` pending final flip → then automatic completions land in real LSSD/SADCR/DAO channels with zero manual steps.
+
+## 2026-08-26 (2) — `/enable-dev-autopsy` forced-ME dev mode
+
+### Added
+- **`/enable-dev-autopsy`** (owner-only) — flips DEV TEST assignment mode without SSH/restart: every **new** autopsy case is assigned to the configured ME (**default Alyson Frost**; optional `me` option / `AUTOPSY_DEV_TEST_ME`), while the entire rest of the pipeline runs normally — detection, case creation, certified-copy crossposts (LSSD/SADCR/DAO), acknowledgements, requester completion webhooks, retries. Already-assigned cases are untouched. Actions: `Enable` / `Disable` / `Status`; runtime takes effect immediately and both vars persist to the bot's `.env` so the mode survives restarts. LOA rules and supervised `ASSIGNED:` markers are bypassed while active; a loud `[DEV TEST]` banner posts to the log channel at startup when on.
+- **`services/envFile.js`** — comment-preserving `.env` upsert util (`AUTOPSY_DEV_TEST`/`AUTOPSY_DEV_TEST_ME`): replaces in place, uncomments commented keys, collapses duplicates, preserves CRLF/LF + everything else byte-for-byte, idempotent no-op when unchanged.
+- The pre-existing hardcoded dev branch in `selectME` now reads the configurable ME (`getDevTestME()` in `autopsyRotation.js`) — same default Alyson Frost.
+
+### Notes
+- Both monitor paths (single + multi-decedent) check the flag BEFORE rotation AND before supervised-override resolution, so "always" truly means always.
+- On-disk state diverges from real OS env vars only if someone sets them outside .env (boot loader already prefers process.env).
+- Deploy: SCP `commands/enable-dev-autopsy.js`, `services/envFile.js`, `services/autopsyRotation.js`, `services/autopsyRequestMonitor.js` + `pm2 restart phmc-bot`. Test coverage: `debug-testing-scripts/envfile-test.mjs`.
+
+## 2026-08-26 — CASELINK completion webhooks + SADCR/DAO agency crossposting
+
+### Added
+- **Requester completion webhooks (CASELINK)** — new `services/requesterWebhook.js`. When an autopsy completes for a `postedByCaselink` request, the requesting faction's Discord webhook posts: `<@ID>` ping when the officer's numeric Discord ID resolves, else a name salutation ("Katherine Olsen, your autopsy request has been completed, you can view it in CASELINK or via DMs."); embed with Case NR/title + Medical Examiner / ME Discord; link buttons **CASELINK** (deep link to the faction forum reply, else the records forum), **PHMC Inbox**, **PHMC Discord** (`https://discord.gg/zYdhJvHvUa`). Fully gated: private cases and non-CASELINK requests never fire; multi-decedent defers until every case completes.
+- **Faction webhook env vars** — `AUTOPSY_REQUESTER_WEBHOOK_LSSD/_SADCR/_DAO/_LSPD` (blank = silently skipped; DAO/LSPD ship blank but fully coded) plus test routing: `AUTOPSY_REQUESTER_WEBHOOK_TEST_MODE=true` sends EVERY faction to `AUTOPSY_REQUESTER_WEBHOOK_TEST_URL` with `[TEST-OVERRIDE]` logging. See `.env.example`.
+- **SADCR/DAO agency crossposting** — the LSSD-only pipeline is now registry-driven (`services/agencyForums.js`: LSSD f=2263, SADCR f=2328, DAO f=2331 — all subforums of lssd.gta.world sharing FORUM_LSSD_* credentials). Monitor Step 3 searches the requesting faction's OWN forum for an existing request topic (CASELINK duplication guard: search-first, create only for positively-human posters with the raw request BBCode in a certified-copy shell), stores faction-keyed topic ids (`sadcrRequestTopicId`/`daoRequestTopicId`; LSSD field unchanged), acks there, and completion replies the combined notice+report to the same topic. Counters now route per faction (previously SADCR fell into the LSSD bucket); faction regex/parser accept SADCR+DAO tags in titles and Department fields.
+- **Requester identity persisted at detection** — `requesterPoster`, `postedByCaselink`, `requesterDiscordTag` saved on `autopsy-requested/<topicId>`; parsed from Section 1 Contact Information (`(( Discord Name: ... ))` or numeric ID). Preserved across resets/reprocessing.
+- **New tracked completion step** `requesterWebhook` (two-phase, recovery-sweep retryable via `retryFailedCompletionSteps`) + progress-embed step "Requester Discord Notification". Agency ack retries gained their own sweep (`retryFailedAgencyAcknowledgements`) for SADCR/DAO.
+
+### Commands & tooling
+- `/test-requester-webhook <case> [faction]` (owner-only) — pulls a real `autopsy-requested` record, sends the live payload through current config, reports ping resolution + routing. Optional faction override previews SADCR/DAO routing regardless of the record's faction.
+- `debug-testing-scripts/mimic-requester-webhook.mjs` — offline/local mimicry of completions using the real payload builder (`--entry <key>` read-only pull, `--synthetic`, `--as <FACTION>`, `--multi`, `--no-me`, `--unassigned`, `--send <url>` / `--print`). All testing stages post to the dev-discord webhook configured on the VPS.
+- `tools/stage0-parser-test.mjs` — parser regression for the new requesterDiscord field.
+- `tools/reset-autopsy-request.mjs` now preserves the new identity/topic-id fields.
+
+### Notes
+- Web app unchanged — no redeploy needed. Deploy: SCP `services/agencyForums.js`, `services/requesterWebhook.js`, `services/completionTemplate.js`, `services/deployAutopsyReply.js`, `services/deployLssd.js`, `services/autopsyRequestMonitor.js`, `services/autoDeploy.js`, `commands/test-requester-webhook.js` + `.env` additions + `pm2 restart phmc-bot`.
+- Staging checklist: fill LSSD/SADCR webhook URLs + TEST_URL on the VPS `.env`, set `AUTOPSY_REQUESTER_WEBHOOK_TEST_MODE=true` for validation, flip off before cutover. DAO intentionally left blank.
+
+## 2026-08-25 — Auto-forward assigned autopsies to the PHMC Discord webhook
+
+### Added
+- **Assigned autopsies are now auto-forwarded** — `notifyAssignment` (`meDiscordNotify.js`) posts to the forwarding webhook (`PHMC_FORWARD_WEBHOOK_URL`, same template/target as `/forward-autopsy-notify`) on every assignment, so no manual command is needed. Covers single + multi-decedent assignments and reassignments. The webhook is now centralized as `PHMC_FORWARD_WEBHOOK_URL` in `assignmentWebhook.js` (configurable via `FORWARD_WEBHOOK_URL` in `.env`), and `/forward-autopsy-notify` uses it too (with the `/webhook` override retained).
+- **Tag validation** — the forward includes the resolved `<@discordId>` ping (6/8 rotation MEs mapped; Yuri Zhou + Eun Jae fall back to a bold name until mapped via `/me-discord`). Live-tested: `[FORWARD-WEBHOOK] Forwarded assignment for Edward Baskin (case TEST) [ping]`.
+
+### Notes
+- Deploy: SCP `services/assignmentWebhook.js`, `services/meDiscordNotify.js`, `commands/forward-autopsy-notify.js` + `pm2 restart phmc-bot`.
+
+## 2026-08-23 — Death Record post-posting forum verification (30-min delay)
+
+### Added
+- **`verifyPostedDeathRecords`** (`deathRecordDraftScan.js`) — after an approved death record, waits **30 minutes** (`verifyAfter` = approve time + 30 min, so either the bot's auto-post *or* a staff manual post can land), then scans the Death Records forum (f=404) for the topic by title/case number. Found → marks the draft `verified` + `verifiedAt` + `verifiedTopicId`. Not found → marks `verificationFailed` + posts a `⚠️ Death Record Not Verified` alert to the log channel (human check, no auto re-post).
+- **Wired into the recovery heartbeat** (`autoDeploy.js`) as a `death-record-verify` sweep, alongside the existing interrupted-approval recovery.
+- `verifyAfter` is stamped on the draft in `handleApprove` (`deathRecordDraftActions.js`).
+
+### Notes
+- Simulated/DRY approvals are skipped (no real forum topic to verify).
+- Death Records (CK posts) are **f=404** — the post target and verify sweep both scan f=404 (f=267 is the separate Coroner Reports / Mass Fatality forum).
+- Deploy: SCP `services/deathRecordDraftScan.js`, `deathRecordDraftActions.js`, `deathRecordDraft.js`, `autoDeploy.js` + `pm2 restart phmc-bot`.
+
+## 2026-08-21 — Client build stamp on deploy embeds
+
+### Added
+- **Deploy progress embeds now show the client build** — `DeployProgressEmbed` accepts an optional `buildLabel` (threaded from `reportData.appBuild` in `deployPM`, `deployCoronerEmail`, `deployMedicalRecord`, `deployAutopsyReply`, `deployTopic`, `deployQueue`), appended to the footer as `· client build <index>`. Combined with the web-side `appBuild` stamp, this surfaces which client bundle produced each report (stale-vs-current diagnostics). Reports saved by older clients simply omit the label.
+
+### Notes
+- Deploy: SCP `services/deployLogger.js`, `deployPM.js`, `deployCoronerEmail.js`, `deployMedicalRecord.js`, `deployAutopsyReply.js`, `deployTopic.js`, `deployQueue.js` + `pm2 restart phmc-bot`.
+
+## 2026-08-17 — Assignment notification refinements: forward command + friendlier wording
+
+### Added
+- **`/forward-autopsy-notify`** (owner) — forwards a real autopsy assignment to the community **"Autopsy Bot" webhook** (`1538007200188997672`, guild `860254678653992992`). Resolves a case by number/topic/title fragment from `autopsy-requested`, resolves the ME's Discord mapping, and posts the full webhook embed (ME, case number, decedent, thread link, wait-window). Optional `/webhook` override destination. Backed by a new reusable `forwardAssignmentWebhook()` in `assignmentWebhook.js`.
+
+### Changed
+- **Webhook `content` wording** — `buildContent` now renders a friendlier line: `@<discordId> Dr. <ME>, you've been assigned an autopsy — here's the case file and links.` (instead of `@Ralof Medical Examiner: Anne Carter`). Supports an optional `label` (e.g. "reassigned an autopsy") threaded through `notifyAssignmentWebhook` / `forwardAssignmentWebhook`.
+
+### Notes
+- Deploy: SCP `index.js`, `commands/forward-autopsy-notify.js`, `services/assignmentWebhook.js` + `pm2 restart phmc-bot`.
+
+## 2026-08-17 — Autopsy reassignment: fix case filter + notify new ME
+
+### Fixed
+- **`/reassign-autopsy` case filter** — the active-case list required `title.includes('autopsy request')`, which excluded *report*-titled cases like `[Autopsy Report] Bradley Kellerman [SADCR]` (the one assigned+incomplete case → "No active assigned cases found" despite 39 assigned). Now shows **any assigned, not-yet-completed** case.
+- **Reassigned ME is now notified** — `/reassign-autopsy` previously edited the forum title + posted a forum notice but sent **no Discord/webhook ping** to the newly-assigned ME. It now calls `notifyAssignment` (same path as initial assignment) with the wording **"Autopsy Case Reassigned"**: webhook `<@me>` ping + embed (title `🔬 Autopsy Case Reassigned`), plus the log-channel mention. `notifyAssignment`/`assignmentWebhook` gained optional `label`/`embedTitle`/`title` overrides.
+
+### Notes
+- Deploy: SCP `commands/reassign-autopsy.js`, `services/meDiscordNotify.js`, `services/assignmentWebhook.js` + `pm2 restart phmc-bot`.
+
+## 2026-08-17 — VPS crash recovery + memory-hardening (18th July 2026 incident)
+
+### Incident
+- VPS (1.8GB RAM, **no swap**) froze at ~23:27 UTC after a Discord websocket `Opening handshake has timed out` crash (22:15 UTC). Root cause: memory exhaustion — the CCTV `fetch-all.js --headless` child timed out (20:54) and `child.kill()` (SIGTERM) **orphaned the headless-chromium grandchild**, leaking RAM on a box already at ~74% baseline. With no swap, the kernel couldn't OOM-kill; the box just starved/froze (no `oom-killed` events in the log confirms this).
+
+### Fixed
+- **CCTV process-tree kill** (`services/cctvScheduler.js`) — the fetch child now spawns `detached: true` (own process group) and on timeout *or* close the whole tree is swept with `process.kill(-child.pid, 'SIGKILL')`, so leaked headless browsers die instead of accumulating RAM.
+- **Fail-fast crash handling** (`index.js`) — `uncaughtException` now logs + sends the crash report and then `process.exit(1)` so pm2 does a clean restart, instead of the bot limping along with a half-connected Discord websocket.
+- **Earlier RAM alert** (`services/systemMonitor.js`) — high-memory alert threshold lowered 85% → **70%** (the box was at 74% before it died, so the old threshold never fired).
+- **2GB swap added on the VPS** — `/swapfile` persisted in `/etc/fstab`, `vm.swappiness=10` via `/etc/sysctl.d/99-swappiness.conf`. Gives the kernel room to OOM-kill the leaker instead of freezing the box.
+
+### Notes
+- Deploy: SCP `services/cctvScheduler.js`, `index.js`, `services/systemMonitor.js` + `pm2 restart phmc-bot`; swap was applied directly on the VPS.
+
+## 2026-08-16 — `/maintenance splash` + pause all queues during outages
+
+### Added
+- **`/maintenance splash` subcommand (owner only)** — `on <title> <message> [eta]` shows the web app's full-screen splash **and** pauses all deploy queues (`appMetadata/botMaintenance = true`); `off` lifts the splash and resumes; `status` shows both. Writes `appMetadata/maintenance/splash` with `updatedBy`/`updatedAt` audit.
+- **Maintenance gate now covers ALL outbound work** — added `isMaintenanceMode()` early-return guards to `handlePM`, `handleMedicalRecord`, `handleAutopsyReply`, `retryFailedCompletionSteps`, `processReportEdits`, and `checkRetryQueue` (previously only the auto-deploy queue + coroner emails paused).
+
+### Notes
+- Deploy: SCP `commands/maintenance.js`, `services/deployPM.js`, `services/deployMedicalRecord.js`, `services/reportEdits.js`, `services/deployAutopsyReply.js`, `services/deployRetry.js` + `pm2 restart phmc-bot`.
+
+## 2026-08-15 — SADCR roster sync + roster-check API
+
+### Added
+- **SADCR in `factionRosterSync.js`** — new config scrapes the SADCR forum (`FORUM_SADCR_URL`, group `g=11`) with the existing `FORUM_SADCR_USERNAME`/`PASSWORD` into `data/sadcr-roster.json` (32 members on first sync). Credential selection generalized to per-config env keys (`usernameEnv`/`passwordEnv`); sync summary + log-channel message now iterate all factions. `getRosterSyncStatus()` also returns `sadcrCount`.
+- **SADCR in `morgue-api.js` roster endpoints** — `/api/roster/check` now accepts `dept=sadcr` and includes SADCR in auto-detect; `/api/roster/sadcr` serves the full roster.
+
+### Notes
+- SADCR forum credentials already existed on the VPS (`data/agency-credentials.json`, `FORUM_SADCR_*`). Verified live: `check?name=Dante&dept=sadcr` → found; auto-detect finds SADCR members. Deploy: SCP `services/factionRosterSync.js`, `morgue-api.js` + `pm2 restart phmc-bot morgue-api` + one-off `syncFactionRosters()`.
+
+## 2026-08-15 — Webhook ME assignment notifications
+
+### Added
+- **Webhook-based assignment pings** (`services/assignmentWebhook.js`) — when `ASSIGNMENT_WEBHOOK_URL` is set, newly assigned autopsy cases post to that webhook with `<@me> Medical Examiner: **Name**` + an `🔬 Autopsy Case Assigned` embed (ME, case #, decedent/OOC, thread, CK/PK wait window) + `View Case` / `PHMC Forms` **link buttons** (`?with_components=true` + `allowed_mentions: { parse: ['users'] }`). Fully non-blocking (10s timeout) so it can never stall an assignment.
+- **Wired into `autopsyRequestMonitor.js`** (single + multi-decedent assignment points) passing `decedent`/`ooc`/`caseNumber`/`deathType`; `notifyAssignment` pings via the webhook when configured and posts to the log channel **without** the mention (no double-ping). Unmapped MEs degrade to a bold name (no ping) — the forum assignment reply still tags them in-game.
+
+### Notes
+- Config: `ASSIGNMENT_WEBHOOK_URL` in `.env`. Deploy: SCP `services/assignmentWebhook.js`, `services/meDiscordNotify.js`, `services/autopsyRequestMonitor.js` + `pm2 restart phmc-bot`.
+
+## 2026-08-15 — Interactive `/me-discord` mapping panel
+
+### Changed
+- **`/me-discord` is now a button-driven panel** (`commands/set-me-discord.js`) — lists MEs on the rotation who lack a Discord mapping with an `Add: <name>` button per ME; clicking opens a modal to paste the Discord user ID / @mention; on submit the mapping is saved and the panel re-renders (ME moves to ✅ Mapped). `me_map_*` button + `me_modal_*` submit handlers wired into `interactionCreate`.
+
+## 2026-08-15 — Test ping + explicit mention handling
+
+### Added
+- **`/test-ping` (owner)** — sends an @mention test notification to the log channel.
+- **`logChannel.js` now sends `allowed_mentions`** — `{ parse: ['users', 'roles'] }` (plus `here` for crash reports) so `<@id>` pings are guaranteed and `@everyone`/`@here` are never accidentally triggered.
+
+## 2026-08-15 — Standalone webhook notifier + buttons
+
+### Added
+- **`debug-testing-scripts/notify-webhook.mjs`** — standalone webhook notifier: ME assignment mode (`--me` + case fields), generic JSON payload template (single case or multi-decedent `cases[]`), `View Case` / `PHMC Forms` link buttons, `--wait` (verify buttons rendered), `--dry-run`, `--mapping` file. Samples: `sample-assignment.json`, `sample-multi-assignment.json`, `discord-mappings.json`.
+- **Webhook buttons require `?with_components=true`** on incoming (non-application-owned) webhooks — the `components` field is ignored otherwise. Link buttons (style 5) render; interactive buttons (custom_id) need an application-owned webhook.
+
+### Housekeeping
+- **Ops fix:** the bot crash-looped after `index.js` referenced `commands/test-ping.js` that wasn't uploaded to the VPS — file added, clean restart, `/me-discord` re-registered without options.
+
+## 2026-08-15 — `/global-stats` PHMC Forms usage stats
+
+### Added
+- **`/global-stats` (owner)** — paginated stats with three pages reachable via buttons on the embed (`📊 Overview` / `📋 Full Breakdown` / `🔥 Activity Heatmap`):
+  - **Overview** — total reports & users, Report Volume by Section (Coroners / ER &amp; Clinical / Mental Health + other, with bars, subtotals, % and per-form counts), By Month (last 6), and top 5 users per section.
+  - **Full Breakdown** — every form type with counts, top 10 users overall, and top 8 per section.
+  - **Activity Heatmap** — a 7-day × 24-hour (UTC) intensity grid (`·░▒▓█`) of report submissions, with a legend and peak stats (busiest day + peak hour).
+- Button handler wired into `interactionCreate` (`handleStatsPage`); each page recomputes from the live stores.
+
+### Changed
+- Dropped the "Deploy Queue" and "Legacy / Recovery" fields per product feedback.
+
+### Notes
+- Deploy to VPS: SCP `commands/global-stats.js`, `index.js` + `pm2 restart phmc-bot` (registers the slash command + button handler).
+
+## 2026-08-15 — Report edit worker: full paper trail
+
+### Changed
+- **`reportEdits` worker now has a visible paper trail** (`reportEdits.js`):
+  - Posts a `📝 Report Edit Requested` notice to the log channel when it picks up a request (report + target topic), then a green `✏️ Report Edited` with a topic link on success, or a red `⚠️ Report Edit Failed` with the reason on failure.
+  - Appends every attempt to the report's `editHistory` array (`{ at, status, url?, error? }`) and sets `lastEditStatus` / `lastEditUrl` / `lastEditError` on the record — a durable audit trail visible to the UI.
+
+### Notes
+- Deploy to VPS: SCP `services/reportEdits.js` + `pm2 restart phmc-bot`.
+
+## 2026-08-15 — Auto coroner email no longer overwrites the topic deploy target
+
+### Fixed
+- **Auto-coroner-email PM was clobbering the report's deploy target** (`deployCoronerEmail.js`) — when a coroner-report/mass-fatality deploy posts a topic (`deployUrl` = PHMC topic) and then auto-sends the coroner email as a side-effect on the SAME record key, the email's `markReportComplete(..., 'pm', pmUrl)` overwrote `deployUrl` with the LSSD PM URL. "View post ↗" and Edit & Repost then pointed at the PM instead of the PHMC topic. The side-effect email now writes its URL to `coronerEmailUrl`/`coronerEmailSentAt`/`coronerEmailTo` and leaves the topic's `deployUrl`/`deployType`/`deployTopicId` intact. Standalone `coroner_email` reports still deploy normally via `markReportComplete('pm', …)`.
+- **Repaired the existing Alfonso Tanilon record** (topic `t=9982` restored as `deployUrl`, PM URL preserved under `coronerEmailUrl`).
+
+### Notes
+- Deploy to VPS: SCP `services/deployCoronerEmail.js` + `pm2 restart phmc-bot`.
+
+## 2026-08-14 — Self-serve "Edit & Repost" for deployed reports
+
+### Added
+- **Deploy target persisted on every report** (`deployStatus.js`) — `markReportComplete` now stores `deployUrl` (+ parsed `deployTopicId`/`deployPostId`) on the report record, so the system knows WHERE each report was posted (required for in-place editing and for the "View post ↗" links in the web app).
+- **`forumClient.editPostContent(topicId, forumId, postId, newBbCode, { title })`** — edits a post's content (and optional subject) in place via the `posting.php?mode=edit` flow (login handling included); resolves the topic's first post when no postId is given.
+- **`reportEdits` worker** (`reportEdits.js`, run from the recovery heartbeat) — applies `reportEdits/<author>/<key> = { status: 'requested' }` requests: loads the regenerated BBCode + the stored deploy target, edits the post in place, then marks the report `deployStatus: 'edited'`. **Autopsy and coroner_email are excluded** from edit-eligibility (heavily automated / PM-based — must not be touched). Failed edits are recorded (`lastEditStatus: 'failed'` + reason) for the UI to retry.
+
+### Notes
+- Requires the matching web-app change (`changelog.md`) for the Misc → "Fix Deployed Report" UI.
+- Deploy to VPS: SCP `services/deployStatus.js`, `services/forumClient.js`, `services/reportEdits.js`, `services/autoDeploy.js` + `pm2 restart phmc-bot`.
+
+## 2026-08-14 — Fix LSPD/LSSD status write on a root Reference
+
+### Fixed
+- **`db.ref is not a function` on crosspost status writes** (`deployLspd.js` + `deployLssd.js`) — the completion flow passes `state.dbRef`, which is a **root Reference** (`db.ref()`; has `.child`, no `.ref`), so `writeStatus`/the retry sweeps calling `db.ref(...)` threw and silently skipped `lspdCrosspostStatus`/`lssdCrosspostStatus` (left stuck at `pending`/unset while the actual forum crosspost posted fine). Both files now route all status writes/queries through a `refFor(db, path)` helper that handles a Database (`.ref`) or a Reference (`.child`).
+- **Ledger corrected** — `9951` and `9974` set to `lspdCrosspostStatus: completed` (their reports were already posted to #128223 / #128346); verified the fix path works with both db shapes.
+
+### Notes
+- Deploy to VPS: SCP `services/deployLspd.js`, `services/deployLssd.js` + `pm2 restart phmc-bot`.
+
+## 2026-08-14 — Faction-specific "Gov Intranet" link in completion notices
+
+### Changed
+- **The completion notice's Gov-Intranet line is now faction-specific** (`completionTemplate.js` + all 5 `buildCompletionBb` call sites) — instead of the hardcoded "For LSPD… and for LSSD…" text it now renders one of:
+  - **LSSD crossposted** → direct link to the posted LSSD completion reply (`lssdUrl`).
+  - **LSPD** → direct link to the LSPD certified-copy topic (`lspdUrl`, from the tracked `lspdTopicId`), or the f=1361 viewforum when no topic id exists.
+  - **Neither (private / no crosspost)** → "The completed report has been delivered to your PHMC Intranet Inbox."
+- `buildCompletionBb` now takes a `{ faction, lssdUrl, lspdUrl }` context (a plain string is still accepted as the LSSD URL for backward compat). Faction is derived from `entry.faction` / the request `[LSPD]`/`[LSSD]` title tag, falling back to `private`.
+- Applied across the main completion flow, the picker path (`deployInteraction.js`), the recovery retry (`retryFailedCompletionSteps`), and `/force-autopsy-send`.
+
+### Notes
+- Deploy to VPS: SCP `services/completionTemplate.js`, `services/deployAutopsyReply.js`, `services/deployInteraction.js`, `commands/force-autopsy-send.js` + `pm2 restart phmc-bot`.
+
+## 2026-08-14 — Picker path fixed + stuck multi cases repaired + COMPLETED gated for multi
+
+### Fixed
+- **The staff-pick completion path (`deployInteraction.js`) now handles multi-decedent records** — it only matched top-level `oocName` and never did the LSPD crosspost, so any multi (or manually-picked) case that deployed through it was never marked completed and never crossposted. It now matches by the replied `caseTopicId` (top-level + per-case `cases/<idx>`), marks per-case `completedAt` (+ request-level when all decedents done), and fires the LSPD crosspost (`crosspostAutopsyToLspd`).
+- **COMPLETED replies are deferred until the whole multi request is done** (`deployAutopsyReply.js` + `deployInteraction.js`) — the PHMC f=265 completion notice and the requester DM no longer post "We have completed the autopsy investigation" per decedent; for multi records they post only once, when `allCasesDone`. Per-decedent report deliveries (LSPD/LSSD crossposts) still happen as each case completes, so no report is lost.
+
+### Repair (manual, applied via a one-off DB script + recovery heartbeat)
+- **Retro-completed the two stuck multi cases** that deployed via the picker path and never completed:
+  - `9951/case0` (Anne Carter / Marvion Futrell) → LSPD #128223 report posted, f=265 completion reply posted.
+  - `9974/case0` (Brandy Smith / Roman Kuznetsov) → LSPD #128346 report posted, f=265 completion reply posted.
+- **Re-queued the Vuk Dragovich report** (was `skipped_manual`) — cold-load redeployed it via the multi direct-lookup to `caseTopicId 9976`, posted the reply, completed `9974/case1`, and crossposted Vuk's report to LSPD #128346. `9974` is now fully complete (both decedents).
+
+### Notes
+- `9951` stays open until Dylan Bongo's autopsy is submitted (correct — one decedent still pending).
+- The premature f=265 completion replies already posted during the repair (Roman @22:49, Marvion @22:48) are on the forum and not retro-fixed; the new gating prevents this going forward.
+- Minor ledger quirk: the LSPD crosspost status write logs `db.ref is not a function` for the passed db object (status field stays `pending`), but the crosspost itself posts fine — flagged for a follow-up.
+- Deploy to VPS: SCP `services/deployInteraction.js`, `services/deployAutopsyReply.js` + `pm2 restart phmc-bot`.
+
+## 2026-08-14 — Autopsy deploy uses the tracked case topic for multi-decedent cases
+
+### Fixed
+- **Autopsy report deploys no longer prompt staff to pick a case thread for multi-decedent requests** (`deployAutopsyReply.js`) — the direct lookup only matched TOP-LEVEL `oocName`/`name`/`caseTopicId`, but multi records store those per-case under `cases/<idx>` (top level has none), so e.g. a "John Doe ((Marvion Futrell))" report fell through to the forum search and asked staff to pick. The direct lookup now also scans multi records' per-case data (OOC match takes priority; name match as fallback with the "john doe" guard; active case preferred over completed, then newer `caseNum`) and uses the tracked `caseTopicId` directly. Verified against live data: Marvion Futrell → #9955, Dylan Bongo → #9956, Roman Kuznetsov → #9975, Vuk Dragovich → #9976 — no search, no picker.
+- This also closes the original "Vuk Dragovich pick expired" class: a tracked multi case never needs a manual pick.
+
+### Notes
+- Reports for cases that were never tracked (manually-created threads) still fall back to the search + picker, as before.
+- Deploy to VPS: SCP `services/deployAutopsyReply.js` + `pm2 restart phmc-bot`.
+
+## 2026-08-14 — Dashboard/startup-scan split multi-decedent ME rows
+
+### Fixed
+- **The dashboard "🔬 ME Assignments" section no longer comma-merges multi-decedent MEs** (`dashboardManager.js`) — it keyed off the top-level `assignedTo`/`title` (the dashboard aggregate), rendering `**Anne Carter, Alyson Frost** — *Dylan Bongo, Marvion Futrell*`. It now expands multi records per-case (`cases/<idx>/assignedTo`), showing one row per ME with their own decedent (`oocName`) and their own case URL. Verified against live data (9951 → Anne Carter @9955 / Alyson Frost @9956; 9974 → Brandy Smith @9975 / Arthur Blackwood @9976).
+- **The startup "Autopsy Status" scan lists multi-decedent cases per ME too** (`autoDeploy.js`) — same expansion, so the `• Decedent → ME` lines never show a comma-joined ME.
+- (Together with the `autopsy-stats` split, no surface merges multi names anymore.)
+
+### Notes
+- The overdue monitor (`systemMonitor.js`) still reports multi requests at request level with the aggregate ME — flagged as a possible follow-up if per-case overdue reporting is wanted.
+- Deploy to VPS: SCP `services/dashboardManager.js`, `services/autoDeploy.js` + `pm2 restart phmc-bot`.
+
+## 2026-08-14 — autopsy-stats splits multi-decedent ME rows
+
+### Fixed
+- **`/autopsy-stats` no longer merges multi-decedent MEs** (`commands/autopsy-stats.js`) — the "By ME (assignments)" section keyed off the top-level `assignedTo`, which for multi records is the comma-joined dashboard aggregate (e.g. "Anne Carter, Alyson Frost: 1 assigned / 0 done"). It now iterates the per-case assignments (`cases/<idx>/assignedTo`), counting each decedent's case against its own ME (per-case `completedAt` for the done count), with a legacy fallback that splits the aggregate string when no per-case records exist. Verified against live data: 9951/9974 now contribute to the correct individual MEs instead of merged rows.
+
+### Notes
+- Deploy to VPS: SCP `commands/autopsy-stats.js` + `pm2 restart phmc-bot`.
+
+## 2026-08-14 — Surge mode surfaced in rotation UI
+
+### Changed
+- **`getRotationStatus` now reports surge state** (`autopsyRotation.js`) — returns `surgeMode` (every non-LOA ME has ≥1 active case) and `surgePick` (the deterministic next surge assignment: least-loaded ME, ties → oldest `lastAssigned`, preserving rotation order for exact ties). Mirrors `selectME` Phase 2 exactly.
+- **`/rotation-list` shows a surge banner** — when surge is active the embed prints `🔀 SURGE MODE ACTIVE` with the least-loaded/oldest tie-break rule and the concrete next pick, and `Next Up` reflects the surge pick instead of "all busy".
+- **`/autopsy-request` preview embed shows rotation status** — when no explicit `me:` override is given (auto-assign), the preview adds a `Rotation Status` field: `🔀 Surge mode active — … → next up: <name>` in surge, or `Rotation next up: <name>` in normal mode.
+
+### Notes
+- Deploy to VPS: SCP `services/autopsyRotation.js`, `commands/autopsy-request.js`, `commands/rotation-list.js` + `pm2 restart phmc-bot`.
+
+## 2026-08-13 — Autopsy detection: single live progress embed
+
+### Changed
+- **Autopsy detection now posts ONE live-updating progress embed per request** (`autopsyRequestMonitor.js`) instead of 4 separate messages ("Autopsy Case Created" webhook, `@owner` case-posted ping, "New Autopsy Request Detected" embed, batch summary). The embed walks through the same sections used by report deploys:
+  - `Autopsy Case Detected — Fetching Information` → `FOUND: CASE` → `POSTED TO CASE MANAGEMENT` → `ASSIGNED MEDICAL EXAMINER` → `CROSSPOSTED TO LSPD/LSSD`, then finalizes green/red.
+  - The **ME assignment ping is unchanged** (`notifyAssignment` still tags the assigned ME on Discord).
+- **Embed survives reprocessing + bot restarts** — the Discord message id, channel, and step history are persisted on the request entry (`progressMessageId`/`progressChannelId`/`progressSteps`), so the state machine resumes the SAME message across monitor cycles instead of duplicating embeds.
+- Per-request and batch "New Autopsy Request Detected" notifications removed; the restart-time Initial Scan summary is kept.
+
+### Notes
+- Deploy to VPS: SCP `services/autopsyRequestMonitor.js` + `pm2 restart phmc-bot`.
+
 ## 2026-08-11 — Multi-decedent autopsy completions (LSPD/LSSD crossposts per case)
 
 ### Fixed

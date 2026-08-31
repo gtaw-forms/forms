@@ -5,12 +5,12 @@ import { useAuth } from './contexts/AuthContext.jsx';
 import { FormProvider } from './contexts/FormContext.jsx';
 import * as Sentry from "@sentry/react";
 import { sendDiscordErrorWebhook } from './utils/logging';
-import { Spinner } from 'react-bootstrap';
 import { database } from './firebase';
 import { ref, onValue, onDisconnect, set, serverTimestamp } from 'firebase/database';
 
 import ProtectedRoute from './components/Auth/ProtectedRoute.jsx';
 import Admin from './components/Admin/Admin.jsx';
+import SplashGate, { AppLoadingScreen } from './components/ui-new/SplashGate.jsx';
 
 function SessionExpiredBanner() {
     const { sessionExpired, dismissSessionExpiry, logout } = useAuth();
@@ -43,6 +43,7 @@ function SessionExpiredBanner() {
 const GtaLogin = lazy(() => import('./components/Auth/GtaLogin.jsx'));
 const GtaCallback = lazy(() => import('./components/Auth/GtaCallback.jsx'));
 const NewUIPrototype = lazy(() => import('./components/ui-new/index.jsx'));
+const TranslationEditor = lazy(() => import('./components/Translator/TranslationEditor.jsx'));
 
 function App() {
     const [formData, setFormData] = useState({});
@@ -144,12 +145,6 @@ function App() {
         set(visitorRef, serverTimestamp());
     }, []);
 
-    const LoadingFallback = () => (
-        <div className="d-flex justify-content-center align-items-center" style={{ height: '100vh', backgroundColor: '#0d1117' }}>
-            <Spinner animation="border" variant="primary" />
-        </div>
-    );
-
     return (
         <Sentry.ErrorBoundary
             fallback={({ error, componentStack }) => (
@@ -210,20 +205,24 @@ function App() {
         >
             <FormProvider formData={formData} setFormData={setFormData} setLastWebhookIdentifier={setLastWebhookIdentifier} showNotification={showNotification}>
                 <SessionExpiredBanner />
-                <Router>
-                    <Suspense fallback={<LoadingFallback />}>
-                        <Routes>
-                            <Route path="/" element={<NewUIPrototype />} />
-                            <Route path="/login" element={<GtaLogin />} />
-                            <Route path="/auth/gta/callback" element={<GtaCallback />} />
-                            <Route path="/admin" element={<ProtectedRoute><Admin formData={formData} setFormData={setFormData} showNotification={showNotification} /></ProtectedRoute>} />
-                            <Route path="/ui-prototype" element={<NewUIPrototype />} />
-                            {/* Legacy form-handler DECOMMISSIONED — any attempt redirects to the new UI */}
-                            <Route path="/form-handler" element={<Navigate to="/ui-prototype" replace />} />
-                            <Route path="*" element={<Navigate to="/" replace />} />
-                        </Routes>
-                    </Suspense>
-                </Router>
+                <SplashGate>
+                    <Router>
+                        <Suspense fallback={<AppLoadingScreen />}>
+                            <Routes>
+                                <Route path="/" element={<NewUIPrototype />} />
+                                <Route path="/login" element={<GtaLogin />} />
+                                <Route path="/auth/gta/callback" element={<GtaCallback />} />
+                                <Route path="/admin" element={<ProtectedRoute><Admin formData={formData} setFormData={setFormData} showNotification={showNotification} /></ProtectedRoute>} />
+                                <Route path="/ui-prototype" element={<NewUIPrototype />} />
+                                <Route path="/prototype-basic" element={<NewUIPrototype basicMode />} />
+                                <Route path="/translate" element={<TranslationEditor />} />
+                                {/* Legacy form-handler DECOMMISSIONED — any attempt redirects to the new UI */}
+                                <Route path="/form-handler" element={<Navigate to="/ui-prototype" replace />} />
+                                <Route path="*" element={<Navigate to="/" replace />} />
+                            </Routes>
+                        </Suspense>
+                    </Router>
+                </SplashGate>
             </FormProvider>
         </Sentry.ErrorBoundary>
     );

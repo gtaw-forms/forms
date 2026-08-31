@@ -6,7 +6,7 @@ import { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, Embed
 import { sendLogMessage } from './logChannel.js';
 import { updateDraftMessage, updateDraftWithMorgue, updateDraftFaceField, getDraftClient, DRAFT_CHANNEL_ID } from './deathRecordDraftUI.js';
 import { FACE_PUBLISH_DELAY_HOURS } from './deathRecordDraftFace.js';
-import { recheckMorgueForDraft } from './deathRecordDraftScan.js';
+import { recheckMorgueForDraft, VERIFY_DELAY_MS } from './deathRecordDraftScan.js';
 import { shortId } from './deathRecordDraftCache.js';
 import { loadTemplate, fillTemplate } from './deathRecordDraftGenerator.js';
 
@@ -201,6 +201,9 @@ async function handleApprove(interaction, reportKey) {
                     deployedAt: Date.now(),
                     deployedUrl: result.url,
                     approvedBy: interaction.user.tag,
+                    // Wait 30 min before the forum-verification sweep so a manual
+                    // re-post (staff) also has time to land before we check.
+                    verifyAfter: Date.now() + VERIFY_DELAY_MS,
                 });
 
                 await updateDraftMessage(draftInfo.messageId, 'approved', result.url);

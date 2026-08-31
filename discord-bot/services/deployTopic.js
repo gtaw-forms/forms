@@ -16,7 +16,7 @@ import { markDeployed, markReportComplete, setDeployStatus } from './deployStatu
 export async function handleTopic(report) {
     const { authorId, key, report: reportData, db } = report;
 
-    const progress = new DeployProgressEmbed(state.discordClient, process.env.BOT_LOG_CHANNEL_ID);
+    const progress = new DeployProgressEmbed(state.discordClient, process.env.BOT_LOG_CHANNEL_ID, reportData.appBuild);
     if (report._progressMessageId) {
         await progress.resume(report._progressMessageId, report._progressChannelId || process.env.BOT_LOG_CHANNEL_ID, `Topic — ${reportData.originalKey || key}`);
     } else {

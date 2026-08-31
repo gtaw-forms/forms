@@ -14,7 +14,7 @@ Dear REQUESTER_NAME
 
 We have completed the autopsy investigation, and the detailed report has been sent out. I have thoroughly reviewed all findings and compiled the results into a comprehensive document. Please review the report at your earliest convenience, and feel free to reach out if you have any questions or require further information.
 
-[b]Autopsy Findings will be sent to your respective Gov Intranet. For LSPD, please navigate to [url]https://lspd.gta.world/viewforum.php?f=1361[/url] and for LSSD please review your completed report here: LSSD_COMPLETION_LINK [/b]
+[b]Autopsy Findings will be sent to your respective Gov Intranet. GOV_LINK_LINE [/b]
 
 [i]Best regards,[/i]
 [hr][/hr]
@@ -32,21 +32,48 @@ Website: [url]www.phmc.health[/url][/size]
 /**
  * Build the completion reply BBCode for the original request topic (f=265).
  *
- * LSSD requests post their combined completion + report to the LSSD forum first,
- * so a direct link to that reply can be embedded here (LSSD_COMPLETION_LINK).
- * Falls back to the static CASELINK text when no LSSD post URL is available.
+ * The "Gov Intranet" line is faction-specific:
+ *   - completionUrl set → direct completion-reply link on the requesting
+ *     faction's own forum (param keeps the historical name `lssdUrl` for
+ *     back-compat with the picker/force-copy callers)
+ *   - faction 'lssd' → LSSD CASELINK/records fallback
+ *   - faction 'sadcr'/'dao' → agency Autopsy Records subforum link
+ *     (SADCR f=2328 / DAO f=2331 live on the shared lssd.gta.world domain)
+ *   - faction 'lspd' → direct LSPD topic link (lspdUrl) or the f=1361 forum
+ *   - otherwise      → tells the requester to check their PHMC Intranet Inbox
  *
- * @param {string} caseTitle — case title for the template
+ * @param {string} caseTitle — case title (reserved; template has no CASE_TITLE slot)
  * @param {string} requesterName — requester for the template
- * @param {string|null} lssdUrl — direct URL of the posted LSSD reply, if any
+ * @param {object|string|null} [linkContext] — { faction, lssdUrl, lspdUrl }, or a
+ *   plain string treated as the completion reply URL (backward compat)
  * @returns {string}
  */
-export function buildCompletionBb(caseTitle, requesterName, lssdUrl) {
-    const lssdLink = lssdUrl
-        ? `[url]${lssdUrl}[/url]`
-        : 'the CASELINK PORTAL or LSSD Autopsy Records';
+import { FORUM_FALLBACK_URLS } from './agencyForums.js';
+
+export function buildCompletionBb(caseTitle, requesterName, linkContext = {}) {
+    const ctx = typeof linkContext === 'string' ? { lssdUrl: linkContext } : (linkContext || {});
+    const { faction, lssdUrl, lspdUrl } = ctx;
+    const f = String(faction || '').toLowerCase();
+    const facTag = String(faction || '').toUpperCase();
+
+    let govLine;
+    if (lssdUrl) {
+        const agencyLabel = ['lssd', 'sadcr', 'dao'].includes(f) ? facTag : 'LSSD';
+        govLine = `For ${agencyLabel}, please review your completed report here: [url]${lssdUrl}[/url]`;
+    } else if (f === 'lssd') {
+        govLine = 'For LSSD, please review your completed report here: the CASELINK PORTAL or LSSD Autopsy Records';
+    } else if (f === 'sadcr' || f === 'dao') {
+        govLine = `For ${facTag}, please review your completed report in the ${facTag} Autopsy Records forum: [url=${FORUM_FALLBACK_URLS[facTag]}]${facTag} Autopsy Records[/url]`;
+    } else if (f === 'lspd') {
+        govLine = lspdUrl
+            ? `For LSPD, please review your completed report here: [url]${lspdUrl}[/url]`
+            : 'For LSPD, please navigate to [url]https://lspd.gta.world/viewforum.php?f=1361[/url]';
+    } else {
+        govLine = 'The completed report has been delivered to your PHMC Intranet Inbox. Please check there for the autopsy findings.';
+    }
+
     return COMPLETION_TEMPLATE
         .replace('CASE_TITLE', caseTitle)
         .replace('REQUESTER_NAME', requesterName)
-        .replace('LSSD_COMPLETION_LINK', lssdLink);
+        .replace('GOV_LINK_LINE', govLine);
 }

@@ -61,6 +61,34 @@ function isStaffRole(roleId) {
 }
 
 /**
+ * Resolve a roster record for an OAuth character. The OAuth `character[].id` is
+ * normally the real character id (which equals the roster record KEY), but for
+ * some accounts it is the UCP account id / a stale id (e.g. Alyson Frost: OAuth
+ * id 43132 vs roster key 5573). When the key lookup misses, fall back to an
+ * exact (case-insensitive, whitespace-normalized) match by character name.
+ *
+ * @param {object} character - an entry from finalUser.character[]
+ * @param {object} allMembers - factions/364/members snapshot value
+ * @returns {{key: string, memberData: object}|null}
+ */
+function resolveRosterCharacter(character, allMembers) {
+    if (!character || !allMembers) return null;
+
+    const charId = character.id != null ? String(character.id) : null;
+    if (charId && allMembers[charId]) {
+        return { key: charId, memberData: allMembers[charId] };
+    }
+
+    const oauthName = `${character.firstname || ''} ${character.lastname || ''}`.replace(/\s+/g, ' ').trim();
+    if (!oauthName) return null;
+    const lower = oauthName.toLowerCase();
+    const entry = Object.entries(allMembers).find(([, member]) =>
+        String(member.characterName || '').replace(/\s+/g, ' ').trim().toLowerCase() === lower
+    );
+    return entry ? { key: entry[0], memberData: entry[1] } : null;
+}
+
+/**
  * Helper function to get permissions based on script rank or superadmin status
  */
 function getPermissionsForRank(scriptRank, isElevated = false) {
@@ -268,7 +296,6 @@ export const processGtaWorldAuth = onCall({
         }
 
         const characterArray = finalUser.character || finalUser.characters || [];
-        const characterIds = characterArray.map(c => c.id).filter(id => id);
 
         const firebaseUid = `gtaw:${finalUser.id}`;
         
@@ -306,7 +333,7 @@ export const processGtaWorldAuth = onCall({
             allFactionCharacters: []
         };
 
-        if (characterIds.length > 0) {
+        if (characterArray.length > 0) {
             const factionId = 364; // PHMC Faction ID
             const membersRef = db.ref(`factions/${factionId}/members`);
             const membersSnapshot = await membersRef.once('value');
@@ -314,20 +341,20 @@ export const processGtaWorldAuth = onCall({
             logPerf('faction_db_read');
 
             const factionMembers = [];
-            for (const charId of characterIds) {
-                if (allMembers[charId]) {
-                    const memberData = allMembers[charId];
-                    factionMembers.push({
-                        character: { // Nest the character data
-                            characterId: charId,
-                            characterName: memberData.characterName,
-                            rank: memberData.rank,
-                            scriptRank: memberData.scriptRank
-                        },
-                        permissions: getPermissionsForRank(memberData.scriptRank, isElevated),
-                        accessLevel: getAccessLevel(memberData.scriptRank, finalUser.username, isElevated)
-                    });
-                }
+            for (const character of characterArray) {
+                const resolved = resolveRosterCharacter(character, allMembers);
+                if (!resolved) continue;
+                const memberData = resolved.memberData;
+                factionMembers.push({
+                    character: { // Nest the character data
+                        characterId: resolved.key,
+                        characterName: memberData.characterName,
+                        rank: memberData.rank,
+                        scriptRank: memberData.scriptRank
+                    },
+                    permissions: getPermissionsForRank(memberData.scriptRank, isElevated),
+                    accessLevel: getAccessLevel(memberData.scriptRank, finalUser.username, isElevated)
+                });
             }
 
             if (factionMembers.length > 0) {
@@ -651,7 +678,6 @@ export const refreshGtawUser = onCall({
         }
 
         const characterArray = finalUser.character || finalUser.characters || [];
-        const characterIds = characterArray.map(c => c.id).filter(id => id);
 
         const firebaseUid = `gtaw:${finalUser.id}`;
         
@@ -672,33 +698,36 @@ export const refreshGtawUser = onCall({
             allFactionCharacters: []
         };
 
-        if (characterIds.length > 0) {
+        if (characterArray.length > 0) {
             const factionId = 364;
             const membersRef = db.ref(`factions/${factionId}/members`);
             const membersSnapshot = await membersRef.once('value');
             const allMembers = membersSnapshot.val() || {};
 
             const factionMembers = [];
-            for (const charId of characterIds) {
-                if (allMembers[charId]) {
-                    const memberData = allMembers[charId];
-                    factionMembers.push({
-                        character: {
-                            // Use the roster record KEY as the character ID. The member
-                            // records in factions/364/members do not store characterId as a
-                            // field — it IS the key (written by factionSync as acc[charId]).
-                            // Reading memberData.characterId produced `undefined` here,
-                            // which made the client fall back to the UCP account id for
-                            // gtawCharacterId and wiped the badge on every refresh.
-                            characterId: charId,
-                            characterName: memberData.characterName,
-                            rank: memberData.rank,
-                            scriptRank: memberData.scriptRank
-                        },
-                        permissions: getPermissionsForRank(memberData.scriptRank, isElevated),
-                        accessLevel: getAccessLevel(memberData.scriptRank, finalUser.username, isElevated)
-                    });
-                }
+            for (const character of characterArray) {
+                // Resolve by roster KEY (character id) first, then fall back to an
+                // exact name match — the OAuth id is sometimes the UCP account id
+                // (e.g. Alyson Frost: 43132 vs roster key 5573).
+                const resolved = resolveRosterCharacter(character, allMembers);
+                if (!resolved) continue;
+                const memberData = resolved.memberData;
+                factionMembers.push({
+                    character: {
+                        // Use the roster record KEY as the character ID. The member
+                        // records in factions/364/members do not store characterId as a
+                        // field — it IS the key (written by factionSync as acc[charId]).
+                        // Reading memberData.characterId produced `undefined` here,
+                        // which made the client fall back to the UCP account id for
+                        // gtawCharacterId and wiped the badge on every refresh.
+                        characterId: resolved.key,
+                        characterName: memberData.characterName,
+                        rank: memberData.rank,
+                        scriptRank: memberData.scriptRank
+                    },
+                    permissions: getPermissionsForRank(memberData.scriptRank, isElevated),
+                    accessLevel: getAccessLevel(memberData.scriptRank, finalUser.username, isElevated)
+                });
             }
 
             if (factionMembers.length > 0) {

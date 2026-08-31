@@ -41,6 +41,7 @@ export { handleAutopsyReply } from './deployAutopsyReply.js';
 
 import { retryFailedCompletionSteps } from './deployAutopsyReply.js';
 import { retryFailedAssignmentReplies } from './autopsyRequestMonitor.js';
+import { processReportEdits } from './reportEdits.js';
 
 export function setAutoDeployClient(client) {
         logFnCall('autoDeploy', 'setAutoDeployClient', 'Registering Discord client');
@@ -104,6 +105,22 @@ export function setAutoDeployClient(client) {
                 if (arSnap.exists()) {
                     arSnap.forEach((child) => {
                         const entry = child.val();
+                        const multi = String(entry.caseState || '') === 'multi';
+                        const cases = multi && entry.cases && typeof entry.cases === 'object' ? Object.values(entry.cases) : [];
+                        if (multi && cases.length > 0) {
+                            // Multi-decedent: one row per assigned ME + decedent.
+                            cases.forEach((c) => {
+                                if (c && c.assignedTo && !c.completedAt) {
+                                    assigned.push({
+                                        name: c.name || 'Unknown',
+                                        ooc: c.oocName || '',
+                                        assignedTo: c.assignedTo,
+                                        age: entry.detectedAt ? Math.floor((Date.now() - new Date(entry.detectedAt).getTime()) / 3600000) : '?',
+                                    });
+                                }
+                            });
+                            return;
+                        }
                         if (entry.assignedTo && !entry.completedAt) {
                             assigned.push({
                                 name: entry.name || 'Unknown',
@@ -269,12 +286,16 @@ export function setAutoDeployClient(client) {
                         db,
                     };
 
+                    // Legacy key alias: reports saved before the form rename
+                    // carry formId 'testing-compact-mode'.
+                    if (reportData.formId === 'testing-compact-mode') reportData.formId = 'general_consultation';
+
                     if (reportData.formId === 'coroner_email') {
                         consentGateAndEnqueue('pm', item, reportData.formId);
                     } else if (['death_record', 'mass-ftality-test', 'coroner-report'].includes(reportData.formId)) {
                         consentGateAndEnqueue('topic', item, reportData.formId);
                         // Coroner email fires inside handleTopic — after topic post completes
-                    } else if (['patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical', 'session_notes', 'intensive_treatment', 'psych-eval', 'testing-compact-mode'].includes(reportData.formId)) {
+                    } else if (['patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical', 'session_notes', 'intensive_treatment', 'psych-eval', 'general_consultation'].includes(reportData.formId)) {
                         consentGateAndEnqueue('medical-record', item, reportData.formId);
                     } else if (reportData.formId === 'autopsy') {
                         consentGateAndEnqueue('autopsy-reply', item, reportData.formId);
@@ -318,7 +339,8 @@ export function setAutoDeployClient(client) {
                     const reportData = reportSnap.val();
                     if (!reportData || reportData._devMode !== true) return;
                     console.log(`[AUTO]  Dev report: ${reportData.originalKey || reportKey}`);
-                    const isMedicalForm = ['patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical', 'session_notes', 'intensive_treatment', 'psych-eval', 'testing-compact-mode'].includes(reportData.formId);
+                    if (reportData.formId === 'testing-compact-mode') reportData.formId = 'general_consultation'; // legacy rename alias
+                    const isMedicalForm = ['patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical', 'session_notes', 'intensive_treatment', 'psych-eval', 'general_consultation'].includes(reportData.formId);
                     const item = { authorId, key: reportKey, report: reportData, db };
 
                     if ((reportData.formId === 'coroner-report' || reportData.formId === 'mass-ftality-test') &&
@@ -419,6 +441,72 @@ export async function retryFailedLspdAcknowledgements(db) {
         console.log('[AUTO]  Retried ' + retried + ' failed LSPD ack reply(ies)');
     } catch (err) {
         console.error('[AUTO]  LSPD ack retry scan error: ' + err.message);
+    }
+}
+
+// ── Agency Acknowledgement Retry (SADCR / DAO) ──
+
+/**
+ * Scan for SADCR/DAO autopsy requests whose agency acknowledgement reply failed
+ * and retry sending it. Mirrors retryFailedLspdAcknowledgements — these factions
+ * were added to the crosspost registry, so their acks need their own recovery
+ * sweep entry. Runs as part of the recovery heartbeat.
+ */
+export async function retryFailedAgencyAcknowledgements(db) {
+    logFnCall('autoDeploy', 'retryFailedAgencyAcknowledgements', 'Scanning for failed agency (SADCR/DAO) ack replies');
+    if (!db) return;
+    try {
+        const { sendAutopsyAcknowledgement, ACK_FIELD_NAMES } = await import('./autopsyRequestMonitor.js');
+        const phmcField = ACK_FIELD_NAMES.phmc;
+        const targets = [
+            { faction: 'SADCR', field: ACK_FIELD_NAMES.sadcr },
+            { faction: 'DAO', field: ACK_FIELD_NAMES.dao },
+        ];
+        for (const { faction, field } of targets) {
+            const snap = await db.ref('autopsy-requested').orderByChild(field).equalTo('failed').once('value');
+            if (!snap.exists()) continue;
+            let retried = 0;
+            const promises = [];
+            snap.forEach((child) => {
+                const entry = child.val();
+                const topicId = entry[`${faction.toLowerCase()}RequestTopicId`];
+                if (!topicId) {
+                    console.log('[AUTO]  Skipping ' + child.key + ' — no ' + faction + ' request topic ID saved');
+                    return;
+                }
+                const requesterName = entry.parsed?.requesterName || entry.name || 'Requesting Party';
+                console.log('[AUTO]  Retrying ' + faction + ' ack reply for ' + child.key + ' on topic #' + topicId);
+                promises.push(
+                    sendAutopsyAcknowledgement(child.key, requesterName, null, {
+                        baseUrl: 'https://phmc.gta.world',
+                        agencyTopicId: topicId,
+                        agencyFaction: faction,
+                    }).then(result => {
+                        if (result[faction.toLowerCase()]) {
+                            console.log('[AUTO]  ' + faction + ' ack retry succeeded for ' + child.key);
+                            db.ref('autopsy-requested/' + child.key + '/' + field).set('completed').catch(() => {});
+                            db.ref('autopsy-requested/' + child.key + '/' + field + '-at').set(new Date().toISOString()).catch(() => {});
+                            if (result.phmc && entry[phmcField] !== 'completed') {
+                                db.ref('autopsy-requested/' + child.key + '/' + phmcField).set('completed').catch(() => {});
+                                db.ref('autopsy-requested/' + child.key + '/' + phmcField + '-at').set(new Date().toISOString()).catch(() => {});
+                            }
+                            notifySelfHeal(child.key, `${field} failed`, faction + ' ack posted');
+                        } else {
+                            console.warn('[AUTO]  ' + faction + ' ack retry failed for ' + child.key);
+                            notifySelfHeal(child.key, `${field} failed`, faction + ' ack retry FAILED - will retry next sweep');
+                        }
+                    }).catch(err => {
+                        console.error('[AUTO]  ' + faction + ' ack retry error for ' + child.key + ': ' + err.message);
+                        notifySelfHeal(child.key, `${field} failed`, 'ERROR: ' + err.message);
+                    })
+                );
+                retried++;
+            });
+            await Promise.allSettled(promises);
+            console.log('[AUTO]  Retried ' + retried + ' failed ' + faction + ' ack reply(ies)');
+        }
+    } catch (err) {
+        console.error('[AUTO]  Agency ack retry scan error: ' + err.message);
     }
 }
 
@@ -637,9 +725,12 @@ export async function runRecoveryHeartbeat(db) {
         ['lspd-crosspost-retry',   () => retryFailedLspdCrossposts(db)],
         ['lspd-crosspost-recover', () => retryMissingLspdCrossposts(db)],
         ['lspd-ack-retry',         () => retryFailedLspdAcknowledgements(db)],
+        ['agency-ack-retry',       () => retryFailedAgencyAcknowledgements(db)],
         ['phmc-ack-retry',         () => retryFailedPhmcAcknowledgements(db)],
         ['completion-steps-retry', () => retryFailedCompletionSteps(db)],
         ['assignment-reply-retry', () => retryFailedAssignmentReplies(db)],
+        ['report-edits',           () => processReportEdits(db)],
+        ['death-record-verify',    () => import('./deathRecordDraft.js').then(({ verifyPostedDeathRecords }) => verifyPostedDeathRecords(db))],
     ];
     try {
         for (const [name, fn] of checks) {
