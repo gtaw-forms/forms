@@ -18,135 +18,55 @@ export const useWebhooks = (formData, commitInfo, showNotification, getIsInactiv
     }, []);
 
     const sendDataRequestLog = useCallback(async (file, cached, source, cachedDataSize, networkTransferSize, loggedIn, user, requestedPortions, missingPortions, segmentSizes = {}, error = null, metadata = {}) => {
+        // C — Detailed-compact: 3-4 lines, per-segment KB kept but collapsed to one compact line
+        const totalKb = ((cachedDataSize || 0) + (networkTransferSize || 0));
+        const netKb = (networkTransferSize || 0);
+        const srcLabel = `${source}${cached ? ' · cached' : ' · network'}`;
+        const hostPath = (()=>{ try{ const u=new URL(window.location.href); return u.host + u.pathname + u.hash; }catch{ return window.location.href.slice(0,80);} })();
+
+        const segmentSources = metadata.segmentSources || {};
+        const totalSegs = Object.keys(segmentSources).length;
+        const cachedCount = Object.values(segmentSources).filter(v=>v==='cache').length;
+        const networkCount = Object.values(segmentSources).filter(v=>v==='network').length;
+
+        // Compact per-segment line: factions·22.6k[C] | agencies·1.2k[C] ...
+        const compactSegments = Object.entries(segmentSources).map(([seg, src])=>{
+            const kb = segmentSizes[seg] ? `${segmentSizes[seg].toFixed(1)}k` : '—';
+            const badge = src==='cache' ? 'C' : src==='network' ? 'N' : '—';
+            return `${seg}·${kb}[${badge}]`;
+        }).join(' | ');
+
         const fields = [
-            {
-                name: 'URL',
-                value: window.location.href,
-                inline: false,
-            },
-            {
-                name: 'User Agent',
-                value: navigator.userAgent.substring(0, 250),
-                inline: false,
-            },
-            {
-                name: 'Cached',
-                value: cached ? 'Yes' : 'No',
-                inline: true,
-            },
-            {
-                name: 'Source',
-                value: source,
-                inline: true,
-            },
-            {
-                name: 'Approximate Size',
-                value: `${(networkTransferSize / 1024).toFixed(2)} KB`,
-                inline: true,
-            },
-            {
-                name: 'Logged In',
-                value: loggedIn ? 'Yes' : 'No',
-                inline: true,
-            },
-            {
-                name: 'Inactivity Check (30min+)',
-                value: getIsInactivityWarningTriggered() ? 'True' : 'False',
-                inline: true,
-            },
+            { name: 'Source', value: `\`${srcLabel}\``, inline: true },
+            { name: 'Cache', value: cached ? `Yes (${cachedCount}/${totalSegs})` : `No (${networkCount}/${totalSegs})`, inline: true },
+            { name: 'Size', value: `${totalKb.toFixed(1)} KB total${netKb?` · ${netKb.toFixed(1)} KB network`:''}`, inline: true },
         ];
 
-        if (loggedIn && user) {
-            fields.push({
-                name: 'User',
-                value: user,
-                inline: true,
-            });
-        }
-
-        // Enhanced metadata fields
-        if (metadata.route) {
-            fields.push({
-                name: 'Route',
-                value: metadata.route,
-                inline: true,
-            });
-        }
-
-        if (metadata.trigger) {
-            fields.push({
-                name: 'Trigger',
-                value: metadata.trigger,
-                inline: true,
-            });
-        }
-
-        if (metadata.segmentSources) {
-            const loadingModeLines = Object.entries(metadata.segmentSources).map(([segment, source]) => {
-                const size = segmentSizes[segment] ? ` (${segmentSizes[segment].toFixed(2)} KB)` : '';
-                const badge = source === 'cache' ? '[CACHE]' : source === 'network' ? '[NETWORK]' : '[NOT LOADED]';
-                return `${segment}${size} - ${badge}`;
-            });
-            fields.push({
-                name: 'Loading Mode',
-                value: loadingModeLines.join('\n'),
-                inline: false,
-            });
-        }
-
-        if (metadata.detail) {
-            fields.push({
-                name: 'Detail',
-                value: metadata.detail,
-                inline: false,
-            });
+        if (compactSegments) {
+            fields.push({ name: `Segments (${cachedCount}c/${networkCount}n)`, value: `\`${compactSegments}\``, inline: false });
         }
 
         if (missingPortions && missingPortions.length > 0) {
-            fields.push({
-                name: 'Missing Portions',
-                value: missingPortions.join(', '),
-                inline: false,
-            });
+            fields.push({ name: 'Missing', value: missingPortions.join(', ').slice(0,500), inline: false });
         }
 
-        if (requestedPortions) {
-            let requestedValue = requestedPortions;
-            if (typeof requestedPortions === 'string') {
-                requestedValue = requestedPortions.split(', ').map(p => p.trim());
-            }
-
-            const formattedPortions = requestedValue.map(portion => {
-                if (segmentSizes[portion]) {
-                    return `${portion} (${segmentSizes[portion].toFixed(2)} KB)`;
-                }
-                return portion;
-            }).join(', ');
-
-            fields.push({
-                name: 'Requested Portions',
-                value: formattedPortions,
-                inline: false,
-            });
+        if (metadata.detail) {
+            fields.push({ name: 'Detail', value: String(metadata.detail).slice(0,500), inline: false });
         }
 
         if (error) {
-            fields.push({
-                name: 'Error Details',
-                value: String(error),
-                inline: false,
-            });
+            fields.push({ name: 'Error', value: String(error).slice(0,500), inline: false });
         }
 
+        const inactiveFlag = getIsInactivityWarningTriggered() ? ' · inactivity' : '';
+        const userLabel = (loggedIn && user) ? `**${user}**` : (loggedIn ? 'Logged In' : 'Guest');
         const embed = {
-            title: 'Firebase Data Request',
-            description: `A data request was made from \`${file}\`.`,
+            title: cached ? 'Data Cache Hit' : 'Data Fetch',
+            description: `${userLabel} • \`${metadata.route || '#/'}\` • \`${metadata.trigger || file}\`${inactiveFlag}`,
             fields,
-            color: cached ? 0x00FF00 : 0xFFA500,
+            color: cached ? 0x2ecc71 : 0xe67e22,
             timestamp: new Date().toISOString(),
-            footer: {
-                text: `PHMC Tools | Data Request Log | `
-            }
+            footer: { text: `${hostPath}` }
         };
 
         try {

@@ -16,6 +16,9 @@
     "forms": {
       ".read": true
     },
+    "selectOptions": {
+      ".read": true
+    },
     "verified_locations": {
       ".read": true
     },
@@ -64,14 +67,14 @@
       ".write": "auth != null"
     },
     "deathRecordDrafts": {
-      ".indexOn": ["needsMorgue", "deploying"]
+      ".indexOn": ["needsMorgue", "deploying", "needsBetterMorgue", "verifyAfter", "status"]
     },
     "morgue-records": {
       ".read": false,
       ".indexOn": "lastUpdated"
     },
     "autopsy-requested": {
-      ".indexOn": ["oocName", "name", "lssdCrosspostStatus", "lspdCrosspostStatus", "lssdTopicId", "lspd-acknowledge-reply", "lssd-acknowledge-reply", "phmc-acknowledge-reply"]
+      ".indexOn": ["oocName", "name", "lssdCrosspostStatus", "lspdCrosspostStatus", "lssdTopicId", "lspd-acknowledge-reply", "lssd-acknowledge-reply", "phmc-acknowledge-reply", "sadcr-acknowledge-reply", "dao-acknowledge-reply"]
     },
     "dev-reports": {
       ".read": true,

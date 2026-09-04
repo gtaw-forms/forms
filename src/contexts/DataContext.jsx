@@ -866,12 +866,18 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
             loadingNotificationId = showNotification(`Fetching ${segmentsToFetch.join(', ')} from server...`, 'spinner fa-spin', 0);
             
             const promises = segmentsToFetch.map(segment => get(ref(database, resolveFormsPath(segment))).then(snapshot => ({ segment, snapshot })));
-            const results = await Promise.all(promises);
+            const results = await Promise.allSettled(promises);
     
             const fetchedData = {};
             let totalNetworkTransferSize = 0;
     
-            results.forEach(({ segment, snapshot }) => {
+            results.forEach((result, idx) => {
+                const segment = segmentsToFetch[idx];
+                if (result.status === 'rejected') {
+                    console.warn(`Segment "${segment}" failed to fetch (likely permission):`, result.reason?.message || result.reason);
+                    return;
+                }
+                const { snapshot } = result.value;
                 if (snapshot.exists()) {
                     let data = snapshot.val();
                     if (segment === CACHE_SEGMENTS.FORMS) {

@@ -329,8 +329,10 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo, handleI
       const dataUrl = canvas.toDataURL('image/png');
 
       showNotification('Uploading...', 'upload');
-      const link = await handleImageUpload(dataUrl);
-      console.log('Image upload result:', { link, type: typeof link });
+      const uploadResults = await handleImageUpload(dataUrl);
+      const link = uploadResults?.[0]?.url || '';
+      console.log('Image upload result:', { link, type: typeof link, raw: uploadResults });
+      if (!link) throw new Error('Image upload failed: no URL returned');
 
       setImageUrl(link);
       showNotification(`Business Card Saved & Uploaded: ${link}`, 'save');
