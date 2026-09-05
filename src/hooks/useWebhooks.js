@@ -18,6 +18,15 @@ export const useWebhooks = (formData, commitInfo, showNotification, getIsInactiv
     }, []);
 
     const sendDataRequestLog = useCallback(async (file, cached, source, cachedDataSize, networkTransferSize, loggedIn, user, requestedPortions, missingPortions, segmentSizes = {}, error = null, metadata = {}) => {
+        // P1 — Sample cache hits: 98% of CACHE hits are observability noise (e.g. 20 MB/hr). Only log 2% sampled + all errors/network.
+        if (cached && !error) {
+            // Always log in dev for validation, otherwise sample 2%
+            const isDev = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.'));
+            if (!isDev && Math.random() > 0.02) {
+                console.log(`[DataRequest] Sampled out (cache hit) ${file} ${source}`);
+                return;
+            }
+        }
         // C — Detailed-compact: 3-4 lines, per-segment KB kept but collapsed to one compact line
         const totalKb = ((cachedDataSize || 0) + (networkTransferSize || 0));
         const netKb = (networkTransferSize || 0);

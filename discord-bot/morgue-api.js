@@ -456,6 +456,41 @@ setInterval(() => {
     versionLastFetched = Date.now();
 }, VERSION_CACHE_TTL).unref();
 
+// ── Health maintenance cache (P4: avoid 2 RTDB reads per health poll) ──
+let cachedMaintenance = null;
+let cachedMaintenanceTime = 0;
+let cachedDeployPaused = false;
+const MAINT_CACHE_TTL = 60_000; // 60 seconds
+
+async function getCachedMaintenance() {
+    const now = Date.now();
+    if (cachedMaintenance !== null && now - cachedMaintenanceTime < MAINT_CACHE_TTL) {
+        return { maintenance: cachedMaintenance, deployQueuePaused: cachedDeployPaused };
+    }
+    try {
+        const botSnap = await firebase.db.ref('appMetadata/botMaintenance').once('value');
+        cachedDeployPaused = botSnap.val() === true;
+        const maintSnap = await firebase.db.ref('appMetadata/maintenance').once('value');
+        const m = maintSnap.val() || {};
+        if (m.active) {
+            cachedMaintenance = {
+                active: true,
+                message: m.message || null,
+                splashActive: !!(m.splash && m.splash.active),
+                splashTitle: (m.splash && m.splash.title) || null,
+                splashEta: (m.splash && m.splash.eta) || null,
+            };
+        } else {
+            cachedMaintenance = null;
+        }
+        cachedMaintenanceTime = now;
+    } catch (err) {
+        console.warn('[HEALTH] Could not read maintenance state:', err.message);
+        // return stale if available, else null
+    }
+    return { maintenance: cachedMaintenance, deployQueuePaused: cachedDeployPaused };
+}
+
 /**
  * Load records from local data file, returned as an array.
  * Each record has the local-caseId key set as firebaseKey for API consistency.
@@ -609,7 +644,8 @@ async function flushWebhookBatch() {
         const q = e.query ? ` q="${e.query}"` : '';
         const s = e.source ? ` src="${e.source}"` : '';
         const n = e.note ? ` ${e.note}` : '';
-        lines.push(`\`${e.time.slice(11, 19)}\` **${e.method}** \`${e.path}\` → ${e.status} (${e.ms}ms) [${e.key}]${q}${s}${n}`);
+        const d = e.detail ? ` ${e.detail}` : '';
+        lines.push(`\`${e.time.slice(11, 19)}\` **${e.method}** \`${e.path}\` → ${e.status} (${e.ms}ms) [${e.key}]${q}${s}${n}${d}`);
     }
 
     // Discord has a 2000-char limit on webhook content
@@ -772,6 +808,37 @@ function getClientIp(req) {
     return req.socket?.remoteAddress || 'unknown';
 }
 
+// ── Request detail for logs — shows WHAT was sent, not just the path ──
+// Large values (e.g. a full report BBCode) are summarized as "<N chars>"
+// instead of dumped, so logs stay readable while still identifying the request.
+const summarizeLogValue = (v) => {
+    if (v == null) return 'null';
+    if (typeof v === 'string') return v.length > 40 ? `<${v.length} chars>` : JSON.stringify(v);
+    if (typeof v === 'object') {
+        try {
+            const s = JSON.stringify(v);
+            return s.length > 80 ? `<object ${s.length} chars>` : s;
+        } catch { return '<object>'; }
+    }
+    return String(v);
+};
+
+const requestLogDetail = (req) => {
+    const hasBody = req.body && typeof req.body === 'object' && Object.keys(req.body).length > 0;
+    if (hasBody && ['POST', 'PUT', 'PATCH'].includes(req.method)) {
+        const keys = Object.keys(req.body);
+        const shown = keys.slice(0, 8).map(k => `${k}=${summarizeLogValue(req.body[k])}`);
+        if (keys.length > 8) shown.push(`+${keys.length - 8} more`);
+        return ` body={${shown.join(' ')}}`;
+    }
+    const q = req.query;
+    const qKeys = Object.keys(q).filter(k => k !== 'source');
+    if (qKeys.length > 0) {
+        return ` query={${qKeys.slice(0, 8).map(k => `${k}=${summarizeLogValue(q[k])}`).join(' ')}}`;
+    }
+    return '';
+};
+
 app.use((req, res, next) => {
     // ── Attach unique request ID ──
     req.requestId = randomUUID().slice(0, 8);
@@ -864,10 +931,11 @@ app.use((req, res, next) => {
             : '';
 
         const summary = req.fetchSummary ? ` note="${sanitize(req.fetchSummary)}"` : '';
+        const detail = requestLogDetail(req);
         console.log(
             `[MORGUE-API] [${req.requestId}] ${req.method} ${req.path} ` +
             `→ ${res.statusCode} (${ms}ms) [${req.apiKeyName || 'no-key'}]` +
-            ` ip=${ip}${source} ua="${ua}"${label}${summary}`
+            ` ip=${ip}${source} ua="${ua}"${label}${summary}${detail}`
         );
 
         // Store in activity log with new fields
@@ -887,6 +955,7 @@ app.use((req, res, next) => {
             ua: ua.slice(0, 80),
             suspicious: suspiciousFinding?.label || null,
             note: req.fetchSummary || null,
+            detail: detail || null,
         });
     });
     next();
@@ -1048,26 +1117,7 @@ app.get('/api/version', (req, res) => {
  * API itself being up.
  */
 app.get('/api/health', async (req, res) => {
-    let maintenance = null;
-    let deployQueuePaused = false;
-    try {
-        const botSnap = await firebase.db.ref('appMetadata/botMaintenance').once('value');
-        deployQueuePaused = botSnap.val() === true;
-        const maintSnap = await firebase.db.ref('appMetadata/maintenance').once('value');
-        const m = maintSnap.val() || {};
-        if (m.active) {
-            maintenance = {
-                active: true,
-                message: m.message || null,
-                splashActive: !!(m.splash && m.splash.active),
-                splashTitle: (m.splash && m.splash.title) || null,
-                splashEta: (m.splash && m.splash.eta) || null,
-            };
-        }
-    } catch (err) {
-        // Best-effort — health must never fail because of a DB hiccup.
-        console.warn('[HEALTH] Could not read maintenance state:', err.message);
-    }
+    const { maintenance, deployQueuePaused } = await getCachedMaintenance();
 
     const maintenanceActive = !!(maintenance && maintenance.active);
     res.json({
@@ -1129,11 +1179,9 @@ app.put('/api/morgue/records/:caseId', validateApiKey, rateLimiter, async (req, 
 
         const record = saveLocalRecord(caseId, req.body);
 
-        // Dual-write to Firebase RTDB (keeps both in sync during migration)
-        try {
-            await firebase.db.ref(`morgue-records/${caseId}`).set(record);
-        } catch (fbErr) {
-            console.warn(`[MORGUE-API] Firebase write warning (non-fatal): ${fbErr.message}`);
+        // P3: Dual-write removed — VPS local file is canonical. Set MORGUE_DUAL_WRITE=true to re-enable during rollback.
+        if (process.env.MORGUE_DUAL_WRITE === 'true') {
+            try { await firebase.db.ref(`morgue-records/${caseId}`).set(record); } catch (fbErr) { console.warn(`[MORGUE-API] Firebase write warning: ${fbErr.message}`); }
         }
 
         console.log(`[MORGUE-API] PUT /api/morgue/records/${caseId} → saved (${record.name})`);
@@ -1174,11 +1222,9 @@ app.delete('/api/morgue/records/:caseId', validateApiKey, rateLimiter, async (re
             });
         }
 
-        // Also delete from Firebase for consistency
-        try {
-            await firebase.db.ref(`morgue-records/${caseId}`).remove();
-        } catch (fbErr) {
-            console.warn(`[MORGUE-API] Firebase delete warning (non-fatal): ${fbErr.message}`);
+        // P3: Firebase delete removed (local canonical)
+        if (process.env.MORGUE_DUAL_WRITE === 'true') {
+            try { await firebase.db.ref(`morgue-records/${caseId}`).remove(); } catch (fbErr) { console.warn(`[MORGUE-API] Firebase delete warning: ${fbErr.message}`); }
         }
 
         // Bump version
@@ -1222,11 +1268,9 @@ app.post('/api/morgue/purge', validateApiKey, rateLimiter, async (req, res) => {
         // Wipe local file
         writeFileSync(MORGUE_DATA_PATH, '{}', 'utf-8');
 
-        // Wipe Firebase
-        try {
-            await firebase.db.ref('morgue-records').remove();
-        } catch (fbErr) {
-            console.warn(`[MORGUE-API] Firebase purge warning (non-fatal): ${fbErr.message}`);
+        // P3: Firebase purge removed
+        if (process.env.MORGUE_DUAL_WRITE === 'true') {
+            try { await firebase.db.ref('morgue-records').remove(); } catch (fbErr) { console.warn(`[MORGUE-API] Firebase purge warning: ${fbErr.message}`); }
         }
 
         // Bump version
@@ -1294,20 +1338,20 @@ app.post('/api/morgue/bulk', validateApiKey, rateLimiter, async (req, res) => {
             };
             results.ok++;
 
-            // Dual-write to Firebase (non-blocking — caught individually)
-            fbPromises.push(
-                firebase.db.ref(`morgue-records/${caseId}`).set(data[caseId])
-                    .catch((fbErr) => {
-                        console.warn(`[MORGUE-API] Bulk Firebase write warning for ${caseId}: ${fbErr.message}`);
-                    })
-            );
+            // P3: Dual-write removed
+            if (process.env.MORGUE_DUAL_WRITE === 'true') {
+                fbPromises.push(
+                    firebase.db.ref(`morgue-records/${caseId}`).set(data[caseId])
+                        .catch((fbErr) => { console.warn(`[MORGUE-API] Bulk Firebase write warning for ${caseId}: ${fbErr.message}`); })
+                );
+            }
         }
 
         // Write local file once (batch write)
         writeFileSync(MORGUE_DATA_PATH, JSON.stringify(data, null, 2), 'utf-8');
 
-        // Fire all Firebase writes in parallel (best-effort)
-        await Promise.allSettled(fbPromises);
+        // Fire Firebase writes if enabled
+        if (process.env.MORGUE_DUAL_WRITE === 'true') await Promise.allSettled(fbPromises);
 
         // Auto-bump version
         const now = Date.now();
