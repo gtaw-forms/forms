@@ -9,9 +9,9 @@
 import firebase from './firebase.js';
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { getVpsStats } from './vpsStats.js';
-import { lastActivity } from './activityLog.js';
+import { lastActivity, isBrowserActive } from './activityLog.js';
 
-const DASHBOARD_REFRESH_MS = 5 * 60 * 1000; // 5 minutes — uses cached monitoring data, no browser opens
+const DASHBOARD_REFRESH_MS = 10 * 60 * 1000; // 10 minutes — was 5m, 412k×12/hr=4.9 MB/hr → now 2.4 MB/hr pending VPS move
 const VPS_STATS_REFRESH_MS = 5000; // VPS CPU/MEM/activity field refreshes every 5s. Discord's message-endpoint bucket allows 5 edits/5s per channel — 1/5s uses ~20%.
 const DASHBOARD_CONFIG_PATH = 'appMetadata/dashboard';
 
@@ -20,6 +20,7 @@ let refreshInterval = null;
 let statsInterval = null;
 let cachedConfig = null;
 let editInProgress = false;
+let refreshing = false;
 
 /**
  * Register the bot client instance (called from index.js on ready).
@@ -211,9 +212,9 @@ async function gatherDashboardData(db, force = false) {
         data.rosterSync = null;
     }
 
-    // 8. ME assignments from Firebase
+    // 8. ME assignments from Firebase — was once('value') 412k every 5m → 4.9 MB/hr. Now orderByKey limit 30 ~240k, quick fix pending VPS move.
     try {
-        const assignSnap = await db.ref('autopsy-requested').once('value');
+        const assignSnap = await db.ref('autopsy-requested').orderByKey().limitToLast(30).once('value');
         const meList = [];
         if (assignSnap.exists()) {
             assignSnap.forEach((child) => {
@@ -312,7 +313,43 @@ function formatUptime(sec) {
     return `${m}m`;
 }
 
+function buildRefreshingVpsField() {
+    return [
+        '**CPU** — 🔄',
+        '**MEM** — 🔄',
+        '**SWAP** — 🔄',
+        '**Uptime** — 🔄',
+        '**Procs** — 🔄',
+        '**Browser** — 🔄',
+        '**Last activity** — refreshing…',
+    ].join('\n');
+}
+
+/**
+ * Build a "refreshing" embed from the live message: keeps every current field,
+ * but swaps the VPS Resources field for the REFRESHING placeholder. Used to flip
+ * the field state transiently during the auto-refresh gather, so it never shows stale data.
+ */
+function buildRefreshingEmbed(msg) {
+    const fields = (msg.embeds[0]?.fields || []).map(f => ({
+        name: f.name,
+        value: f.value,
+        inline: f.inline === true,
+    }));
+    const vpsIdx = fields.findIndex(f => f.name === '🖥️ VPS Resources');
+    const refreshing = { name: '🖥️ VPS Resources', value: buildRefreshingVpsField(), inline: false };
+    if (vpsIdx !== -1) fields[vpsIdx] = refreshing;
+    else fields.push(refreshing);
+
+    return new EmbedBuilder()
+        .setColor(0xffc107)
+        .setTitle('🖥️ PHMC System Dashboard')
+        .setDescription('🔄 Refreshing data…')
+        .addFields(fields);
+}
+
 function buildVpsField(vps) {
+    if (refreshing) return buildRefreshingVpsField();
     const { cpuPct, mem, swap, load, uptime, procs } = vps;
     const memPct = mem && mem.total > 0 ? Math.round((mem.used / mem.total) * 100) : null;
     const swapPct = swap && swap.total > 0 ? Math.round((swap.used / swap.total) * 100) : null;
@@ -339,12 +376,16 @@ function buildVpsField(vps) {
     );
 
     const act = lastActivity();
+    const active = isBrowserActive();
+    const status = active ? '🟢 **Active**' : '⚪ **Idle**';
     if (act) {
         const ago = Math.floor((Date.now() - act.at) / 1000);
         const agoStr = ago < 60 ? `${ago}s ago` : ago < 3600 ? `${Math.floor(ago / 60)}m ago` : `${(ago / 3600).toFixed(1)}h ago`;
-        lines.push(`**Currently** — ${act.label} (${act.detail}) · ${agoStr}`);
+        lines.push(`**Browser** — ${status}`);
+        lines.push(`**Last activity** — ${act.label} (${act.detail}) · ${agoStr}`);
     } else {
-        lines.push(`**Currently** — idle (no browser activity yet)`);
+        lines.push(`**Browser** — ${status}`);
+        lines.push(`**Last activity** — none (no browser activity yet)`);
     }
 
     return lines.join('\n');
@@ -524,6 +565,36 @@ function buildRefreshRow() {
 }
 
 /**
+ * Smoothly update an existing dashboard message: start from the current embed,
+ * swap the colour/description and replace its fields with freshly built ones.
+ * Avoids the jarring full-rebuild + pending-flash of posting a new embed.
+ * Falls back to a plain replace if the message has no embed yet.
+ */
+async function patchDashboardEmbed(msg, newEmbed, components) {
+    const payload = { embeds: [newEmbed] };
+    if (components !== undefined) payload.components = [components];
+    if (!msg.embeds.length) {
+        await msg.edit(payload);
+        return;
+    }
+
+    const old = msg.embeds[0];
+    const fields = (newEmbed.data.fields || []).map(f => ({
+        name: f.name,
+        value: f.value,
+        inline: !!f.inline,
+    }));
+
+    const patched = EmbedBuilder.from(old)
+        .setColor(newEmbed.data.color ?? old.color)
+        .setDescription(newEmbed.data.description ?? old.description);
+    patched.spliceFields(0, old.fields.length, ...fields);
+
+    payload.embeds = [patched];
+    await msg.edit(payload);
+}
+
+/**
  * Delete any other PHMC System Dashboard embeds in the channel that aren't the
  * managed message. Called each refresh cycle so stale duplicates self-heal.
  */
@@ -569,43 +640,43 @@ async function postOrUpdateDashboard(db) {
 
         console.log('[DASHBOARD] 🔄 Running auto-refresh cycle...');
 
-        // Flip to pending state so it's visibly clear a refresh is happening
+        // Show a transient "REFRESHING" state on the VPS Resources field while we
+        // gather cached data, so it's obvious the field is updating (not stale).
+        // The `refreshing` flag also makes the 5s VPS updater render REFRESHING
+        // instead of clobbering this with stale data mid-gather.
+        refreshing = true;
         if (config.messageId) {
             try {
                 const msg = await channel.messages.fetch(config.messageId);
-                const pendingEmbed = new EmbedBuilder()
-                    .setColor(0xffc107)
-                    .setTitle('🖥️ PHMC System Dashboard')
-                    .setDescription('⏳ Forum checks in progress...')
-                    .addFields({
-                        name: '🌐 Forum Status',
-                        value: '⏳ **PHMC** — Pending...\n⏳ **LSPD** — Pending...\n⏳ **LSSD** — Pending...',
-                        inline: false,
-                    })
-                    .setFooter({ text: 'Reading cached forum data...' });
-                await msg.edit({ embeds: [pendingEmbed], components: [row] });
-            } catch {
-                // Message deleted — will post fresh below
-            }
+                await patchDashboardEmbed(msg, buildRefreshingEmbed(msg), row);
+            } catch { /* old message gone — will post new below */ }
         }
 
         // Use cached monitoring data for auto-refresh (no browser checks = no lock contention).
         // Live browser checks still happen via the "Refresh Now" button and system monitor.
-        const [data] = await Promise.all([
-            gatherDashboardData(db, false),
-            new Promise(r => setTimeout(r, 1000)),
-        ]);
+        let data;
+        try {
+            const [gathered] = await Promise.all([
+                gatherDashboardData(db, false),
+                new Promise(r => setTimeout(r, 1000)),
+            ]);
+            data = gathered;
+        } finally {
+            refreshing = false;
+        }
         data.lastCheckTime = Date.now();
         const embed = buildDashboardEmbed(data);
 
         if (config.messageId) {
             try {
                 const msg = await channel.messages.fetch(config.messageId);
-                await msg.edit({ embeds: [embed], components: [row] });
+                // Smooth in-place update — patch the existing embed's fields
+                // rather than flashing a pending state and rebuilding wholesale.
+                await patchDashboardEmbed(msg, embed, row);
                 cachedConfig = { ...config };
                 return;
-            } catch {
-                // Message was deleted — will post new one below
+            } catch (err) {
+                console.error(`[DASHBOARD] ⚠️ Patch failed for ${config.messageId}: ${err.message} — will post new`);
             }
         }
 
@@ -620,9 +691,10 @@ async function postOrUpdateDashboard(db) {
 }
 
 // ── VPS Stats Lightweight Updater ──
-// Refreshes only the VPS Resources field every 30s by editing the existing
-// dashboard message. Does NOT re-gather forums/queue — those stay on the 5-min
-// cycle. Discord allows ~5 edits per 5s per channel; one edit per 30s is fine.
+// Refreshes only the VPS Resources field every 5s by patching the existing
+// dashboard message in place (same technique as patchDashboardEmbed). Does NOT
+// re-gather forums/queue — those stay on the 5-min cycle. Discord allows ~5
+// edits per 5s per channel; one edit per 5s is within budget.
 
 async function updateVpsStatsField() {
     if (!client || editInProgress) return;
