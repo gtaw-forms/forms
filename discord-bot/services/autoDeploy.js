@@ -522,15 +522,17 @@ export async function retryFailedAgencyAcknowledgements(db) {
  * detected less than 30 minutes ago so we don't race the active detection flow.
  * Called at startup and every 30 minutes.
  */
-export async function retryFailedPhmcAcknowledgements(db, { force = false } = {}) {
+export async function retryFailedPhmcAcknowledgements(db, { force = false, entries } = {}) {
     logFnCall('autoDeploy', 'retryFailedPhmcAcknowledgements', 'Scanning for missing/failed PHMC ack replies');
     if (!db) return;
     try {
         const { sendAutopsyAcknowledgement, ACK_FIELD_NAMES } = await import('./autopsyRequestMonitor.js');
         const field = ACK_FIELD_NAMES.phmc;
         const STALENESS_MS = 10 * 60 * 1000;
-        const snap = await db.ref('autopsy-requested').once('value');
-        const entries = snap.val() || {};
+        if (entries === undefined) {
+            const snap = await db.ref('autopsy-requested').once('value');
+            entries = snap.val() || {};
+        }
         let retried = 0;
         const promises = [];
         for (const [key, entry] of Object.entries(entries)) {
@@ -588,7 +590,7 @@ export async function retryFailedPhmcAcknowledgements(db, { force = false } = {}
  * @param {object} db — Firebase RTDB
  * @param {object} [opts] — { force } bypasses the 10-min staleness guard for manual runs.
  */
-export async function retryMissingLspdCrossposts(db, { force = false } = {}) {
+export async function retryMissingLspdCrossposts(db, { force = false, entries } = {}) {
     logFnCall('autoDeploy', 'retryMissingLspdCrossposts', 'Scanning for LSPD cases missing the LSPD crosspost');
     if (!db) return;
     try {
@@ -598,9 +600,33 @@ export async function retryMissingLspdCrossposts(db, { force = false } = {}) {
         const LSPD_FORUM_ID = 1361;
         const STALENESS_MS = 10 * 60 * 1000;
 
-        const snap = await db.ref('autopsy-requested').once('value');
-        const entries = snap.val() || {};
-        let retried = 0;
+        if (entries === undefined) {
+            const snap = await db.ref('autopsy-requested').once('value');
+            entries = snap.val() || {};
+        }
+
+        // Collect candidates first — only touch LSPD (login/browser) when there is
+        // actually something to recover, so an LSPD outage can't fail this sweep
+        // every 10 minutes for nothing.
+        const candidates = [];
+        for (const [key, entry] of Object.entries(entries)) {
+            if ((entry.faction || '').toUpperCase() !== 'LSPD') continue;
+            if (entry.isPrivate === true) continue; // private cases never crosspost
+            if (!entry.caseTopicId) continue;
+            if (entry.completedAt) continue;
+            if (entry.lspdTopicId && entry['lspd-acknowledge-reply'] === 'completed') continue;
+            // Staleness guard: don't race a request still being processed.
+            if (!force) {
+                const detected = entry.detectedAt ? new Date(entry.detectedAt).getTime() : 0;
+                if (!detected || (Date.now() - detected) < STALENESS_MS) continue;
+            }
+            candidates.push([key, entry]);
+        }
+
+        if (candidates.length === 0) {
+            console.log(`[AUTO]  LSPD recovery: no candidates missing the crosspost (${Object.keys(entries).length} entries scanned) — skipping LSPD login`);
+            return;
+        }
 
         // One shared isolated LSPD client for the whole sweep. All isolated clients
         // share a single Chromium browser, and per-entry clients running in parallel
@@ -615,20 +641,10 @@ export async function retryMissingLspdCrossposts(db, { force = false } = {}) {
         // gets stuck on the login page. Pre-logging-in with force:true avoids that.
         await client.login(process.env.FORUM_LSPD_USERNAME, process.env.FORUM_LSPD_PASSWORD, { force: true, baseUrl: LSPD_BASE });
 
-        for (const [key, entry] of Object.entries(entries)) {
-                if ((entry.faction || '').toUpperCase() !== 'LSPD') continue;
-                if (entry.isPrivate === true) continue; // private cases never crosspost
-                if (!entry.caseTopicId) continue;
-                if (entry.completedAt) continue;
-                if (entry.lspdTopicId && entry['lspd-acknowledge-reply'] === 'completed') continue;
-                // Staleness guard: don't race a request still being processed.
-                if (!force) {
-                    const detected = entry.detectedAt ? new Date(entry.detectedAt).getTime() : 0;
-                    if (!detected || (Date.now() - detected) < STALENESS_MS) continue;
-                }
-
-                retried++;
-                try {
+        let retried = 0;
+        for (const [key, entry] of candidates) {
+            retried++;
+            try {
                     const name = entry.name || 'Decedent';
                     const oocName = entry.oocName || '';
                     const oocPart = oocName ? ' ((' + oocName + '))' : '';
@@ -719,16 +735,27 @@ export async function runRecoveryHeartbeat(db) {
     _heartbeatRunning = true;
     const sweepStart = Date.now();
     const summary = [];
+    // All recovery consumers inspect the same autopsy-requested snapshot. This
+    // avoids downloading the 400KB+ node once per recovery check every 10 min.
+    let autopsyEntries;
+    try {
+        const snap = await db.ref('autopsy-requested').once('value');
+        autopsyEntries = snap.val() || {};
+    } catch (err) {
+        // Leave undefined so each consumer can preserve its existing fallback
+        // read and recovery behavior if the shared read fails.
+        console.warn(`[HEARTBEAT] Shared autopsy snapshot failed: ${err.message}`);
+    }
     const checks = [
         ['retry-queue',            () => checkRetryQueue()],
         ['lssd-crosspost-retry',   () => retryFailedLssdCrossposts(db)],
         ['lspd-crosspost-retry',   () => retryFailedLspdCrossposts(db)],
-        ['lspd-crosspost-recover', () => retryMissingLspdCrossposts(db)],
+        ['lspd-crosspost-recover', () => retryMissingLspdCrossposts(db, { entries: autopsyEntries })],
         ['lspd-ack-retry',         () => retryFailedLspdAcknowledgements(db)],
         ['agency-ack-retry',       () => retryFailedAgencyAcknowledgements(db)],
-        ['phmc-ack-retry',         () => retryFailedPhmcAcknowledgements(db)],
-        ['completion-steps-retry', () => retryFailedCompletionSteps(db)],
-        ['assignment-reply-retry', () => retryFailedAssignmentReplies(db)],
+        ['phmc-ack-retry',         () => retryFailedPhmcAcknowledgements(db, { entries: autopsyEntries })],
+        ['completion-steps-retry', () => retryFailedCompletionSteps(db, { entries: autopsyEntries })],
+        ['assignment-reply-retry', () => retryFailedAssignmentReplies(db, { entries: autopsyEntries })],
         ['report-edits',           () => processReportEdits(db)],
         ['death-record-verify',    () => import('./deathRecordDraft.js').then(({ verifyPostedDeathRecords }) => verifyPostedDeathRecords(db))],
     ];

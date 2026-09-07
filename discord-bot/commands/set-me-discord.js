@@ -14,6 +14,7 @@ import {
     ActionRowBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags,
 } from 'discord.js';
 import firebase from '../services/firebase.js';
+import { isOwnerOrWhitelisted } from '../services/permissions.js';
 import { setDiscordMapping } from '../services/meDiscordNotify.js';
 
 export const data = new SlashCommandBuilder()
@@ -78,8 +79,7 @@ async function resolveSlug(db, slug) {
 }
 
 export async function execute(interaction) {
-    const ownerId = process.env.BOT_OWNER_ID;
-    if (!ownerId || interaction.user.id !== ownerId) {
+    if (!isOwnerOrWhitelisted(interaction)) {
         await interaction.reply({ content: 'Only the bot owner can manage Discord mappings.', flags: MessageFlags.Ephemeral });
         return;
     }

@@ -1,10 +1,11 @@
 // functions/src/utils/proxy.js
-import { onCall } from "firebase-functions/v2/https";
+import { onCall, HttpsError } from "firebase-functions/v2/https";
 import * as logger from "firebase-functions/logger";
 
 export const fetchExternalUrl = onCall({
     region: "europe-west2",
 }, async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required.');
     const {
         url,
         method = 'GET',
@@ -14,9 +15,18 @@ export const fetchExternalUrl = onCall({
         userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     } = request.data;
 
-    if (!url) {
-        throw new Error("URL is required");
+    if (!url || typeof url !== 'string') throw new HttpsError('invalid-argument', 'URL is required.');
+    let parsedUrl;
+    try { parsedUrl = new URL(url); } catch { throw new HttpsError('invalid-argument', 'Invalid URL.'); }
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) throw new HttpsError('invalid-argument', 'Only HTTP(S) URLs are supported.');
+    const hostname = parsedUrl.hostname.toLowerCase();
+    if (hostname === 'localhost' || hostname === '::1' || hostname === '169.254.169.254' ||
+        hostname.startsWith('127.') || hostname.startsWith('10.') || hostname.startsWith('192.168.') ||
+        hostname.startsWith('172.16.') || hostname.startsWith('172.17.') || hostname.startsWith('172.18.') ||
+        hostname.startsWith('172.19.') || hostname.startsWith('172.2') || hostname.startsWith('172.30.') || hostname.startsWith('172.31.')) {
+        throw new HttpsError('permission-denied', 'Private network targets are not allowed.');
     }
+    if (body && JSON.stringify(body).length > 256 * 1024) throw new HttpsError('invalid-argument', 'Request body is too large.');
 
     logger.info(`Fetching external URL: [${method}] ${url}`, { structuredData: true });
 
@@ -50,7 +60,11 @@ export const fetchExternalUrl = onCall({
             }
         }
         
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 20_000);
+        fetchOptions.signal = controller.signal;
         const response = await fetch(url, fetchOptions);
+        clearTimeout(timeout);
 
         // For Discord webhooks, they return a 204 No Content on success,
         // so we can't just rely on response.text(). We'll return a success indicator.

@@ -1,4 +1,5 @@
 import { SlashCommandBuilder, EmbedBuilder, MessageFlags } from 'discord.js';
+import { isOwnerOrWhitelisted } from '../services/permissions.js';
 import firebase from '../services/firebase.js';
 import { isDevTestActive, getDevTestME } from '../services/autopsyRotation.js';
 import { readEnvValue, upsertEnvValues, ENV_PATH } from '../services/envFile.js';
@@ -33,8 +34,7 @@ export const data = new SlashCommandBuilder()
  * Runtime process.env is updated immediately — no restart needed either way.
  */
 export async function execute(interaction) {
-    const ownerId = process.env.BOT_OWNER_ID;
-    if (!ownerId || interaction.user.id !== ownerId) {
+    if (!isOwnerOrWhitelisted(interaction)) {
         await interaction.reply({ content: 'Only the bot owner can run this.', flags: MessageFlags.Ephemeral });
         return;
     }

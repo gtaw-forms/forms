@@ -48,7 +48,7 @@ import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { writeFileSync, readFileSync, existsSync, mkdirSync, readdirSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { logActivity, describeActivity } from './activityLog.js';
+import { logActivity, describeActivity, markActivityDone } from './activityLog.js';
 
 chromium.use(StealthPlugin());
 
@@ -261,7 +261,11 @@ class ForumClient {
         this.page.goto = async (url, opts) => {
             const act = describeActivity(url);
             logActivity(act.label, act.detail);
-            return rawGoto(url, opts);
+            try {
+                return await rawGoto(url, opts);
+            } finally {
+                markActivityDone();
+            }
         };
 
         // Remove webdriver property to avoid detection
@@ -1887,8 +1891,9 @@ class ForumClient {
 
                 console.log(`[FORUM] Page start=${start}: ${pageNewCount} new members (${pageMembers.length} on page)`);
 
-                // Detect last page: if fewer members than page size OR no pagination at all
-                if (!paginate || pageMembers.length < PAGE_SIZE) {
+                // Detect last page: if fewer members than page size, no pagination at all,
+                // or a full page produced no new members (stalled/infinite pagination guard)
+                if (!paginate || pageMembers.length < PAGE_SIZE || pageNewCount === 0) {
                     isLastPage = true;
                 } else {
                     start += PAGE_SIZE;

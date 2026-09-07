@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { database } from '../firebase';
-import { ref, set, update, runTransaction } from 'firebase/database';
-import { triggerSaveReportBBCode } from '../services/firebaseFunctions';
+import { ref, set, update } from 'firebase/database';
+import { triggerSaveReportBBCode, triggerSaveSavedReport } from '../services/firebaseFunctions';
 import * as Sentry from "@sentry/react";
 import { getCharacterName, getCharacterID, resolveEmployeeCredentials, getOAuthShapeFlags } from '../utils/identityUtils';
 import { cleanRankText, comprehensiveSanitize } from '../utils/textUtils';
@@ -515,37 +515,27 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated, rosterData = {}) 
         const bbCodePath = `${bbCodeBasePath}/${sanitizedAuthorId}/${sanitizedKey}`;
 
         try {
-            const reportRef = ref(database, reportPath);
-            const bbCodeRef = ref(database, bbCodePath);
-            const userReportCountRef = ref(database, `userReportCounts/${sanitizedAuthorId}/total`);
-
-            // Save both main report data and BBCode data in parallel
-            // We use individual sets here to be safe, though a multi-path update at root would be more atomic.
-            // given existing imports, we stick to set/runTransaction.
-
-            // P2: BBCode for the saved-reports store lives on the VPS (via Cloud
-            // Function → morgue-api), not RTDB newSavedReportBBCode (~11MB node).
-            // scheduledReportsBBCode stays on RTDB — the bot deploy pipeline reads it.
-            const writeStoredBBCode = (authorId, reportKey, code) =>
-                triggerSaveReportBBCode({ author: authorId, key: reportKey, bbCode: code })
-                    .catch(() => set(ref(database, `newSavedReportBBCode/${authorId}/${reportKey}`), { bbCode: code }));
-
-            const bbCodePromise = bbCodeBasePath === 'scheduledReportsBBCode'
-                ? set(bbCodeRef, { bbCode: bbCode })
-                : writeStoredBBCode(sanitizedAuthorId, sanitizedKey, bbCode);
-
-            const promises = [
-                set(reportRef, reportDataToSave),
-                bbCodePromise,
-                ...(!isLocalHost ? [runTransaction(userReportCountRef, (currentCount) => (currentCount || 0) + 1)] : []),
-            ];
-
-            // Dual-save: when user has consented on live site, also save to newSavedReports
-            // so the Saved Reports modal can find it.
-            if (hasConsent && !isLocalHost && isDeployTracked) {
-                const liveReportRef = ref(database, `newSavedReports/${sanitizedAuthorId}/${sanitizedKey}`);
-                promises.push(set(liveReportRef, reportDataToSave));
-                promises.push(writeStoredBBCode(sanitizedAuthorId, sanitizedKey, bbCode));
+            const isVpsReport = !isLocalHost && reportBasePath === 'newSavedReports';
+            let promises;
+            if (isVpsReport) {
+                // Normal saved reports now live in morgue-api. Deployment-tracked
+                // reports remain in scheduledReports for the bot queue.
+                promises = [triggerSaveSavedReport({
+                    author: sanitizedAuthorId,
+                    key: sanitizedKey,
+                    report: reportDataToSave,
+                    bbCode,
+                })];
+            } else {
+                const reportRef = ref(database, reportPath);
+                const bbCodeRef = ref(database, bbCodePath);
+                promises = [set(reportRef, reportDataToSave)];
+                if (bbCodeBasePath === 'scheduledReportsBBCode' || bbCodeBasePath === 'dev-reports-bbcode') {
+                    promises.push(set(bbCodeRef, { bbCode }));
+                } else {
+                    promises.push(triggerSaveReportBBCode({ author: sanitizedAuthorId, key: sanitizedKey, bbCode })
+                        .catch(() => set(bbCodeRef, { bbCode })));
+                }
             }
 
             if (selectedForm.firebaseKey === 'coroner-report' && reportDataToSave.isCK && !reportDataToSave.processed) {

@@ -149,6 +149,7 @@ export const FormHandler = () => {
     hasFirebaseError,
     factionsData,
     isLoadingData,
+    loadMorgueRecords,
   } = useData();
 
   useEffect(() => {
@@ -1817,6 +1818,7 @@ const handleClearForm = useCallback(() => {
       <AssignedAutopsiesModal
         show={showAssignedAutopsies}
         onClose={() => setShowAssignedAutopsies(false)}
+        loadMorgueRecords={loadMorgueRecords}
         onLoadCase={(morgue, entry) => {
           // Clear previous case fields first
           const clearFields = ['decedentName','decedentOOC','Requester','sex','placeOfDeath','deathType',

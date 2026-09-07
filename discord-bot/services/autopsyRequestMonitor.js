@@ -389,15 +389,22 @@ export async function checkForNewRequests() {
         // Debug: log all topic titles to see what the forum returns
         console.log(`[AUTOPSY-MON] Topics in f=265: ${topics.map(t => `"${t.title}"`).join(', ')}`);
 
-        // Load already-processed topics from Firebase (dedup)
-        let processedSnapshot;
+        // Load only the topics currently returned by the forum. The previous
+        // whole-node read downloaded the entire historical autopsy registry on
+        // every 15-minute scan just to deduplicate this page.
+        let processed = {};
         try {
-            processedSnapshot = await _db.ref('autopsy-requested').once('value');
+            const processedSnapshots = await Promise.all(topics.map(topic =>
+                _db.ref(`autopsy-requested/${topic.topicId}`).once('value')
+            ));
+            topics.forEach((topic, index) => {
+                const snap = processedSnapshots[index];
+                if (snap.exists()) processed[topic.topicId] = snap.val();
+            });
         } catch (err) {
             console.error('[AUTOPSY-MON] Failed to read processed topics:', err.message);
             return;
         }
-        const processed = processedSnapshot.val() || {};
 
         // Load current LOA list from Firebase
         let loaSet = new Set();

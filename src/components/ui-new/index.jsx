@@ -7,7 +7,6 @@ import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import { evaluateFieldVisibility } from '../../utils/formValidation';
 import { resolveEmployeeCredentials } from '../../utils/identityUtils';
 import useBbcodeGenerator from '../../hooks/useBbcodeGenerator';
-import useFormTranslation from '../../hooks/useFormTranslation';
 import { useFormSaver } from '../../hooks/useFormSaver';
 import { useReportAttachment } from '../../hooks/useReportAttachment';
 import { useConsent, DEPLOY_TRACKED_FORMS, FORM_SECTIONS, FORM_LABELS } from '../../hooks/useConsent';
@@ -319,35 +318,6 @@ const NewUIPrototype = ({ basicMode = false }) => {
   }, []);
 
 
-  // ── Translations (community i18n) ──
-  const { availableLangs, lang, setLang, translation } = useFormTranslation(selectedForm?.firebaseKey);
-
-  // A translated view of the selected form: same field names/ids/types (data +
-  // bot stay intact), with name/description/labels/placeholders/template swapped
-  // for the active language. Used ONLY for rendering + BBCode generation;
-  // `selectedForm` remains the source of truth for logic (save, deploy, access).
-  const formForRender = useMemo(() => {
-    if (!translation || !selectedForm) return selectedForm;
-    const tFields = translation.fields || {};
-    return {
-      ...selectedForm,
-      name: translation.formName || selectedForm.name,
-      formDescription: translation.formDescription || selectedForm.formDescription,
-      template: translation.template || selectedForm.template,
-      fields: (selectedForm.fields || []).map(f => {
-        const ov = tFields[f.name];
-        if (!ov) return f;
-        return {
-          ...f,
-          label: ov.label != null ? ov.label : f.label,
-          placeholder: ov.placeholder != null ? ov.placeholder : f.placeholder,
-          content: ov.content != null ? ov.content : f.content,
-          buttonLabel: ov.buttonLabel != null ? ov.buttonLabel : f.buttonLabel,
-        };
-      }),
-    };
-  }, [translation, selectedForm]);
-
   // ── Clean rank text ──
   // Strips BBCode-ish brackets/parens and leading/trailing dashes (e.g.
   // "Medical Examiner -" -> "Medical Examiner"), then collapses whitespace.
@@ -375,7 +345,7 @@ const NewUIPrototype = ({ basicMode = false }) => {
 
   // ── BBCode Generator ──
   const { generatedBBCode, generatedTitle, showBBCode, setShowBBCode, generateBBCode, clearBBCode } = useBbcodeGenerator(
-    formForRender, formValues, finalSelectOptions, agencyDataStore, user, factionsData, factionListData, resolvedCredentials
+    selectedForm, formValues, finalSelectOptions, agencyDataStore, user, factionsData, factionListData, resolvedCredentials
   );
 
   const { saveReport, validateMembership } = useFormSaver(user, isAuthenticated, { factionListData, resolvedCredentials });
@@ -816,7 +786,7 @@ const NewUIPrototype = ({ basicMode = false }) => {
     });
   };
 
-  const activeForm = formForRender;
+  const activeForm = selectedForm;
   const displayName = characterName || user?.username || 'Guest';
   const userRole = cleanRankText(factionData?.rank) || cleanRankText(user?.faction?.rank) || 'Employee';
 
@@ -916,14 +886,6 @@ const NewUIPrototype = ({ basicMode = false }) => {
           </div>
         </div>
         <div className="form-tree">
-          <div className="cat open">
-            <div className="cat-head"><span><i className="fas fa-language" style={{ marginRight: 6, color: 'var(--teal)' }} />Translations</span></div>
-            <div className="cat-items">
-              <div onClick={() => navigateTo('/translate')} className="form-item">
-                <span className="dot" />Translate Forms
-              </div>
-            </div>
-          </div>
           {!basicMode && (
             <>
               <div className={`cat${!collapsedCats.has('Tools') ? ' open' : ''}`}>
@@ -1003,19 +965,6 @@ const NewUIPrototype = ({ basicMode = false }) => {
           <div className="topbar-title">
             <h1>{activeView === 'morgue' ? 'Morgue Records' : activeView === 'ems' ? 'LS County EMS Protocols' : activeForm?.name || 'No Form Selected'}</h1>
             {activeView === 'morgue' ? <span className="case-tag">Database</span> : activeView === 'ems' ? <span className="case-tag">Protocols</span> : activeForm && <span className="case-tag">{activeForm.accessType || 'General'}</span>}
-            {availableLangs.length > 0 && activeView === 'forms' && (
-              <select
-                value={lang}
-                onChange={(e) => { setLang(e.target.value); clearBBCode(); }}
-                title="Form language"
-                style={{ marginLeft: 10, background: 'var(--bg-surface)', border: '1px solid var(--border-accent)', color: 'var(--text)', borderRadius: 6, padding: '4px 8px', fontSize: 12 }}
-              >
-                <option value="">English (default)</option>
-                {availableLangs.map(({ code, langName }) => (
-                  <option key={code} value={code}>{langName}</option>
-                ))}
-              </select>
-            )}
           </div>
           <div className="topbar-center">
             <ServiceStatusTicker />
@@ -1902,6 +1851,7 @@ const NewUIPrototype = ({ basicMode = false }) => {
         show={showAssignedAutopsies}
         onClose={() => setShowAssignedAutopsies(false)}
         factionsData={factionsData}
+        loadMorgueRecords={loadMorgueRecords}
         onLoadCase={(morgue, entry) => {
           setShowAssignedAutopsies(false);
           const autopsyForm = formsData?.find(f => f.firebaseKey === 'autopsy');

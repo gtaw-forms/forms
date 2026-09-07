@@ -1,7 +1,7 @@
-import { readFileSync, writeFileSync, existsSync, createWriteStream, renameSync, mkdirSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, createWriteStream, renameSync, mkdirSync, readdirSync, rmSync } from 'fs';
 import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { randomUUID } from 'crypto';
+import { randomUUID, createHash } from 'crypto';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -2002,6 +2002,244 @@ app.post('/api/report-bbcode', validateApiKey, rateLimiter, (req, res) => {
     } catch (err) {
         console.error('[MORGUE-API] report-bbcode POST error:', err.message);
         return res.status(500).json({ success: false, error: 'Write failed' });
+    }
+});
+
+// ── Saved-report store (P3: report metadata + BBCode off RTDB) ──
+// Scheduled/deployment-tracked reports remain in RTDB. These endpoints are for
+// normal saved reports and are called by authenticated Firebase Functions.
+const REPORTS_DIR = resolve(__dirname, 'data', 'saved-reports');
+const REFERENCE_DIR = resolve(__dirname, 'data', 'reference');
+const REPORT_BACKUP_DIR = resolve(__dirname, 'data', 'report-backups');
+
+function safeReportSegment(value) {
+    return String(value || '').replace(/[^a-zA-Z0-9_-]/g, '');
+}
+
+function reportFile(author, key) {
+    const safeAuthor = safeReportSegment(author);
+    const safeKey = safeReportSegment(key);
+    if (!safeAuthor || !safeKey) return null;
+    const fileKey = safeKey.length > 100
+        ? `key-${createHash('sha256').update(safeKey).digest('hex').slice(0, 32)}`
+        : safeKey;
+    return {
+        author: safeAuthor,
+        key: safeKey,
+        file: join(REPORTS_DIR, safeAuthor, `${fileKey}.json`),
+    };
+}
+
+function readSavedReport(author, key) {
+    const target = reportFile(author, key);
+    if (!target || !existsSync(target.file)) return null;
+    try {
+        return JSON.parse(readFileSync(target.file, 'utf-8'));
+    } catch (err) {
+        console.warn(`[MORGUE-API] Could not parse saved report ${target.author}/${target.key}:`, err.message);
+        return null;
+    }
+}
+
+function writeSavedReport(author, key, report, bbCode = '') {
+    const target = reportFile(author, key);
+    if (!target) throw new Error('Invalid author/key.');
+    const dir = join(REPORTS_DIR, target.author);
+    mkdirSync(dir, { recursive: true });
+    const payload = {
+        author: target.author,
+        key: target.key,
+        report,
+        bbCode: typeof bbCode === 'string' ? bbCode : '',
+        savedAt: report?.timestamp || Date.now(),
+        updatedAt: Date.now(),
+    };
+    const tempFile = `${target.file}.tmp-${process.pid}`;
+    writeFileSync(tempFile, JSON.stringify(payload), 'utf-8');
+    renameSync(tempFile, target.file);
+    return payload;
+}
+
+function reportSummary(payload) {
+    const report = payload?.report || {};
+    return {
+        ...report,
+        key: payload.key,
+        author: payload.author,
+        hasBbCode: typeof payload.bbCode === 'string' && payload.bbCode.length > 0,
+        savedAt: payload.savedAt,
+        updatedAt: payload.updatedAt,
+    };
+}
+
+app.get('/api/reports', validateApiKey, rateLimiter, (req, res) => {
+    try {
+        const author = safeReportSegment(req.query.author);
+        if (!author) return res.status(400).json({ success: false, error: 'author is required.' });
+        const authorDir = join(REPORTS_DIR, author);
+        if (!existsSync(authorDir)) return res.json({ success: true, reports: [] });
+
+        const reports = readdirSync(authorDir)
+            .filter(name => name.endsWith('.json'))
+            .map(name => readSavedReport(author, name.slice(0, -5)))
+            .filter(Boolean)
+            .map(reportSummary)
+            .sort((a, b) => (Number(b.timestamp) || 0) - (Number(a.timestamp) || 0));
+        return res.json({ success: true, reports });
+    } catch (err) {
+        console.error('[MORGUE-API] Saved report list error:', err.message);
+        return res.status(500).json({ success: false, error: 'Report list failed.' });
+    }
+});
+
+app.post('/api/reports/bulk', validateApiKey, rateLimiter, (req, res) => {
+    try {
+        const reports = req.body?.reports;
+        if (!Array.isArray(reports) || reports.length === 0 || reports.length > 50) {
+            return res.status(400).json({ success: false, error: 'reports must contain 1 to 50 records.' });
+        }
+        for (const item of reports) {
+            if (!item?.author || !item?.key || !item.report || typeof item.report !== 'object' || Array.isArray(item.report)) {
+                return res.status(400).json({ success: false, error: 'Each record requires author, key and report.' });
+            }
+        }
+        for (const item of reports) writeSavedReport(item.author, item.key, item.report, item.bbCode || '');
+        return res.json({ success: true, migrated: reports.length });
+    } catch (err) {
+        console.error('[MORGUE-API] Bulk saved report write error:', err.message);
+        return res.status(500).json({ success: false, error: 'Bulk report write failed.' });
+    }
+});
+
+app.get('/api/reports/:author/:key', validateApiKey, rateLimiter, (req, res) => {
+    const payload = readSavedReport(req.params.author, req.params.key);
+    if (!payload) return res.status(404).json({ success: false, error: 'Report not found.' });
+    return res.json({ success: true, report: payload.report, bbCode: payload.bbCode || '' });
+});
+
+app.post('/api/reports', validateApiKey, rateLimiter, (req, res) => {
+    try {
+        const { author, key, report, bbCode = '' } = req.body || {};
+        if (!author || !key || !report || typeof report !== 'object' || Array.isArray(report)) {
+            return res.status(400).json({ success: false, error: 'author, key and report are required.' });
+        }
+        const payload = writeSavedReport(author, key, report, bbCode);
+        return res.json({ success: true, report: reportSummary(payload) });
+    } catch (err) {
+        console.error('[MORGUE-API] Saved report write error:', err.message);
+        return res.status(500).json({ success: false, error: 'Report write failed.' });
+    }
+});
+
+app.delete('/api/reports/:author/:key', validateApiKey, rateLimiter, (req, res) => {
+    const target = reportFile(req.params.author, req.params.key);
+    if (!target || !existsSync(target.file)) return res.status(404).json({ success: false, error: 'Report not found.' });
+    try {
+        rmSync(target.file, { force: true });
+        return res.json({ success: true });
+    } catch (err) {
+        console.error('[MORGUE-API] Saved report delete error:', err.message);
+        return res.status(500).json({ success: false, error: 'Report delete failed.' });
+    }
+});
+
+app.get('/api/reports/stats', validateApiKey, rateLimiter, (_req, res) => {
+    try {
+        let total = 0;
+        let authors = 0;
+        const byForm = {};
+        const byAuthor = {};
+        const byAuthorForm = {};
+        const byAuthorNameForm = {};
+        const byMonth = {};
+        const heat = Array.from({ length: 7 }, () => new Array(24).fill(0));
+        if (existsSync(REPORTS_DIR)) {
+            for (const author of readdirSync(REPORTS_DIR)) {
+                const authorDir = join(REPORTS_DIR, author);
+                if (!existsSync(authorDir)) continue;
+                const files = readdirSync(authorDir).filter(name => name.endsWith('.json'));
+                if (files.length === 0) continue;
+                authors++;
+                for (const file of files) {
+                    const payload = readSavedReport(author, file.slice(0, -5));
+                    const formId = payload?.report?.formId || 'unknown';
+                    const displayAuthor = payload?.report?.authorName || author;
+                    byForm[formId] = (byForm[formId] || 0) + 1;
+                    byAuthor[author] = (byAuthor[author] || 0) + 1;
+                    if (!byAuthorForm[author]) byAuthorForm[author] = {};
+                    byAuthorForm[author][formId] = (byAuthorForm[author][formId] || 0) + 1;
+                    if (!byAuthorNameForm[displayAuthor]) byAuthorNameForm[displayAuthor] = {};
+                    byAuthorNameForm[displayAuthor][formId] = (byAuthorNameForm[displayAuthor][formId] || 0) + 1;
+                    const timestamp = Number(payload?.report?.timestamp) || 0;
+                    if (timestamp) {
+                        const date = new Date(timestamp);
+                        const month = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+                        byMonth[month] = (byMonth[month] || 0) + 1;
+                        heat[date.getUTCDay()][date.getUTCHours()]++;
+                    }
+                    total++;
+                }
+            }
+        }
+        return res.json({ success: true, total, authors, byForm, byAuthor, byAuthorForm, byAuthorNameForm, byMonth, heat });
+    } catch (err) {
+        console.error('[MORGUE-API] Saved report stats error:', err.message);
+        return res.status(500).json({ success: false, error: 'Report stats failed.' });
+    }
+});
+
+app.get('/api/reference/:dataset', validateApiKey, rateLimiter, (req, res) => {
+    const allowed = new Set(['agencies', 'locationData', 'verified_locations']);
+    const dataset = String(req.params.dataset || '');
+    if (!allowed.has(dataset)) return res.status(404).json({ success: false, error: 'Reference dataset not found.' });
+    const file = join(REFERENCE_DIR, `${dataset}.json`);
+    if (!existsSync(file)) return res.status(404).json({ success: false, error: 'Reference dataset not synced.' });
+    try {
+        return res.json({ success: true, dataset, data: JSON.parse(readFileSync(file, 'utf8')) });
+    } catch (err) {
+        console.error('[MORGUE-API] Reference dataset read error:', err.message);
+        return res.status(500).json({ success: false, error: 'Reference dataset read failed.' });
+    }
+});
+
+app.post('/api/reports/backup', validateApiKey, rateLimiter, (_req, res) => {
+    try {
+        const backupId = `reports-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+        const backupFile = join(REPORT_BACKUP_DIR, `${backupId}.json`);
+        const reports = [];
+        if (existsSync(REPORTS_DIR)) {
+            for (const author of readdirSync(REPORTS_DIR)) {
+                const dir = join(REPORTS_DIR, author);
+                if (!existsSync(dir)) continue;
+                for (const file of readdirSync(dir)) {
+                    if (!file.endsWith('.json')) continue;
+                    const payload = readSavedReport(author, file.slice(0, -5));
+                    if (payload) reports.push(payload);
+                }
+            }
+        }
+        mkdirSync(REPORT_BACKUP_DIR, { recursive: true });
+        writeFileSync(backupFile, JSON.stringify({ backupId, createdAt: new Date().toISOString(), reports }), 'utf8');
+        return res.json({ success: true, backupId, count: reports.length });
+    } catch (err) {
+        console.error('[MORGUE-API] Report backup error:', err.message);
+        return res.status(500).json({ success: false, error: 'Report backup failed.' });
+    }
+});
+
+app.post('/api/reports/restore', validateApiKey, rateLimiter, (req, res) => {
+    try {
+        const backupId = safeReportSegment(req.body?.backupId);
+        if (!backupId || req.body?.confirm !== true) return res.status(400).json({ success: false, error: 'backupId and confirm=true are required.' });
+        const file = join(REPORT_BACKUP_DIR, `${backupId}.json`);
+        if (!existsSync(file)) return res.status(404).json({ success: false, error: 'Backup not found.' });
+        const backup = JSON.parse(readFileSync(file, 'utf8'));
+        const reports = Array.isArray(backup.reports) ? backup.reports : [];
+        for (const payload of reports) writeSavedReport(payload.author, payload.key, payload.report, payload.bbCode || '');
+        return res.json({ success: true, restored: reports.length, backupId });
+    } catch (err) {
+        console.error('[MORGUE-API] Report restore error:', err.message);
+        return res.status(500).json({ success: false, error: 'Report restore failed.' });
     }
 });
 

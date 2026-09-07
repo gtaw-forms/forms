@@ -162,25 +162,33 @@ async function gatherDashboardData(db, force = false) {
     }
     data.lastCheckTime = timestamps.length > 0 ? Math.max(...timestamps) : null;
 
-    // 4. Morgue latest update
+    // 4. Morgue latest update — VPS primary (RTDB stale since dual-write off)
     try {
-        const morgueSnap = await db.ref('morgue-records')
-            .orderByChild('lastUpdated')
-            .limitToLast(1)
-            .once('value');
-        if (morgueSnap.exists()) {
-            let latest = 0;
-            morgueSnap.forEach(child => { latest = child.val().lastUpdated || 0; });
-            const hoursAgo = (now - latest) / 3600000;
-            if (hoursAgo > 48) {
-                data.morgue = { emoji: '🔴', text: `${Math.floor(hoursAgo)}h overdue` };
-            } else if (hoursAgo > 12) {
-                data.morgue = { emoji: '⚠️', text: `${Math.floor(hoursAgo)}h ago` };
-            } else if (hoursAgo < 1) {
-                data.morgue = { emoji: '✅', text: `${Math.floor(hoursAgo * 60)}min ago` };
-            } else {
-                data.morgue = { emoji: '✅', text: `${Math.floor(hoursAgo)}h ago` };
+        let latest = 0;
+        // Try VPS API first
+        try {
+            const controller = new AbortController();
+            const t = setTimeout(() => controller.abort(), 3500);
+            const res = await fetch('http://127.0.0.1:3001/api/morgue?limit=1', {
+                headers: { 'x-api-key': (process.env.MORGUE_API_KEYS || '').split(',')[0]?.trim() || '' },
+                signal: controller.signal,
+            });
+            clearTimeout(t);
+            if (res.ok) {
+                const j = await res.json();
+                latest = j.records?.[0]?.lastUpdated || 0;
             }
+        } catch {}
+        if (!latest) {
+            const morgueSnap = await db.ref('morgue-records').orderByChild('lastUpdated').limitToLast(1).once('value');
+            if (morgueSnap.exists()) morgueSnap.forEach(child => { latest = child.val().lastUpdated || 0; });
+        }
+        if (latest) {
+            const hoursAgo = (now - latest) / 3600000;
+            if (hoursAgo > 48) data.morgue = { emoji: '🔴', text: `${Math.floor(hoursAgo)}h overdue` };
+            else if (hoursAgo > 12) data.morgue = { emoji: '⚠️', text: `${Math.floor(hoursAgo)}h ago` };
+            else if (hoursAgo < 1) data.morgue = { emoji: '✅', text: `${Math.floor(hoursAgo * 60)}min ago` };
+            else data.morgue = { emoji: '✅', text: `${Math.floor(hoursAgo)}h ago` };
         } else {
             data.morgue = { emoji: '⚠️', text: 'No records found' };
         }
@@ -212,9 +220,11 @@ async function gatherDashboardData(db, force = false) {
         data.rosterSync = null;
     }
 
-    // 8. ME assignments from Firebase — was once('value') 412k every 5m → 4.9 MB/hr. Now orderByKey limit 30 ~240k, quick fix pending VPS move.
+    // 8. ME assignments from Firebase — only active requests are needed here.
+    // Requires the completedAt index in database.rules.json; keep the result
+    // bounded by the actual active-case set rather than recent history.
     try {
-        const assignSnap = await db.ref('autopsy-requested').orderByKey().limitToLast(30).once('value');
+        const assignSnap = await db.ref('autopsy-requested').orderByChild('completedAt').equalTo(null).once('value');
         const meList = [];
         if (assignSnap.exists()) {
             assignSnap.forEach((child) => {

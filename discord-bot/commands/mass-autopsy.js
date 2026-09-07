@@ -1,4 +1,5 @@
 import { SlashCommandBuilder, EmbedBuilder, MessageFlags, AttachmentBuilder } from 'discord.js';
+import { isOwnerOrWhitelisted } from '../services/permissions.js';
 import firebase from '../services/firebase.js';
 import { getForumClient } from '../services/forumClient.js';
 import { parseMassAutopsyBbcode, executeMassAutopsy } from '../services/massAutopsy.js';
@@ -20,8 +21,7 @@ export const data = new SlashCommandBuilder()
             .setRequired(false));
 
 export async function execute(interaction) {
-    const ownerId = process.env.BOT_OWNER_ID;
-    if (!ownerId || interaction.user.id !== ownerId) {
+    if (!isOwnerOrWhitelisted(interaction)) {
         await interaction.reply({ content: 'Only the bot owner can run mass autopsies.', flags: MessageFlags.Ephemeral });
         return;
     }

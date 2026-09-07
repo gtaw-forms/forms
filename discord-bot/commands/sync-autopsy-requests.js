@@ -1,4 +1,5 @@
 import { SlashCommandBuilder, EmbedBuilder, MessageFlags } from 'discord.js';
+import { isOwnerOrWhitelisted } from '../services/permissions.js';
 import firebase from '../services/firebase.js';
 import { getForumClient } from '../services/forumClient.js';
 import { parseAutopsyRequestBbcode } from '../services/autopsyRequestMonitor.js';
@@ -8,8 +9,7 @@ export const data = new SlashCommandBuilder()
     .setDescription('Re-scan logged autopsy requests and parse their fields');
 
 export async function execute(interaction) {
-    const ownerId = process.env.BOT_OWNER_ID;
-    if (!ownerId || interaction.user.id !== ownerId) {
+    if (!isOwnerOrWhitelisted(interaction)) {
         await interaction.reply({ content: 'Only the bot owner can run this.', flags: MessageFlags.Ephemeral });
         return;
     }

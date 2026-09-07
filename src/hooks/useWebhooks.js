@@ -28,8 +28,14 @@ export const useWebhooks = (formData, commitInfo, showNotification, getIsInactiv
             }
         }
         // C — Detailed-compact: 3-4 lines, per-segment KB kept but collapsed to one compact line
-        const totalKb = ((cachedDataSize || 0) + (networkTransferSize || 0));
-        const netKb = (networkTransferSize || 0);
+        // Keep observability non-fatal when an older caller passes a boolean or
+        // string in a size slot. Logging must never break report loading.
+        const asKb = (value) => {
+            const number = Number(value);
+            return Number.isFinite(number) ? number : 0;
+        };
+        const totalKb = asKb(cachedDataSize) + asKb(networkTransferSize);
+        const netKb = asKb(networkTransferSize);
         const srcLabel = `${source}${cached ? ' · cached' : ' · network'}`;
         const hostPath = (()=>{ try{ const u=new URL(window.location.href); return u.host + u.pathname + u.hash; }catch{ return window.location.href.slice(0,80);} })();
 
@@ -40,7 +46,8 @@ export const useWebhooks = (formData, commitInfo, showNotification, getIsInactiv
 
         // Compact per-segment line: factions·22.6k[C] | agencies·1.2k[C] ...
         const compactSegments = Object.entries(segmentSources).map(([seg, src])=>{
-            const kb = segmentSizes[seg] ? `${segmentSizes[seg].toFixed(1)}k` : '—';
+            const segmentKb = asKb(segmentSizes[seg]);
+            const kb = segmentKb ? `${segmentKb.toFixed(1)}k` : '—';
             const badge = src==='cache' ? 'C' : src==='network' ? 'N' : '—';
             return `${seg}·${kb}[${badge}]`;
         }).join(' | ');

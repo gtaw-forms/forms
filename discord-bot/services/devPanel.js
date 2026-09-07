@@ -5,6 +5,7 @@
 import { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, EmbedBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from 'discord.js';
 import { exec } from 'child_process';
 import { loadAgencyCredentials, setAgencyCredential, removeAgencyCredential } from './agencyCredentials.js';
+import { isOwnerOrWhitelisted } from './permissions.js';
 
 // ── Panel definitions ──
 
@@ -40,8 +41,7 @@ const MODAL_ACTIONS = [
 ];
 
 function isOwner(interaction) {
-    const ownerId = process.env.BOT_OWNER_ID;
-    return !!ownerId && interaction.user.id === ownerId;
+    return isOwnerOrWhitelisted(interaction);
 }
 
 function btnStyle(s) {

@@ -6,6 +6,7 @@ import { database } from '../../firebase';
 
 import { logAdminAction, getUserContext, logDataVersionBump } from '../../utils/logging';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
+import { triggerGetSavedReportStats, triggerCreateSavedReportsBackup, triggerRestoreSavedReportsBackup } from '../../services/firebaseFunctions';
 
 const versionToNameMap = new Map([
     [1, 'Coroner Report'],
@@ -22,6 +23,8 @@ const DatabaseEditor = ({ showNotification, currentUser: propCurrentUser, gtawUs
     const [error, setError] = useState(null);
     const [restoreFile, setRestoreFile] = useState(null);
     const [isRestoring, setIsRestoring] = useState(false);
+    const [backupId, setBackupId] = useState('');
+    const [isCreatingBackup, setIsCreatingBackup] = useState(false);
 
     // New state for Select Options editor
     const [optionCategory, setOptionCategory] = useState('');
@@ -34,6 +37,36 @@ const DatabaseEditor = ({ showNotification, currentUser: propCurrentUser, gtawUs
     // New state for metrics
     const [metrics, setMetrics] = useState(null);
     const [isFetchingMetrics, setIsFetchingMetrics] = useState(false);
+
+    const handleCreateVpsBackup = async () => {
+        setIsCreatingBackup(true);
+        try {
+            const result = await triggerCreateSavedReportsBackup();
+            setBackupId(result?.backupId || '');
+            showNotification(`VPS backup created: ${result?.count || 0} reports.`, 'check-circle');
+        } catch (err) {
+            showNotification(`VPS backup failed: ${err.message}`, 'error');
+        } finally {
+            setIsCreatingBackup(false);
+        }
+    };
+
+    const handleRestoreVpsBackup = async () => {
+        if (!backupId.trim()) {
+            showNotification('Enter a VPS backup ID first.', 'warning');
+            return;
+        }
+        if (!window.confirm(`Restore VPS backup ${backupId.trim()}? This overwrites matching VPS report files.`)) return;
+        setIsRestoring(true);
+        try {
+            const result = await triggerRestoreSavedReportsBackup({ backupId: backupId.trim(), confirm: true });
+            showNotification(`VPS backup restored: ${result?.restored || 0} reports.`, 'check-circle');
+        } catch (err) {
+            showNotification(`VPS restore failed: ${err.message}`, 'error');
+        } finally {
+            setIsRestoring(false);
+        }
+    };
 
     // Unused options scanner
     const [unusedOptions, setUnusedOptions] = useState(null);
@@ -378,41 +411,14 @@ const DatabaseEditor = ({ showNotification, currentUser: propCurrentUser, gtawUs
                 gtawUser
             );
 
-            const [newReportsSnapshot, legacyReportsSnapshot] = await Promise.all([
-                get(ref(database, 'newSavedReports')),
-                get(ref(database, 'savedReports'))
-            ]);
-
-            const allReports = [];
-            if (newReportsSnapshot.exists()) {
-                const newReports = newReportsSnapshot.val();
-                for (const user in newReports) {
-                    for (const reportId in newReports[user]) {
-                        allReports.push({ ...newReports[user][reportId], author: user });
-                    }
-                }
-            }
-            if (legacyReportsSnapshot.exists()) {
-                const legacyReports = legacyReportsSnapshot.val();
-                for (const user in legacyReports) {
-                    for (const reportId in legacyReports[user]) {
-                        allReports.push({ ...legacyReports[user][reportId], author: user, isLegacy: true });
-                    }
-                }
-            }
-
-            const totalReports = allReports.length;
-            const reportTypes = allReports.reduce((acc, report) => {
-                const type = report.isLegacy 
-                    ? `${versionToNameMap.get(report.bbCodeVersion) || `Legacy (v${report.bbCodeVersion})`} (LEGACY)`
-                    : `${report.formName || 'Unknown'} (MODERN)`;
-                acc[type] = (acc[type] || 0) + 1;
+            const reportStats = await triggerGetSavedReportStats();
+            const totalReports = Number(reportStats?.total) || 0;
+            const reportTypes = Object.entries(reportStats?.byForm || {}).reduce((acc, [formId, count]) => {
+                acc[`${formId} (VPS)`] = Number(count) || 0;
                 return acc;
             }, {});
-
-            const topUsers = allReports.reduce((acc, report) => {
-                const user = report.authorName || report.author || 'Unknown';
-                acc[user] = (acc[user] || 0) + 1;
+            const topUsers = Object.entries(reportStats?.byAuthorNameForm || {}).reduce((acc, [author, forms]) => {
+                acc[author] = Object.values(forms || {}).reduce((sum, count) => sum + (Number(count) || 0), 0);
                 return acc;
             }, {});
 
@@ -689,21 +695,21 @@ const DatabaseEditor = ({ showNotification, currentUser: propCurrentUser, gtawUs
                     <div className="card border-0 shadow-sm mb-4">
                         <div className="card-header"><i className="fas fa-history me-2 text-warning"></i>Backup & Restore</div>
                         <div className="card-body p-4">
-                            <Form.Group className="mb-4">
-                                <Form.Label className="small text-muted uppercase fw-bold">JSON Backup File</Form.Label>
-                                <Form.Control 
-                                    type="file" 
-                                    accept=".json"
-                                    className="bg-dark border-secondary text-white small"
-                                    onChange={(e) => setRestoreFile(e.target.files[0])}
-                                />
-                            </Form.Group>
+                            <Form.Label className="small text-muted uppercase fw-bold">VPS Report Backup</Form.Label>
+                            <p className="text-muted small mb-3">Backups include normal VPS reports. Scheduled bot reports remain in RTDB.</p>
                             <div className="d-grid gap-2">
-                                <Button onClick={handleRestoreReports} disabled={isRestoring} variant="outline-warning" size="sm">
-                                    {isRestoring ? <Spinner as="span" animation="border" size="sm" /> : 'Restore Reports'}
+                                <Button onClick={handleCreateVpsBackup} disabled={isCreatingBackup} variant="outline-success" size="sm">
+                                    {isCreatingBackup ? <Spinner as="span" animation="border" size="sm" /> : 'Create VPS Backup'}
                                 </Button>
-                                <Button onClick={handleRestoreBBCode} disabled={isRestoring} variant="outline-secondary" size="sm">
-                                    {isRestoring ? <Spinner as="span" animation="border" size="sm" /> : 'Restore BBCode'}
+                                <Form.Control
+                                    size="sm"
+                                    value={backupId}
+                                    onChange={(e) => setBackupId(e.target.value)}
+                                    placeholder="Backup ID"
+                                    className="bg-dark border-secondary text-white"
+                                />
+                                <Button onClick={handleRestoreVpsBackup} disabled={isRestoring} variant="outline-warning" size="sm">
+                                    {isRestoring ? <Spinner as="span" animation="border" size="sm" /> : 'Restore VPS Backup'}
                                 </Button>
                             </div>
                         </div>

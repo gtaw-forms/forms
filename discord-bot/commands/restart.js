@@ -6,6 +6,7 @@ import {
     ActionRowBuilder,
 } from 'discord.js';
 import { spawn } from 'child_process';
+import { isOwnerOrWhitelisted } from '../services/permissions.js';
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
 
@@ -27,7 +28,7 @@ export async function execute(interaction) {
         return;
     }
 
-    if (interaction.user.id !== ownerId) {
+    if (!isOwnerOrWhitelisted(interaction)) {
         console.log(`[RESTART] ⛔ Denied — ${interaction.user.tag} (${interaction.user.id}) is not the bot owner`);
         await interaction.reply({
             content: '❌ Only the bot owner can use this command.',
@@ -64,7 +65,7 @@ export async function execute(interaction) {
     });
 
     collector.on('collect', async (buttonInteraction) => {
-        if (buttonInteraction.user.id !== ownerId) {
+        if (!isOwnerOrWhitelisted(buttonInteraction)) {
             await buttonInteraction.reply({
                 content: '❌ Only the bot owner can confirm this action.',
                 flags: MessageFlags.Ephemeral,

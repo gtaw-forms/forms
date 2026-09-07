@@ -3,6 +3,7 @@
  * channel, to validate that Discord user pings work end-to-end.
  */
 import { SlashCommandBuilder, EmbedBuilder, MessageFlags } from 'discord.js';
+import { isOwnerOrWhitelisted } from '../services/permissions.js';
 import { sendWebhook } from '../services/deployLogger.js';
 
 export const data = new SlashCommandBuilder()
@@ -11,7 +12,7 @@ export const data = new SlashCommandBuilder()
 
 export async function execute(interaction) {
     const ownerId = process.env.BOT_OWNER_ID;
-    if (!ownerId || interaction.user.id !== ownerId) {
+    if (!isOwnerOrWhitelisted(interaction)) {
         await interaction.reply({ content: 'Only the bot owner can run this.', flags: MessageFlags.Ephemeral });
         return;
     }

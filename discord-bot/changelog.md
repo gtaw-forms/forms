@@ -1,5 +1,81 @@
 # PHMC Discord Bot — Changelog
 
+## 2026-09-06 — VPS report store and reference snapshots
+
+### Added
+- Added authenticated `/api/reports` storage and aggregate endpoints for normal saved reports, plus a daily read-only duplicate/retention check.
+- Migrated normal saved reports to `data/saved-reports`; scheduled deployment reports remain in RTDB.
+- Added daily VPS snapshots for `agencies`, `locationData`, and `verified_locations`; coroner Functions prefer the VPS snapshots with RTDB fallback during rollback.
+- Added request-size-safe bulk migration and deterministic filenames for long Firebase keys.
+
+## 2026-09-06 — share autopsy recovery snapshot
+
+### Changed
+- **Recovery heartbeat now reads `autopsy-requested` once per tick** and passes the same snapshot to LSPD crosspost recovery, PHMC acknowledgement recovery, completion-step recovery, and assignment-reply recovery. Existing fallback reads remain available if the shared read fails.
+- This removes four redundant ~400 KB RTDB downloads from the normal 10-minute heartbeat without changing recovery filters or retry behavior.
+
+## 2026-09-05 — AGH dashboard stats window comment fix
+
+### Changed
+- **Corrected a stale comment in `services/aghMetrics.js`** — it claimed AGH stats are "1-day aggregates"; verified against the live control API that `num_*` totals equal the sum of the full 30-day daily buckets, so the dashboard's headline numbers are the full stats window (30d), not 24h.
+- Deployed: SCP `services/aghMetrics.js` + `pm2 restart phmc-bot`.
+
+## 2026-09-03 — owner-role whitelist for all owner commands + /debug-channels
+
+### Added
+- **New shared permission gate `isOwnerOrWhitelisted()`** (`services/permissions.js`): a user passes as owner if their Discord ID matches `BOT_OWNER_ID` **or** they hold one of the whitelisted leadership roles (`860257102324301864`, `860257063182925874`). Overridable via comma-separated `BOT_OWNER_ROLE_IDS` in `.env`.
+- **Every owner-flagged command, button, select menu, and the dev panel now use the shared gate** — previously each command had its own inline `BOT_OWNER_ID` check that ignored roles. Covers all ~35 commands, `/dev` panel buttons, report-retry/skip menus, autopsy-request approve/edit/deny, reassign menus, and the restart confirmation button.
+- **`/debug-channels` (owner+roles)**: lists every channel ID in the server, grouped by type (text/voice/category/forum/stage/threads), shown ephemeral. Uses the Discord API's guild channel listing (`guild.channels.fetch()`). (Fix: threads live in `guild.channels.cache` on discord.js 14.27 — `guild.threads` does not exist and was removed from the reader.)
+
+### Deployed
+- SCP `index.js`, `commands/*.js`, `services/permissions.js`, `services/devPanel.js` + `pm2 restart phmc-bot`.
+
+## 2026-09-03 (2) — LSPD crosspost recovery only logs in when there's a candidate
+
+### Changed
+- **`retryMissingLspdCrossposts` (`autoDeploy.js`) now filters RTDB candidates BEFORE logging into LSPD.** Previously it force-logged in to `lspd.gta.world` on every startup/10-min sweep, then scanned `autopsy-requested` — so when LSPD was down (e.g. Cloudflare 522) the sweep aborted with a noisy "login page has no username field" error even though there was nothing to recover. Now: scan + filter first, and only create the browser client + login when ≥1 candidate exists. No candidates → `[AUTO] LSPD recovery: no candidates missing the crosspost (N entries scanned) — skipping LSPD login`.
+- Verified live: 51 `autopsy-requested` entries, 15 LSPD (2 private / 4 no caseTopicId / 9 completed), 0 candidates missing a crosspost.
+- Deployed: SCP `services/autoDeploy.js` + `pm2 restart phmc-bot`.
+
+## 2026-09-02 (4) — fix dashboard "regenerate instead of edit" + REFRESHING field state
+
+### Fixed
+- **Dashboard auto-refresh was posting a NEW dashboard every cycle instead of patching the existing one.** `patchDashboardEmbed()` passed `components` as a single `ActionRowBuilder`, but `msg.edit()` expects an **array** → `TypeError: this.options.components?.map is not a function`, which the silent catch swallowed → fell through to `channel.send()`, then the orphan-cleanup deleted the old message next cycle → endless regenerate loop. Fixed: `components: [components]`.
+- Root cause confirmed via a standalone repro against the live message (`components: row` threw; `components: [row]` edited OK).
+- The patch-failure catch now logs the error instead of silently posting new.
+
+### Changed
+- **VPS Resources field now shows a transient `🔄 REFRESHING…` state** during the 5-min auto-refresh gather (`buildRefreshingEmbed` + `refreshing` flag), so the field never sits on stale data while updating. The flag also makes the 5s VPS updater render REFRESHING instead of clobbering the placeholder mid-gather.
+- Deployed: SCP `dashboardManager.js` + `pm2 restart phmc-bot`.
+
+## 2026-09-02 (3) — dashboard auto-refresh patches in place (no pending-flash / full rebuild)
+
+### Changed
+- **The 5-min dashboard auto-refresh no longer flashes a yellow "Forum checks in progress" state or rebuilds the whole embed from scratch** (`dashboardManager.js`). It now patches the existing message in place via a new `patchDashboardEmbed()` helper — `EmbedBuilder.from(old)` + `spliceFields` — swapping only the changed fields. Auto-refresh reads cached data (no browser checks), so the pending flash was pure churn. The manual "Refresh Now" button keeps its live one-by-one progress flow.
+- Also corrected the stale VPS-updater comment (it refreshes every 5s, not 30s).
+- Deployed: SCP `dashboardManager.js` + `pm2 restart phmc-bot`.
+
+## 2026-09-02 (2) — dashboard shows browser Active/Idle status
+
+### Changed
+- **VPS Resources field now shows the forum browser's real state** (`dashboardManager.js` + `activityLog.js` + `forumClient.js`): a `🟢 Active` / `⚪ Idle` indicator plus a `Last activity` line, replacing the old ambiguous "Currently" line. Active = a navigation is in-flight OR one happened within the last 60s (multi-step ops like login don't flicker). Uses the existing per-navigation activity hook; `page.goto` now balances an in-flight counter via `markActivityDone()`.
+- Deployed: SCP `activityLog.js`, `forumClient.js`, `dashboardManager.js` + `pm2 restart phmc-bot`.
+
+## 2026-09-02 — fix infinite roster-sync pagination (crash-loop/CPU incident)
+
+### Fixed
+- **`getGroupMembers` could loop forever when a forum memberlist page ignores `start`.** The LSPD `g=44` page always returned 26 username links regardless of the `start` offset, so the `pageMembers.length < PAGE_SIZE` last-page check never fired — the loop kept incrementing `start` and scraping (reached start=173,725, ~6,950 page loads), yielding 0 new members per page. Each iteration navigated via Playwright, pegging CPU to ~303% (load avg 6.06 on a 2-core VPS) and effectively starving the bot until it was restarted (SIGINT) at 06:13 UTC.
+- **Fix:** loop now also stops when a full page produces **0 new members** after dedup (`pageNewCount === 0` → `isLastPage`), guarding against stalled/ignored pagination regardless of page length.
+- Deployed: SCP `services/forumClient.js` + `pm2 restart phmc-bot`.
+
+## 2026-08-31 (2) — morgue-api request logging now shows what was sent
+
+### Changed
+- **Per-request logs include the request detail** (`morgue-api.js`) — the log line (and the Discord API-log batch) now appends `body={...}` for POST/PUT/PATCH (key=value, values >40 chars summarized as `<N chars>` instead of dumped) or `query={...}` for GET/DELETE. Example:
+  `POST /api/report-bbcode → 200 (1ms) [key_...] ip=... ua="node" body={author="tester" key="detail-probe" bbCode=<460 chars>}`
+- Helps identify exactly what each API call sent (which report, which record) without flooding logs with full payloads.
+- Deployed: SCP `morgue-api.js` + `pm2 restart morgue-api`.
+
 ## 2026-08-31 — AGH integration made optional (kept out of public forks)
 
 ### Changed

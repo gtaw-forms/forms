@@ -1,4 +1,5 @@
 import { SlashCommandBuilder, EmbedBuilder, MessageFlags } from 'discord.js';
+import { isOwnerOrWhitelisted } from '../services/permissions.js';
 import firebase from '../services/firebase.js';
 import { getRotationStatus } from '../services/autopsyRotation.js';
 
@@ -21,8 +22,7 @@ export const data = new SlashCommandBuilder()
             .setAutocomplete(true));
 
 export async function execute(interaction) {
-    const ownerId = process.env.BOT_OWNER_ID;
-    if (!ownerId || interaction.user.id !== ownerId) {
+    if (!isOwnerOrWhitelisted(interaction)) {
         await interaction.reply({ content: 'Only the bot owner can manage the rotation.', flags: MessageFlags.Ephemeral });
         return;
     }

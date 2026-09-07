@@ -4,16 +4,36 @@ import { db } from '../utils/firebase.js';
 import { sendWebhook, sendWebhookWithFile } from '../utils/helpers.js';
 import { processUntrackedLocation } from '../utils/locationReporting.js';
 
+const MORGUE_API_URL = (process.env.MORGUE_API_URL || 'http://88.208.243.254').replace(/\/$/, '');
+const MORGUE_API_KEY = process.env.MORGUE_API_KEY;
+
+async function getReferenceDataset(name) {
+    if (MORGUE_API_KEY) {
+        try {
+            const response = await fetch(`${MORGUE_API_URL}/api/reference/${name}`, {
+                headers: { 'x-api-key': MORGUE_API_KEY },
+            });
+            if (response.ok) {
+                const result = await response.json();
+                return result.data || {};
+            }
+        } catch (error) {
+            console.warn(`[CoronerStats] VPS reference ${name} unavailable: ${error.message}`);
+        }
+    }
+    return (await db.ref(name).once('value')).val() || {};
+}
+
 async function getProcessedLocations() {
     try {
-        // Fetch both legacy locationData and new verified_locations
+        // Prefer the VPS snapshot; retain RTDB fallback during the transition.
         const [locSnapshot, verifiedSnapshot] = await Promise.all([
-            db.ref('locationData').once('value'),
-            db.ref('verified_locations').once('value')
+            getReferenceDataset('locationData'),
+            getReferenceDataset('verified_locations'),
         ]);
         
-        const locations = locSnapshot.val();
-        const verified = verifiedSnapshot.val();
+        const locations = locSnapshot;
+        const verified = verifiedSnapshot;
         
         const streetToAreaMap = new Map();
         const allAreas = new Set();
@@ -234,7 +254,7 @@ async function matchLocation(place, processedLocations, reportKey = null, skipRe
 async function aggregateCoronerStats(startOfMonth, endOfMonth) {
     const reportsPaths = ['newSavedReports', 'savedReports'];
     
-    const agencyDataStore = (await db.ref('/agencies').once('value')).val() || {};
+    const agencyDataStore = await getReferenceDataset('agencies');
     const processedLocations = await getProcessedLocations();
     const processedReportIds = new Set();
 
@@ -529,7 +549,7 @@ export const runYearlyCoronerSummary = async () => {
 /**
  * Manually trigger a coroner report summary to be sent to the webhook.
  */
-export const triggerCoronerReport = onCall({
+const triggerCoronerReport = onCall({
     region: "europe-west2",
     secrets: ["PHMC_CONFIG"],
 }, async (request) => {
@@ -635,7 +655,7 @@ export const triggerCoronerReport = onCall({
  * Scans reports from the last 60 days to identify untracked locations.
  * Results are sent via Webhook as a .txt file.
  */
-export const scanUntrackedLocations = onCall({
+const scanUntrackedLocations = onCall({
     region: "europe-west2",
     secrets: ["PHMC_CONFIG"],
 }, async (request) => {

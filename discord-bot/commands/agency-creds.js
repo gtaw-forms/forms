@@ -1,4 +1,5 @@
 import { SlashCommandBuilder, MessageFlags } from 'discord.js';
+import { isOwnerOrWhitelisted } from '../services/permissions.js';
 import { loadAgencyCredentials, setAgencyCredential, removeAgencyCredential } from '../services/agencyCredentials.js';
 
 export const data = new SlashCommandBuilder()
@@ -15,8 +16,7 @@ export const data = new SlashCommandBuilder()
         .addStringOption(o => o.setName('domain').setDescription('Forum hostname, e.g. lspd.gta.world').setRequired(true)));
 
 export async function execute(interaction) {
-    const ownerId = process.env.BOT_OWNER_ID;
-    if (!ownerId || interaction.user.id !== ownerId) {
+    if (!isOwnerOrWhitelisted(interaction)) {
         await interaction.reply({ content: 'Only the bot owner can run this.', flags: MessageFlags.Ephemeral });
         return;
     }

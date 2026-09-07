@@ -73,10 +73,12 @@ export async function setMaintenanceMode(enabled, db) {
                 const authorId = authorSnap.key;
                 authorSnap.forEach((reportSnap) => {
                     const reportKey = reportSnap.key;
-                    if (state.knownReportKeys?.has(reportKey)) return;
                     const reportData = reportSnap.val();
                     if (reportData.hasdeployed !== false) return;
                     if (!state.knownReportKeys) return;
+                    // A report may have been marked seen while maintenance was
+                    // enabled. Pending reports must be reconsidered on resume.
+                    state.knownReportKeys.delete(reportKey);
                     state.knownReportKeys.add(reportKey);
                     const item = { authorId, key: reportKey, report: reportData, db };
                     const formId = reportData.formId === 'testing-compact-mode' ? 'general_consultation' : reportData.formId;
@@ -113,14 +115,16 @@ function getEntityKey(data) {
 
 export async function enqueue(type, data) {
     logFnCall('deployQueue', 'enqueue', 'Enqueueing deploy', { type, key: data.key });
+    const firebaseKey = data.key;
     if (await isMaintenanceMode()) {
         console.log(`[AUTO] Maintenance mode — skipping ${data.report?.originalKey || data.key}`);
+        // Let the maintenance-off rescan pick this report up later.
+        state.knownReportKeys?.delete(firebaseKey);
         return;
     }
 
     const entityKey = getEntityKey(data);
     const label = data.report?.originalKey || data.key;
-    const firebaseKey = data.key;
     const fireTime = Date.now() + C.DEFER_MS;
     const deployTime = new Date(fireTime).toLocaleTimeString();
 

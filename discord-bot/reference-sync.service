@@ -1,0 +1,9 @@
+[Unit]
+Description=PHMC reference dataset VPS sync
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/phmc-bot/discord-bot
+ExecStart=/usr/bin/node /opt/phmc-bot/discord-bot/sync-reference-data-to-vps.mjs

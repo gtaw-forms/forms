@@ -1,0 +1,9 @@
+[Unit]
+Description=PHMC saved-report duplicate and retention check
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/phmc-bot/discord-bot
+ExecStart=/usr/bin/node /opt/phmc-bot/discord-bot/check-saved-report-maintenance.mjs

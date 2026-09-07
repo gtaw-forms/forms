@@ -2,6 +2,7 @@ import { Client, GatewayIntentBits, REST, Routes, Collection, MessageFlags } fro
 import { readFileSync, existsSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { isOwnerOrWhitelisted } from './services/permissions.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -110,6 +111,7 @@ async function registerCommands() {
     const testRequesterWebhook = await import('./commands/test-requester-webhook.js');
     const enableDevAutopsy = await import('./commands/enable-dev-autopsy.js');
     const forwardAutopsyComplete = await import('./commands/forward-autopsy-complete.js');
+    const debugChannels = await import('./commands/debug-channels.js');
     // Personal AGH dashboard — optional. The files are gitignored/not part of a
     // fork; guard so the bot still boots when they're absent.
     let aghDashboard = null;
@@ -157,6 +159,7 @@ async function registerCommands() {
         testRequesterWebhook.data.toJSON(),
         enableDevAutopsy.data.toJSON(),
         forwardAutopsyComplete.data.toJSON(),
+        debugChannels.data.toJSON(),
         ...(aghDashboard ? [aghDashboard.data.toJSON()] : []),
     ];
 
@@ -455,8 +458,7 @@ client.on('interactionCreate', async (interaction) => {
 
     // Handle /report-retry select menu
     if (interaction.isStringSelectMenu() && interaction.customId === 'retry_report_select') {
-        const ownerId = process.env.BOT_OWNER_ID;
-        if (!ownerId || interaction.user.id !== ownerId) {
+        if (!isOwnerOrWhitelisted(interaction)) {
             await interaction.reply({
                 content: 'Only the bot owner can retry reports.',
                 flags: MessageFlags.Ephemeral,
@@ -504,8 +506,7 @@ client.on('interactionCreate', async (interaction) => {
 
     // Handle skip_report_select
     if (interaction.isStringSelectMenu() && interaction.customId === 'skip_report_select') {
-        const ownerId = process.env.BOT_OWNER_ID;
-        if (!ownerId || interaction.user.id !== ownerId) {
+        if (!isOwnerOrWhitelisted(interaction)) {
             await interaction.reply({
                 content: 'Only the bot owner can skip queued reports.',
                 flags: MessageFlags.Ephemeral,
@@ -762,6 +763,9 @@ async function start() {
 
     const forwardAutopsyCompleteCmd = await import('./commands/forward-autopsy-complete.js');
     client.commands.set(forwardAutopsyCompleteCmd.data.name, { execute: forwardAutopsyCompleteCmd.execute });
+
+    const debugChannelsCmd = await import('./commands/debug-channels.js');
+    client.commands.set(debugChannelsCmd.data.name, { execute: debugChannelsCmd.execute });
 
     const testPingCmd = await import('./commands/test-ping.js');
     client.commands.set(testPingCmd.data.name, { execute: testPingCmd.execute });

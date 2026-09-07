@@ -6,14 +6,14 @@ import {
     StringSelectMenuOptionBuilder,
     MessageFlags,
 } from 'discord.js';
+import { isOwnerOrWhitelisted } from '../services/permissions.js';
 
 export const data = new SlashCommandBuilder()
     .setName('report-skip')
     .setDescription('Skip a queued report (remove from deploy queue without deploying)');
 
 export async function execute(interaction) {
-    const ownerId = process.env.BOT_OWNER_ID;
-    if (!ownerId || interaction.user.id !== ownerId) {
+    if (!isOwnerOrWhitelisted(interaction)) {
         await interaction.reply({
             content: 'Only the bot owner can skip queued reports.',
             flags: MessageFlags.Ephemeral,

@@ -43,7 +43,6 @@ function SessionExpiredBanner() {
 const GtaLogin = lazy(() => import('./components/Auth/GtaLogin.jsx'));
 const GtaCallback = lazy(() => import('./components/Auth/GtaCallback.jsx'));
 const NewUIPrototype = lazy(() => import('./components/ui-new/index.jsx'));
-const TranslationEditor = lazy(() => import('./components/Translator/TranslationEditor.jsx'));
 
 function App() {
     const [formData, setFormData] = useState({});
@@ -215,7 +214,6 @@ function App() {
                                 <Route path="/admin" element={<ProtectedRoute><Admin formData={formData} setFormData={setFormData} showNotification={showNotification} /></ProtectedRoute>} />
                                 <Route path="/ui-prototype" element={<NewUIPrototype />} />
                                 <Route path="/prototype-basic" element={<NewUIPrototype basicMode />} />
-                                <Route path="/translate" element={<TranslationEditor />} />
                                 {/* Legacy form-handler DECOMMISSIONED — any attempt redirects to the new UI */}
                                 <Route path="/form-handler" element={<Navigate to="/ui-prototype" replace />} />
                                 <Route path="*" element={<Navigate to="/" replace />} />

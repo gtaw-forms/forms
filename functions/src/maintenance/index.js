@@ -262,7 +262,7 @@ Deleted: ${maintenanceResults.duplicateCleanup.duplicatesDeleted}`, inline: true
 }
 
 // --- Scheduled Cloud Function (v2) ---
-export const dailyMaintenanceTask = onSchedule({
+const dailyMaintenanceTask = onSchedule({
     schedule: "every day 09:00",
     timeZone: "UTC",
     region: "europe-west2",
@@ -281,12 +281,16 @@ export const dailyMaintenanceTask = onSchedule({
 });
 
 // --- Manual Trigger ---
-export const triggerManualMaintenance = onCall({
+const triggerManualMaintenance = onCall({
     region: "europe-west2",
     secrets: ["PHMC_CONFIG"],
     memory: "512MiB",
     timeoutSeconds: 1200,
 }, async (request) => {
+    const isSuperAdmin = request.auth?.token?.isSuperAdmin === true || request.auth?.token?.accessLevel === 'superadmin';
+    if (!isSuperAdmin) {
+        throw new HttpsError('permission-denied', 'Super-admin access required.');
+    }
     const triggerUser = request.auth?.token?.email || 'Unknown user';
     console.log(`Manually triggering maintenance. Requested by: ${triggerUser}`);
 

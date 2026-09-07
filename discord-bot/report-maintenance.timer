@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily PHMC saved-report maintenance check
+
+[Timer]
+OnCalendar=*-*-* 03:30:00 UTC
+Persistent=true
+Unit=report-maintenance.service
+
+[Install]
+WantedBy=timers.target

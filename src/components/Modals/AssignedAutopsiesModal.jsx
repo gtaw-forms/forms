@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { database } from '../../firebase';
 import { ref, onValue, get } from 'firebase/database';
-import { triggerGetMorgueRecords } from '../../services/firebaseFunctions';
 
 const MOCK_ROTATION_LIST = ['Dr. Alyson Frost', 'Dr. Marcus Reed', 'Dr. Emily Hart', 'Dr. Sarah Mitchell', 'Dr. James Walker'];
 
@@ -17,7 +16,7 @@ const parseCaseTitle = (title) => {
     return { name, oocName };
 };
 
-const AssignedAutopsiesModal = ({ show, onClose, onLoadCase, factionsData }) => {
+const AssignedAutopsiesModal = ({ show, onClose, onLoadCase, factionsData, loadMorgueRecords }) => {
     const [assignments, setAssignments] = useState([]);
     const [rotationList, setRotationList] = useState([]);
     const [rotationPosition, setRotationPosition] = useState(0);
@@ -173,8 +172,8 @@ const AssignedAutopsiesModal = ({ show, onClose, onLoadCase, factionsData }) => 
         try {
             const result = isLocalHost
                 ? { records: mockMorgueRecords }
-                : await triggerGetMorgueRecords();
-            const records = result?.records || [];
+                : await loadMorgueRecords();
+            const records = result?.records || (Array.isArray(result) ? result : Object.values(result || {}));
             const terms = [entry.oocName.toLowerCase(), entry.name.toLowerCase()].filter(Boolean);
             let bestMatch = null;
             let bestScore = 0;

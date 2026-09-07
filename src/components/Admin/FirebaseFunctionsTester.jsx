@@ -5,8 +5,7 @@ import {
     triggerUploadFactionData,
     triggerCheckFactionMembership,
     triggerTestHealthAlert,
-    triggerFetchExternalUrl,
-    triggerManualMaintenance
+    triggerFetchExternalUrl
 } from '../../services/firebaseFunctions';
 
 import { database } from '../../firebase';
@@ -152,12 +151,9 @@ const FirebaseFunctionsTester = ({ showInAppNotification }) => {
             <div className="card-body">
                 <p className="text-muted small">Scheduled functions (dailyTaskHandler, weeklyDuplicateReportsCleanup) cannot be triggered directly from the client. Use Firebase Console or CLI for manual triggers.</p>
                 
-                <h7 className="mt-3">Maintenance Tasks</h7>
-                <div className="d-flex flex-wrap gap-2 mb-3">
-                    <Button variant="warning" size="sm" onClick={() => handleTriggerFunction(triggerManualMaintenance)} disabled={loading}>
-                        {loading ? <Spinner as="span" animation="border" size="sm" /> : 'Trigger Manual Maintenance'}
-                    </Button>
-                    <p className="text-muted small w-100">Manually runs the daily maintenance task, which includes bingo board resets, report cleanup, and other routine jobs.</p>
+                 <h7 className="mt-3">Maintenance Tasks</h7>
+                 <div className="d-flex flex-wrap gap-2 mb-3">
+                     <p className="text-muted small w-100">Legacy Firebase maintenance tasks have moved to VPS maintenance.</p>
                     <div className="d-flex align-items-center gap-3 w-100 border rounded p-2">
                         <span className="fw-semibold small">Maintenance Mode</span>
                         <span className={`badge ${maintenanceEnabled ? 'bg-warning text-dark' : 'bg-secondary'}`}>

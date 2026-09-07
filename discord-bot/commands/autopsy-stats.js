@@ -5,6 +5,7 @@
  * `completedAt` (or caseState 'complete') = processed.
  */
 import { SlashCommandBuilder, EmbedBuilder, MessageFlags } from 'discord.js';
+import { isOwnerOrWhitelisted } from '../services/permissions.js';
 import firebase from '../services/firebase.js';
 
 export const data = new SlashCommandBuilder()
@@ -12,8 +13,7 @@ export const data = new SlashCommandBuilder()
     .setDescription('(Owner) Weekly/monthly autopsy request stats');
 
 export async function execute(interaction) {
-    const ownerId = process.env.BOT_OWNER_ID;
-    if (!ownerId || interaction.user.id !== ownerId) {
+    if (!isOwnerOrWhitelisted(interaction)) {
         await interaction.reply({ content: 'Only the bot owner can view autopsy stats.', flags: MessageFlags.Ephemeral });
         return;
     }

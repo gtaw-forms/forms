@@ -1,4 +1,5 @@
 import { SlashCommandBuilder, EmbedBuilder, MessageFlags } from 'discord.js';
+import { isOwnerOrWhitelisted } from '../services/permissions.js';
 import firebase from '../services/firebase.js';
 
 export const data = new SlashCommandBuilder()
@@ -7,8 +8,7 @@ export const data = new SlashCommandBuilder()
     .addStringOption(opt => opt.setName('username').setDescription('Forum username').setRequired(true));
 
 export async function execute(interaction) {
-    const ownerId = process.env.BOT_OWNER_ID;
-    if (!ownerId || interaction.user.id !== ownerId) {
+    if (!isOwnerOrWhitelisted(interaction)) {
         await interaction.reply({ content: 'Only the bot owner can manage LOA.', flags: MessageFlags.Ephemeral });
         return;
     }

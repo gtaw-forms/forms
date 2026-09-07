@@ -762,3 +762,94 @@ export const getPatientNames = onCall({
         throw new functions.https.HttpsError('internal', `Failed to fetch patient names: ${err.message}`);
     }
 });
+
+// ── VPS saved-report proxies ──
+// Normal saved reports live on morgue-api. Scheduled/deployment-tracked reports
+// continue using RTDB so the Discord bot queue remains unchanged.
+async function callSavedReportsApi(path, options = {}) {
+    if (!MORGUE_API_KEY) throw new functions.https.HttpsError('internal', 'Server configuration error.');
+    const response = await fetch(`${MORGUE_API_URL}${path}`, {
+        ...options,
+        headers: {
+            'x-api-key': MORGUE_API_KEY,
+            ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+            ...(options.headers || {}),
+        },
+    });
+    if (!response.ok) {
+        const text = await response.text();
+        if (response.status === 404) throw new functions.https.HttpsError('not-found', 'Saved report not found.');
+        console.error(`[savedReportsApi] VPS returned ${response.status}: ${text.slice(0, 500)}`);
+        throw new functions.https.HttpsError('internal', 'Saved report service failed.');
+    }
+    return response.json();
+}
+
+function requireSignedIn(request) {
+    if (!request.auth) throw new functions.https.HttpsError('unauthenticated', 'Authentication required.');
+}
+
+export const listSavedReports = onCall({ region: 'europe-west2' }, async (request) => {
+    requireSignedIn(request);
+    const author = String(request.data?.author || '').trim();
+    if (!author) throw new functions.https.HttpsError('invalid-argument', 'author is required.');
+    return callSavedReportsApi(`/api/reports?author=${encodeURIComponent(author)}`);
+});
+
+export const getSavedReport = onCall({ region: 'europe-west2' }, async (request) => {
+    requireSignedIn(request);
+    const author = String(request.data?.author || '').trim();
+    const key = String(request.data?.key || '').trim();
+    if (!author || !key) throw new functions.https.HttpsError('invalid-argument', 'author and key are required.');
+    return callSavedReportsApi(`/api/reports/${encodeURIComponent(author)}/${encodeURIComponent(key)}`);
+});
+
+export const saveSavedReport = onCall({ region: 'europe-west2' }, async (request) => {
+    requireSignedIn(request);
+    const { author, key, report, bbCode = '' } = request.data || {};
+    if (!author || !key || !report || typeof report !== 'object' || Array.isArray(report)) {
+        throw new functions.https.HttpsError('invalid-argument', 'author, key and report are required.');
+    }
+    return callSavedReportsApi('/api/reports', {
+        method: 'POST',
+        body: JSON.stringify({ author, key, report, bbCode }),
+    });
+});
+
+export const deleteSavedReport = onCall({ region: 'europe-west2' }, async (request) => {
+    requireSignedIn(request);
+    const author = String(request.data?.author || '').trim();
+    const key = String(request.data?.key || '').trim();
+    if (!author || !key) throw new functions.https.HttpsError('invalid-argument', 'author and key are required.');
+    return callSavedReportsApi(`/api/reports/${encodeURIComponent(author)}/${encodeURIComponent(key)}`, { method: 'DELETE' });
+});
+
+export const getSavedReportStats = onCall({ region: 'europe-west2' }, async (request) => {
+    requireSignedIn(request);
+    const isSuperAdmin = request.auth.token.isSuperAdmin === true || request.auth.token.accessLevel === 'superadmin';
+    const accessLevel = Number(request.auth.token.accessLevel) || 0;
+    const isFactionMember = request.auth.token.isFactionMember === true;
+    if (!isSuperAdmin && accessLevel < 1 && !isFactionMember) {
+        throw new functions.https.HttpsError('permission-denied', 'Admin access required.');
+    }
+    return callSavedReportsApi('/api/reports/stats');
+});
+
+export const createSavedReportsBackup = onCall({ region: 'europe-west2' }, async (request) => {
+    requireSignedIn(request);
+    const isSuperAdmin = request.auth.token.isSuperAdmin === true || request.auth.token.accessLevel === 'superadmin';
+    if (!isSuperAdmin) throw new functions.https.HttpsError('permission-denied', 'Super-admin access required.');
+    return callSavedReportsApi('/api/reports/backup', { method: 'POST', body: '{}' });
+});
+
+export const restoreSavedReportsBackup = onCall({ region: 'europe-west2' }, async (request) => {
+    requireSignedIn(request);
+    const isSuperAdmin = request.auth.token.isSuperAdmin === true || request.auth.token.accessLevel === 'superadmin';
+    if (!isSuperAdmin) throw new functions.https.HttpsError('permission-denied', 'Super-admin access required.');
+    const backupId = String(request.data?.backupId || '').trim();
+    if (!backupId || request.data?.confirm !== true) throw new functions.https.HttpsError('invalid-argument', 'backupId and confirm=true are required.');
+    return callSavedReportsApi('/api/reports/restore', {
+        method: 'POST',
+        body: JSON.stringify({ backupId, confirm: true }),
+    });
+});

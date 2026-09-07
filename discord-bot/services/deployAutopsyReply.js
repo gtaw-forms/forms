@@ -1105,7 +1105,7 @@ export async function handleAutopsyReply(report) {
  * Retries re-post forum replies (COMPLETION_TEMPLATE) and re-send DMs
  * (using stored completedBbCode from Firebase).
  */
-export async function retryFailedCompletionSteps(db) {
+export async function retryFailedCompletionSteps(db, { entries } = {}) {
     logFnCall('autoDeploy', 'retryFailedCompletionSteps', 'Scanning for failed completion steps to retry');
 
     // Respect maintenance mode — skip retries during an outage
@@ -1116,18 +1116,21 @@ export async function retryFailedCompletionSteps(db) {
 
     const COOLDOWN_MS = 30 * 60 * 1000; // skip steps retried within the last 30 min
     try {
-        const snap = await db.ref('autopsy-requested').once('value');
-        if (!snap.exists()) return;
+        if (entries === undefined) {
+            const snap = await db.ref('autopsy-requested').once('value');
+            entries = snap.exists() ? snap.val() || {} : {};
+        }
+        if (Object.keys(entries).length === 0) return;
 
         const failedEntries = [];
         let attemptingCount = 0;
 
-        snap.forEach((child) => {
-            const entry = child.val();
+        for (const [key, entry] of Object.entries(entries)) {
+            if (!entry) continue;
             const steps = entry.completionSteps;
-            if (!steps) return;
+            if (!steps) continue;
 
-            const caseLabel = `"${entry.name || entry.oocName || 'Unknown'}" (#${child.key})`;
+            const caseLabel = `"${entry.name || entry.oocName || 'Unknown'}" (#${key})`;
 
             for (const [stepName, stepData] of Object.entries(steps)) {
                 if (stepData?.status === 'failed') {
@@ -1137,14 +1140,14 @@ export async function retryFailedCompletionSteps(db) {
                         console.log(`[AUTO-COMPLETE] ${stepName} for ${caseLabel} — retried <30 min ago, cooling down`);
                         continue;
                     }
-                    failedEntries.push({ key: child.key, entry, stepName, stepData, caseLabel });
+                    failedEntries.push({ key, entry, stepName, stepData, caseLabel });
                     console.warn(`[AUTO-COMPLETE] FAILED ${stepName} for ${caseLabel}: ${stepData.detail || 'No details'}`);
                 } else if (stepData?.status === 'attempting') {
                     attemptingCount++;
                     console.warn(`[AUTO-COMPLETE] ATTEMPTING (crash mid-op) ${stepName} for ${caseLabel} — ${stepData.detail || ''} — SKIPPING to avoid duplicate. Check manually if needed.`);
                 }
             }
-        });
+        }
 
         if (failedEntries.length === 0) {
             if (attemptingCount > 0) {

@@ -2,6 +2,7 @@ import React, { useState, useCallback, useMemo, Fragment } from 'react';
 import { database } from '../../firebase';
 import { ref, get } from 'firebase/database';
 import { useData } from '../../contexts/DataContext';
+import { triggerGetSavedReportStats } from '../../services/firebaseFunctions';
 import { Table, Button, Spinner, Alert, Card, Row, Col, Form, Tabs, Tab, InputGroup  } from 'react-bootstrap';
 import './AdminDashboard.css'; // Reusing some styles
 
@@ -45,11 +46,10 @@ const EmployeeManager = () => {
 
         try {
             // 1. Fetch all data concurrently
-            const reportsRef = ref(database, 'newSavedReports');
             const factionMembersRef = ref(database, 'factions/364/members');
 
-            const [reportsSnapshot, factionMembersSnapshot] = await Promise.all([
-                get(reportsRef),
+            const [reportStats, factionMembersSnapshot] = await Promise.all([
+                triggerGetSavedReportStats(),
                 get(factionMembersRef)
             ]);
 
@@ -64,11 +64,8 @@ const EmployeeManager = () => {
                 });
             }
 
-            // 3. Process Reports
-            if (!reportsSnapshot.exists()) {
-                throw new Error("No reports found in 'newSavedReports'.");
-            }
-            const reportsByAuthor = reportsSnapshot.val();
+            // 3. Process VPS report aggregates; report bodies never need to be
+            // downloaded for this admin summary.
             const employeeProcessingStore = {};
             const categoryProcessingStore = {};
             
@@ -79,12 +76,8 @@ const EmployeeManager = () => {
               'Lierin Sherwood': 'Roger McFarlane*',
             };
 
-            for (const authorId in reportsByAuthor) {
-                const reports = reportsByAuthor[authorId];
-                
-                for (const reportKey in reports) {
-                    const report = reports[reportKey];
-                    let authorName = report.authorName || authorId;
+            for (const [rawAuthorName, forms] of Object.entries(reportStats?.byAuthorNameForm || {})) {
+                    let authorName = rawAuthorName;
 
                     // Merge specified names
                     authorName = nameMergeMap[authorName] || authorName;
@@ -99,28 +92,25 @@ const EmployeeManager = () => {
                             categories: {}
                         };
                     }
-                    
-                    const formMeta = formMetaMap[report.formId] || { category: 'Uncategorized', name: report.formName || 'Unknown Form' };
-                    const { category, name: formName } = formMeta;
+                    for (const [formId, count] of Object.entries(forms || {})) {
+                        const formMeta = formMetaMap[formId] || { category: 'Uncategorized', name: formId || 'Unknown Form' };
+                        const { category, name: formName } = formMeta;
+                        const reportCount = Number(count) || 0;
+                        employeeProcessingStore[authorName].total += reportCount;
+                        employeeProcessingStore[authorName].categories[category] = (employeeProcessingStore[authorName].categories[category] || 0) + reportCount;
 
-                    // Increment employee stats
-                    employeeProcessingStore[authorName].total += 1;
-                    employeeProcessingStore[authorName].categories[category] = (employeeProcessingStore[authorName].categories[category] || 0) + 1;
-                
-                    // Initialize category structure if it doesn't exist
-                    if (!categoryProcessingStore[category]) {
-                        categoryProcessingStore[category] = { total: 0, forms: {} };
-                    }
-                    if (!categoryProcessingStore[category].forms[formName]) {
-                        categoryProcessingStore[category].forms[formName] = { total: 0, employees: {} };
-                    }
+                        if (!categoryProcessingStore[category]) {
+                            categoryProcessingStore[category] = { total: 0, forms: {} };
+                        }
+                        if (!categoryProcessingStore[category].forms[formName]) {
+                            categoryProcessingStore[category].forms[formName] = { total: 0, employees: {} };
+                        }
 
-                    // Increment category totals and employee-specific counts
-                    categoryProcessingStore[category].total += 1;
-                    categoryProcessingStore[category].forms[formName].total += 1;
-                    categoryProcessingStore[category].forms[formName].employees[authorName] = (categoryProcessingStore[category].forms[formName].employees[authorName] || 0) + 1;
+                        categoryProcessingStore[category].total += reportCount;
+                        categoryProcessingStore[category].forms[formName].total += reportCount;
+                        categoryProcessingStore[category].forms[formName].employees[authorName] = (categoryProcessingStore[category].forms[formName].employees[authorName] || 0) + reportCount;
+                    }
                 }
-            }
             
             setStats(Object.values(employeeProcessingStore));
             setCategoryStats(categoryProcessingStore);

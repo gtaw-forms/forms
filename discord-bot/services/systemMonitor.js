@@ -215,17 +215,56 @@ async function checkForumLatency() {
 }
 
 // ── Morgue Overdue Check ──
+// FIX: Was reading RTDB `morgue-records` (stale since VPS dual-write off, last 9/1) → false 100h overdue.
+// Now reads VPS canonical `morgue-data.json` via local API (primary) with RTDB fallback.
+
+async function getVpsMorgueLatest() {
+    try {
+        const controller = new AbortController();
+        const t = setTimeout(() => controller.abort(), 4000);
+        const res = await fetch('http://127.0.0.1:3001/api/morgue?limit=1', {
+            headers: { 'x-api-key': (process.env.MORGUE_API_KEYS || '').split(',')[0]?.trim() || '' },
+            signal: controller.signal,
+        });
+        clearTimeout(t);
+        if (!res.ok) return null;
+        const j = await res.json();
+        const rec = j.records?.[0];
+        if (rec?.lastUpdated) return rec.lastUpdated;
+        // fallback to local file
+        const { readFileSync, existsSync } = await import('fs');
+        const { resolve, dirname } = await import('path');
+        const { fileURLToPath } = await import('url');
+        const __d = dirname(fileURLToPath(import.meta.url));
+        const p = resolve(__d, '../morgue-data.json');
+        if (existsSync(p)) {
+            const d = JSON.parse(readFileSync(p, 'utf8'));
+            let latest = 0;
+            for (const r of Object.values(d)) if ((r.lastUpdated||0) > latest) latest = r.lastUpdated;
+            if (latest) return latest;
+        }
+        return null;
+    } catch { return null; }
+}
 
 async function checkMorgueOverdue(db) {
     const MORGUE_OVERDUE_HOURS = 48;
     const MORGUE_OVERDUE_MS = MORGUE_OVERDUE_HOURS * 60 * 60 * 1000;
-    console.log('[MONITOR] 🔍 Checking morgue update status...');
+    console.log('[MONITOR] 🔍 Checking morgue update status (VPS primary)...');
 
     try {
-        const snapshot = await db.ref('morgue-records')
-            .orderByChild('lastUpdated')
-            .limitToLast(1)
-            .once('value');
+        // Try VPS first (canonical since dual-write off)
+        let latest = await getVpsMorgueLatest();
+        if (!latest) {
+            // Fallback to RTDB for safety
+            const snapshot = await db.ref('morgue-records')
+                .orderByChild('lastUpdated')
+                .limitToLast(1)
+                .once('value');
+            if (snapshot.exists()) {
+                snapshot.forEach(child => { latest = child.val().lastUpdated || 0; });
+            }
+        }
 
         if (!snapshot.exists()) {
             console.log('[MONITOR] No morgue records found.');

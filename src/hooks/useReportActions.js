@@ -7,6 +7,7 @@ import { useData } from '../contexts/DataContext';
 import { getCharacterName } from '../utils/identityUtils';
 import { comprehensiveSanitize } from '../utils/textUtils';
 import useGtaWorldAuth from './useGtaWorldAuth';
+import { triggerDeleteSavedReport } from '../services/firebaseFunctions';
 
 const isLocalHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 const REPORTS_PATH = isLocalHost ? 'scheduledReports' : 'newSavedReports';
@@ -27,6 +28,19 @@ export const useReportActions = () => {
         const isLegacyReport = report.legacy;
         const isRecovery = report.isRecovery;
         const sanitizedUserId = comprehensiveSanitize(userId);
+
+        if (report._src === 'vps') {
+            try {
+                await triggerDeleteSavedReport({ author: sanitizedUserId, key: reportFirebaseKey });
+                showNotification('Report deleted successfully.', 'trash');
+                if (onSuccess) onSuccess();
+            } catch (error) {
+                console.error(`Error deleting VPS report ${reportFirebaseKey} for user ${userId}:`, error);
+                Sentry.captureException(error, { extra: { context: 'deleteVpsReport', userId, reportFirebaseKey } });
+                showNotification(`Failed to delete report: ${error.message}`, 'error');
+            }
+            return;
+        }
         
         let reportPath;
         let bbCodePath = null;

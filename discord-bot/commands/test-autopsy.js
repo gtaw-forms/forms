@@ -1,4 +1,5 @@
 import { SlashCommandBuilder, EmbedBuilder, MessageFlags } from 'discord.js';
+import { isOwnerOrWhitelisted } from '../services/permissions.js';
 
 export const data = new SlashCommandBuilder()
     .setName('test-autopsy')
@@ -14,8 +15,7 @@ export const data = new SlashCommandBuilder()
             ));
 
 export async function execute(interaction) {
-    const ownerId = process.env.BOT_OWNER_ID;
-    if (!ownerId || interaction.user.id !== ownerId) {
+    if (!isOwnerOrWhitelisted(interaction)) {
         await interaction.reply({ content: 'Only the bot owner can run autopsy tests.', flags: MessageFlags.Ephemeral });
         return;
     }

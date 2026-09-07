@@ -74,7 +74,7 @@
       ".indexOn": "lastUpdated"
     },
     "autopsy-requested": {
-      ".indexOn": ["oocName", "name", "lssdCrosspostStatus", "lspdCrosspostStatus", "lssdTopicId", "lspd-acknowledge-reply", "lssd-acknowledge-reply", "phmc-acknowledge-reply", "sadcr-acknowledge-reply", "dao-acknowledge-reply"]
+    ".indexOn": ["oocName", "name", "completedAt", "lssdCrosspostStatus", "lspdCrosspostStatus", "lssdTopicId", "lspd-acknowledge-reply", "lssd-acknowledge-reply", "phmc-acknowledge-reply", "sadcr-acknowledge-reply", "dao-acknowledge-reply"]
     },
     "dev-reports": {
       ".read": true,

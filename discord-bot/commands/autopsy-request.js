@@ -12,6 +12,7 @@
  *        that the autopsy monitor honors (assigns that ME instead of rotation).
  */
 import { SlashCommandBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, EmbedBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from 'discord.js';
+import { isOwnerOrWhitelisted } from '../services/permissions.js';
 import firebase from '../services/firebase.js';
 import { getForumClient } from '../services/forumClient.js';
 import { getRotationStatus } from '../services/autopsyRotation.js';
@@ -47,8 +48,7 @@ export const data = new SlashCommandBuilder()
 // ── Permission ──
 
 async function isAllowed(interaction, db) {
-    const ownerId = process.env.BOT_OWNER_ID;
-    if (ownerId && interaction.user.id === ownerId) return true;
+    if (isOwnerOrWhitelisted(interaction)) return true;
 
     // ME gate: the Discord user must be mapped to a rotation ME
     // (autopsy-requests/discord-members/<forum_name> = discordUserId).
@@ -396,7 +396,7 @@ export async function handleButton(interaction) {
             return;
         }
         const { nonce, draft } = found;
-        if (draft.authorId !== interaction.user.id && interaction.user.id !== process.env.BOT_OWNER_ID) {
+        if (draft.authorId !== interaction.user.id && !isOwnerOrWhitelisted(interaction)) {
             await interaction.reply({ content: 'Only the requester or bot owner can approve this.', flags: MessageFlags.Ephemeral });
             return;
         }
@@ -486,7 +486,7 @@ export async function handleButton(interaction) {
             return;
         }
         const { nonce, draft } = found;
-        if (draft.authorId !== interaction.user.id && interaction.user.id !== process.env.BOT_OWNER_ID) {
+        if (draft.authorId !== interaction.user.id && !isOwnerOrWhitelisted(interaction)) {
             await interaction.reply({ content: 'Only the requester or bot owner can edit this.', flags: MessageFlags.Ephemeral });
             return;
         }
@@ -506,7 +506,7 @@ export async function handleButton(interaction) {
             return;
         }
         const { nonce, draft } = found;
-        if (draft.authorId !== interaction.user.id && interaction.user.id !== process.env.BOT_OWNER_ID) {
+        if (draft.authorId !== interaction.user.id && !isOwnerOrWhitelisted(interaction)) {
             await interaction.reply({ content: 'Only the requester or bot owner can deny this.', flags: MessageFlags.Ephemeral });
             return;
         }

@@ -9,6 +9,7 @@
  * Aggregates `scheduledReports` (bot deploy queue) + `newSavedReports` (live saves).
  */
 import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from 'discord.js';
+import { isOwnerOrWhitelisted } from '../services/permissions.js';
 import firebase from '../services/firebase.js';
 
 const FORM_NAMES = {
@@ -70,29 +71,68 @@ async function gatherStats(db) {
     const heat = Array.from({ length: 7 }, () => new Array(24).fill(0));
     let total = 0;
 
-    for (const path of ['newSavedReports', 'scheduledReports']) {
-        const snap = await db.ref(path).once('value');
-        if (!snap.exists()) continue;
-        for (const [a, reports] of Object.entries(snap.val())) {
-            if (!reports || typeof reports !== 'object') continue;
-            for (const [, r] of Object.entries(reports)) {
-                if (!r || typeof r !== 'object' || !(r.formId || r.originalKey || r.data)) continue;
-                const fid = r.formId || 'unknown';
-                byForm.set(fid, (byForm.get(fid) || 0) + 1);
-                total++;
-                allAuthors.set(a, (allAuthors.get(a) || 0) + 1);
-                const section = sectionOf(fid);
-                if (!sectionAuthors.has(section)) sectionAuthors.set(section, new Map());
-                const sm = sectionAuthors.get(section);
-                sm.set(a, (sm.get(a) || 0) + 1);
-                const t = Number(r.timestamp) || 0;
-                if (t) {
-                    const d = new Date(t);
-                    const mk = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
-                    byMonth.set(mk, (byMonth.get(mk) || 0) + 1);
-                    heat[d.getUTCDay()][d.getUTCHours()]++;
+    const addReport = (author, r) => {
+        if (!r || typeof r !== 'object' || !(r.formId || r.originalKey || r.data)) return;
+        const fid = r.formId || 'unknown';
+        byForm.set(fid, (byForm.get(fid) || 0) + 1);
+        total++;
+        allAuthors.set(author, (allAuthors.get(author) || 0) + 1);
+        const section = sectionOf(fid);
+        if (!sectionAuthors.has(section)) sectionAuthors.set(section, new Map());
+        const sm = sectionAuthors.get(section);
+        sm.set(author, (sm.get(author) || 0) + 1);
+        const t = Number(r.timestamp) || 0;
+        if (t) {
+            const d = new Date(t);
+            const mk = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+            byMonth.set(mk, (byMonth.get(mk) || 0) + 1);
+            heat[d.getUTCDay()][d.getUTCHours()]++;
+        }
+    };
+
+    // Normal reports are served by morgue-api after migration. Keep the small
+    // scheduled queue in RTDB because it is still the bot's live work queue.
+    let vpsStatsLoaded = false;
+    try {
+        const apiKey = (process.env.MORGUE_API_KEYS || '').split(',')[0]?.trim();
+        const response = await fetch('http://127.0.0.1:3001/api/reports/stats', {
+            headers: { 'x-api-key': apiKey || '' },
+        });
+        if (response.ok) {
+            const vps = await response.json();
+            vpsStatsLoaded = true;
+            for (const [fid, count] of Object.entries(vps.byForm || {})) byForm.set(fid, Number(count) || 0);
+            for (const [author, count] of Object.entries(vps.byAuthor || {})) allAuthors.set(author, Number(count) || 0);
+            for (const [month, count] of Object.entries(vps.byMonth || {})) byMonth.set(month, Number(count) || 0);
+            for (const [author, forms] of Object.entries(vps.byAuthorForm || {})) {
+                for (const [fid, count] of Object.entries(forms)) {
+                    const section = sectionOf(fid);
+                    if (!sectionAuthors.has(section)) sectionAuthors.set(section, new Map());
+                    sectionAuthors.get(section).set(author, Number(count) || 0);
                 }
             }
+            for (const [day, hours] of (vps.heat || []).entries()) {
+                for (const [hour, count] of (hours || []).entries()) heat[day][hour] += Number(count) || 0;
+            }
+            total += Number(vps.total) || 0;
+        }
+    } catch (err) {
+        console.warn('[GLOBAL-STATS] VPS report stats unavailable:', err.message);
+    }
+
+    if (!vpsStatsLoaded) {
+        const legacySnap = await db.ref('newSavedReports').once('value');
+        if (legacySnap.exists()) {
+            for (const [author, reports] of Object.entries(legacySnap.val() || {})) {
+                for (const report of Object.values(reports || {})) addReport(author, report);
+            }
+        }
+    }
+
+    const scheduledSnap = await db.ref('scheduledReports').once('value');
+    if (scheduledSnap.exists()) {
+        for (const [author, reports] of Object.entries(scheduledSnap.val() || {})) {
+            for (const report of Object.values(reports || {})) addReport(author, report);
         }
     }
     return { total, byForm, sectionAuthors, allAuthors, byMonth, heat };
@@ -212,8 +252,7 @@ export const data = new SlashCommandBuilder()
     .setDescription('(Owner) PHMC Forms usage stats — volume, breakdown, activity heatmap');
 
 export async function execute(interaction) {
-    const ownerId = process.env.BOT_OWNER_ID;
-    if (!ownerId || interaction.user.id !== ownerId) {
+    if (!isOwnerOrWhitelisted(interaction)) {
         await interaction.reply({ content: 'Only the bot owner can view global stats.', flags: MessageFlags.Ephemeral });
         return;
     }

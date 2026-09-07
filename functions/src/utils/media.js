@@ -19,6 +19,10 @@ export const uploadImageProxy = onCall({
     if (!image) {
         throw new HttpsError("invalid-argument", "The function must be called with an 'image' (base64 string).");
     }
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required.');
+    if (typeof image !== 'string' || image.length > 12 * 1024 * 1024) {
+        throw new HttpsError('invalid-argument', 'Image payload is invalid or too large.');
+    }
 
     const targetService = service || "imgbb"; // Default to imgbb if not specified
 
@@ -32,10 +36,14 @@ export const uploadImageProxy = onCall({
             const formData = new FormData();
             formData.append("image", image);
 
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 30_000);
             const response = await fetch(`https://api.imgbb.com/1/upload?key=${apiKey}`, {
                 method: "POST",
                 body: formData,
+                signal: controller.signal,
             });
+            clearTimeout(timeout);
 
             if (!response.ok) {
                 const text = await response.text();
@@ -71,11 +79,15 @@ export const uploadImageProxy = onCall({
                 headers["Authorization"] = `Client-ID ${clientId}`;
             }
 
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 30_000);
             const response = await fetch("https://api.imgur.com/3/image", {
                 method: "POST",
                 headers: headers,
                 body: formData,
+                signal: controller.signal,
             });
+            clearTimeout(timeout);
 
             if (!response.ok) {
                 const text = await response.text();

@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { database } from '../firebase';
 import { ref, get } from 'firebase/database';
-import { triggerGetReportBBCode } from '../services/firebaseFunctions';
+import { triggerGetReportBBCode, triggerListSavedReports, triggerGetSavedReport } from '../services/firebaseFunctions';
 import * as Sentry from "@sentry/react";
 import { useNotification } from '../contexts/NotificationContext';
 import { useData } from '../contexts/DataContext';
@@ -48,15 +48,28 @@ export const useReportLoader = () => {
         const scheduledRef = ref(database, `scheduledReports/${sanitizedUserId}`);
 
         try {
-            const [legacySnapshot, newSnapshot, scheduledSnapshot] = await Promise.all([
-                get(legacyReportsRef),
-                get(newReportsRef),
-                get(scheduledRef)
-            ]);
+            let legacySnapshot = null;
+            let newSnapshot = null;
+            let vpsReports = null;
+            try {
+                const result = await triggerListSavedReports({ author: sanitizedUserId });
+                vpsReports = Array.isArray(result?.reports) ? result.reports : [];
+                if (vpsReports.length === 0) {
+                    [legacySnapshot, newSnapshot] = await Promise.all([get(legacyReportsRef), get(newReportsRef)]);
+                }
+            } catch (error) {
+                console.warn('[useReportLoader] VPS report list unavailable; falling back to RTDB:', error.message);
+                [legacySnapshot, newSnapshot] = await Promise.all([get(legacyReportsRef), get(newReportsRef)]);
+            }
+            const scheduledSnapshot = await get(scheduledRef);
 
             let allReports = [];
 
-            if (legacySnapshot.exists()) {
+            if (vpsReports) {
+                allReports.push(...vpsReports.map(report => ({ ...report, _src: 'vps', legacy: false })));
+            }
+
+            if (legacySnapshot?.exists()) {
                 const legacyData = legacySnapshot.val();
                 const legacyReports = Object.keys(legacyData).map(key => ({
                     ...legacyData[key],
@@ -75,7 +88,7 @@ export const useReportLoader = () => {
                 allReports.push(...processedLegacyReports);
             }
 
-            if (newSnapshot.exists()) {
+            if (newSnapshot?.exists()) {
                 const newData = newSnapshot.val();
                 const newReports = Object.keys(newData).map(key => ({
                     ...newData[key],
@@ -143,34 +156,43 @@ export const useReportLoader = () => {
             bbCodePath = `scheduledReportsBBCode/${sanitizedUserId}/${reportFirebaseKey}`;
         }
         
-        const reportRef = ref(database, reportPath);
-        const bbCodeRef = ref(database, bbCodePath);
-
         let loadingNotifId;
         if (!returnOnly) {
             loadingNotifId = showNotification(`Loading report: ${reportFirebaseKey} for ${userId}...`, 'info-circle', 0);
         }
 
         try {
-            const reportSnapshot = await get(reportRef);
-
-            // P2: saved-report BBCode now lives on the VPS (newSavedReportBBCode
-            // migrated off RTDB). Try the Cloud Function first for the live
-            // newSavedReports store; fall back to RTDB for legacy reports.
+            let reportSnapshot;
             let bbCodeSnapshot = null;
-            const useVpsBbcode = !isLegacyReport && report._src !== 'scheduled' && !isLocalHost && bbCodePath.startsWith(BBCODE_PATH);
-            if (useVpsBbcode) {
-                let vpsBbCode = '';
-                try {
-                    const res = await triggerGetReportBBCode({ author: sanitizedUserId, key: reportFirebaseKey });
-                    if (res && typeof res.bbCode === 'string' && res.bbCode) vpsBbCode = res.bbCode;
-                } catch (e) { /* fall through to RTDB */ }
-                if (vpsBbCode) {
-                    bbCodeSnapshot = { exists: () => true, val: () => ({ bbCode: vpsBbCode }) };
+            if (report._src === 'vps') {
+                const result = await triggerGetSavedReport({ author: sanitizedUserId, key: reportFirebaseKey });
+                reportSnapshot = {
+                    exists: () => !!result?.report,
+                    val: () => result?.report || null,
+                };
+                bbCodeSnapshot = {
+                    exists: () => typeof result?.bbCode === 'string' && result.bbCode.length > 0,
+                    val: () => ({ bbCode: result?.bbCode || '' }),
+                };
+            } else {
+                const reportRef = ref(database, reportPath);
+                const bbCodeRef = ref(database, bbCodePath);
+                reportSnapshot = await get(reportRef);
+
+                // Legacy reports may still have BBCode in RTDB. Modern reports
+                // use the VPS BBCode store until the full report migration lands.
+                const useVpsBbcode = !isLegacyReport && report._src !== 'scheduled' && !isLocalHost && bbCodePath.startsWith(BBCODE_PATH);
+                if (useVpsBbcode) {
+                    let vpsBbCode = '';
+                    try {
+                        const res = await triggerGetReportBBCode({ author: sanitizedUserId, key: reportFirebaseKey });
+                        if (res && typeof res.bbCode === 'string' && res.bbCode) vpsBbCode = res.bbCode;
+                    } catch (e) { /* fall through to RTDB */ }
+                    if (vpsBbCode) {
+                        bbCodeSnapshot = { exists: () => true, val: () => ({ bbCode: vpsBbCode }) };
+                    }
                 }
-            }
-            if (!bbCodeSnapshot) {
-                bbCodeSnapshot = await get(bbCodeRef);
+                if (!bbCodeSnapshot) bbCodeSnapshot = await get(bbCodeRef);
             }
 
             if (reportSnapshot.exists()) {
@@ -192,14 +214,24 @@ export const useReportLoader = () => {
                     const bbCodeSize = bbCodeData ? new TextEncoder().encode(JSON.stringify(bbCodeData)).length : 0;
                     const totalSize = reportSize + bbCodeSize;
 
+                    const reportSizeKb = reportSize / 1024;
+                    const bbCodeSizeKb = bbCodeSize / 1024;
                     sendDataRequestLog(
                         'useReportLoader.js/loadReportForUser',
                         false,
-                        'Firebase Read',
-                        totalSize,
+                        report._src === 'vps' ? 'VPS Report API' : 'Firebase Read',
+                        0,
+                        reportSizeKb + bbCodeSizeKb,
                         isGtaAuthenticated,
                         getCharacterName(gtaWorldUser),
-                        `Report: ${reportPath} (${reportSize} bytes)${bbCodeData ? `, BBCode: ${bbCodePath} (${bbCodeSize} bytes)` : ''}`
+                        ['saved-report'],
+                        [],
+                        { 'saved-report': reportSizeKb + bbCodeSizeKb },
+                        null,
+                        {
+                            route: window.location.hash || '#/',
+                            trigger: 'load-report',
+                        },
                     );
                 }
 
@@ -367,8 +399,8 @@ export const useReportLoader = () => {
 
                 return { success: true, reportData: { ...reportData, data: loadedFormData, bbCode: loadedBbCode } };
             } else {
-                if (!returnOnly) showNotification(`Report not found in Firebase: ${reportFirebaseKey}`, 'error');
-                return { success: false, message: `Report not found in Firebase: ${reportFirebaseKey}` };
+                if (!returnOnly) showNotification(`Report not found: ${reportFirebaseKey}`, 'error');
+                return { success: false, message: `Report not found: ${reportFirebaseKey}` };
             }
         } catch (error) {
             console.error(`[loadReportForUser] Error loading report ${reportFirebaseKey} for user ${userId}:`, error);
@@ -385,9 +417,12 @@ export const useReportLoader = () => {
     const countAllUserReports = useCallback(async (userId) => {
         if (!userId) return 0;
         const sanitizedUserId = comprehensiveSanitize(userId);
+        try {
+            const vpsResult = await triggerListSavedReports({ author: sanitizedUserId });
+            if (Array.isArray(vpsResult?.reports) && vpsResult.reports.length > 0) return vpsResult.reports.length;
+        } catch { /* fall back to legacy RTDB during migration */ }
         const legacyReportsRef = ref(database, `savedReports/${sanitizedUserId}`);
         const newReportsRef = ref(database, `${REPORTS_PATH}/${sanitizedUserId}`);
-
         try {
             const [legacySnapshot, newSnapshot] = await Promise.all([
                 get(legacyReportsRef),
@@ -406,6 +441,11 @@ export const useReportLoader = () => {
     const checkIfMigratedReportExists = useCallback(async (userId, originalKey) => {
         if (!userId || !originalKey) return { exists: false };
         const sanitizedUserId = comprehensiveSanitize(userId);
+        try {
+            const vpsResult = await triggerListSavedReports({ author: sanitizedUserId });
+            const match = (vpsResult?.reports || []).find(report => report.originalKey === originalKey);
+            if (match) return { exists: true, reportKey: match.key };
+        } catch { /* fall back to RTDB during migration */ }
         const newReportsRef = ref(database, `${REPORTS_PATH}/${sanitizedUserId}`);
         try {
             const snapshot = await get(newReportsRef);

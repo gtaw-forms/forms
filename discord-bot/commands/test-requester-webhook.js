@@ -1,4 +1,5 @@
 import { SlashCommandBuilder, EmbedBuilder, MessageFlags } from 'discord.js';
+import { isOwnerOrWhitelisted } from '../services/permissions.js';
 import firebase from '../services/firebase.js';
 import { notifyRequesterOfCompletion, getFactionWebhookUrl, isTestMode } from '../services/requesterWebhook.js';
 
@@ -44,8 +45,7 @@ async function resolveCase(db, needle) {
 }
 
 export async function execute(interaction) {
-    const ownerId = process.env.BOT_OWNER_ID;
-    if (!ownerId || interaction.user.id !== ownerId) {
+    if (!isOwnerOrWhitelisted(interaction)) {
         await interaction.reply({ content: 'Only the bot owner can run this.', flags: MessageFlags.Ephemeral });
         return;
     }

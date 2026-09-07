@@ -42,9 +42,6 @@ const AdminDashboard = ({
     const [selectedSection, setSelectedSection] = useState('serviceStatus');
     const [diagnosticsResult, setDiagnosticsResult] = useState(null);
     const [isRunningDiagnostics, setIsRunningDiagnostics] = useState(false);
-    const [isMigratingReports, setIsMigratingReports] = useState(false);
-    const [isTriggeringReport, setIsTriggeringReport] = useState(false);
-    const [isScanningLocations, setIsScanningLocations] = useState(false);
     const [lsccModalActive, setLsccModalActive] = useState(null);
     const [showMigrator, setShowMigrator] = useState(false);
     const [mapEnabled, setMapEnabled] = useState(false);
@@ -170,21 +167,6 @@ const AdminDashboard = ({
         }
     };
 
-    const handleScanLocations = async () => {
-        setIsScanningLocations(true);
-        showInAppNotification && showInAppNotification("Scanning reports for unknown locations...", "info");
-        try {
-            const functions = getFunctions();
-            const scanFunc = httpsCallable(functions, 'scanUntrackedLocations');
-            const result = await scanFunc();
-            showInAppNotification && showInAppNotification(result.data.message, result.data.success ? "success" : "error");
-        } catch (error) {
-            showInAppNotification && showInAppNotification("Error scanning locations.", "error");
-        } finally {
-            setIsScanningLocations(false);
-        }
-    };
-    
     // Use the unified GTA World auth hook
     const { 
         user: gtaWorldUser, 
@@ -327,79 +309,6 @@ const AdminDashboard = ({
         } catch (error) {
             console.error('Error sending test webhook:', error);
             showInAppNotification && showInAppNotification('Error sending test webhook', 'error');
-        }
-    };
-
-    const handleMigrateReports = async () => {
-        if (!window.confirm("Are you sure you want to run the report migration? This operation cannot be undone.")) {
-            return;
-        }
-
-        setIsMigratingReports(true);
-        showInAppNotification && showInAppNotification('Starting report migration...', 'info');
-
-        try {
-            const functions = getFunctions();
-            const migrateReports = httpsCallable(functions, 'migrateReportsToNewStructure');
-            const result = await migrateReports();
-
-            if (result.data.success) {
-                showInAppNotification && showInAppNotification(
-                    `Migration complete: ${result.data.migratedCount} reports migrated.`,
-                    'success'
-                );
-                console.log('Migration result:', result.data);
-            } else {
-                showInAppNotification && showInAppNotification(
-                    `Migration failed: ${result.data.message || 'Unknown error'}`,
-                    'error'
-                );
-                console.error('Migration failed:', result.data);
-            }
-        } catch (error) {
-            console.error('Error calling migrateReportsToNewStructure:', error);
-            showInAppNotification && showInAppNotification(
-                `Error during migration: ${error.message}`,
-                'error'
-            );
-            Sentry.captureException(error, { extra: { context: 'handleMigrateReports' } });
-        } finally {
-            setIsMigratingReports(false);
-        }
-    };
-
-    const handleTriggerCoronerReport = async (type) => {
-        if (!window.confirm(`Are you sure you want to force trigger a ${type} coroner report? This will send a webhook to the admin channel.`)) {
-            return;
-        }
-
-        setIsTriggeringReport(true);
-        showInAppNotification && showInAppNotification(`Triggering ${type} report...`, 'info');
-
-        try {
-            const functions = getFunctions();
-            const triggerReport = httpsCallable(functions, 'triggerCoronerReport');
-            const result = await triggerReport({ type });
-
-            if (result.data.success) {
-                showInAppNotification && showInAppNotification(
-                    result.data.message || 'Report triggered successfully.',
-                    'success'
-                );
-            } else {
-                showInAppNotification && showInAppNotification(
-                    `Trigger failed: ${result.data.message || 'Unknown error'}`,
-                    'error'
-                );
-            }
-        } catch (error) {
-            console.error('Error triggering coroner report:', error);
-            showInAppNotification && showInAppNotification(
-                `Error: ${error.message}`,
-                'error'
-            );
-        } finally {
-            setIsTriggeringReport(false);
         }
     };
 
