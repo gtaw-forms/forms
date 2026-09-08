@@ -201,7 +201,7 @@ export async function resolveAutopsyTopic(interaction) {
                                 const completionLspdUrl = completedLspdTopicId
                                     ? `https://lspd.gta.world/viewtopic.php?t=${completedLspdTopicId}`
                                     : null;
-                                const completionBb = buildCompletionBb(completionCaseTitle, requesterName, { faction: completionFaction, lspdUrl: completionLspdUrl });
+                                const completionBb = buildCompletionBb(completionCaseTitle, requesterName, { faction: completionFaction, lspdUrl: completionLspdUrl, formsAutopsy: entry.formsAutopsy });
 
                                 const isMulti = caseRec != null;
                                 let allCasesDone = true;

@@ -1,5 +1,107 @@
 # PHMC Discord Bot — Changelog
 
+## 2026-09-08 — deploy slow-warning threshold 1min → 3min
+
+### Fixed
+- **"Forum Slow to Respond" false alarms** (`deployExecutor.js`) — the 1-min tripwire fired on healthy multi-step autopsy runs (login + post + crosspost + DM routinely take 1-3 min). Raised to 3 min; the 10-min abort is unchanged. No timer leak existed (both guards clear on settle).
+
+## 2026-09-08 — autopsy replies edit-in-place instead of duplicating
+
+### Added
+- **Shared `postOrEditReply` helper (`deployAutopsyReply.js`)** — posts a forum reply, or EDITS the existing reply when the exact post was already made in a prior run (re-queue / retry / restart after a successful post). The reply post id is captured from the reply URL (`p=`) at post time and persisted for future runs. Edit failures never fall back to a new post (that would duplicate); they surface for retry, which attempts the edit again. Dry-run mode never edits.
+- **Deploy-queue PHMC case reply**: re-runs of an already-posted `scheduledReports` entry (stored `deployPostId`) now edit the live reply in place. Fixes the re-queue duplicate scenario (post succeeded but entry re-queued).
+- **Agency crosspost (LSSD/SADCR/DAO)**: persists `<fx>CrosspostReplyPostId` (+ URL) on success; main, fallback, and retry paths edit the stored reply instead of posting a duplicate.
+- **PHMC completion reply (f=265 notice)**: persists `phmcCompletionReplyPostId` (+ URL) on success; the retry path edits instead of duplicating.
+
+### Deployed
+- SCP `deployAutopsyReply.js` + `pm2 restart phmc-bot`.
+
+## 2026-09-08 — dashboard ME Assignments now live-update
+
+### Added
+- **Assignment watcher in `dashboardManager.js`** — watches the tiny `autopsy-requests/assignments` node (touched by `recordAssignment`/`clearAssignment` on every assign, reassign, and completion) and triggers an out-of-cycle dashboard rebuild within ~5s, so the ME Assignments field reflects changes immediately instead of waiting for the 10-min cycle. Debounced to coalesce bursts; the initial listener fire is ignored. The 10-min cycle + manual Refresh button are unchanged.
+
+### Deployed
+- SCP `dashboardManager.js` + `pm2 restart phmc-bot` (restart also rebuilt the dashboard once with current data).
+
+## 2026-09-08 — labeled morgue API keys for abuse attribution
+
+### Added
+- **`MORGUE_API_KEYS` / `MORGUE_WRITE_API_KEYS` now support `label:key` entries** (e.g. `forms-functions:pmc_morgue_xxx`). Logs, the in-memory activity record, and Discord webhook lines show `[key_<label>]` instead of an anonymous truncated prefix, and `/api/activity` now includes a per-key summary (`byKey`: count, lastSeen, lastIp, lastStatus, suspicious). Unlabeled keys log as `key_<sha256 fingerprint>` — never raw key material.
+- New shared `services/apiKeyUtil.js` (`stripKeyLabel` / `firstApiKey`); the bot's own health checks (`dashboardManager`, `systemMonitor`, `global-stats`) and the debug scripts now strip labels so labeling the VPS env can't break internal calls.
+
+### Deployed
+- SCP `morgue-api.js`, `services/apiKeyUtil.js`, `services/dashboardManager.js`, `services/systemMonitor.js`, `commands/global-stats.js` + restart `morgue-api` and `phmc-bot`.
+
+## 2026-09-08 — morgue API requester attribution
+
+### Added
+- **Morgue API audit logs now identify PHMC Forms callers** when requests arrive through the Firebase callable proxy: `requestedBy="characterName | oauthName | uid=..."`. The identity is derived server-side from Firebase Auth claims and forwarded in trusted headers; direct API clients remain `external/unknown`.
+- Applied to the morgue-record and agency-credentials proxy calls, including console, in-memory activity, and batched Discord webhook logs.
+- GTAW auth custom tokens now carry `oauthName` and the resolved PHMC `characterName` for future callable attribution.
+
+### Deployed
+- SCP `morgue-api.js` + restart `morgue-api`; deploy updated Firebase Functions (`getMorgueRecords`, `getAgencyCredentials`, auth token claims).
+
+## 2026-09-08 — web autopsy requests: deliver-to PM + Forms Autopsy flag
+
+### Added
+- **Web "Request Autopsy" completion PM now reaches the real requester.** `webAutopsyRequestPoster` writes an `autopsy-requests/web-meta/<topicId>` stub (source/agencyForum/forumAccountUrl) after posting; the monitor merges it onto the `autopsy-requested/<topicId>` entry (`formsAutopsy:true`, `agencyForum`, `forumAccountUrl`). The completion "DM Requester" step (main + retry paths in `deployAutopsyReply.js`) now has a forms branch: it resolves the requester's forum username from the profile URL (new `forumClient.resolveProfileUsername`) and PMs them on the agency forum (LSSD/SADCR/DAO share the lssd domain, LSPD its own, PHMC default) — previously web submissions were skipped because the topic poster was the bot.
+- **`Forms Autopsy: True / False` line in the completion notice** (`completionTemplate.js`) — rendered from `entry.formsAutopsy`; appears in the f=265 completion reply and the LSSD/SADCR/DAO crosspost. Threaded through all `buildCompletionBb` callers (`deployAutopsyReply`, `deployInteraction`, `force-autopsy-send`).
+- Applies to new web submissions (meta is written at post time); existing entries are unaffected.
+
+### Deployed
+- SCP `completionTemplate.js`, `forumClient.js`, `webAutopsyRequestPoster.js`, `autopsyRequestMonitor.js`, `deployAutopsyReply.js`, `deployInteraction.js`, `force-autopsy-send.js` + `pm2 restart phmc-bot`.
+
+## 2026-09-08 — assignment embed: decedent cleanup + OOC in title
+
+### Fixed
+- **Assignment/forward webhook embed (`assignmentWebhook.js`)** — stray `()` parser artifacts are stripped from the decedent ("Unknown () ((Jaliek Myers))" → "Unknown ((Jaliek Myers))") and the embed title now includes the OOC name ("🔬 Autopsy Case Assigned — Unknown ((Jaliek Myers))" instead of "… — Unknown ()"). Applies to the assignment ping + forward + `/forward-autopsy-notify`.
+- **Request parser (`autopsyRequestMonitor.js` body fallback)** — the "Decedent Name" clean-up only stripped the inner `(OOC)` of a `((OOC))` pair, leaving `"Unknown ()"`. It now strips full `((…))` pairs (and any residual empty `()`) so stored names / case titles stay clean going forward.
+
+### Deployed
+- SCP `assignmentWebhook.js`, `autopsyRequestMonitor.js` + `pm2 restart phmc-bot`.
+
+## 2026-09-08 — web autopsy request: real-time RTDB listener (no polling)
+
+### Changed
+- **`services/webAutopsyRequestPoster.js` no longer polls the queue.** It now uses real-time `child_added` / `child_changed` listeners on `autopsy-requests/pending` — the VPS is pushed changes (WebSocket) instead of re-reading the node every 30s (~2880 reads/day → ~0 steady-state; retries cost one targeted read each). Startup recovery comes from the listener's initial replay.
+- Submitted alerts now fire **immediately** on submit (listener push), not up to one poll later.
+
+### Deployed
+- SCP `services/webAutopsyRequestPoster.js` + `pm2 restart phmc-bot`.
+
+## 2026-09-08 — web autopsy request: immediate submit notification
+
+### Added
+- **`services/webAutopsyRequestPoster.js` now alerts as soon as a request is queued**, not just after the forum post. On first sight of a pending entry (~one poll after the user submits, `AUTOPSY_REQUEST_POLL_MS`), it posts a "New autopsy request submitted" alert (decedent, morgue case, requester) and stamps `submittedNotifiedAt` so it fires once. After the topic posts, a second alert carries the forum link; post failures alert after giving up.
+- Notifications go to `AUTOPSY_REQUEST_WEBHOOK_URL` and are **dev-routed** while DEV TEST mode is active (→ `DEV_WEBHOOK_URL`), replacing the previous log-channel `sendWebhook` (which leaked to the live PHMC bot-spam during dev-test).
+- Also fixed `logChannel.js`: during dev-test with no `DEV_LOG_CHANNEL_ID`, log-channel messages are now dropped instead of falling back to the live channel.
+
+### Deployed
+- SCP `webAutopsyRequestPoster.js`, `logChannel.js` + `pm2 restart phmc-bot`.
+
+## 2026-09-08 — DEV TEST webhook routing (no PHMC spam while dev-testing)
+
+### Added
+- **New `services/devRouting.js`** — while DEV TEST autopsy mode is active (`AUTOPSY_DEV_TEST=true` via `/enable-dev-autopsy`), autopsy notifications route to a DEV Discord instead of the live PHMC/faction Discords. Per-webhook `<KEY>_DEV` override wins, else the global `DEV_WEBHOOK_URL`; log-channel messages use `DEV_LOG_CHANNEL_ID`. No dev target configured => the message is dropped (never sent live).
+- Routing applied at **send time** (a runtime `/enable-dev-autopsy` toggle takes effect immediately, no restart): assignment pings (`ASSIGNMENT_WEBHOOK_URL`), auto-forward (`FORWARD_WEBHOOK_URL`, replacing the exported `PHMC_FORWARD_WEBHOOK_URL` const with `getForwardWebhookUrl()`), requester completion webhooks (`AUTOPSY_REQUESTER_WEBHOOK_*` now also route to dev while dev-test is on, alongside the existing `AUTOPSY_REQUESTER_WEBHOOK_TEST_MODE` flag), and the log channel (`sendLogMessage`).
+- Files: `devRouting.js` (new), `assignmentWebhook.js`, `requesterWebhook.js`, `logChannel.js`, `meDiscordNotify.js`, `commands/forward-autopsy-notify.js`. `.env.example` documents `DEV_WEBHOOK_URL` / `DEV_LOG_CHANNEL_ID`.
+
+### Deployed
+- SCP above + `pm2 restart phmc-bot`.
+
+## 2026-09-08 — web autopsy request auto-poster (pending -> f=265)
+
+### Added
+- **New service `services/webAutopsyRequestPoster.js`** — watches `autopsy-requests/pending` (web app "Request Autopsy" submissions) and posts each entry as a topic to **PHMC f=265** using the existing `forumClient.postTopic()` path (login-redirect, flood, and preview handling included). After a successful post the entry flips to `status:'posted'` with `topicUrl`/`postedAt`; failures track `attempts`/`lastError` and retry up to 3× with a 5-min backoff before giving up. The standard autopsy monitor then creates the case + assigns an ME as usual (DEV TEST mode routes to the forced ME).
+- **New owner command `/web-autopsy-autopost`** (`on`/`off`/`status`) — runtime toggle that persists `AUTOPSY_REQUEST_AUTO_POST` to `.env` (no restart needed), mirroring `/enable-dev-autopsy`.
+- **Safety gate:** auto-posting is OFF by default (`AUTOPSY_REQUEST_AUTO_POST=false`); it only runs when enabled. Sweep cadence configurable via `AUTOPSY_REQUEST_POLL_MS` (default 30s).
+- Wired into `index.js` startup (after the autopsy monitor) + slash-command registration.
+
+### Deployed
+- SCP `services/webAutopsyRequestPoster.js`, `commands/web-autopsy-autopost.js`, `index.js` + `pm2 restart phmc-bot`.
+
 ## 2026-09-06 — VPS report store and reference snapshots
 
 ### Added

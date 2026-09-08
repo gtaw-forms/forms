@@ -386,6 +386,8 @@ export const processGtaWorldAuth = onCall({
             const firebaseUid = `gtaw:${finalUser.id}`;
             const additionalClaims = {
                 gtawUsername: finalUser.username,
+                oauthName: finalUser.username,
+                characterName: factionResult.character?.characterName || null,
                 isFactionMember: factionResult.isMember,
                 accessLevel: factionResult.accessLevel,
                 isSuperAdmin: isElevated,
@@ -844,4 +846,3 @@ export const checkFactionMembership = onCall({
         });
     }
 });
-

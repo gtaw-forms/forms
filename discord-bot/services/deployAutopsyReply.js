@@ -32,6 +32,52 @@ export const AUTOPSY_REQUEST_FORUM_ID = 265;
 export { COMPLETION_TEMPLATE };
 
 /**
+ * Extract a reply post id (p=) from a posted-content URL.
+ * @param {string} url
+ * @returns {string|null}
+ */
+export function extractReplyPostId(url) {
+    return (String(url || '').match(/[?&]p=(\d+)/) || [])[1] || null;
+}
+
+/**
+ * Post a forum reply, or EDIT the existing reply when this exact post was
+ * already made in a prior run (re-queue / retry / restart after a successful
+ * post). Prevents duplicate forum replies — the reply post id is captured
+ * from the reply URL at post time and persisted by the caller for future runs.
+ *
+ * Edit failures do NOT fall back to a new post (that would duplicate); they
+ * surface as failure for retry, which attempts the edit again.
+ *
+ * @param {object} client — forum client (default or isolated)
+ * @param {object} opts
+ * @param {string|number} opts.topicId
+ * @param {string|number} opts.forumId
+ * @param {string} opts.bbCode
+ * @param {string} [opts.baseUrl]
+ * @param {string} [opts.title] — subject for edits
+ * @param {string} [opts.existingPostId] — reply post id from a prior run
+ * @param {boolean} [opts.dryRun=false]
+ * @param {string} [opts.logTag='REPLY']
+ * @returns {Promise<{ok: boolean, url: string|null, postId: string|null, edited: boolean, reason?: string, topicMissing?: boolean}>}
+ */
+export async function postOrEditReply(client, { topicId, forumId, bbCode, baseUrl, title, existingPostId, dryRun = false, logTag = 'REPLY' }) {
+    const pid = String(existingPostId || '').trim();
+    if (pid && /^\d+$/.test(pid) && !dryRun) {
+        console.log(`[AUTO] ${logTag} already posted (p=${pid}) — editing in place instead of duplicating`);
+        const editRes = await client.editPostContent(topicId, forumId, pid, bbCode, { title, baseUrl });
+        if (editRes.ok) {
+            return { ok: true, url: editRes.url || null, postId: extractReplyPostId(editRes.url) || pid, edited: true };
+        }
+        console.warn(`[AUTO] ${logTag} edit of p=${pid} failed (${editRes.reason || 'unknown'}) — not posting duplicate`);
+        return { ok: false, url: null, postId: pid, edited: false, reason: editRes.reason || 'Edit failed' };
+    }
+    const r = await client.replyToTopic(topicId, forumId, bbCode, { dryRun, baseUrl });
+    if (!r.ok) return { ...r, postId: null, edited: false };
+    return { ...r, postId: extractReplyPostId(r.url), edited: false };
+}
+
+/**
  * Post the LSSD combined completion + report reply to the LSSD autopsy forum
  * (f=2263). Runs FIRST for LSSD cases in the completion flow so the posted
  * reply URL can be embedded in the f=265 PHMC completion notice.
@@ -135,11 +181,28 @@ async function postLssdCombinedReply({ key, entry, reportData, completionBb, bbC
             await lssdClient.login(process.env[`FORUM_${cfgA.credPrefix}_USERNAME`], process.env[`FORUM_${cfgA.credPrefix}_PASSWORD`], { force: true, baseUrl: agencyBaseUrl });
 
             console.log(`[AUTO-COMPLETE] ${effFaction} combined reply — posting completion + report to #${lssdRequestTopicId}`);
-            const r = await lssdClient.replyToTopic(lssdRequestTopicId, agencyForumId, lssdCombinedBb, { dryRun: false, baseUrl: agencyBaseUrl });
-            console.log(`[AUTO-COMPLETE] ${effFaction} combined reply — ` + (r.ok ? 'OK #' + lssdRequestTopicId : 'FAILED: ' + (r.reason || 'Unknown')));
-            await finishCompletionStep(key, 'lssdCombinedReply', r.ok, r.ok ? `Completion + report to ${effFaction} #` + lssdRequestTopicId : (r.reason || 'Unknown'));
+            // Edit-in-place when this crosspost reply already exists (re-run after
+            // a successful post) — the reply post id is persisted below on success.
+            const existingCrosspostPostId = entry[`${fx}CrosspostReplyPostId`] || null;
+            const r = await postOrEditReply(lssdClient, {
+                topicId: lssdRequestTopicId,
+                forumId: agencyForumId,
+                bbCode: lssdCombinedBb,
+                baseUrl: agencyBaseUrl,
+                existingPostId: existingCrosspostPostId,
+                logTag: `${effFaction}-CROSSPOST`,
+            });
+            console.log(`[AUTO-COMPLETE] ${effFaction} combined reply — ` + (r.ok ? (r.edited ? 'EDITED #' : 'OK #') + lssdRequestTopicId : 'FAILED: ' + (r.reason || 'Unknown')));
+            await finishCompletionStep(key, 'lssdCombinedReply', r.ok, r.ok ? `${r.edited ? 'Edited' : 'Completion + report to'} ${effFaction} #` + lssdRequestTopicId : (r.reason || 'Unknown'));
             await progress.addStep(`${effFaction} Completion + Report`, r.ok ? 'ok' : 'fail', r.ok ? '#' + lssdRequestTopicId : (r.reason || 'Failed'));
             if (!r.ok) stepFailed.LSSD = true;
+            // Persist the reply post id so future re-runs edit instead of duplicating.
+            if (r.ok && r.postId && state.dbRef) {
+                await state.dbRef.child(`autopsy-requested/${key}`).update({
+                    [`${fx}CrosspostReplyPostId`]: r.postId,
+                    [`${fx}CrosspostReplyUrl`]: r.url || null,
+                }).catch(() => {});
+            }
             return { ok: r.ok, url: r.ok ? (r.url || null) : null };
         } catch (e) {
             console.error(`[AUTO-COMPLETE] ${effFaction} operation error: ` + e.message);
@@ -171,8 +234,16 @@ async function postLssdCombinedReply({ key, entry, reportData, completionBb, bbC
             if (state.dbRef) {
                 state.dbRef.child(`autopsy-requested/${key}/${savedKeyField()}`).set(String(fallbackTopicId)).catch(() => {});
             }
-            const r = await lssdClient.replyToTopic(fallbackTopicId, agencyForumId, lssdCombinedBb, { dryRun: false, baseUrl: agencyBaseUrl });
-            await finishCompletionStep(key, 'lssdCombinedReply', r.ok, r.ok ? `Fallback completion + report to #${fallbackTopicId}` : (r.reason || 'Unknown'));
+            const existingFallbackPostId = entry[`${fx}CrosspostReplyPostId`] || null;
+            const r = await postOrEditReply(lssdClient, {
+                topicId: fallbackTopicId,
+                forumId: agencyForumId,
+                bbCode: lssdCombinedBb,
+                baseUrl: agencyBaseUrl,
+                existingPostId: existingFallbackPostId,
+                logTag: `${effFaction}-CROSSPOST-FALLBACK`,
+            });
+            await finishCompletionStep(key, 'lssdCombinedReply', r.ok, r.ok ? `${r.edited ? 'Edited fallback' : 'Fallback'} completion + report to #${fallbackTopicId}` : (r.reason || 'Unknown'));
             await progress.addStep(`${effFaction} Completion + Report`, r.ok ? 'ok' : 'fail', r.ok ? '#' + fallbackTopicId : (r.reason || 'Failed'));
             if (!r.ok) { stepFailed.LSSD = true; await markLssdFailure('Completion + report reply failed: ' + (r.reason || 'Unknown')); }
             if (r.ok && state.dbRef) {
@@ -181,6 +252,7 @@ async function postLssdCombinedReply({ key, entry, reportData, completionBb, bbC
                     [`${fx}CrosspostError`]: null,
                     [savedKeyField()]: String(fallbackTopicId),
                     [`${fx}CrosspostedAt`]: new Date().toISOString(),
+                    ...(r.postId ? { [`${fx}CrosspostReplyPostId`]: r.postId, [`${fx}CrosspostReplyUrl`]: r.url || null } : {}),
                 }).catch(() => {});
             }
             return { ok: r.ok, url: r.ok ? (r.url || null) : null };
@@ -634,12 +706,26 @@ export async function handleAutopsyReply(report) {
     await progress.addStep('Case Found', 'ok', `#${topicId} ${foundTitle}`);
     await progress.addStep('Posting Reply', 'pending');
 
-    const result = await client.replyToTopic(topicId, CASE_MGMT_FORUM_ID, bbCode, { dryRun: DRY });
+    // ── Edit-in-place when this entry already posted ──
+    // A re-queued / retried / restarted entry that already has a live reply
+    // edits it instead of posting a duplicate (e.g. post succeeded but marking
+    // failed, or manual re-queue). deployPostId is captured by markReportComplete.
+    const result = await postOrEditReply(client, {
+        topicId,
+        forumId: CASE_MGMT_FORUM_ID,
+        bbCode,
+        title: reportData.originalKey || undefined,
+        existingPostId: reportData.deployPostId,
+        dryRun: DRY,
+        logTag: 'CASE-REPLY',
+    });
 
     if (result.ok && !result.dryRun) {
-        await progress.addStep('Autopsy Posted', 'ok', result.url || '');
+        await progress.addStep('Autopsy Posted', 'ok', (result.edited ? 'Edited ' : '') + (result.url || ''));
         const label = reportData.originalKey || key;
-        const completed = await markReportComplete(db, authorId, key, label, 'autopsy-reply', result.url);
+        // Preserve the original post id on edit (the edit URL may not carry p=).
+        const completeUrl = result.edited && reportData.deployUrl ? reportData.deployUrl : result.url;
+        const completed = await markReportComplete(db, authorId, key, label, 'autopsy-reply', completeUrl);
         if (completed) {
             let completedTopicId = null;
             let completedLssdTopicId = null;
@@ -796,7 +882,7 @@ export async function handleAutopsyReply(report) {
                         const completionLspdUrl = completedLspdTopicId
                             ? `https://lspd.gta.world/viewtopic.php?t=${completedLspdTopicId}`
                             : null;
-                        let completionBb = buildCompletionBb(caseTitle, requesterName, { faction: completionFaction, lspdUrl: completionLspdUrl });
+                        let completionBb = buildCompletionBb(caseTitle, requesterName, { faction: completionFaction, lspdUrl: completionLspdUrl, formsAutopsy: entry.formsAutopsy });
                         let agencyCompletionUrl = null;
                         if (!isPrivateEntry) {
                             const lssdRes = await postLssdCombinedReply({
@@ -810,7 +896,7 @@ export async function handleAutopsyReply(report) {
                                     [`${completionFx}CrosspostedAt`]: new Date().toISOString(),
                                 }).catch(() => {});
                             }
-                            if (agencyCompletionUrl) completionBb = buildCompletionBb(caseTitle, requesterName, { faction: completionFaction, lssdUrl: agencyCompletionUrl, lspdUrl: completionLspdUrl });
+                            if (agencyCompletionUrl) completionBb = buildCompletionBb(caseTitle, requesterName, { faction: completionFaction, lssdUrl: agencyCompletionUrl, lspdUrl: completionLspdUrl, formsAutopsy: entry.formsAutopsy });
                         } else {
                             await finishCompletionStep(key, 'lssdCombinedReply', true, 'Private case — agency crosspost skipped');
                             await progress.addStep('Agency Completion + Report', 'ok', 'Skipped (private case)');
@@ -834,6 +920,17 @@ export async function handleAutopsyReply(report) {
                             try {
                                 const r = await client.replyToTopic(entry.topicId, AUTOPSY_REQUEST_FORUM_ID, completionBb, { dryRun: false });
                                 const skipped = r.topicMissing === true;
+                                // Persist the reply post id so a future retry edits
+                                // instead of posting a duplicate completion notice.
+                                if (r.ok && state.dbRef) {
+                                    const replyPostId = extractReplyPostId(r.url);
+                                    if (replyPostId) {
+                                        await state.dbRef.child(`autopsy-requested/${key}`).update({
+                                            phmcCompletionReplyPostId: replyPostId,
+                                            phmcCompletionReplyUrl: r.url || null,
+                                        }).catch(() => {});
+                                    }
+                                }
                                 await finishCompletionStep(key, stepName, r.ok || skipped, skipped ? 'Request topic #' + entry.topicId + ' no longer exists — nothing to reply to' : (r.ok ? 'Reply posted to #' + entry.topicId : (r.reason || 'Unknown')));
                                 await progress.addStep('PHMC Reply', r.ok || skipped ? 'ok' : 'fail', skipped ? 'Topic gone' : (r.ok ? '#' + entry.topicId : (r.reason || 'Failed')));
                                 if (!r.ok && !skipped) stepFailed.PHMC = true;
@@ -920,17 +1017,21 @@ export async function handleAutopsyReply(report) {
                                 return;
                             }
 
-                            // Resolve forum target for private pm_forum deliveries
+                            // Resolve forum target for private pm_forum / web-forms
+                            // deliveries (LSPD/LSSD/SADCR/DAO/PHMC)
                             let pmForumBaseUrl = null;
                             let pmForumUser = null;
                             let pmForumPass = null;
-                            if (isPrivateEntry && entry.pmForum) {
-                                const forumKey = String(entry.pmForum).toLowerCase();
-                                if (forumKey === 'lssd') {
+                            const deliveryForumKey = String(
+                                (isPrivateEntry && entry.pmForum) ? entry.pmForum
+                                : (entry.formsAutopsy === true ? (entry.agencyForum || 'phmc') : '')
+                            ).toLowerCase();
+                            if (deliveryForumKey) {
+                                if (deliveryForumKey === 'lssd' || deliveryForumKey === 'sadcr' || deliveryForumKey === 'dao') {
                                     pmForumBaseUrl = 'https://lssd.gta.world';
                                     pmForumUser = process.env.FORUM_LSSD_USERNAME;
                                     pmForumPass = process.env.FORUM_LSSD_PASSWORD;
-                                } else if (forumKey === 'lspd') {
+                                } else if (deliveryForumKey === 'lspd') {
                                     pmForumBaseUrl = 'https://lspd.gta.world';
                                     pmForumUser = process.env.FORUM_LSPD_USERNAME;
                                     pmForumPass = process.env.FORUM_LSPD_PASSWORD;
@@ -943,11 +1044,12 @@ export async function handleAutopsyReply(report) {
 
                             try {
                                 const isPmForumDelivery = isPrivateEntry && entry.pmForum && entry.pmRecipient && pmForumBaseUrl && pmForumUser && pmForumPass;
+                                const isFormsDelivery = entry.formsAutopsy === true && !!entry.forumAccountUrl;
 
                                 // Login to the target forum before composing the PM.
                                 // The isolated client starts with no session cookies,
                                 // so it must authenticate or phpBB will show the login page.
-                                if (isPmForumDelivery) {
+                                if (isPmForumDelivery || isFormsDelivery) {
                                     await dmClient.login(pmForumUser, pmForumPass, { force: true, baseUrl: pmForumBaseUrl });
                                 } else {
                                     await dmClient.login(null, null, { force: true, baseUrl: process.env.FORUM_BASE_URL });
@@ -956,7 +1058,16 @@ export async function handleAutopsyReply(report) {
                                 let dmTarget = '';
                                 let dmBaseUrl = pmForumBaseUrl || process.env.FORUM_BASE_URL;
 
-                                if (isPmForumDelivery) {
+                                if (isFormsDelivery) {
+                                    // Web "Request Autopsy" — resolve the requester's
+                                    // forum account from the profile URL captured at
+                                    // submission, so the completion PM reaches the real
+                                    // requester instead of the bot (topic poster).
+                                    const profUser = await dmClient.resolveProfileUsername(entry.forumAccountUrl);
+                                    dmTarget = profUser || '';
+                                    if (!dmTarget) console.warn(`[AUTO-COMPLETE] Forms DM target unresolvable for ${entry.forumAccountUrl}`);
+                                    else console.log(`[AUTO-COMPLETE] Forms autopsy DM target: ${dmTarget} via ${dmBaseUrl}`);
+                                } else if (isPmForumDelivery) {
                                     // Private case — DM the explicit forum recipient.
                                     dmTarget = entry.pmRecipient.trim();
                                     console.log(`[AUTO-COMPLETE] Private case DM target: ${dmTarget} via ${pmForumBaseUrl}`);
@@ -1204,7 +1315,7 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
                 // sadcrCompletionUrl / daoCompletionUrl for the newer registry factions).
                 const retryAgencyCfg = isAgencyFaction(retryFaction) ? getAgencyForum(retryFaction) : null;
                 const retryFx = retryAgencyCfg ? String(retryFaction).toLowerCase() : 'lssd';
-                const completionBb = buildCompletionBb(caseTitle, requesterName, { faction: retryFaction, lssdUrl: entry[`${retryFx}CompletionUrl`], lspdUrl: retryLspdUrl });
+                const completionBb = buildCompletionBb(caseTitle, requesterName, { faction: retryFaction, lssdUrl: entry[`${retryFx}CompletionUrl`], lspdUrl: retryLspdUrl, formsAutopsy: entry.formsAutopsy });
 
                 let success = false;
 
@@ -1214,12 +1325,26 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
                         stillFailed++;
                         continue;
                     }
-                    const r = await retryClient.replyToTopic(entry.topicId, AUTOPSY_REQUEST_FORUM_ID, completionBb, { dryRun: false });
+                    // Edit-in-place when this completion reply already exists
+                    // (prior run posted but the step stayed failed).
+                    const r = await postOrEditReply(retryClient, {
+                        topicId: entry.topicId,
+                        forumId: AUTOPSY_REQUEST_FORUM_ID,
+                        bbCode: completionBb,
+                        existingPostId: entry.phmcCompletionReplyPostId || null,
+                        logTag: 'PHMC-COMPLETION-RETRY',
+                    });
                     success = r.ok || r.topicMissing === true;
                     if (success) {
                         console.log(r.topicMissing
                             ? `[AUTO-COMPLETE] [OK] Retry OK — ${stepName} for ${caseLabel}: request topic no longer exists (nothing to reply to)`
-                            : `[AUTO-COMPLETE] [OK] Retry OK — ${stepName} for ${caseLabel} → reply to #${entry.topicId}`);
+                            : `[AUTO-COMPLETE] [OK] Retry OK — ${stepName} for ${caseLabel} → ${r.edited ? 'edited reply' : 'reply'} to #${entry.topicId}`);
+                        if (r.ok && r.postId && state.dbRef) {
+                            await state.dbRef.child(`autopsy-requested/${key}`).update({
+                                phmcCompletionReplyPostId: r.postId,
+                                phmcCompletionReplyUrl: r.url || null,
+                            }).catch(() => {});
+                        }
                     } else {
                         console.warn(`[AUTO-COMPLETE] [ERR] Retry failed — ${stepName} for ${caseLabel}: ${r.reason || 'Unknown'}`);
                     }
@@ -1244,11 +1369,21 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
                             await retryClient.login(process.env[`FORUM_${rCfg.credPrefix}_USERNAME`], process.env[`FORUM_${rCfg.credPrefix}_PASSWORD`], { force: true, baseUrl: rCfg.baseUrl });
                             const content = completionBb + '\n\n[hr][/hr]\n\n' + reportBb;
                             console.log(`[AUTO-COMPLETE] Retrying ${rCfg === getAgencyForum('LSSD') ? 'LSSD' : String(retryFaction).toUpperCase()} completion + report to #${lssdTopicId}...`);
-                            const r = await retryClient.replyToTopic(lssdTopicId, rCfg.forumId, content, { dryRun: false, baseUrl: rCfg.baseUrl });
+                            const r = await postOrEditReply(retryClient, {
+                                topicId: lssdTopicId,
+                                forumId: rCfg.forumId,
+                                bbCode: content,
+                                baseUrl: rCfg.baseUrl,
+                                existingPostId: entry[`${rFx}CrosspostReplyPostId`] || null,
+                                logTag: `${String(retryFaction).toUpperCase()}-CROSSPOST-RETRY`,
+                            });
                             success = r.ok;
-                            console.log(`[AUTO-COMPLETE] Agency completion + report retry — ${r.ok ? 'OK' : 'FAILED: ' + (r.reason || 'Unknown')}`);
+                            console.log(`[AUTO-COMPLETE] Agency completion + report retry — ${r.ok ? (r.edited ? 'EDITED' : 'OK') : 'FAILED: ' + (r.reason || 'Unknown')}`);
                             if (r.ok && r.url && state.dbRef) {
-                                await state.dbRef.child(`autopsy-requested/${key}`).update({ [`${rFx}CompletionUrl`]: r.url }).catch(() => {});
+                                await state.dbRef.child(`autopsy-requested/${key}`).update({
+                                    [`${rFx}CompletionUrl`]: r.url,
+                                    ...(r.postId ? { [`${rFx}CrosspostReplyPostId`]: r.postId, [`${rFx}CrosspostReplyUrl`]: r.url } : {}),
+                                }).catch(() => {});
                             }
                         }
                     }
@@ -1338,6 +1473,22 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
                             await retryClient.login(null, null, { force: true, baseUrl: dmBaseUrl });
                         }
                         console.log(`[AUTO-COMPLETE] Private case retry DM target: ${dmTarget} via ${dmBaseUrl}`);
+                    } else if (entry.formsAutopsy === true && entry.forumAccountUrl) {
+                        // Web "Request Autopsy" — deliver to the requester's forum
+                        // account captured at submission (agencyForum + profile URL).
+                        const fKey = String(entry.agencyForum || 'phmc').toLowerCase();
+                        if (fKey === 'lssd' || fKey === 'sadcr' || fKey === 'dao') {
+                            dmBaseUrl = 'https://lssd.gta.world';
+                            await retryClient.login(process.env.FORUM_LSSD_USERNAME, process.env.FORUM_LSSD_PASSWORD, { force: true, baseUrl: dmBaseUrl });
+                        } else if (fKey === 'lspd') {
+                            dmBaseUrl = 'https://lspd.gta.world';
+                            await retryClient.login(process.env.FORUM_LSPD_USERNAME, process.env.FORUM_LSPD_PASSWORD, { force: true, baseUrl: dmBaseUrl });
+                        } else {
+                            await retryClient.login(null, null, { force: true, baseUrl: dmBaseUrl });
+                        }
+                        const profUser = await retryClient.resolveProfileUsername(entry.forumAccountUrl).catch(() => null);
+                        dmTarget = profUser || '';
+                        console.log(`[AUTO-COMPLETE] Forms autopsy retry DM target: ${dmTarget || '(unresolved)'} via ${dmBaseUrl}`);
                     } else {
                         // Use topic poster FIRST (forum username), not requesterName
                         // which is a character name like "Cristian Fuentes" that won't work as a PM target.

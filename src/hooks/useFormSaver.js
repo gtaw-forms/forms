@@ -1,6 +1,12 @@
 import { useCallback } from 'react';
 import { database } from '../firebase';
-import { ref, set, update } from 'firebase/database';
+import { ref, set, get, update } from 'firebase/database';
+
+// Serialize for console/Sentry breadcrumbs (which render object args as
+// "[object Object]", losing the values). Primitives-only log lines stay readable.
+const jstr = (obj) => {
+    try { return JSON.stringify(obj); } catch { return '[unserializable]'; }
+};
 import { triggerSaveReportBBCode, triggerSaveSavedReport } from '../services/firebaseFunctions';
 import * as Sentry from "@sentry/react";
 import { getCharacterName, getCharacterID, resolveEmployeeCredentials, getOAuthShapeFlags } from '../utils/identityUtils';
@@ -381,7 +387,7 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated, rosterData = {}) 
                     dataToSave[`${empType}PHNumber`] = resolved.phNumber;
                     dataToSave[`${empType}FirstName`] = resolved.firstName;
                     dataToSave[`${empType}LastName`] = resolved.lastName;
-                    console.warn(`[useFormSaver] Fix C credential merge applied for ${resolved.employeeName} (matchedBy: ${resolved.matchedBy})`, { missingFields, corrected: { badge: badgeMismatch, rank: rankMismatch } });
+                    console.warn(`[useFormSaver] Fix C credential merge applied for ${resolved.employeeName} (matchedBy: ${resolved.matchedBy}) ${jstr({ missingFields, corrected: { badge: badgeMismatch, rank: rankMismatch }, appBuild: dataToSave.appBuild || null })}`);
                     reportLogicalError("CredentialFallbackApplied", "Save-time credential backfill from OAuth/roster", {
                         ...diagBase,
                         savedEmployee: dataToSave[`${empType}Employee`] || null,
@@ -394,7 +400,7 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated, rosterData = {}) 
                         ].filter(Boolean),
                     });
                 } else {
-                    console.warn('[useFormSaver] Credential backfill needed but resolver returned no employeeName', diagBase);
+                    console.warn(`[useFormSaver] Credential backfill needed but resolver returned no employeeName ${jstr({ formId: diagBase.formId, matchedBy: diagBase.matchedBy, rosterCount: diagBase.rosterCount, hasRoster: diagBase.hasRoster })}`);
                     reportLogicalError("CredentialFallbackFailed", "Save-time credential backfill could not resolve employee from OAuth/roster", {
                         ...diagBase,
                         savedEmployee: dataToSave[`${empType}Employee`] || null,
@@ -580,6 +586,97 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated, rosterData = {}) 
             if (!options.silent) {
                 showNotification(`Report "${finalTitle}" saved successfully!`, 'save');
             }
+
+            // ── Post-save credential verification (background, non-blocking) ──
+            // Optimistic UX: the user already has success. This re-resolves
+            // credentials FRESH (bypassing the memo) against the roster and
+            // self-heals the saved report if blanks/stale values slipped
+            // through. Silent unless it corrects something. Never throws.
+            const verifySavedCredentials = async () => {
+                try {
+                    if (!gtaWorldUser || !isGtaAuthenticated || !selectedForm?.accessType) return;
+                    const vEmpType = selectedForm.accessType === 'Coroner' ? 'coroner' : 'phmc';
+                    const savedEmp = String(dataToSave[`${vEmpType}Employee`] || '').trim();
+                    const savedRank = String(dataToSave[`${vEmpType}Rank`] || '').trim();
+                    const savedBadge = String(dataToSave[`${vEmpType}Badge`] || '').trim();
+
+                    // Fresh resolve (bypass memo) against in-memory roster — zero extra reads.
+                    let roster = Array.isArray(factionListData) ? factionListData : [];
+                    let fresh = resolveEmployeeCredentials(gtaWorldUser, { factionListData: roster, cleanRank: cleanRankText });
+                    let rosterRefreshed = false;
+                    // Roster missing + saved creds incomplete → one-time roster
+                    // re-read, then re-resolve. Single RTDB read, only when needed.
+                    if (roster.length === 0 && (!savedEmp || !savedRank || !savedBadge)) {
+                        try {
+                            const snap = await get(ref(database, 'factions/364/members'));
+                            const members = snap.val() || {};
+                            roster = Object.entries(members).map(([charId, m]) => ({
+                                ...(m || {}),
+                                characterId: m?.characterId || charId,
+                                _rosterKey: charId,
+                                name: m?.characterName || m?.name || 'Unknown',
+                                rank: m?.rank || '',
+                            }));
+                            rosterRefreshed = true;
+                            fresh = resolveEmployeeCredentials(gtaWorldUser, { factionListData: roster, cleanRank: cleanRankText });
+                        } catch (e) {
+                            console.warn(`[useFormSaver] Verify roster re-read failed: ${e?.message || e}`);
+                        }
+                    }
+
+                    const vBase = {
+                        formId: selectedForm.firebaseKey,
+                        reportKey: sanitizedKey,
+                        matchedBy: fresh?.matchedBy || 'none',
+                        rosterSize: roster.length,
+                        rosterRefreshed,
+                        appBuild: dataToSave.appBuild || null,
+                    };
+
+                    if (!fresh?.employeeName) {
+                        Sentry.addBreadcrumb?.({ category: 'verify', message: 'Verify skipped — unresolvable', level: 'info', data: vBase });
+                        return;
+                    }
+
+                    // Same rules as Fix C: fill blanks; correct rank/badge only
+                    // when the saved employee matches the resolved user (never
+                    // overwrite a deliberately different name on shared reports).
+                    const empMatch = !!savedEmp && savedEmp.toLowerCase() === String(fresh.employeeName).trim().toLowerCase();
+                    const needEmp = !savedEmp;
+                    const needRank = !savedRank || (empMatch && !!fresh.rank && savedRank !== String(fresh.rank).trim());
+                    const needBadge = !savedBadge || (empMatch && !!fresh.badge && savedBadge !== String(fresh.badge).trim());
+
+                    if (!needEmp && !needRank && !needBadge) {
+                        Sentry.addBreadcrumb?.({ category: 'verify', message: 'Credentials verified OK', level: 'info', data: { ...vBase, employee: savedEmp } });
+                        console.log(`[useFormSaver] Verify OK for ${fresh.employeeName} (matchedBy: ${fresh.matchedBy}) ${jstr({ rosterSize: roster.length })}`);
+                        return;
+                    }
+
+                    // Self-heal: patch the saved report (RTDB paths only — the
+                    // VPS payload was already corrected pre-send, so nothing to
+                    // patch there).
+                    const patch = {};
+                    if (needEmp) patch[`${vEmpType}Employee`] = fresh.employeeName;
+                    if (needRank && fresh.rank) patch[`${vEmpType}Rank`] = fresh.rank;
+                    if (needBadge && fresh.badge) patch[`${vEmpType}Badge`] = fresh.badge;
+                    if (Object.keys(patch).length > 0 && !isVpsReport) {
+                        await update(ref(database, `${reportPath}/data`), patch);
+                    }
+                    Sentry.addBreadcrumb?.({
+                        category: 'verify',
+                        message: 'Credentials corrected post-save',
+                        level: 'warning',
+                        data: { ...vBase, corrected: Object.keys(patch), before: { employee: savedEmp || null, rank: savedRank || null, badge: savedBadge || null } },
+                    });
+                    console.warn(`[useFormSaver] Verify corrected post-save for ${fresh.employeeName} ${jstr({ corrected: Object.keys(patch), before: { employee: savedEmp || null, rank: savedRank || null, badge: savedBadge || null } })}`);
+                    if (!options.silent) {
+                        showNotification('Employee credentials verified and updated.', 'check-circle');
+                    }
+                } catch (err) {
+                    console.warn(`[useFormSaver] Post-save credential verification skipped: ${err?.message || err}`);
+                }
+            };
+            verifySavedCredentials().catch(() => {});
 
             // Webhook Logging
             try {

@@ -45,8 +45,44 @@ if (!process.env.MORGUE_API_KEYS && !process.env.MORGUE_WRITE_API_KEYS) {
     process.exit(1);
 }
 
-const API_KEYS = process.env.MORGUE_API_KEYS.split(',').map(k => k.trim()).filter(Boolean);
-const WRITE_KEYS = (process.env.MORGUE_WRITE_API_KEYS || '').split(',').map(k => k.trim()).filter(Boolean);
+import { API_KEY_LABEL_RE } from './services/apiKeyUtil.js';
+
+// ── Labeled API keys ──
+// MORGUE_API_KEYS="forms-functions:pmc_morgue_xxx,facebrowser:pmc_morgue_yyy"
+// Bare keys without a label keep working. Logs/activity show the label
+// (e.g. [key_forms-functions]) so abuse can be attributed per consumer;
+// unlabeled keys log as key_<sha256 fingerprint> (never raw key material).
+const KEY_LABELS = new Map();
+function parseLabeledKeys(raw) {
+    const keys = [];
+    for (const entry of String(raw || '').split(',').map(s => s.trim()).filter(Boolean)) {
+        const ci = entry.indexOf(':');
+        if (ci > 0) {
+            const maybeLabel = entry.slice(0, ci).trim();
+            const maybeKey = entry.slice(ci + 1).trim();
+            if (API_KEY_LABEL_RE.test(maybeLabel) && maybeKey) {
+                keys.push(maybeKey);
+                if (!KEY_LABELS.has(maybeKey)) KEY_LABELS.set(maybeKey, maybeLabel);
+                continue;
+            }
+        }
+        keys.push(entry);
+    }
+    return keys;
+}
+function keyFingerprint(key) {
+    try { return createHash('sha256').update(String(key)).digest('hex').slice(0, 12); }
+    catch { return 'unknown'; }
+}
+// Display name for logs/activity/rate-limit — never the raw key.
+function displayKeyName(key, admin = false) {
+    if (!key) return 'no-key';
+    const label = KEY_LABELS.get(key);
+    const base = label ? `key_${label}` : `key_${keyFingerprint(key)}`;
+    return admin ? base.replace(/^key_/, 'admin_') : base;
+}
+const API_KEYS = parseLabeledKeys(process.env.MORGUE_API_KEYS);
+const WRITE_KEYS = parseLabeledKeys(process.env.MORGUE_WRITE_API_KEYS || '');
 const PORT = parseInt(process.env.MORGUE_API_PORT || '3001', 10);
 const DISCORD_WEBHOOK_URL = process.env.MORGUE_API_LOG_WEBHOOK || null;
 
@@ -57,6 +93,7 @@ const BAN_THRESHOLD = parseInt(process.env.MORGUE_BAN_THRESHOLD || '2', 10);    
 const BAN_STATE_PATH = resolve(__dirname, 'data', 'ban-state.json');
 
 console.log(`[MORGUE-API] Loaded ${API_KEYS.length} API key(s) (read-only) and ${WRITE_KEYS.length} write key(s)`);
+console.log(`[MORGUE-API] Key labels: read=[${API_KEYS.map(k => KEY_LABELS.get(k) || 'unlabeled').join(', ') || '(none)'}] write=[${WRITE_KEYS.map(k => KEY_LABELS.get(k) || 'unlabeled').join(', ') || '(none)'}]`);
 console.log(`[MORGUE-API] Configured port: ${PORT}`);
 console.log(`[MORGUE-API] IP ban: ${BAN_THRESHOLD} suspicious request(s) → permanent ban (persisted to ${BAN_STATE_PATH})`);
 if (DISCORD_WEBHOOK_URL) {
@@ -376,7 +413,7 @@ app.use((req, res, next) => {
 
         if (isWriteKey) {
             // Admin write key — allow but flag prominently
-            req.apiKeyName = `admin_${key.slice(0, 16)}...`;
+            req.apiKeyName = displayKeyName(key, true);
             req.isAdminKey = true;
             console.warn(
                 `[MORGUE-API] [INFO] WRITE ${req.method} ${req.originalUrl} ` +
@@ -403,7 +440,7 @@ app.use((req, res, next) => {
         }
 
         // Regular key or no key — block
-        const keyLabel = key ? `key_${key.slice(0, 16)}...` : 'no-key';
+        const keyLabel = displayKeyName(key);
         console.warn(
             `[MORGUE-API] [WARN] Blocked ${req.method} ${req.originalUrl} ` +
             `from ${ip} [${keyLabel}] ua="${ua}"`
@@ -581,19 +618,26 @@ function validateApiKey(req, res, next) {
         });
     }
 
-    req.apiKeyName = isWriteKey
-        ? `admin_${key.slice(0, 16)}...`
-        : `key_${key.slice(0, 16)}...`;
+    req.apiKeyName = displayKeyName(key, isWriteKey);
     req.isAdminKey = isWriteKey;
     next();
 }
 
-// ── Activity log (last 200 calls in memory) ──
+// ── Activity log (last 200 calls in memory) + per-key abuse stats ──
 const activityLog = [];
 const MAX_ACTIVITY = 200;
+const keyStats = new Map(); // apiKeyName -> { count, lastSeen, lastIp, lastStatus, suspicious }
 
 function recordActivity(req, statusCode, ms, ip, ua, suspicious) {
     const source = req.query.source || '';
+    const keyName = req.apiKeyName || 'no-key';
+    const st = keyStats.get(keyName) || { count: 0, lastSeen: null, lastIp: null, lastStatus: null, suspicious: 0 };
+    st.count += 1;
+    st.lastSeen = new Date().toISOString();
+    st.lastIp = ip || req.clientIp || null;
+    st.lastStatus = statusCode;
+    if (suspicious) st.suspicious += 1;
+    keyStats.set(keyName, st);
     const entry = {
         id: req.requestId || null,
         time: new Date().toISOString(),
@@ -605,6 +649,7 @@ function recordActivity(req, statusCode, ms, ip, ua, suspicious) {
         status: statusCode,
         ms,
         ip: ip || req.clientIp || null,
+        requestedBy: formatRequesterIdentity(req),
         ua: ua || null,
         suspicious: suspicious || null,
         note: req.fetchSummary || null,
@@ -645,7 +690,8 @@ async function flushWebhookBatch() {
         const s = e.source ? ` src="${e.source}"` : '';
         const n = e.note ? ` ${e.note}` : '';
         const d = e.detail ? ` ${e.detail}` : '';
-        lines.push(`\`${e.time.slice(11, 19)}\` **${e.method}** \`${e.path}\` → ${e.status} (${e.ms}ms) [${e.key}]${q}${s}${n}${d}`);
+        const r = e.requestedBy ? ` requestedBy="${e.requestedBy}"` : '';
+        lines.push(`\`${e.time.slice(11, 19)}\` **${e.method}** \`${e.path}\` → ${e.status} (${e.ms}ms) [${e.key}]${q}${s}${r}${n}${d}`);
     }
 
     // Discord has a 2000-char limit on webhook content
@@ -808,6 +854,23 @@ function getClientIp(req) {
     return req.socket?.remoteAddress || 'unknown';
 }
 
+// Set only by the Firebase callable proxy after Auth verification. These are
+// used for abuse/audit attribution; direct API callers remain external/unknown.
+function getRequesterIdentity(req) {
+    const clean = (value, max = 120) => String(value || '').replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, max);
+    const characterName = clean(req.headers['x-phmc-requester-character']);
+    const oauthName = clean(req.headers['x-phmc-requester-oauth']);
+    const uid = clean(req.headers['x-phmc-requester-uid'], 160);
+    if (!characterName && !oauthName && !uid) return null;
+    return { characterName: characterName || 'Unknown', oauthName: oauthName || 'Unknown', uid: uid || null };
+}
+
+function formatRequesterIdentity(req) {
+    const identity = getRequesterIdentity(req);
+    if (!identity) return 'external/unknown';
+    return `${identity.characterName} | ${identity.oauthName}${identity.uid ? ` | uid=${identity.uid}` : ''}`;
+}
+
 // ── Request detail for logs — shows WHAT was sent, not just the path ──
 // Large values (e.g. a full report BBCode) are summarized as "<N chars>"
 // instead of dumped, so logs stay readable while still identifying the request.
@@ -932,10 +995,11 @@ app.use((req, res, next) => {
 
         const summary = req.fetchSummary ? ` note="${sanitize(req.fetchSummary)}"` : '';
         const detail = requestLogDetail(req);
+        const requester = formatRequesterIdentity(req);
         console.log(
             `[MORGUE-API] [${req.requestId}] ${req.method} ${req.path} ` +
             `→ ${res.statusCode} (${ms}ms) [${req.apiKeyName || 'no-key'}]` +
-            ` ip=${ip}${source} ua="${ua}"${label}${summary}${detail}`
+            ` ip=${ip}${source} requestedBy="${requester}" ua="${ua}"${label}${summary}${detail}`
         );
 
         // Store in activity log with new fields
@@ -952,6 +1016,7 @@ app.use((req, res, next) => {
             status: res.statusCode,
             ms,
             ip,
+            requestedBy: requester,
             ua: ua.slice(0, 80),
             suspicious: suspiciousFinding?.label || null,
             note: req.fetchSummary || null,
@@ -1148,6 +1213,7 @@ app.get('/api/activity', validateApiKey, rateLimiter, (req, res) => {
         count: recent.length,
         total: activityLog.length,
         activity: recent,
+        byKey: Object.fromEntries(keyStats),
     });
 });
 

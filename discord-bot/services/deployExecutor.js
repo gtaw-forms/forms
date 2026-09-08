@@ -172,9 +172,11 @@ export async function runDeploy(type, data) {
     console.log('[AUTO] Deploying ' + label + ' (' + data.key + ') to ' + forumLabel + '...');
 
     try {
-        // Timeout guard: warn at 1 min, abort at 10 min
+        // Timeout guard: warn at 3 min, abort at 10 min. Autopsy deploys
+        // legitimately run 1-3+ min (login + search + post + crosspost + DM +
+        // ack), so a 1-min tripwire false-alarms on healthy runs.
         const slowWarning = setTimeout(() => {
-            console.warn('[AUTO] ' + data.key + ' deploy taking longer than usual (>1 min)');
+            console.warn('[AUTO] ' + data.key + ' deploy taking longer than usual (>3 min)');
             sendWebhook(null, {
                 title: ' Forum Slow to Respond',
                 description: '**Key:** `' + data.key + '`\n**Type:** ' + type + '\n**Report:** ' + label,
@@ -182,7 +184,7 @@ export async function runDeploy(type, data) {
                 footer: { text: 'PHMC Bot — Auto Deploy' },
                 timestamp: new Date().toISOString(),
             });
-        }, 1 * 60 * 1000);
+        }, 3 * 60 * 1000);
 
         const timeout = setTimeout(() => {
             clearTimeout(slowWarning);

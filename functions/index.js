@@ -8,6 +8,19 @@ import { syncFactionMembers } from './src/maintenance/factionSync.js';
 const MORGUE_API_URL = process.env.MORGUE_API_URL || 'http://88.208.243.254';
 const MORGUE_API_KEY = process.env.MORGUE_API_KEY;
 
+// Identity headers are set server-side from Firebase Auth claims. The browser
+// cannot spoof these values when the callable function proxies to morgue-api.
+function morgueRequesterHeaders(request) {
+    const token = request.auth?.token || {};
+    const clean = (value, max = 120) => String(value || '').replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, max);
+    return {
+        'x-api-key': MORGUE_API_KEY,
+        'x-phmc-requester-uid': clean(request.auth?.uid, 160),
+        'x-phmc-requester-character': clean(token.characterName),
+        'x-phmc-requester-oauth': clean(token.oauthName || token.gtawUsername),
+    };
+}
+
 // Ensure Admin SDK is initialized for Firebase cleanup in delete/purge functions
 if (!getApps().length) {
     initializeApp();
@@ -122,9 +135,7 @@ export const getMorgueRecords = onCall({
 
     try {
         const response = await fetch(url, {
-            headers: {
-                'x-api-key': MORGUE_API_KEY,
-            },
+            headers: morgueRequesterHeaders(request),
         });
 
         if (!response.ok) {
@@ -675,7 +686,7 @@ export const getAgencyCredentials = onCall({
 
     try {
         const response = await fetch(`${MORGUE_API_URL}/api/agency-credentials`, {
-            headers: { 'x-api-key': MORGUE_API_KEY },
+            headers: morgueRequesterHeaders(request),
         });
 
         if (!response.ok) {

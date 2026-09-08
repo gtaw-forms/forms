@@ -7,7 +7,7 @@
  */
 
 import { sendLogMessage } from './logChannel.js';
-import { notifyAssignmentWebhook, assignmentWebhookConfigured, forwardAssignmentWebhook, PHMC_FORWARD_WEBHOOK_URL } from './assignmentWebhook.js';
+import { notifyAssignmentWebhook, assignmentWebhookConfigured, forwardAssignmentWebhook, getForwardWebhookUrl } from './assignmentWebhook.js';
 
 /**
  * Look up a Discord user ID for a given forum username.
@@ -80,7 +80,7 @@ export async function notifyAssignment(db, assignedName, caseTitle, caseUrl, {
         // /forward-autopsy-notify) so assigned autopsies are posted there without
         // a manual command. Non-blocking — failures are logged, never thrown.
         try {
-            await forwardAssignmentWebhook(PHMC_FORWARD_WEBHOOK_URL, {
+            await forwardAssignmentWebhook(getForwardWebhookUrl(), {
                 me: assignedName, discordId, caseTitle, caseNumber,
                 decedent, ooc, caseUrl, deathType,
                 title: embedTitle || (isMassAutopsy ? '🔬 Mass Autopsy Assigned' : '🔬 Autopsy Case Assigned'),

@@ -128,6 +128,11 @@ guidelinesRead (bool), requesterCell, requesterDiscord, agencyForum, deathType
 (PK/CK), synopsis, causeDetail, cexamineImg, cinjuriesImg, topicTitle,
 requestBBCode, source:'web-morgue', status:'pending', createdAt, createdBy`
 
+> **Auto-post:** when `AUTOPSY_REQUEST_AUTO_POST=true` on the bot, pending
+> entries are posted to PHMC f=265 automatically (`webAutopsyRequestPoster.js`),
+> then `status` flips to `posted` with `topicUrl`/`postedAt`. Failures set
+> `attempts`/`lastError` and retry up to 3× with `nextRetryAt` backoff.
+
 ---
 
 ## `unprocessedCKs/<reportKey>`

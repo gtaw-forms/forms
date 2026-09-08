@@ -469,7 +469,11 @@ export async function checkForNewRequests() {
                             // strip it so the case title doesn't show a duplicate.
                             let cleanName = (nameLooksReal ? nameRaw : '');
                             if (oocMatch && oocMatch[1]) {
-                                cleanName = cleanName.replace(/\(\s*[\w.'\-\s]+\)/g, '').trim();
+                                cleanName = cleanName
+                                    .replace(/\(\([\s\S]*?\)\)/g, '')     // strip full ((OOC)) pairs
+                                    .replace(/\(\s*[\w.'\-\s]+\)/g, '')   // strip single (OOC) pairs
+                                    .replace(/\(\s*\)/g, '')              // drop any leftover empty ()
+                                    .trim();
                             }
                             if (!cleanName) {
                                 cleanName = topic.title.replace(/^(?:\[)?Autopsy\s+Request(?:\])?\s*[-–—]?\s*/i, '').replace(/\(\(.*?\)\)/g, '').replace(/\(.*?\)/g, '').trim() || topic.title;
@@ -564,6 +568,26 @@ export async function checkForNewRequests() {
                 ...(prevEntry?.progressChannelId ? { progressChannelId: prevEntry.progressChannelId } : {}),
                 ...(prevEntry?.progressSteps ? { progressSteps: prevEntry.progressSteps } : {}),
             };
+
+            // Web "Request Autopsy" submissions (auto-posted by the bot) carry
+            // the requester's deliver-to forum account in a web-meta stub keyed
+            // by topic id. Attach it to the entry so the completion "DM
+            // Requester" step PMs the real requester instead of skipping (the
+            // topic poster is the bot for web submissions).
+            try {
+                const metaSnap = await _db.ref(`autopsy-requests/web-meta/${topic.topicId}`).once('value');
+                if (metaSnap.exists()) {
+                    const meta = metaSnap.val() || {};
+                    if (meta.source === 'web-morgue') {
+                        entry.formsAutopsy = true;
+                        if (meta.agencyForum) entry.agencyForum = String(meta.agencyForum);
+                        if (meta.forumAccountUrl) entry.forumAccountUrl = String(meta.forumAccountUrl);
+                        console.log(`[AUTOPSY-MON] #${topic.topicId} forms autopsy — agencyForum=${entry.agencyForum || 'phmc'} forumAccountUrl=${entry.forumAccountUrl ? 'set' : 'none'}`);
+                    }
+                }
+            } catch (err) {
+                console.warn(`[AUTOPSY-MON] web-meta read failed for #${topic.topicId}: ${err.message}`);
+            }
 
             await _db.ref(`autopsy-requested/${topic.topicId}`).set(entry);
 

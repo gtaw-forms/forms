@@ -19,6 +19,30 @@ const parseTimeOfDeath = (raw) => {
     return { dateOfDeath, timeOfDeath };
 };
 
+// Infer the decedent's ethnicity from the morgue record — a structured
+// `ethnicity` field first, then a keyword scan of the free-text physical
+// description (same approach as UnprocessedCKsViewer). Bare "black"/"white"
+// are guarded against hair/clothing false-positives (e.g. "black hair").
+const inferEthnicity = (record) => {
+    if (record?.ethnicity && String(record.ethnicity).trim()) return String(record.ethnicity).trim();
+    const desc = String(record?.physicalDescription || '').toLowerCase();
+    if (!desc) return '';
+    const rules = [
+        [/\bafrican[- ]american\b/i, 'African American'],
+        [/\bblack\b(?!\s+(?:hair|eyes|beard|shirt|tee|hoodie|jacket|sweater|shoes|boots|pants|coat|hat|skin)\b)/i, 'African American'],
+        [/\bcaucasian\b|\bwhite\b(?!\s+(?:hair|shirt|tee|hoodie|jacket|sweater|shoes|boots|pants|coat|hat|skin)\b)/i, 'Caucasian'],
+        [/\bhispanic\b|\blatino\b|\blatina\b|\blatinoamerican\b/i, 'Hispanic'],
+        [/\b(asian[- ]american|taiwanese|chinese|japanese|korean|vietnamese|filipino|asian)\b/i, 'Asian'],
+        [/\bnative[- ]american\b/i, 'Native American'],
+        [/\bmiddle[- ]eastern\b/i, 'Middle Eastern'],
+        [/\bpacific[- ]islander\b/i, 'Pacific Islander'],
+    ];
+    for (const [re, value] of rules) {
+        if (re.test(desc)) return value;
+    }
+    return '';
+};
+
 const inputStyle = {
     width: '100%', background: 'var(--bg-surface)', border: '1px solid var(--border)',
     color: 'var(--text)', borderRadius: 6, padding: '8px 10px', fontSize: 12.5,
@@ -49,6 +73,7 @@ const RequestAutopsyModal = ({ show, onClose, record, showNotification, characte
     const decedentName = String(record?.name || '').replace(/\(\([^)]*\)\)/g, '').trim() || 'Unknown';
     const oocName = oocMatch ? oocMatch[1].trim() : '';
     const { dateOfDeath, timeOfDeath } = parseTimeOfDeath(record?.timeOfDeath);
+    const ethnicity = inferEthnicity(record);
 
     useEffect(() => {
         if (show) {
@@ -77,7 +102,7 @@ const RequestAutopsyModal = ({ show, onClose, record, showNotification, characte
     // derive from Department / Assignment (e.g. "LSPD - Homicide" → LSPD).
     const agencyTag = agencyForum || (requesterDept.match(/^([A-Z]{3,5})/) || [])[1] || 'PHMC';
 
-    const topicTitle = `[Autopsy Request] ${decedentName} ((${oocName || 'Unknown OOC'})) [${agencyTag}]`;
+    const topicTitle = `Autopsy Request - ${decedentName} ((${oocName || 'Unknown OOC'})) [${agencyTag}]`;
 
     const buildRequestBBCode = () => {
         const ans = (v) => String(v || '').trim() || 'ANSWER';
@@ -106,7 +131,7 @@ const RequestAutopsyModal = ({ show, onClose, record, showNotification, characte
 [divbox=white][size=85](If you are requesting for multiple bodies, you can number them instead of separate topics. EX: John Doe (1), John Doe (2)) - You must include the OOC names here in brackets next to the name, EX: John Doe ((Mark Smith)) [/size]
 [b]1.) Decedent Name:[/b] ${decedentName} ((${oocName || 'Unknown OOC'}))
 [b]2.) Gender:[/b] ${ans(record?.sex || '')}
-[b]3.) Ethnicity:[/b] ${ans(record?.ethnicity || '')}
+[b]3.) Ethnicity:[/b] ${ans(ethnicity)}
 [b]4.) Date of Death:[/b] ${ans(dateOfDeath)}
 [b]5.) Time of Death:[/b] ${ans(timeOfDeath)}
 [b]6.) Location:[/b] ${ans(record?.location || '')}
@@ -115,15 +140,12 @@ const RequestAutopsyModal = ({ show, onClose, record, showNotification, characte
 [divbox=white][size=85](Summarize what you observed at the crime scene, include everything related to death and victim; casings, weapons etc.)[/size]
 [b]1.) Synopsis:[/b] ${ans(synopsis)}
 [b]2.) Reason for Autopsy:[/b] ${ans(causeDetail)}
-
-[b]4.) 
-[b]
 [/divbox]
 [br][/br][divbox=lightgrey][color=#800000][b][ooc]SECTION 4: OOC INFORMATION[/ooc][/b][/color][/divbox]
 [divbox=white][size=85](/cexamine and /cinjuries are no longer mandatory fields for PKs, post them if you happen to have them on hand. CKs have a mandatory cexamine and cinjuries)[/size]
 [b]1.) PK/CK[/b]: ${deathType}
-[b]2.) /cexamine[/b]: ${cexamineImg ? `[img]${cexamineImg}[/img]` : 'ANSWER'}
-[b]3.) /cinjuries[/b]: ${cinjuriesImg ? `[img]${cinjuriesImg}[/img]` : 'ANSWER'}
+[b]2.) /cexamine[/b]: ${cexamineImg ? `[img]${cexamineImg}[/img]` : 'Image not provided'}
+[b]3.) /cinjuries[/b]: ${cinjuriesImg ? `[img]${cinjuriesImg}[/img]` : 'Image not provided'}
 [/divbox][/divbox]`;
     };
 
@@ -141,7 +163,7 @@ const RequestAutopsyModal = ({ show, onClose, record, showNotification, characte
                 decedentName,
                 oocName,
                 gender: record?.sex || '',
-                ethnicity: record?.ethnicity || '',
+                ethnicity,
                 dateOfDeath,
                 timeOfDeath,
                 placeOfDeath: record?.location || '',
@@ -203,7 +225,7 @@ const RequestAutopsyModal = ({ show, onClose, record, showNotification, characte
                         <div><span style={labelStyle}>Decedent Name ((OOC))</span><input style={inputStyle} value={`${decedentName} ((${oocName || 'Unknown OOC'}))`} disabled /></div>
                         <div><span style={labelStyle}>Case ID</span><input style={inputStyle} value={`#${record?.caseId || '—'}`} disabled /></div>
                         <div><span style={labelStyle}>Gender</span><input style={inputStyle} value={record?.sex || '—'} disabled /></div>
-                        <div><span style={labelStyle}>Ethnicity</span><input style={inputStyle} value={record?.ethnicity || '—'} disabled /></div>
+                        <div><span style={labelStyle}>Ethnicity</span><input style={inputStyle} value={ethnicity || '—'} disabled /></div>
                         <div><span style={labelStyle}>Date of Death</span><input style={inputStyle} value={dateOfDeath || '—'} disabled /></div>
                         <div><span style={labelStyle}>Time of Death</span><input style={inputStyle} value={timeOfDeath || '—'} disabled /></div>
                         <div style={{ gridColumn: 'span 2' }}><span style={labelStyle}>Location of Discovery</span><input style={inputStyle} value={record?.location || '—'} disabled /></div>
@@ -229,6 +251,7 @@ const RequestAutopsyModal = ({ show, onClose, record, showNotification, characte
                     <div><span style={labelStyle}>1.) Name *</span><input style={inputStyle} value={requesterName} onChange={e => setRequesterName(e.target.value)} placeholder="e.g. Officer J. Baker" /></div>
                     <div><span style={labelStyle}>2.) Rank</span><input style={inputStyle} value={requesterRank} onChange={e => setRequesterRank(e.target.value)} placeholder="e.g. Officer I" /></div>
                     <div><span style={labelStyle}>3.) Department / Assignment</span><input style={inputStyle} value={requesterDept} onChange={e => setRequesterDept(e.target.value)} placeholder="e.g. LSPD - Homicide" /></div>
+                    <div><span style={labelStyle}>4.) Badge/Serial Number</span><input style={inputStyle} value={requesterBadge} onChange={e => setRequesterBadge(e.target.value)} placeholder="Serial #" /></div>
                     <div><span style={labelStyle}>Agency Forum Account (deliver to)</span>
                         <select style={inputStyle} value={agencyForum} onChange={e => setAgencyForum(e.target.value)}>
                             <option value="">Select agency forum…</option>
@@ -238,7 +261,6 @@ const RequestAutopsyModal = ({ show, onClose, record, showNotification, characte
                     <div><span style={labelStyle}>Forum Account URL</span>
                         <input style={inputStyle} value={forumAccountUrl} onChange={e => setForumAccountUrl(e.target.value)} placeholder="https://lspd.gta.world/… member profile" />
                     </div>
-                    <div><span style={labelStyle}>4.) Badge/Serial Number</span><input style={inputStyle} value={requesterBadge} onChange={e => setRequesterBadge(e.target.value)} placeholder="Serial #" /></div>
                     <div style={{ gridColumn: 'span 2', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, cursor: 'pointer', fontSize: 12, color: 'var(--text)', margin: 0 }}>
                             <input type="checkbox" checked={guidelinesRead} onChange={e => setGuidelinesRead(e.target.checked)} style={{ width: 15, height: 15, margin: 0 }} />
@@ -316,7 +338,7 @@ const RequestAutopsyModal = ({ show, onClose, record, showNotification, characte
                             <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--teal)', marginBottom: 4 }}>2. Filing Rules &amp; Restrictions</div>
                             <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: 'var(--text)', lineHeight: 1.7 }}>
                                 <li><strong>Filing Window:</strong> Requests must be submitted within 31 days of the decedent&apos;s death. After 31 days, requests are automatically discarded unless exigent circumstances apply.</li>
-                                <li><strong>Thread Title Format:</strong> Title your thread exactly as: <code style={{ fontFamily: 'var(--mono)', color: 'var(--teal)', fontSize: 11 }}>[Autopsy Request] Name ((OOC Name)) [AGENCY]</code>.</li>
+                                <li><strong>Thread Title Format:</strong> Title your thread exactly as: <code style={{ fontFamily: 'var(--mono)', color: 'var(--teal)', fontSize: 11 }}>Autopsy Request - Name ((OOC Name)) [AGENCY]</code>.</li>
                                 <li><strong>Player Kills (PK):</strong> Use John/Jane Doe with the character name in OOC brackets.</li>
                                 <li><strong>ME Consultation:</strong> For PK and CK autopsies, you may contact and consult a member of the Medical Examiners prior to posting. They are only accepted if strictly necessary for an important investigation. <em>(This is entirely optional)</em></li>
                                 <li><strong>Confidentiality:</strong> If your investigation is confidential, do not post a public thread. You may send the filled-out template directly to the Medical Examiners via private message.</li>

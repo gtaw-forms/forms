@@ -2,10 +2,11 @@ import { SlashCommandBuilder, EmbedBuilder, MessageFlags } from 'discord.js';
 import { isOwnerOrWhitelisted } from '../services/permissions.js';
 import firebase from '../services/firebase.js';
 import { getDiscordId } from '../services/meDiscordNotify.js';
-import { forwardAssignmentWebhook, PHMC_FORWARD_WEBHOOK_URL } from '../services/assignmentWebhook.js';
+import { forwardAssignmentWebhook, getForwardWebhookUrl } from '../services/assignmentWebhook.js';
 
-// Default forwarding destination = PHMC_FORWARD_WEBHOOK_URL (configurable via
-// FORWARD_WEBHOOK_URL in .env); the /webhook option still allows an override.
+// Default forwarding destination = getForwardWebhookUrl() (FORWARD_WEBHOOK_URL
+// in .env, dev-routed while DEV TEST mode is active); the /webhook option still
+// allows an override.
 
 /**
  * Resolve a real autopsy case from `autopsy-requested` by case number,
@@ -58,7 +59,7 @@ export async function execute(interaction) {
     const caseQuery = interaction.options.getString('case').trim();
     const meOverride = interaction.options.getString('me')?.trim() || null;
     const webhookOverride = interaction.options.getString('webhook')?.trim() || null;
-    const webhookUrl = webhookOverride || PHMC_FORWARD_WEBHOOK_URL;
+    const webhookUrl = webhookOverride || getForwardWebhookUrl();
 
     firebase.init();
     const db = firebase.db;

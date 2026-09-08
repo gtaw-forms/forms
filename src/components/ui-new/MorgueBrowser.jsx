@@ -191,11 +191,9 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
               <button className="btn-view" onClick={() => { setSelectedRecord(r); setShowDetailModal(true); logMorgueAction('View Record', `#${r.caseId} — ${r.name || 'Unknown'}`); }}>
                 <i className="fas fa-eye me-1" style={{ fontSize: 10 }} /> View Record
               </button>
-              {IS_LOCALHOST && (
               <button className="btn-view" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }} onClick={() => { setRequestingAutopsy(r); logMorgueAction('Request Autopsy', `#${r.caseId} — ${r.name || 'Unknown'}`); }}>
                 <i className="fas fa-microscope me-1" style={{ fontSize: 10 }} /> Request Autopsy
               </button>
-              )}
             </div>
           </div>
         ))}

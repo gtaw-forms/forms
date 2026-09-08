@@ -7,17 +7,31 @@
  * failure here never affects the assignment pipeline.
  */
 
-const WEBHOOK_URL = process.env.ASSIGNMENT_WEBHOOK_URL || '';
+import { isDevTestActive, devWebhookUrl } from './devRouting.js';
+
 const FORMS_URL = 'https://gtaw-forms.github.io/forms/';
 const SEND_TIMEOUT_MS = 10000;
 
-// Destination for auto-forwarding assigned autopsies (same target /forward-
-// autopsy-notify uses). Configurable via FORWARD_WEBHOOK_URL in .env.
-export const PHMC_FORWARD_WEBHOOK_URL = process.env.FORWARD_WEBHOOK_URL || 'https://discord.com/api/webhooks/REDACTED';
+// Default forwarding destination when FORWARD_WEBHOOK_URL is unset (used by
+// /forward-autopsy-notify + auto-forward in meDiscordNotify).
+const PHMC_FORWARD_WEBHOOK_DEFAULT = 'https://discord.com/api/webhooks/REDACTED';
+
+// Resolved at SEND time so a runtime /enable-dev-autopsy toggle takes effect
+// immediately. DEV TEST mode routes to the dev webhook (or drops the message
+// when none is configured) instead of the live PHMC Discord.
+function getAssignmentWebhookUrl() {
+    if (isDevTestActive()) return devWebhookUrl('ASSIGNMENT_WEBHOOK_URL');
+    return process.env.ASSIGNMENT_WEBHOOK_URL || '';
+}
+
+export function getForwardWebhookUrl() {
+    if (isDevTestActive()) return devWebhookUrl('FORWARD_WEBHOOK_URL');
+    return process.env.FORWARD_WEBHOOK_URL || PHMC_FORWARD_WEBHOOK_DEFAULT;
+}
 
 /** True when an assignment webhook is configured (used to switch ping channels). */
 export function assignmentWebhookConfigured() {
-    return !!WEBHOOK_URL;
+    return !!getAssignmentWebhookUrl();
 }
 
 /**
@@ -40,13 +54,21 @@ function buildContent({ me, discordId, label }) {
     return `${ping} ${who}, you've been ${action} — here's the case file and links.`.replace(/\s+/g, ' ').trim();
 }
 
+// Strip stray empty parens from parsed decedent names (e.g. "Unknown ()" —
+// parser artifact) and collapse whitespace.
+function cleanDecedent(name) {
+    return String(name || '').replace(/\(\s*\)/g, '').replace(/\s+/g, ' ').trim();
+}
+
 function buildCaseEmbed(c) {
     const fields = [];
+    const decedent = cleanDecedent(c.decedent);
+    const decedentLine = decedent + (c.ooc ? ` ((${c.ooc}))` : '');
     if (c.me) fields.push({ name: '👤 Medical Examiner', value: `**${c.me}**`, inline: true });
     if (c.caseNumber) fields.push({ name: '🆔 Case Number', value: String(c.caseNumber), inline: true });
-    if (c.decedent) fields.push({
+    if (decedent) fields.push({
         name: '🧍 Decedent',
-        value: c.decedent + (c.ooc ? ` ((${c.ooc}))` : ''),
+        value: decedentLine,
         inline: false,
     });
     if (c.caseTitle) fields.push({ name: '📋 Case', value: c.caseTitle, inline: false });
@@ -55,7 +77,7 @@ function buildCaseEmbed(c) {
     if (c.note) fields.push({ name: '📝 Note', value: String(c.note), inline: false });
     const base = c.title || '🔬 Autopsy Case Assigned';
     return {
-        title: base + (c.decedent ? ` — ${c.decedent}` : ''),
+        title: base + (decedent ? ` — ${decedentLine}` : ''),
         color: 0x00bcd4,
         fields,
         timestamp: new Date().toISOString(),
@@ -90,6 +112,7 @@ function buildComponents({ caseUrl }) {
 export async function notifyAssignmentWebhook({
     me, discordId, caseTitle, caseNumber, decedent, ooc, caseUrl, deathType, note, title, label,
 } = {}) {
+    const WEBHOOK_URL = getAssignmentWebhookUrl();
     if (!WEBHOOK_URL) return false;
 
     const payload = {

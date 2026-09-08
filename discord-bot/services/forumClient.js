@@ -1836,6 +1836,40 @@ class ForumClient {
         }
     }
 
+    /**
+     * Resolve a forum username from a member-profile URL (memberlist.php?...).
+     * Used by the autopsy completion DM to deliver to the requester's forum
+     * account captured by the web "Request Autopsy" modal (forumAccountUrl).
+     * @param {string} profileUrl
+     * @returns {Promise<string|null>} username, or null if unresolvable
+     */
+    async resolveProfileUsername(profileUrl) {
+        if (!profileUrl) return null;
+        const lock = await this._acquire('resolveProfileUsername');
+        try {
+            await this.ensureBrowser();
+            await this.page.goto(profileUrl, { waitUntil: 'domcontentloaded', timeout: 120000 }).catch(() => {});
+            await this.page.waitForTimeout(2000);
+
+            const username = await this.page.evaluate(() => {
+                // Prefer an author link on the page; fall back to the profile title.
+                const link = document.querySelector('a.username, a.username-coloured');
+                if (link && link.textContent?.trim()) return link.textContent.trim();
+                const m = document.title.match(/Viewing profile[^|]*[:\-]\s*(.+)/i)
+                    || document.title.match(/Profile[:\-]\s*(.+)/i);
+                return m ? m[1].trim() : null;
+            }).catch(() => null);
+
+            console.log(`[FORUM] 👤 Profile username: "${username || 'not found'}"`);
+            return username;
+        } catch (err) {
+            console.error(`[FORUM] ❌ Failed to resolve profile username: ${err.message}`);
+            return null;
+        } finally {
+            lock.release();
+        }
+    }
+
     // ── Group Members ──
 
     /**

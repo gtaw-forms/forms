@@ -36,6 +36,7 @@
 
 import { getDiscordId } from './meDiscordNotify.js';
 import { FORUM_FALLBACK_URLS, getAgencyForum } from './agencyForums.js';
+import { isDevTestActive, devWebhookUrl } from './devRouting.js';
 
 // ── Constants ──
 
@@ -62,15 +63,20 @@ const SNOWFLAKE_RE = /\b(\d{15,21})\b/;
 
 // ── Config resolution ──
 
-/** True when every faction should route to the test webhook instead. */
+/** True when every faction should route to the dev/test webhook instead. */
 export function isTestMode() {
-    return String(process.env[TEST_MODE_ENV] || '').toLowerCase() === 'true';
+    return isDevTestActive() || String(process.env[TEST_MODE_ENV] || '').toLowerCase() === 'true';
 }
 
 /**
  * Resolve the destination webhook URL for a faction key.
  * Test mode overrides everything; blank/unset vars return null (faction is
  * intentionally unconfigured — DAO/LSPD).
+ *
+ * While DEV TEST autopsy mode is active (AUTOPSY_DEV_TEST=true), every faction
+ * routes to the dev webhook (<env>_DEV override, else DEV_WEBHOOK_URL). The
+ * legacy AUTOPSY_REQUESTER_WEBHOOK_TEST_MODE flag keeps routing to
+ * AUTOPSY_REQUESTER_WEBHOOK_TEST_URL.
  *
  * @param {string} factionKey — e.g. 'LSSD' | 'SADCR' | 'DAO'
  * @param {{ ignoreTestMode?: boolean }} [opts] — when true, resolves the REAL
@@ -83,11 +89,13 @@ export function getFactionWebhookUrl(factionKey, { ignoreTestMode = false } = {}
     const envVar = FACTION_WEBHOOK_ENV[key];
 
     if (!ignoreTestMode && isTestMode()) {
-        const testUrl = (process.env[TEST_URL_ENV] || '').trim();
+        const testUrl = isDevTestActive()
+            ? devWebhookUrl(envVar || 'AUTOPSY_REQUESTER_WEBHOOK')
+            : (process.env[TEST_URL_ENV] || '').trim();
         if (!testUrl) {
             // Fail loud: a silent skip here is indistinguishable from an
             // intentionally-blank faction and hides staging misconfig.
-            console.warn(`[REQ-WEBHOOK][TEST-OVERRIDE] ${TEST_MODE_ENV}=true but ${TEST_URL_ENV} is empty — message NOT sent`);
+            console.warn(`[REQ-WEBHOOK][TEST-OVERRIDE] ${isDevTestActive() ? 'AUTOPSY_DEV_TEST' : TEST_MODE_ENV}=true but no dev/test webhook URL — message NOT sent`);
         }
         return { url: testUrl || null, envVar: TEST_URL_ENV };
     }

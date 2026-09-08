@@ -110,6 +110,7 @@ async function registerCommands() {
     const globalStats = await import('./commands/global-stats.js');
     const testRequesterWebhook = await import('./commands/test-requester-webhook.js');
     const enableDevAutopsy = await import('./commands/enable-dev-autopsy.js');
+    const webAutopsyAutopost = await import('./commands/web-autopsy-autopost.js');
     const forwardAutopsyComplete = await import('./commands/forward-autopsy-complete.js');
     const debugChannels = await import('./commands/debug-channels.js');
     // Personal AGH dashboard — optional. The files are gitignored/not part of a
@@ -158,6 +159,7 @@ async function registerCommands() {
         globalStats.data.toJSON(),
         testRequesterWebhook.data.toJSON(),
         enableDevAutopsy.data.toJSON(),
+        webAutopsyAutopost.data.toJSON(),
         forwardAutopsyComplete.data.toJSON(),
         debugChannels.data.toJSON(),
         ...(aghDashboard ? [aghDashboard.data.toJSON()] : []),
@@ -294,6 +296,14 @@ client.once('clientReady', async () => {
         startAutopsyRequestMonitor();
     } catch (err) {
         console.warn('[BOT] ⚠️ Autopsy request monitor failed to start (non-fatal):', err.message);
+    }
+
+    // ── Start web autopsy request poster (autopsy-requests/pending -> f=265) ──
+    try {
+        const { startWebAutopsyRequestPoster } = await import('./services/webAutopsyRequestPoster.js');
+        startWebAutopsyRequestPoster();
+    } catch (err) {
+        console.warn('[BOT] ⚠️ Web autopsy request poster failed to start (non-fatal):', err.message);
     }
 
     // ── Start queue dashboard (lightweight deploy queue embed in bot-spam) ──
@@ -760,6 +770,9 @@ async function start() {
 
     const enableDevAutopsyCmd = await import('./commands/enable-dev-autopsy.js');
     client.commands.set(enableDevAutopsyCmd.data.name, { execute: enableDevAutopsyCmd.execute });
+
+    const webAutopsyAutopostCmd = await import('./commands/web-autopsy-autopost.js');
+    client.commands.set(webAutopsyAutopostCmd.data.name, { execute: webAutopsyAutopostCmd.execute });
 
     const forwardAutopsyCompleteCmd = await import('./commands/forward-autopsy-complete.js');
     client.commands.set(forwardAutopsyCompleteCmd.data.name, { execute: forwardAutopsyCompleteCmd.execute });

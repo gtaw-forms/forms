@@ -14,6 +14,8 @@ Dear REQUESTER_NAME
 
 We have completed the autopsy investigation, and the detailed report has been sent out. I have thoroughly reviewed all findings and compiled the results into a comprehensive document. Please review the report at your earliest convenience, and feel free to reach out if you have any questions or require further information.
 
+[b]Forms Autopsy:[/b] FORMS_AUTOPSY
+
 [b]Autopsy Findings will be sent to your respective Gov Intranet. GOV_LINK_LINE [/b]
 
 [i]Best regards,[/i]
@@ -52,7 +54,7 @@ import { FORUM_FALLBACK_URLS } from './agencyForums.js';
 
 export function buildCompletionBb(caseTitle, requesterName, linkContext = {}) {
     const ctx = typeof linkContext === 'string' ? { lssdUrl: linkContext } : (linkContext || {});
-    const { faction, lssdUrl, lspdUrl } = ctx;
+    const { faction, lssdUrl, lspdUrl, formsAutopsy } = ctx;
     const f = String(faction || '').toLowerCase();
     const facTag = String(faction || '').toUpperCase();
 
@@ -75,5 +77,6 @@ export function buildCompletionBb(caseTitle, requesterName, linkContext = {}) {
     return COMPLETION_TEMPLATE
         .replace('CASE_TITLE', caseTitle)
         .replace('REQUESTER_NAME', requesterName)
+        .replace('FORMS_AUTOPSY', formsAutopsy ? 'True' : 'False')
         .replace('GOV_LINK_LINE', govLine);
 }

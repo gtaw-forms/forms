@@ -10,6 +10,7 @@
  */
 import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from 'discord.js';
 import { isOwnerOrWhitelisted } from '../services/permissions.js';
+import { firstApiKey } from '../services/apiKeyUtil.js';
 import firebase from '../services/firebase.js';
 
 const FORM_NAMES = {
@@ -94,7 +95,7 @@ async function gatherStats(db) {
     // scheduled queue in RTDB because it is still the bot's live work queue.
     let vpsStatsLoaded = false;
     try {
-        const apiKey = (process.env.MORGUE_API_KEYS || '').split(',')[0]?.trim();
+        const apiKey = firstApiKey(process.env.MORGUE_API_KEYS);
         const response = await fetch('http://127.0.0.1:3001/api/reports/stats', {
             headers: { 'x-api-key': apiKey || '' },
         });

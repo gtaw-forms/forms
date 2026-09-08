@@ -28,19 +28,16 @@ const AssignedAutopsiesModal = ({ show, onClose, onLoadCase, factionsData, loadM
 
         const isLocalHost = window.location.hostname === 'localhost';
 
-        if (isLocalHost) {
-            const mockData = [
-                { id: 'dev-mock-01', name: 'Marcus Johnson', oocName: 'DevTest_Player', faction: 'LSPD', assignedTo: 'Dr. Alyson Frost', topicUrl: null, caseUrl: null, detectedAt: new Date(Date.now() - 60000).toISOString(), parsed: { requesterName: 'Sgt. Riley', placeOfDeath: 'Davis Avenue', deathType: 'PK', dateOfDeath: '10/JUL/2026', timeOfDeath: '22:45' } },
-                { id: 'dev-mock-02', name: 'Sarah Chen', oocName: 'AnotherDev', faction: 'LSSD', assignedTo: 'Dr. Marcus Reed', topicUrl: 'https://forum.gta.world/index.php?/topic/99999-mock/', caseUrl: 'https://forum.gta.world/index.php?/topic/100000-mock-case/', detectedAt: new Date(Date.now() - 120000).toISOString(), parsed: { requesterName: 'Deputy Williams', placeOfDeath: 'Paleto Bay', deathType: 'CK', dateOfDeath: '09/JUL/2026', timeOfDeath: '03:15' } },
-                { id: 'dev-mock-03', name: 'James Smith', oocName: 'ThirdTester', faction: 'SADCR', assignedTo: 'Dr. Emily Hart', topicUrl: 'https://forum.gta.world/index.php?/topic/100001-mock-request/', caseUrl: null, detectedAt: new Date(Date.now() - 180000).toISOString(), parsed: { requesterName: 'CO Martinez', placeOfDeath: 'Bolingbroke', deathType: 'PK', dateOfDeath: '08/JUL/2026', timeOfDeath: '14:30' } },
-                { id: 'dev-mock-04', name: 'Elena Rodriguez', oocName: 'FourthTester', faction: 'LSPD', assignedTo: 'Dr. Alyson Frost', topicUrl: null, caseUrl: null, detectedAt: new Date(Date.now() - 3600000).toISOString(), parsed: { requesterName: 'Officer Blake', placeOfDeath: 'Rockford Hills', deathType: 'PK', dateOfDeath: '07/JUL/2026', timeOfDeath: '19:50' } },
-                { id: 'dev-mock-05', name: 'Test Non-Morgue', oocName: 'NoMatchUser', faction: 'DAO', assignedTo: 'Dr. Sarah Mitchell', topicUrl: null, caseUrl: null, detectedAt: new Date().toISOString(), parsed: { requesterName: 'Agent Cross', placeOfDeath: 'Sandy Shores', deathType: 'PK', dateOfDeath: '11/JUL/2026', timeOfDeath: '08:00' } },
-            ];
-            setAssignments(mockData);
-            setRotationList(MOCK_ROTATION_LIST);
-            setRotationPosition(2); // Dr. Emily Hart is next in mock
-            return;
-        }
+        // Localhost dev fallback — real data always wins; mocks only appear
+        // when the live read fails or returns nothing (so end-to-end testing
+        // on localhost sees real assignments, not fake rows).
+        const mockData = [
+            { id: 'dev-mock-01', name: 'Marcus Johnson', oocName: 'DevTest_Player', faction: 'LSPD', assignedTo: 'Dr. Alyson Frost', topicUrl: null, caseUrl: null, detectedAt: new Date(Date.now() - 60000).toISOString(), parsed: { requesterName: 'Sgt. Riley', placeOfDeath: 'Davis Avenue', deathType: 'PK', dateOfDeath: '10/JUL/2026', timeOfDeath: '22:45' } },
+            { id: 'dev-mock-02', name: 'Sarah Chen', oocName: 'AnotherDev', faction: 'LSSD', assignedTo: 'Dr. Marcus Reed', topicUrl: 'https://forum.gta.world/index.php?/topic/99999-mock/', caseUrl: 'https://forum.gta.world/index.php?/topic/100000-mock/', detectedAt: new Date(Date.now() - 120000).toISOString(), parsed: { requesterName: 'Deputy Williams', placeOfDeath: 'Paleto Bay', deathType: 'CK', dateOfDeath: '09/JUL/2026', timeOfDeath: '03:15' } },
+            { id: 'dev-mock-03', name: 'James Smith', oocName: 'ThirdTester', faction: 'SADCR', assignedTo: 'Dr. Emily Hart', topicUrl: 'https://forum.gta.world/index.php?/topic/100001-mock-request/', caseUrl: null, detectedAt: new Date(Date.now() - 180000).toISOString(), parsed: { requesterName: 'CO Martinez', placeOfDeath: 'Bolingbroke', deathType: 'PK', dateOfDeath: '08/JUL/2026', timeOfDeath: '14:30' } },
+            { id: 'dev-mock-04', name: 'Elena Rodriguez', oocName: 'FourthTester', faction: 'LSPD', assignedTo: 'Dr. Alyson Frost', topicUrl: null, caseUrl: null, detectedAt: new Date(Date.now() - 3600000).toISOString(), parsed: { requesterName: 'Officer Blake', placeOfDeath: 'Rockford Hills', deathType: 'PK', dateOfDeath: '07/JUL/2026', timeOfDeath: '19:50' } },
+            { id: 'dev-mock-05', name: 'Test Non-Morgue', oocName: 'NoMatchUser', faction: 'DAO', assignedTo: 'Dr. Sarah Mitchell', topicUrl: null, caseUrl: null, detectedAt: new Date().toISOString(), parsed: { requesterName: 'Agent Cross', placeOfDeath: 'Sandy Shores', deathType: 'PK', dateOfDeath: '11/JUL/2026', timeOfDeath: '08:00' } },
+        ];
 
         // Fetch the full ME rotation list + position
         Promise.all([
@@ -50,7 +47,15 @@ const AssignedAutopsiesModal = ({ show, onClose, onLoadCase, factionsData, loadM
             const list = listSnap.val();
             setRotationList(Array.isArray(list) ? list : []);
             setRotationPosition(typeof posSnap.val() === 'number' ? posSnap.val() : 0);
-        }).catch(() => { setRotationList([]); setRotationPosition(0); });
+        }).catch(() => {
+            if (isLocalHost) {
+                setRotationList(MOCK_ROTATION_LIST);
+                setRotationPosition(2); // Dr. Emily Hart is next in mock
+            } else {
+                setRotationList([]);
+                setRotationPosition(0);
+            }
+        });
 
         const r = ref(database, 'autopsy-requested');
         const unsub = onValue(r, (snap) => {

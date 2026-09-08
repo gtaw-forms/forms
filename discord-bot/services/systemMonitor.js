@@ -8,6 +8,7 @@
 
 import firebase from './firebase.js';
 import { sendLogMessage } from './logChannel.js';
+import { firstApiKey } from './apiKeyUtil.js';
 
 async function sendWebhook(content, embed) {
     try {
@@ -223,7 +224,7 @@ async function getVpsMorgueLatest() {
         const controller = new AbortController();
         const t = setTimeout(() => controller.abort(), 4000);
         const res = await fetch('http://127.0.0.1:3001/api/morgue?limit=1', {
-            headers: { 'x-api-key': (process.env.MORGUE_API_KEYS || '').split(',')[0]?.trim() || '' },
+                headers: { 'x-api-key': firstApiKey(process.env.MORGUE_API_KEYS) },
             signal: controller.signal,
         });
         clearTimeout(t);

@@ -610,7 +610,14 @@ const NewUIPrototype = ({ basicMode = false }) => {
           console.warn('[CredentialSync] No roster match for', resolved.employeeName, '— rank/badge may be blank until roster syncs.');
         }
         if (badgeMismatch || rankMismatch) {
-          console.warn(`[CredentialSync] Corrected stale credentials for ${resolved.employeeName} (matchedBy: ${resolved.matchedBy})`, { badgeMismatch, rankMismatch, fromBadge: badge || null, toBadge: resolved.badge || null, fromRank: rank || null, toRank: resolved.rank || null });
+          console.warn(`[CredentialSync] Corrected stale credentials for ${resolved.employeeName} (matchedBy: ${resolved.matchedBy}) ${JSON.stringify({ badgeMismatch, rankMismatch, fromBadge: badge || null, toBadge: resolved.badge || null, fromRank: rank || null, toRank: resolved.rank || null })}`);
+        }
+        // Outcome breadcrumb (blanks-filled only; corrections already warn above).
+        // Proves the auto-fill ran — previously a successful fill was silent,
+        // making it impossible to tell from logs whether sync fired.
+        const filledBlanks = [!name && 'employee', !rank && 'rank', !badge && 'badge'].filter(Boolean);
+        if (filledBlanks.length > 0) {
+          console.log(`[CredentialSync] Auto-filled ${filledBlanks.join('/')} for ${resolved.employeeName} (matchedBy: ${resolved.matchedBy}, roster: ${factionListData.length})`);
         }
         return { ...currentFormValues, ...updates };
       }

@@ -10,6 +10,7 @@ import firebase from './firebase.js';
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { getVpsStats } from './vpsStats.js';
 import { lastActivity, isBrowserActive } from './activityLog.js';
+import { firstApiKey } from './apiKeyUtil.js';
 
 const DASHBOARD_REFRESH_MS = 10 * 60 * 1000; // 10 minutes — was 5m, 412k×12/hr=4.9 MB/hr → now 2.4 MB/hr pending VPS move
 const VPS_STATS_REFRESH_MS = 5000; // VPS CPU/MEM/activity field refreshes every 5s. Discord's message-endpoint bucket allows 5 edits/5s per channel — 1/5s uses ~20%.
@@ -21,6 +22,10 @@ let statsInterval = null;
 let cachedConfig = null;
 let editInProgress = false;
 let refreshing = false;
+let assignWatcherRef = null;
+let assignWatcherPrimed = false;
+let assignRefreshTimer = null;
+let eventRefreshRunning = false;
 
 /**
  * Register the bot client instance (called from index.js on ready).
@@ -170,7 +175,7 @@ async function gatherDashboardData(db, force = false) {
             const controller = new AbortController();
             const t = setTimeout(() => controller.abort(), 3500);
             const res = await fetch('http://127.0.0.1:3001/api/morgue?limit=1', {
-                headers: { 'x-api-key': (process.env.MORGUE_API_KEYS || '').split(',')[0]?.trim() || '' },
+                headers: { 'x-api-key': firstApiKey(process.env.MORGUE_API_KEYS) },
                 signal: controller.signal,
             });
             clearTimeout(t);
@@ -881,6 +886,8 @@ export function startDashboardManager() {
         statsInterval = setInterval(updateVpsStatsField, VPS_STATS_REFRESH_MS);
     });
 
+    startAssignmentWatcher(db);
+
     console.log(`[DASHBOARD] ✅ Dashboard manager active (${DASHBOARD_REFRESH_MS / 60000}-min cycle, cached data; VPS stats every ${VPS_STATS_REFRESH_MS / 1000}s).`);
 }
 
@@ -892,6 +899,42 @@ export function stopDashboardManager() {
     if (statsInterval) {
         clearInterval(statsInterval);
         statsInterval = null;
+    }
+    if (assignWatcherRef) {
+        assignWatcherRef.off('value');
+        assignWatcherRef = null;
+    }
+    if (assignRefreshTimer) {
+        clearTimeout(assignRefreshTimer);
+        assignRefreshTimer = null;
+    }
+}
+
+// ── Live assignment updates ──
+// Watches the tiny autopsy-requests/assignments node — touched by
+// recordAssignment/clearAssignment on every assign, reassign, and completion —
+// and triggers an out-of-cycle dashboard rebuild so ME Assignments reflects
+// changes within seconds instead of waiting for the 10-min cycle. Debounced to
+// coalesce bursts (e.g. multi-decedent batch assigns); the initial listener
+// fire is ignored so startup doesn't double-refresh.
+function startAssignmentWatcher(db) {
+    try {
+        const ref = db.ref('autopsy-requests/assignments');
+        assignWatcherRef = ref;
+        ref.on('value', () => {
+            if (!assignWatcherPrimed) { assignWatcherPrimed = true; return; }
+            if (assignRefreshTimer) clearTimeout(assignRefreshTimer);
+            assignRefreshTimer = setTimeout(() => {
+                assignRefreshTimer = null;
+                if (eventRefreshRunning) return;
+                eventRefreshRunning = true;
+                console.log('[DASHBOARD] Assignment change detected — running live refresh...');
+                postOrUpdateDashboard(db).catch(() => {}).finally(() => { eventRefreshRunning = false; });
+            }, 5000);
+        });
+        console.log('[DASHBOARD] Assignment watcher active (live ME Assignments updates).');
+    } catch (err) {
+        console.warn('[DASHBOARD] Assignment watcher failed to start (non-fatal):', err.message);
     }
 }
 

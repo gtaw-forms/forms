@@ -4,6 +4,7 @@
  */
 
 import { EmbedBuilder } from 'discord.js';
+import { isDevTestActive, devLogChannelId } from './devRouting.js';
 
 let _client = null;
 let _channelId = null;
@@ -32,7 +33,11 @@ export function setLogClient(client) {
  * @param {boolean} [options.crash] - If true, also pings @here in the message
  */
 export async function sendLogMessage(content, embed, { crash = false } = {}) {
-    if (!_channelId || !_client) return;
+    // DEV TEST mode redirects routine log messages to the dev channel (resolved
+    // per-send so a runtime /enable-dev-autopsy toggle applies immediately).
+    // No DEV_LOG_CHANNEL_ID configured => dropped, never sent to the live channel.
+    const channelId = isDevTestActive() ? devLogChannelId() : _channelId;
+    if (!channelId || !_client) return;
 
     const SEND_TIMEOUT_MS = 10000;
     // Timeout wrapper so a stalled Discord fetch/send can NEVER hang the caller.
@@ -45,9 +50,9 @@ export async function sendLogMessage(content, embed, { crash = false } = {}) {
     ]);
 
     try {
-        const channel = await withTimeout(_client.channels.fetch(_channelId), 'channel fetch');
+        const channel = await withTimeout(_client.channels.fetch(channelId), 'channel fetch');
         if (!channel?.isTextBased()) {
-            console.warn(`[LOG] ⚠️ Channel ${_channelId} is not a text channel`);
+            console.warn(`[LOG] ⚠️ Channel ${channelId} is not a text channel`);
             return;
         }
 
