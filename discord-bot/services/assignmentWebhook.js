@@ -14,7 +14,9 @@ const SEND_TIMEOUT_MS = 10000;
 
 // Default forwarding destination when FORWARD_WEBHOOK_URL is unset (used by
 // /forward-autopsy-notify + auto-forward in meDiscordNotify).
-const PHMC_FORWARD_WEBHOOK_DEFAULT = 'https://discord.com/api/webhooks/REDACTED';
+// SECURITY: never hardcode a discord.com/api/webhooks URL here — webhook URLs
+// are bearer tokens. Configure via FORWARD_WEBHOOK_URL in .env (gitignored).
+const PHMC_FORWARD_WEBHOOK_DEFAULT = '';
 
 // Resolved at SEND time so a runtime /enable-dev-autopsy toggle takes effect
 // immediately. DEV TEST mode routes to the dev webhook (or drops the message

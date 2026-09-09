@@ -3,6 +3,11 @@
 > **Read `CLAUDE.md` for the project overview and workflows** — deploy matrix, VPS commands, project structure, UI architecture, and code conventions.
 > **Read the changelogs for what changed:** `changelog.md` (web app + Cloud Functions) and `discord-bot/changelog.md` (bot + VPS APIs). Keep this file as lean memory — **point, don't restate**.
 
+## Hard rule — no Discord webhook URLs in git (2026-09-09)
+
+- **Never commit a `discord.com/api/webhooks/…` URL anywhere** — source, comments, tests, fixtures, docs, plans. The URL *is* the token (post + delete). Env/`PHMC_CONFIG`/RTDB at runtime only; fail closed when unset. Full rule in `CLAUDE.md` Code Conventions. Enforced by `.githooks/pre-commit`.
+- **History:** the 2026-08-31 "main deploy" committed two live webhook tokens to the public repo (`gtaw-forms/forms`); both were abused (spam posts as "Autopsy Bot"). Purged from history + rotated — see `discord-bot/changelog.md`. The old `.env`-only wording of the secrets rule is why the review missed it: hardcoded literals in `.js` looked like "defaults", not secrets.
+
 ## Plans & planning docs
 
 - **Rule — plans live in `plan/`:** all plans and plan files go in a dedicated `plan/` folder at the repo root (e.g. `plan/plan.md`, `plan/<topic>-plan.md`). The whole `plan/` folder is **gitignored by default** — never commit plan files. Keep them local-only, or mirror the ones the bot needs to the VPS under `discord-bot/debug/`.
@@ -24,6 +29,10 @@
 - **The OAuth `faction` object never carries `firstname`** — it only has `characterId`/`characterName`/`rank`/`scriptRank`. Code must not key off `faction.firstname`.
 - **Faction roster records store the character id as the record KEY** (`factions/364/members/<charId>`), not as a field. Always use the key, never `memberData.characterId`.
 - **`gtawCharacterId` of e.g. `50230` may be a UCP **account** id, not a character id** (Sarah Bell's character is `156863`; `50230` is her account).
+
+## Observability
+
+- **Sentry (errors/breadcrumbs, authoritative) + LaunchDarkly Observability (session replay/logs/traces)** — both web-app only, inited in `src/index.jsx` (`src/services/launchdarkly.js`). Details in CLAUDE.md. LD is prod-only, privacy `none` (fictional RP data), key via `VITE_LAUNCHDARKLY_CLIENT_ID` (rebuild to apply).
 
 ## Recurring gotchas
 

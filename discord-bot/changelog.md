@@ -1,6 +1,14 @@
 # PHMC Discord Bot — Changelog
 
-## 2026-09-08 — deploy slow-warning threshold 1min → 3min
+## 2026-09-09 — revoke leaked webhook tokens, env-only config
+
+### Security
+- **Leaked tokens revoked.** `assignmentWebhook.js` carried the live PHMC "Autopsy Bot" webhook as a hardcoded `PHMC_FORWARD_WEBHOOK_DEFAULT`, and `debug-testing-scripts/notify-webhook.mjs` carried the live "Admin Webhook v3" as a fallback — both committed to the public repo on 2026-08-31 and abused for spam. Both literals deleted; git history purged across all branches; both webhooks deleted at Discord.
+- **Env-only from here on.** Forward/assignment sends resolve `FORWARD_WEBHOOK_URL` / `ASSIGNMENT_WEBHOOK_URL` from `.env` (VPS) with NO literal fallback — unconfigured means skip-with-warning, and `/forward-autopsy-notify` refuses cleanly instead of failing on HTTP. Debug script `notify-webhook.mjs` exits unless `NOTIFY_WEBHOOK_URL` is set.
+- **Recreate on the VPS:** create two new webhooks in Discord (autopsy channel + admin channel), set `FORWARD_WEBHOOK_URL`, `ASSIGNMENT_WEBHOOK_URL` (and `NOTIFY_WEBHOOK_URL` if the debug script is used) in `/opt/phmc-bot/discord-bot/.env`, then SCP the changed files up + `pm2 restart phmc-bot`.
+
+### Deployed
+- SCP `services/assignmentWebhook.js`, `commands/forward-autopsy-notify.js` + `pm2 restart phmc-bot` (owner/VPS step, after the new webhook URLs are in `.env`).
 
 ### Fixed
 - **"Forum Slow to Respond" false alarms** (`deployExecutor.js`) — the 1-min tripwire fired on healthy multi-step autopsy runs (login + post + crosspost + DM routinely take 1-3 min). Raised to 3 min; the 10-min abort is unchanged. No timer leak existed (both guards clear on settle).

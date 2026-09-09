@@ -246,6 +246,14 @@ Add to `MORGUE_API_KEYS` in `.env`, then `pm2 restart morgue-api`.
 - Forms stored in Firebase as BBCode templates (JSON schema).
 - Bot forum client uses Playwright with stealth plugin — must NOT include `--disable-web-security` or `bypassCSP: true`.
 - Secrets (`.env`, `firebase-admin-key.json`, `*credentials.md`) are never committed or read aloud.
+- **NEVER commit Discord webhook URLs — no exceptions.** A webhook URL (`discord.com/api/webhooks/<id>/<token>`) IS the secret: anyone holding it can post as the webhook and (via DELETE) destroy it. No webhook URL in tracked source, comments, tests, fixtures, docs, or plan files — not as a "default", "fallback", "example", or "placeholder" (even a fake-looking one trains the pattern). Webhook destinations come ONLY from environment (`process.env.*_WEBHOOK_URL`, gitignored `.env` on the VPS) or the `PHMC_CONFIG` secret / `webhooks/<id>` RTDB node at runtime. Code with no configured URL must fail closed (skip + warn), never fall back to a literal. The pre-commit hook (`.githooks/pre-commit`, enabled via `git config core.hooksPath .githooks`) blocks any staged `discord.com/api/webhooks` literal.
+
+## Observability (Sentry + LaunchDarkly)
+
+Both are web-app only, initialized side-by-side in `src/index.jsx`. Neither may break the app — all init paths are non-fatal no-ops when unconfigured.
+
+- **Sentry — errors + breadcrumbs (authoritative).** DSN is hardcoded in `src/index.jsx`. The per-error breadcrumb trail (console/network/UI) is the primary diagnostic artifact — preserve structured log args (no `[object Object]`). Console interceptor forwards to Discord when Sentry is blocked.
+- **LaunchDarkly Observability — session replay + logs/traces.** Module: `src/services/launchdarkly.js`. Prod-only (localhost never records, preserves quota). `privacySetting: 'none'` — forms hold fictional GTA RP data only. Client-side ID via `VITE_LAUNCHDARKLY_CLIENT_ID` in gitignored root `.env` (baked at build time, so it needs a rebuild + `node tools/deploy.js` to take effect). Anonymous context.
 
 ## Staging Mode (forms_staging)
 

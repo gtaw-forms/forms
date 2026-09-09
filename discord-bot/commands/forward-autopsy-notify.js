@@ -60,6 +60,10 @@ export async function execute(interaction) {
     const meOverride = interaction.options.getString('me')?.trim() || null;
     const webhookOverride = interaction.options.getString('webhook')?.trim() || null;
     const webhookUrl = webhookOverride || getForwardWebhookUrl();
+    if (!webhookUrl) {
+        await interaction.editReply({ content: 'No forwarding webhook configured (set FORWARD_WEBHOOK_URL in .env). Refusing to continue — webhook URLs are never hardcoded.' });
+        return;
+    }
 
     firebase.init();
     const db = firebase.db;

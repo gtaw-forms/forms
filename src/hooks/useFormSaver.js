@@ -804,23 +804,18 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated, rosterData = {}) 
                     userAgent: navigator.userAgent,
                 },
             });
-            // Fire Discord webhook for save failures (Sentry is returning 404)
+            // Fire Discord webhook for save failures (Sentry is returning 404).
+            // SECURITY: route via the server-side proxy — never put a webhook
+            // URL in browser code (VITE_ vars bake into the public bundle).
             try {
-                const webhookUrl = import.meta.env.VITE_DEV_WEBHOOK;
-                if (webhookUrl) {
-                    fetch(webhookUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            embeds: [{
-                                title: '❌ Report Save Failed',
-                                description: `**Form:** ${selectedForm?.name || 'Unknown'}\n**Error:** ${error.message || 'Unknown'}\n**Code:** ${error.code || 'N/A'}`,
-                                color: 0xdc3545,
-                                timestamp: new Date().toISOString(),
-                            }],
-                        }),
-                    }).catch(() => {});
-                }
+                await triggerWebhookProxy('dev', {
+                    embeds: [{
+                        title: 'Report Save Failed',
+                        description: `**Form:** ${selectedForm?.name || 'Unknown'}\n**Error:** ${error.message || 'Unknown'}\n**Code:** ${error.code || 'N/A'}`,
+                        color: 0xdc3545,
+                        timestamp: new Date().toISOString(),
+                    }],
+                });
             } catch {}
             if (!options.silent) {
                 showNotification('Something went wrong while saving the report.', 'error');

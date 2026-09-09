@@ -4,6 +4,7 @@ import * as Sentry from "@sentry/react";
 import BusinessCardImage from '../../assets/business-card.png';
 import '../Modals/BusinessCard.css';
 import BaseModal from '../Modals/BaseModal';
+import { triggerWebhookProxy } from '../../services/firebaseFunctions';
 
 const copyToClipboard = async (text, showNotification, message) => {
   try {
@@ -162,41 +163,31 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo, handleI
       return;
     }
 
-    const { webhookURL, message } = webhookQueue.current.shift();
+    // SECURITY: never POST to a Discord webhook URL from the browser — any URL
+    // shipped here is visible to every visitor (DevTools / bundle) and baked
+    // into the public gh-pages build. Route via the server-side proxy instead.
+    const { message } = webhookQueue.current.shift();
 
     try {
-      const response = await fetch(webhookURL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(message)
+      await triggerWebhookProxy('dev', message);
+      console.log('Discord webhook sent successfully');
+      lastWebhookCallTimestamp.current = Date.now();
+    } catch (webhookError) {
+      console.error('Failed to send Discord webhook (Business Card):', {
+        status: webhookError?.status,
+        message: webhookError?.message,
+        payload: message
       });
-
-      if (!response.ok) {
-        const errorData = await response.text();
-        console.error('Failed to send Discord webhook (Business Card):', {
-          status: response.status,
-          statusText: response.statusText,
-          errorData,
-          payload: message
-        });
-        Sentry.captureMessage("Discord Webhook Send Failure (Business Card)", {
-          extra: {
-            status: response.status,
-            statusText: response.statusText,
-            responseBody: errorData,
-            webhookPayload: JSON.stringify(message),
-            embedCount: message.embeds?.length,
-            firstEmbed: message.embeds?.[0]
-          },
-          level: "error"
-        });
-      } else {
-        console.log('Discord webhook sent successfully');
-        lastWebhookCallTimestamp.current = Date.now();
-      }
-    } catch (error) {
-      console.error('Error sending Discord webhook (Business Card):', error);
-      Sentry.captureException(error, { extra: { context: 'Discord Webhook Send Function (Business Card)' } });
+      Sentry.captureMessage("Discord Webhook Send Failure (Business Card)", {
+        extra: {
+          status: webhookError?.status,
+          message: webhookError?.message,
+          webhookPayload: JSON.stringify(message),
+          embedCount: message.embeds?.length,
+          firstEmbed: message.embeds?.[0]
+        },
+        level: "error"
+      });
     } finally {
       isWebhookProcessing.current = false;
       if (webhookQueue.current.length > 0) {
@@ -206,12 +197,8 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo, handleI
   }, []);
 
   const sendDiscordWebhook = useCallback(async (cardName, cardRank, cardPhoneNumber, generatedImageUrl, errorMessage = null) => {
-    const webhookURL = import.meta.env.VITE_DEV_WEBHOOK;
-    if (!webhookURL) {
-      console.warn('Discord webhook URL is not set in environment variables.');
-      Sentry.captureMessage("Discord Webhook URL not set (Business Card)", { level: "warning" });
-      return;
-    }
+    // Webhook destination resolves server-side via the proxy — no URL here
+    // (anything in the browser bundle is public by design).
 
     const embed = {
       title: "Business Card Creation Alert!",
@@ -261,7 +248,7 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo, handleI
     }
 
     const message = { embeds: [embed] };
-    webhookQueue.current.push({ webhookURL, message });
+    webhookQueue.current.push({ message });
     if (!isWebhookProcessing.current) {
       processWebhookQueue();
     }
