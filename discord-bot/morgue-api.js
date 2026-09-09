@@ -100,7 +100,7 @@ const NOTIFY_CHANNELS = {
     coroner: process.env.NOTIFY_CHANNEL_CORONER || '1384993245968207922', // staging #coroner-webhook-main
     phmc:    process.env.NOTIFY_CHANNEL_PHMC    || '1384993223608369342', // staging #phmc-webhook-main
     autopsies: process.env.AUTOPSIES_CHANNEL_ID || '1367217501137797252', // PHMC #autopsies
-    apilogs: process.env.NOTIFY_CHANNEL_APILOGS || '1521662195820265635', // staging #discord-bot-spam (this API's own logs)
+    apilogs: process.env.NOTIFY_CHANNEL_APILOGS || '1455291911740067921', // staging #debug-logs-crash-sentry (this API's own logs)
 };
 
 import { Client, GatewayIntentBits } from 'discord.js';
