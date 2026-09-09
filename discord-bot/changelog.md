@@ -4,6 +4,7 @@
 
 ### Added
 - **`services/phmcChannels.js`** — committed channel-ID map + `sendChannelMessage(client, channelId, payload)` transport helper. Channel IDs are safe to commit (not credentials); mapped so far: `autopsies` → PHMC Discord #autopsies (`AUTOPSIES_CHANNEL_ID` overrides). Nothing sends through it yet — senders flip off webhooks one by one once the bot joins the PHMC guild.
+- **Read-only migration gate:** `sendChannelMessage` drops every send (logged, never throws) unless `PHMC_CHANNEL_SEND_ENABLED=true` is set in the VPS `.env`. The bot can join the guild and resolve channels without ever posting until verification passes.
 
 ### Deployed
 - File committed + SCP'd to VPS (no restart — nothing imports it yet).

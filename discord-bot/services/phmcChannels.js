@@ -22,6 +22,17 @@ export function getChannelId(name) {
 }
 
 /**
+ * Migration safety gate — READ-ONLY until verified.
+ * Channel sends are dropped (logged, never thrown) unless the VPS operator
+ * explicitly sets PHMC_CHANNEL_SEND_ENABLED=true in .env. This lets the bot
+ * join the PHMC guild, read/fetch channels, and prove the mapping resolves,
+ * without ever posting a message until every sender is verified.
+ */
+function channelSendEnabled() {
+    return String(process.env.PHMC_CHANNEL_SEND_ENABLED || '').toLowerCase() === 'true';
+}
+
+/**
  * Send a webhook-style payload to a guild channel via the bot client.
  * Accepts the same { content, embeds, components, allowed_mentions } shape
  * the webhook senders build, so migration is a transport swap. Link buttons
@@ -42,6 +53,10 @@ export async function sendChannelMessage(client, channelId, payload = {}) {
     }
     if (!channelId) {
         console.warn('[PHMC-CHANNEL] No channel id — dropping message');
+        return false;
+    }
+    if (!channelSendEnabled()) {
+        console.log(`[PHMC-CHANNEL] Suppressed send to ${channelId} (read-only mode — set PHMC_CHANNEL_SEND_ENABLED=true to post)`);
         return false;
     }
     try {
