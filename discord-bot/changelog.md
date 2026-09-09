@@ -1,6 +1,12 @@
 # PHMC Discord Bot — Changelog
 
-## 2026-09-09 — revoke leaked webhook tokens, env-only config
+## 2026-09-09 — PHMC Discord channel map (pre-migration, no behavior change)
+
+### Added
+- **`services/phmcChannels.js`** — committed channel-ID map + `sendChannelMessage(client, channelId, payload)` transport helper. Channel IDs are safe to commit (not credentials); mapped so far: `autopsies` → PHMC Discord #autopsies (`AUTOPSIES_CHANNEL_ID` overrides). Nothing sends through it yet — senders flip off webhooks one by one once the bot joins the PHMC guild.
+
+### Deployed
+- File committed + SCP'd to VPS (no restart — nothing imports it yet).
 
 ### Security
 - **Leaked tokens revoked.** `assignmentWebhook.js` carried the live PHMC "Autopsy Bot" webhook as a hardcoded `PHMC_FORWARD_WEBHOOK_DEFAULT`, and `debug-testing-scripts/notify-webhook.mjs` carried the live "Admin Webhook v3" as a fallback — both committed to the public repo on 2026-08-31 and abused for spam. Both literals deleted; git history purged across all branches; both webhooks deleted at Discord.
