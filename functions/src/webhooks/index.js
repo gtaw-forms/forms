@@ -63,7 +63,13 @@ export const sendWebhookProxy = onCall({
         `Webhook not found: ${webhookId}`
       );
     }
-    url = snapshot.val().url;
+    url = snapshot.val()?.url;
+    if (!url) {
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        `Webhook '${webhookId}' has no URL stored at webhooks/${webhookId} — add its url field.`
+      );
+    }
   } else {
     const configKey = WEBHOOK_URL_MAP[webhookType];
     if (!configKey) {
