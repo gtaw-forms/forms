@@ -12,8 +12,6 @@ const WEBHOOK_URL_MAP = {
   auth:    "auth",
   forms:   "forms",
   error:   "error",
-  cctv_dev: "cctv_dev",
-  cctv_leo: "cctv_leo",
   coroner: "coroner",
   morgue_search: "admin",
   phmc:    "phmc",

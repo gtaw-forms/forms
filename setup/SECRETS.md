@@ -30,8 +30,6 @@ injects it as `process.env.PHMC_CONFIG` (a JSON string).
   "auth":    "https://discord.com/api/webhooks/...",
   "forms":   "https://discord.com/api/webhooks/...",
   "error":   "https://discord.com/api/webhooks/...",
-  "cctv_dev": "https://discord.com/api/webhooks/...",
-  "cctv_leo": "https://discord.com/api/webhooks/...",
   "coroner": "https://discord.com/api/webhooks/...",
   "phmc":    "https://discord.com/api/webhooks/...",
   "dev":     "https://discord.com/api/webhooks/...",
@@ -50,7 +48,7 @@ injects it as `process.env.PHMC_CONFIG` (a JSON string).
 
 | Key | Type | Used by | Purpose |
 |---|---|---|---|
-| `admin`, `auth`, `forms`, `error`, `cctv_dev`, `cctv_leo`, `coroner`, `phmc`, `dev` | string (webhook URL) | `sendWebhookProxy` | Discord webhook per webhook-type (the `WEBHOOK_URL_MAP`) |
+| `admin`, `auth`, `forms`, `error`, `coroner`, `phmc`, `dev` | string (webhook URL) | `sendWebhookProxy` | Discord webhook per webhook-type (the `WEBHOOK_URL_MAP`) |
 | `DISCORD_WEBHOOK_FUNCTIONS` | string | `sendWebhook` fallback | Default webhook when no type URL is passed |
 | `ADMIN_ACTION_WEBHOOK_URL` | string | `sendWebhook` fallback | Secondary default webhook |
 | `GTAWORLD_CLIENT_ID` | string | `processGtaWorldAuth` / `validateGtaWorldToken` / `getPublicConfig` | GTA World OAuth — **public** id (returned to the client) |

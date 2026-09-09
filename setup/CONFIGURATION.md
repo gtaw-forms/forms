@@ -141,8 +141,6 @@ Cloud Secret. It is a JSON object with keys matching the webhook map, e.g.:
   "auth":   "https://discord.com/api/webhooks/.../...",
   "forms":  "https://discord.com/api/webhooks/.../...",
   "error":  "https://discord.com/api/webhooks/.../...",
-  "cctv_dev": "...",
-  "cctv_leo": "...",
   "coroner": "...",
   "phmc":   "...",
   "dev":    "..."
