@@ -1,6 +1,13 @@
 # PHMC Discord Bot — Changelog
 
-## 2026-09-09 — PHMC Discord channel map (pre-migration, no behavior change)
+## 2026-09-09 — Discord Rich Presence (idle / deploying)
+
+### Added
+- **`services/presence.js`** — presence reflects what the bot is doing: idle baseline `Watching PHMC reports`, busy labels pushed per task (`startActivity`/`endActivity` token API, latest wins, 2s debounce, 12-min stale expiry, never throws). Not a channel post, so the read-only migration gate doesn't apply.
+- **Wired:** boot sets the baseline (`index.js` ready); `runDeploy` shows `Deploying <report> to <forum>` and clears on settle (success/fail/abort) in `deployExecutor.js`. Monitor scans can adopt the same two calls later.
+
+### Deployed
+- SCP `services/presence.js`, `services/deployExecutor.js`, `index.js` + `pm2 restart phmc-bot`.
 
 ### Added
 - **`services/phmcChannels.js`** — committed channel-ID map + `sendChannelMessage(client, channelId, payload)` transport helper. Channel IDs are safe to commit (not credentials); mapped so far: `autopsies` → PHMC Discord #autopsies (`AUTOPSIES_CHANNEL_ID` overrides). Nothing sends through it yet — senders flip off webhooks one by one once the bot joins the PHMC guild.

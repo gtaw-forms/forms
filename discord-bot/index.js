@@ -228,6 +228,15 @@ client.once('clientReady', async () => {
     const { setLogClient, sendLogMessage } = await import('./services/logChannel.js');
     setLogClient(client);
 
+    // ── Rich presence baseline (idle until a task pushes a label) ──
+    try {
+        const { setPresenceClient, initPresence } = await import('./services/presence.js');
+        setPresenceClient(client);
+        initPresence();
+    } catch (err) {
+        console.warn('[BOT] ⚠️ Presence init failed (non-fatal):', err.message);
+    }
+
     // ── Log startup to the log channel ──
     sendLogMessage(null, {
         title: 'Bot Online',

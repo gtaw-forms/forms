@@ -171,6 +171,14 @@ export async function runDeploy(type, data) {
 
     console.log('[AUTO] Deploying ' + label + ' (' + data.key + ') to ' + forumLabel + '...');
 
+    // Rich presence: show the active deploy, clear it when the run settles
+    // (outer finally covers success, failure, and the 10-min abort).
+    let presenceToken = null;
+    try {
+        const { startActivity } = await import('./presence.js');
+        presenceToken = startActivity('Deploying ' + label + ' to ' + forumLabel);
+    } catch { /* presence is cosmetic */ }
+
     try {
         // Timeout guard: warn at 3 min, abort at 10 min. Autopsy deploys
         // legitimately run 1-3+ min (login + search + post + crosspost + DM +
@@ -247,6 +255,12 @@ export async function runDeploy(type, data) {
             console.error('[AUTO] Retry error:', retryErr.message);
         }
     } finally {
+        if (presenceToken !== null) {
+            try {
+                const { endActivity } = await import('./presence.js');
+                endActivity(presenceToken);
+            } catch { /* presence is cosmetic */ }
+        }
         state.processing = false;
         state.currentProcessing = null;
     }
