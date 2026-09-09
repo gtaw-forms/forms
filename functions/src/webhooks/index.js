@@ -2,12 +2,18 @@ import { onCall } from "firebase-functions/v2/https";
 import * as functions from "firebase-functions";
 import { initializeApp } from "firebase-admin/app";
 import { getDatabase } from "firebase-admin/database";
-import { getConfigValue } from "../utils/config.js";
 import { sendWebhook } from "../utils/helpers.js";
 
 initializeApp();
 
-const WEBHOOK_URL_MAP = {
+const MORGUE_API_URL = process.env.MORGUE_API_URL || 'http://88.208.243.254';
+const MORGUE_API_KEY = process.env.MORGUE_API_KEY;
+
+// Fixed webhook types deliver bot-natively: type -> morgue-api channel key.
+// (morgue-api owns the key->channel-ID allowlist; unknown keys are rejected
+// there too.) Custom per-agency entries (webhookId path below) still resolve
+// legacy webhook URLs until the admin UI migrates to channel IDs.
+const CHANNEL_MAP = {
   admin:   "admin",
   auth:    "auth",
   forms:   "forms",
@@ -21,6 +27,7 @@ const WEBHOOK_URL_MAP = {
 /**
  * Failure-path only: GET the webhook URL to check whether Discord reports it
  * as deleted (404 + code 10015). Never throws; false = unknown/other failure.
+ * (Legacy webhookId path only — fixed types no longer touch Discord.)
  */
 async function isWebhookDeleted(url) {
   try {
@@ -51,8 +58,9 @@ export const sendWebhookProxy = onCall({
     );
   }
 
-  let url;
-
+  // ── Legacy custom-webhook path (RTDB webhooks/<id> = { url }) ──
+  // Deprecated: pending admin-UI migration to channel IDs. Still served so
+  // the WebhookManager test buttons keep working until then.
   if (webhookId) {
     const snapshot = await getDatabase().ref(`webhooks/${webhookId}`).get();
     if (!snapshot.exists()) {
@@ -61,57 +69,83 @@ export const sendWebhookProxy = onCall({
         `Webhook not found: ${webhookId}`
       );
     }
-    url = snapshot.val()?.url;
+    const url = snapshot.val()?.url;
     if (!url) {
       throw new functions.https.HttpsError(
         "failed-precondition",
         `Webhook '${webhookId}' has no URL stored at webhooks/${webhookId} — add its url field.`
       );
     }
-  } else {
-    const configKey = WEBHOOK_URL_MAP[webhookType];
-    if (!configKey) {
+    console.log(
+      `[sendWebhookProxy] Dispatching ${webhookType} webhook (legacy custom: ${webhookId}) | Auth: ${!!request.auth} | UID: ${request.auth?.uid || "none"}`
+    );
+    try {
+      const result = await sendWebhook(payload, url);
+      if (!result) {
+        if (await isWebhookDeleted(url)) {
+          throw new functions.https.HttpsError(
+            "failed-precondition",
+            `Discord webhook '${webhookId}' no longer exists (Unknown Webhook) — it was deleted or rotated.`
+          );
+        }
+        throw new Error("sendWebhook returned false");
+      }
+      return { success: true, webhookType };
+    } catch (error) {
+      console.error(`[sendWebhookProxy] Failed to send ${webhookType} webhook:`, error);
       throw new functions.https.HttpsError(
-        "invalid-argument",
-        `Unknown webhook type: ${webhookType}`
-      );
-    }
-
-    url = getConfigValue(configKey);
-    if (!url) {
-      console.error(`[sendWebhookProxy] No URL configured for type: ${webhookType} (key: ${configKey})`);
-      throw new functions.https.HttpsError(
-        "not-found",
-        `Webhook URL not configured for type: ${webhookType}`
+        "internal",
+        `Failed to forward webhook: ${error.message}`
       );
     }
   }
 
-  const urlLog = url ? `${url.substring(0, 50)}...` : 'NOT SET';
+  // ── Bot-native path (fixed types) ──
+  const channelKey = CHANNEL_MAP[webhookType];
+  if (!channelKey) {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      `Unknown webhook type: ${webhookType}`
+    );
+  }
+  if (!MORGUE_API_KEY) {
+    console.error("[sendWebhookProxy] MORGUE_API_KEY is not set — cannot reach notify transport.");
+    throw new functions.https.HttpsError(
+      "internal",
+      "Server configuration error."
+    );
+  }
+
   console.log(
-    `[sendWebhookProxy] Dispatching ${webhookType} webhook${webhookId ? ` (custom: ${webhookId})` : ''} | URL: ${urlLog} | Auth: ${!!request.auth} | UID: ${request.auth?.uid || "none"}`
+    `[sendWebhookProxy] Dispatching ${webhookType} via bot (channel: ${channelKey}) | Auth: ${!!request.auth} | UID: ${request.auth?.uid || "none"}`
   );
 
   try {
-    const result = await sendWebhook(payload, url);
-    if (!result) {
-      // sendWebhook only returns false — distinguish "webhook deleted at
-      // Discord" (rotation fallout: fix = update PHMC_CONFIG) from any other
-      // failure so the client error is actionable instead of functions/internal.
-      if (await isWebhookDeleted(url)) {
-        throw new functions.https.HttpsError(
-          "failed-precondition",
-          `Discord webhook '${webhookType}' no longer exists (Unknown Webhook) — it was deleted or rotated. Create a replacement and update its URL in the PHMC_CONFIG secret.`
-        );
+    const res = await fetch(`${MORGUE_API_URL}/api/notify`, {
+      method: "POST",
+      headers: { "x-api-key": MORGUE_API_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        channel: channelKey,
+        content: payload.content,
+        embeds: payload.embeds,
+      }),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      console.error(`[sendWebhookProxy] Notify transport returned ${res.status}: ${text.slice(0, 300)}`);
+      if (res.status === 400) {
+        throw new functions.https.HttpsError("invalid-argument", "Bad notify payload.");
       }
-      throw new Error("sendWebhook returned false");
+      throw new functions.https.HttpsError("internal", "Bot notify transport failed.");
     }
     return { success: true, webhookType };
   } catch (error) {
-    console.error(`[sendWebhookProxy] Failed to send ${webhookType} webhook:`, error);
+    if (error instanceof functions.https.HttpsError) throw error;
+    console.error(`[sendWebhookProxy] Failed to send ${webhookType} via bot:`, error);
     throw new functions.https.HttpsError(
       "internal",
-      `Failed to forward webhook: ${error.message}`
+      `Failed to forward via bot: ${error.message}`
     );
   }
 });

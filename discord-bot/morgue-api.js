@@ -84,7 +84,68 @@ function displayKeyName(key, admin = false) {
 const API_KEYS = parseLabeledKeys(process.env.MORGUE_API_KEYS);
 const WRITE_KEYS = parseLabeledKeys(process.env.MORGUE_WRITE_API_KEYS || '');
 const PORT = parseInt(process.env.MORGUE_API_PORT || '3001', 10);
-const DISCORD_WEBHOOK_URL = process.env.MORGUE_API_LOG_WEBHOOK || null;
+
+// ──────────────────────────────────────────
+// Discord bot transport (webhook migration)
+// ──────────────────────────────────────────
+// Channel IDs are NOT secrets — safe to commit. Auth is the bot token
+// (server-side only). /api/notify ONLY delivers to these keys; anything
+// else is rejected (allowlist, not blocklist).
+const NOTIFY_CHANNELS = {
+    admin:   process.env.NOTIFY_CHANNEL_ADMIN   || '1455291752327024721', // staging #admin-action-logs
+    auth:    process.env.NOTIFY_CHANNEL_AUTH    || '1455291780135125229', // staging #oauth-login-logs
+    forms:   process.env.NOTIFY_CHANNEL_FORMS   || '1455291961861869723', // staging #report-saving-logs
+    error:   process.env.NOTIFY_CHANNEL_ERROR   || '1455291999963058247', // staging #global-error-handler-logs
+    dev:     process.env.NOTIFY_CHANNEL_DEV     || '1521662195820265635', // staging #discord-bot-spam
+    coroner: process.env.NOTIFY_CHANNEL_CORONER || '1384993245968207922', // staging #coroner-webhook-main
+    phmc:    process.env.NOTIFY_CHANNEL_PHMC    || '1384993223608369342', // staging #phmc-webhook-main
+    autopsies: process.env.AUTOPSIES_CHANNEL_ID || '1367217501137797252', // PHMC #autopsies
+    apilogs: process.env.NOTIFY_CHANNEL_APILOGS || '1521662195820265635', // staging #discord-bot-spam (this API's own logs)
+};
+
+import { Client, GatewayIntentBits } from 'discord.js';
+let discordClient = null;
+let discordReady = false;
+
+async function initDiscord() {
+    const token = process.env.DISCORD_BOT_TOKEN;
+    if (!token) {
+        console.warn('[MORGUE-API] No DISCORD_BOT_TOKEN — /api/notify disabled (fail-closed)');
+        return;
+    }
+    try {
+        discordClient = new Client({ intents: [GatewayIntentBits.Guilds] });
+        discordClient.once('clientReady', () => {
+            discordReady = true;
+            console.log(`[MORGUE-API] Discord client ready as ${discordClient.user.tag} — notify transport live`);
+        });
+        await discordClient.login(token);
+    } catch (err) {
+        console.warn(`[MORGUE-API] Discord login failed — /api/notify disabled: ${err.message}`);
+        discordClient = null;
+    }
+}
+initDiscord().catch(() => {});
+
+/**
+ * Post a content/embeds payload to a channel via the bot client.
+ * Fail-closed: never throws, returns { ok:false } when offline/unsendable.
+ */
+async function sendToChannel(channelId, { content, embeds } = {}) {
+    if (!discordClient || !discordReady) return { ok: false, reason: 'discord-offline' };
+    try {
+        const channel = await discordClient.channels.fetch(channelId);
+        if (!channel || typeof channel.send !== 'function') return { ok: false, reason: 'not-sendable' };
+        const msg = await channel.send({
+            content: typeof content === 'string' && content ? content.slice(0, 2000) : undefined,
+            embeds: Array.isArray(embeds) ? embeds.slice(0, 10) : undefined,
+            allowed_mentions: { parse: ['users'] },
+        });
+        return { ok: true, messageId: msg.id };
+    } catch (err) {
+        return { ok: false, reason: err.message };
+    }
+}
 
 // ── IP ban config ──
 // Bans are PERMANENT and persisted to disk (data/ban-state.json), so they
@@ -96,11 +157,7 @@ console.log(`[MORGUE-API] Loaded ${API_KEYS.length} API key(s) (read-only) and $
 console.log(`[MORGUE-API] Key labels: read=[${API_KEYS.map(k => KEY_LABELS.get(k) || 'unlabeled').join(', ') || '(none)'}] write=[${WRITE_KEYS.map(k => KEY_LABELS.get(k) || 'unlabeled').join(', ') || '(none)'}]`);
 console.log(`[MORGUE-API] Configured port: ${PORT}`);
 console.log(`[MORGUE-API] IP ban: ${BAN_THRESHOLD} suspicious request(s) → permanent ban (persisted to ${BAN_STATE_PATH})`);
-if (DISCORD_WEBHOOK_URL) {
-    console.log(`[MORGUE-API] Discord webhook logging enabled`);
-} else {
-    console.log(`[MORGUE-API] No MORGUE_API_LOG_WEBHOOK set — skipping Discord logs`);
-}
+console.log(`[MORGUE-API] Notify transport: ${Object.keys(NOTIFY_CHANNELS).length} mapped channels (bot-native, no webhooks)`);
 
 // ──────────────────────────────────────────
 // Initialize Firebase
@@ -371,7 +428,6 @@ function registerSuspiciousRequest(ip, reason, instant = false) {
 
 /** Immediate high-priority Discord alert confirming a permanent ban. */
 async function sendIpBanAlert(ip, reason) {
-    if (!DISCORD_WEBHOOK_URL) return;
     const msg = [
         `**[MORGUE-API] [WARN] IP permanently banned**`,
         `IP \`${ip}\` was banned for \`${reason || 'suspicious request(s)'}\``,
@@ -380,11 +436,8 @@ async function sendIpBanAlert(ip, reason) {
         `**Time:** ${new Date().toISOString()}`,
     ].join('\n');
     try {
-        await fetch(DISCORD_WEBHOOK_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ content: msg.slice(0, 1990) }),
-        });
+        const result = await sendToChannel(NOTIFY_CHANNELS.apilogs, { content: msg.slice(0, 1990) });
+        if (!result.ok) console.warn(`[MORGUE-API] IP ban alert send failed: ${result.reason}`);
     } catch (err) {
         console.warn(`[MORGUE-API] IP ban alert webhook failed: ${err.message}`);
     }
@@ -420,22 +473,16 @@ app.use((req, res, next) => {
                 `by admin key from ${ip} ua="${ua}"`
             );
 
-            if (DISCORD_WEBHOOK_URL) {
-                fetch(DISCORD_WEBHOOK_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        content: [
-                            `**[MORGUE-API] Write operation**`,
-                            `**Method:** \`${req.method}\``,
-                            `**Route:** \`${req.originalUrl}\``,
-                            `**By:** \`admin key\``,
-                            `**IP:** \`${ip}\``,
-                            `**UA:** \`${ua}\``,
-                        ].join('\n').slice(0, 1990),
-                    }),
-                }).catch(() => {});
-            }
+            sendToChannel(NOTIFY_CHANNELS.apilogs, {
+                content: [
+                    `**[MORGUE-API] Write operation**`,
+                    `**Method:** \`${req.method}\``,
+                    `**Route:** \`${req.originalUrl}\``,
+                    `**By:** \`admin key\``,
+                    `**IP:** \`${ip}\``,
+                    `**UA:** \`${ua}\``,
+                ].join('\n').slice(0, 1990),
+            }).catch(() => {});
             return next();
         }
 
@@ -446,22 +493,16 @@ app.use((req, res, next) => {
             `from ${ip} [${keyLabel}] ua="${ua}"`
         );
 
-        if (DISCORD_WEBHOOK_URL) {
-            fetch(DISCORD_WEBHOOK_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    content: [
-                        `**[MORGUE-API] [WARN] Blocked write attempt**`,
-                        `**Method:** \`${req.method}\``,
-                        `**Route:** \`${req.originalUrl}\``,
-                        `**IP:** \`${ip}\``,
-                        `**Key:** \`${keyLabel}\``,
-                        `**UA:** \`${ua}\``,
-                    ].join('\n').slice(0, 1990),
-                }),
-            }).catch(() => {});
-        }
+        sendToChannel(NOTIFY_CHANNELS.apilogs, {
+            content: [
+                `**[MORGUE-API] [WARN] Blocked write attempt**`,
+                `**Method:** \`${req.method}\``,
+                `**Route:** \`${req.originalUrl}\``,
+                `**IP:** \`${ip}\``,
+                `**Key:** \`${keyLabel}\``,
+                `**UA:** \`${ua}\``,
+            ].join('\n').slice(0, 1990),
+        }).catch(() => {});
 
         return res.status(403).json({
             success: false,
@@ -665,7 +706,6 @@ const WEBHOOK_BATCH_MAX = 10;          // or every 10 entries, whichever first
 let webhookTimer = null;
 
 function queueWebhookLog(entry) {
-    if (!DISCORD_WEBHOOK_URL) return;
     webhookBatch.push(entry);
     if (webhookBatch.length >= WEBHOOK_BATCH_MAX) {
         if (webhookTimer) {
@@ -681,7 +721,7 @@ function queueWebhookLog(entry) {
 async function flushWebhookBatch() {
     webhookTimer = null;
     const batch = webhookBatch.splice(0);
-    if (!batch.length || !DISCORD_WEBHOOK_URL) return;
+    if (!batch.length) return;
 
     // Build a compact message — group lines into one embed
     let lines = [];
@@ -701,11 +741,8 @@ async function flushWebhookBatch() {
     }
 
     try {
-        await fetch(DISCORD_WEBHOOK_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ content: msg }),
-        });
+        const result = await sendToChannel(NOTIFY_CHANNELS.apilogs, { content: msg });
+        if (!result.ok) console.warn(`[MORGUE-API] Channel log send failed: ${result.reason}`);
     } catch (err) {
         console.warn(`[MORGUE-API] Failed to send webhook log: ${err.message}`);
     }
@@ -813,8 +850,6 @@ function detectSuspicious(input) {
  * Bypasses the batched webhook queue — sends right away.
  */
 async function sendSuspiciousAlert(req, finding, ip) {
-    if (!DISCORD_WEBHOOK_URL) return;
-
     const bodySnippet = req.body && typeof req.body === 'object'
         ? '```json\n' + JSON.stringify(req.body).slice(0, 500) + '\n```'
         : '_no body_';
@@ -831,11 +866,8 @@ async function sendSuspiciousAlert(req, finding, ip) {
     ].join('\n');
 
     try {
-        await fetch(DISCORD_WEBHOOK_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ content: msg.slice(0, 1990) }),
-        });
+        const result = await sendToChannel(NOTIFY_CHANNELS.apilogs, { content: msg.slice(0, 1990) });
+        if (!result.ok) console.warn(`[MORGUE-API] Suspicious alert send failed: ${result.reason}`);
     } catch (err) {
         console.warn(`[MORGUE-API] Suspicious alert webhook failed: ${err.message}`);
     }
@@ -1561,6 +1593,40 @@ app.post('/api/morgue/export', validateApiKey, rateLimiter, async (req, res) => 
             message: err.message,
         });
     }
+});
+
+/**
+ * POST /api/notify
+ * Bot-native Discord delivery (webhook migration). Sends a content/embeds
+ * payload to a mapped channel via the bot's Discord client.
+ *
+ * Body: { channel: <NOTIFY_CHANNELS key>, content?: string, embeds?: array }
+ * Auth: x-api-key (any valid key) + per-key rate limit. The channel key MUST
+ * be in the allowlist — arbitrary channel IDs are rejected.
+ */
+app.post('/api/notify', validateApiKey, rateLimiter, async (req, res) => {
+    const { channel, content, embeds } = req.body || {};
+    const channelId = NOTIFY_CHANNELS[channel];
+    if (!channel || !channelId) {
+        return res.status(400).json({ success: false, error: 'Unknown channel key' });
+    }
+    const hasContent = typeof content === 'string' && content.trim().length > 0;
+    const hasEmbeds = Array.isArray(embeds) && embeds.length > 0;
+    if (!hasContent && !hasEmbeds) {
+        return res.status(400).json({ success: false, error: 'content or embeds required' });
+    }
+    if (typeof content === 'string' && content.length > 2000) {
+        return res.status(400).json({ success: false, error: 'content exceeds 2000 chars' });
+    }
+    if (Array.isArray(embeds) && embeds.length > 10) {
+        return res.status(400).json({ success: false, error: 'max 10 embeds' });
+    }
+    const result = await sendToChannel(channelId, { content, embeds });
+    if (!result.ok) {
+        console.warn(`[MORGUE-API] /api/notify ${channel} failed: ${result.reason}`);
+        return res.status(502).json({ success: false, error: 'Discord send failed', reason: result.reason });
+    }
+    res.json({ success: true, messageId: result.messageId });
 });
 
 /**

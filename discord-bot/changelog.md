@@ -1,6 +1,14 @@
 # PHMC Discord Bot — Changelog
 
-## 2026-09-09 — hotfix: system monitor boot crash + dashboard error spam
+## 2026-09-09 — webhooks to bot-native delivery (morgue-api /api/notify)
+
+### Changed
+- **morgue-api owns Discord delivery now.** New `POST /api/notify` (`{ channel, content, embeds }`, any valid API key + rate limit) posts through the bot's own Discord client (Guilds intent, second gateway session). Delivery is allowlist-only: `NOTIFY_CHANNELS` keys (admin/auth/forms/error/dev/coroner/phmc/autopsies/apilogs, env-overridable, staging defaults) — unknown keys rejected, payloads size-capped, fail-closed when Discord is offline.
+- **morgue-api's own logging migrated too.** Request-batch logs, suspicious-request alerts, IP-ban alerts, and write-attempt notices previously POSTed to `MORGUE_API_LOG_WEBHOOK` — all now go to the `apilogs` channel via the client. `MORGUE_API_LOG_WEBHOOK` is fully unreferenced (delete the webhook at Discord + drop the env var).
+- **Fixed types flow through the bot.** `sendWebhookProxy` maps webhookType → channel key and POSTs to `/api/notify` — no Discord URL is touched for fixed types. The legacy `webhookId` (RTDB `{url}`) path is unchanged but deprecated, pending the admin-UI migration to channel IDs. Web app calls are untouched (same `triggerWebhookProxy` API).
+
+### Deployed
+- SCP `morgue-api.js` + `pm2 restart morgue-api`; `firebase deploy --only functions:sendWebhookProxy`.
 
 ### Fixed
 - **System monitor never started (`Identifier 'latest' has already been declared`).** `checkMorgueOverdue` in `systemMonitor.js` declared `let latest` twice in one scope — a SyntaxError that killed the whole module at import, so health checks/morgue-overdue/data cleanup silently never ran. Merged into a single binding; also fixed two latent bugs in the same function: `snapshot` referenced outside its block (would have thrown whenever the VPS path succeeded) and the RTDB fallback overwriting the VPS-primary value.
