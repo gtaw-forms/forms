@@ -20,6 +20,21 @@ const WEBHOOK_URL_MAP = {
   dev:     "dev",
 };
 
+/**
+ * Failure-path only: GET the webhook URL to check whether Discord reports it
+ * as deleted (404 + code 10015). Never throws; false = unknown/other failure.
+ */
+async function isWebhookDeleted(url) {
+  try {
+    const res = await fetch(url, { method: "GET" });
+    if (res.status !== 404) return false;
+    const body = await res.text().catch(() => "");
+    return body.includes("10015") || body.includes("Unknown Webhook");
+  } catch {
+    return false;
+  }
+}
+
 export const sendWebhookProxy = onCall({
   region: "europe-west2",
   cors: [
@@ -76,6 +91,15 @@ export const sendWebhookProxy = onCall({
   try {
     const result = await sendWebhook(payload, url);
     if (!result) {
+      // sendWebhook only returns false — distinguish "webhook deleted at
+      // Discord" (rotation fallout: fix = update PHMC_CONFIG) from any other
+      // failure so the client error is actionable instead of functions/internal.
+      if (await isWebhookDeleted(url)) {
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          `Discord webhook '${webhookType}' no longer exists (Unknown Webhook) — it was deleted or rotated. Create a replacement and update its URL in the PHMC_CONFIG secret.`
+        );
+      }
       throw new Error("sendWebhook returned false");
     }
     return { success: true, webhookType };
