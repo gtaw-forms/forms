@@ -21,6 +21,11 @@ let refreshInterval = null;
 let statsInterval = null;
 let cachedConfig = null;
 let editInProgress = false;
+// VPS-stats updater resilience: consecutive Discord REST failures trip a
+// cooldown so a transient egress blip doesn't log an error every 5s.
+let vpsStatsFails = 0;
+let vpsStatsPausedUntil = 0;
+const VPS_STATS_FAIL_PAUSE_MS = 5 * 60 * 1000;
 let refreshing = false;
 let assignWatcherRef = null;
 let assignWatcherPrimed = false;
@@ -714,6 +719,7 @@ async function postOrUpdateDashboard(db) {
 async function updateVpsStatsField() {
     if (!client || editInProgress) return;
     if (!cachedConfig || !cachedConfig.channelId || !cachedConfig.messageId) return;
+    if (Date.now() < vpsStatsPausedUntil) return;
 
     editInProgress = true;
     try {
@@ -748,8 +754,18 @@ async function updateVpsStatsField() {
         })));
 
         await msg.edit({ embeds: [embed] });
+        vpsStatsFails = 0;
     } catch (err) {
-        console.error('[DASHBOARD] VPS stats update error:', err.message);
+        vpsStatsFails++;
+        if (vpsStatsFails >= 6) {
+            // ~30s of consecutive failures — pause the 5s loop for 5 min and
+            // log once instead of once per cycle.
+            vpsStatsPausedUntil = Date.now() + VPS_STATS_FAIL_PAUSE_MS;
+            vpsStatsFails = 0;
+            console.warn('[DASHBOARD] VPS stats updater paused 5m after repeated failures:', err.message);
+        } else if (vpsStatsFails === 1) {
+            console.error('[DASHBOARD] VPS stats update error:', err.message);
+        }
     } finally {
         editInProgress = false;
     }

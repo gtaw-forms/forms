@@ -254,7 +254,10 @@ async function checkMorgueOverdue(db) {
     console.log('[MONITOR] 🔍 Checking morgue update status (VPS primary)...');
 
     try {
-        // Try VPS first (canonical since dual-write off)
+        // Try VPS first (canonical since dual-write off), RTDB fallback.
+        // Single `latest` binding — a second `let latest` below used to throw
+        // "Identifier 'latest' has already been declared" at import time and
+        // kill the entire system monitor on every boot.
         let latest = await getVpsMorgueLatest();
         if (!latest) {
             // Fallback to RTDB for safety
@@ -262,18 +265,12 @@ async function checkMorgueOverdue(db) {
                 .orderByChild('lastUpdated')
                 .limitToLast(1)
                 .once('value');
-            if (snapshot.exists()) {
-                snapshot.forEach(child => { latest = child.val().lastUpdated || 0; });
+            if (!snapshot.exists()) {
+                console.log('[MONITOR] No morgue records found.');
+                return;
             }
+            snapshot.forEach(child => { latest = child.val().lastUpdated || 0; });
         }
-
-        if (!snapshot.exists()) {
-            console.log('[MONITOR] No morgue records found.');
-            return;
-        }
-
-        let latest = 0;
-        snapshot.forEach(child => { latest = child.val().lastUpdated || 0; });
 
         if (!latest) {
             console.log('[MONITOR] No valid lastUpdated timestamps.');

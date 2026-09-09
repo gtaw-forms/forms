@@ -1,6 +1,13 @@
 # PHMC Discord Bot — Changelog
 
-## 2026-09-09 — Discord Rich Presence (idle / deploying)
+## 2026-09-09 — hotfix: system monitor boot crash + dashboard error spam
+
+### Fixed
+- **System monitor never started (`Identifier 'latest' has already been declared`).** `checkMorgueOverdue` in `systemMonitor.js` declared `let latest` twice in one scope — a SyntaxError that killed the whole module at import, so health checks/morgue-overdue/data cleanup silently never ran. Merged into a single binding; also fixed two latent bugs in the same function: `snapshot` referenced outside its block (would have thrown whenever the VPS path succeeded) and the RTDB fallback overwriting the VPS-primary value.
+- **Dashboard VPS-stats updater spammed an error every 5s on transient Discord REST blips** (Connect Timeout). Now logs the first failure, then trips a 5-min cooldown after ~30s of consecutive failures instead of logging per cycle.
+
+### Deployed
+- SCP `services/systemMonitor.js`, `services/dashboardManager.js` + `pm2 restart phmc-bot`.
 
 ### Added
 - **`services/presence.js`** — presence reflects what the bot is doing: idle baseline `Watching PHMC reports`, busy labels pushed per task (`startActivity`/`endActivity` token API, latest wins, 2s debounce, 12-min stale expiry, never throws). Not a channel post, so the read-only migration gate doesn't apply.
