@@ -1,5 +1,61 @@
 # PHMC Discord Bot — Changelog
 
+## 2026-09-10 — Morgue API hourly poll metrics (noise reduction)
+
+### Changed
+- **Routine `GET /api/morgue?limit=1` loopback polls no longer spam Discord** — dashboard (10-min refresh) + system monitor health checks are aggregated into one hourly **`[MORGUE-API] Poll metrics (last 1h)`** summary (`Nx GET /api/morgue [key] avg Nms max Nms`). Only sent when count > 0.
+- **Full audit trail kept** — every poll is still in console/file logs + in-memory `/api/activity`. Only the Discord webhook batch is rolled up. Errors, real searches (`q=`), attributed calls, and non-loopback traffic still log immediately.
+- **Tunable via `MORGUE_POLL_METRICS_INTERVAL_MS`** (default `3600000`, min 60s) — documented in `.env.example`.
+- Files: `morgue-api.js` (poll rollup), `.env.example` (new var). Restart `morgue-api` via pm2 to apply.
+
+## 2026-09-10 — deploy notices actually ping (mention in content)
+
+### Fixed
+- **`deployNotifier` lifts `<@user>`/`<@&role>` tags from the embed description into the message content.** Mentions inside embeds never trigger notifications; content mentions do (allowedMentions already parses users/roles). Embed itself unchanged. Applies to all `deployNotifications` relays (web-deploy, rtdb-monitor, …).
+
+### Deployed
+- SCP `services/deployNotifier.js` + `pm2 restart phmc-bot`.
+
+## 2026-09-10 — verify due-set sentinel (follow-up #2)
+
+### Changed
+- **Verified/failed/denied death-record drafts no longer re-download every 10 min**: terminal states stamp `verifyAfter = 2100-01-01` sentinel (`VERIFY_DONE_AFTER`), dropping them out of the `endAt(now)` due query (clearing can't work — `endAt` matches nulls too). Approval still stamps a fresh `verifyAfter`, so re-armed entries re-enter.
+- One-time backfill: 8/32 backlog entries sentineled. Next sweep confirmed the collapse: `0 verified, 0 flagged, 1 skipped` (was ~95KB due set).
+
+### Deployed
+- SCP `services/deathRecordDraftScan.js` + `pm2 restart phmc-bot`.
+
+## 2026-09-09 — RTDB cost pass (heartbeat/sweep/bell narrowing)
+
+### Changed (all reads, no behavior change)
+- **Heartbeat shared snapshot → pending-only query** (`autoDeploy.js`): `orderByChild('completedAt').equalTo(null)` instead of the full 400KB+ `autopsy-requested` node every 10 min (~2.5 MB/hr → ~0). All consumers already skip completed entries.
+- **Completion-step retries via `completionStepRetries/` marker index** (`deployAutopsyReply.js` + monitor startup reseed): failures write a tiny marker, successes remove it; the sweep fetches only listed entries (zero entry reads when clean). Covers failed steps on already-completed cases, which the pending query would otherwise miss.
+- **FACE sweep → in-memory due-map** (`deathRecordDraftFace.js`): child events track scheduled keys; the 60s sweep reads only due entries (was a full `facePostDrafts` download ×1,440/day). Falls back to a scheduled-only query if watchers fail.
+- **Dashboard Face list → scheduled-only query** (`dashboardManager.js`) + **`facePostDrafts.status` index** in `database.rules.json` (approved history no longer ships every 10 min).
+- **Queue dashboard config cached in memory** (`queueDashboard.js`): was a re-read every 30s tick.
+- **Web bell → pending query** (`src/components/ui-new/index.jsx`): every connected tab no longer re-downloads the full node on each status write (ships with next web rebuild).
+
+### Deployed
+- `firebase deploy --only database` (rules) + SCP services + `pm2 restart phmc-bot`.
+
+## 2026-09-09 — deploy notifications via bot (no webhooks)
+
+### Added
+- **New `services/deployNotifier.js`** — watches `deployNotifications/` and posts entries to the log channel with the bot's own client, then removes them. Pending nodes left over from downtime are picked up on next boot (listener replay). No webhook URLs anywhere by policy.
+- `tools/deploy.js` now hands its Pages-build/live-bundle verdict to the bot through that node (admin SDK, local gitignored key) instead of a Discord webhook.
+
+### Deployed
+- SCP `services/deployNotifier.js`, `index.js` + `pm2 restart phmc-bot`.
+
+## 2026-09-09 - VPS report deletes restored (write key)
+
+### Fixed
+- **Report/morgue deletes via functions now send the write key.** `callSavedReportsApi` and `deleteMorgueRecord` used the read key for PUT/DELETE, which the VPS rejects (403) — surfacing as 500 "Saved report service failed" (users couldn't delete reports since the RTDB→VPS migration). Mutating calls now use `MORGUE_WRITE_API_KEY`; GET/POST keep the read key. Provisioned `functions-write` in VPS `MORGUE_WRITE_API_KEYS`.
+- Verified live: POST 200 (read key) → DELETE 403 (read key, gate holds) → DELETE 200 (write key) → GET 404 (gone).
+
+### Deployed
+- VPS `.env` + `pm2 restart morgue-api`; functions redeploy (picks up `MORGUE_WRITE_API_KEY` env).
+
 ## 2026-09-09 — webhooks to bot-native delivery (morgue-api /api/notify)
 
 ### Changed

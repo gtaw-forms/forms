@@ -705,7 +705,66 @@ const WEBHOOK_FLUSH_INTERVAL = 30_000; // flush every 30 seconds
 const WEBHOOK_BATCH_MAX = 10;          // or every 10 entries, whichever first
 let webhookTimer = null;
 
+// ── Routine poll metrics (hourly rollup) ──
+// Internal health checks (dashboard 10-min refresh + system monitor) hit
+// GET /api/morgue?limit=1 from loopback every ~10 min. Logging each one to
+// Discord is noisy ("1 call(s)" every few minutes), so they are aggregated
+// here and reported once per hour. Full per-request detail stays in the
+// console/file logs + in-memory activity log (/api/activity).
+const POLL_METRICS_INTERVAL_MS = (() => {
+    const v = parseInt(process.env.MORGUE_POLL_METRICS_INTERVAL_MS || '3600000', 10);
+    return Number.isFinite(v) && v >= 60_000 ? v : 3600000;
+})();
+const pollMetrics = new Map(); // bucket -> { count, totalMs, maxMs, firstAt, lastAt }
+
+function isRoutinePoll(entry) {
+    if (!entry || entry.method !== 'GET') return false;
+    if (entry.path !== '/api/morgue') return false;
+    if (entry.query) return false; // real search (q=...) stays verbose
+    if (entry.suspicious) return false;
+    if (entry.status < 200 || entry.status >= 300) return false; // errors stay verbose
+    if (entry.requestedBy && entry.requestedBy !== 'external/unknown') return false;
+    return LOOPBACK_RE.test(entry.ip || '');
+}
+
+function recordPollMetric(entry) {
+    const bucket = `${entry.method} ${entry.path} [${entry.key}]`;
+    let st = pollMetrics.get(bucket);
+    if (!st) {
+        st = { count: 0, totalMs: 0, maxMs: 0, firstAt: entry.time, lastAt: entry.time };
+        pollMetrics.set(bucket, st);
+    }
+    st.count += 1;
+    st.totalMs += entry.ms || 0;
+    if ((entry.ms || 0) > st.maxMs) st.maxMs = entry.ms || 0;
+    st.lastAt = entry.time;
+}
+
+async function flushPollMetrics() {
+    if (pollMetrics.size === 0) return;
+    const lines = [];
+    for (const [bucket, st] of pollMetrics) {
+        const avg = st.count ? Math.round(st.totalMs / st.count) : 0;
+        lines.push(`\`${st.count}x ${bucket}\` avg ${avg}ms max ${st.maxMs}ms`);
+    }
+    pollMetrics.clear();
+    const msg = `**[MORGUE-API] Poll metrics (last 1h)**\n${lines.join('\n')}`;
+    try {
+        const result = await sendToChannel(NOTIFY_CHANNELS.apilogs, { content: msg.slice(0, 1990) });
+        if (!result.ok) console.warn(`[MORGUE-API] Poll metrics send failed: ${result.reason}`);
+    } catch (err) {
+        console.warn(`[MORGUE-API] Failed to send poll metrics: ${err.message}`);
+    }
+}
+
+const _pollMetricsTimer = setInterval(flushPollMetrics, POLL_METRICS_INTERVAL_MS);
+if (_pollMetricsTimer.unref) _pollMetricsTimer.unref();
+
 function queueWebhookLog(entry) {
+    if (isRoutinePoll(entry)) {
+        recordPollMetric(entry);
+        return;
+    }
     webhookBatch.push(entry);
     if (webhookBatch.length >= WEBHOOK_BATCH_MAX) {
         if (webhookTimer) {
