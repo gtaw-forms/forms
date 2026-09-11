@@ -735,11 +735,14 @@ export async function runRecoveryHeartbeat(db) {
     _heartbeatRunning = true;
     const sweepStart = Date.now();
     const summary = [];
-    // All recovery consumers inspect the same autopsy-requested snapshot. This
-    // avoids downloading the 400KB+ node once per recovery check every 10 min.
+    // All recovery consumers inspect the same autopsy-requested snapshot — but
+    // ONLY incomplete entries (completedAt index already in database.rules.json).
+    // Every consumer skips completed entries, so the 400KB+ full node never needs
+    // downloading here (was ~2.5 MB/hr). Failed completion steps on COMPLETED
+    // cases are still covered via the tiny completionStepRetries index.
     let autopsyEntries;
     try {
-        const snap = await db.ref('autopsy-requested').once('value');
+        const snap = await db.ref('autopsy-requested').orderByChild('completedAt').equalTo(null).once('value');
         autopsyEntries = snap.val() || {};
     } catch (err) {
         // Leave undefined so each consumer can preserve its existing fallback

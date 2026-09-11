@@ -6,7 +6,13 @@ import { getConfigValue } from "./config.js";
  */
 export const uploadImageProxy = onCall({
     region: "europe-west4",
-    memory: "300MiB",
+    // NOTE: must be a valid GCF tier (128/256/512MiB, 1GiB…). "300MiB" is NOT
+    // valid — a past deploy silently landed on 256MiB and large uploads OOM'd
+    // the instance (functions/internal to the client, 2026-09-09). 512MiB +
+    // low per-instance concurrency so concurrent base64 uploads can't pile up.
+    memory: "512MiB",
+    concurrency: 10,
+    timeoutSeconds: 120,
     secrets: ["PHMC_CONFIG"],
     cors: [
         'https://gtaw-forms.github.io',

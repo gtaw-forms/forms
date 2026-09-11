@@ -14,6 +14,10 @@ const CONFIG_PATH = 'appMetadata/queueDashboard';
 
 let client = null;
 let refreshTimer = null;
+// Cached dashboard config (RTDB cost optimization): the 30s tick used to
+// re-read appMetadata/queueDashboard every cycle (2,880 tiny reads/day).
+// Now it's read once at startup/setup and kept in memory.
+let cachedConfig = null;
 
 export function setQueueDashboardClient(c) {
     client = c;
@@ -68,14 +72,19 @@ async function postOrUpdate(db) {
     if (!client) return;
 
     try {
-        const configSnap = await db.ref(CONFIG_PATH).once('value');
-        const config = configSnap.val();
+        // Refresh cache on first tick (or if wiped); setup/destroy keep it fresh.
+        if (!cachedConfig) {
+            const configSnap = await db.ref(CONFIG_PATH).once('value');
+            cachedConfig = configSnap.val() || null;
+        }
+        const config = cachedConfig;
         if (!config || !config.channelId) return;
 
         const channel = await client.channels.fetch(config.channelId).catch(() => null);
         if (!channel) {
             console.warn('[QUEUE] Channel not found, clearing config.');
             await db.ref(CONFIG_PATH).set(null);
+            cachedConfig = null;
             return;
         }
 
@@ -94,6 +103,7 @@ async function postOrUpdate(db) {
 
         const msg = await channel.send({ embeds: [embed], components: [row] });
         await db.ref(CONFIG_PATH).update({ messageId: msg.id });
+        cachedConfig = { ...config, messageId: msg.id };
         console.log(`[QUEUE] Posted in #${channel.name}`);
     } catch (err) {
         console.error('[QUEUE] Update error:', err.message);
@@ -142,6 +152,7 @@ export async function setupQueueDashboard(channelId) {
         messageId: null,
         createdAt: new Date().toISOString(),
     });
+    cachedConfig = { channelId, messageId: null };
     await postOrUpdate(db);
 
     // Start the timer if not running
@@ -173,5 +184,6 @@ export async function destroyQueueDashboard() {
         }
     } catch { /* ignore */ }
     await db.ref(CONFIG_PATH).set(null);
+    cachedConfig = null;
     console.log('[QUEUE] Dashboard destroyed');
 }

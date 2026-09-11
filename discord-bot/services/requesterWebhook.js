@@ -37,6 +37,7 @@
 import { getDiscordId } from './meDiscordNotify.js';
 import { FORUM_FALLBACK_URLS, getAgencyForum } from './agencyForums.js';
 import { isDevTestActive, devWebhookUrl } from './devRouting.js';
+import { isDna } from './autopsyRequestMonitor.js';
 
 // ── Constants ──
 
@@ -149,8 +150,10 @@ export async function resolveRequesterPing(db, entry) {
 
     // 3. Salutation fallback — prefer the requesting officer's IC name from the
     // form body; entry.name is the DECEDENT, never use it to greet the officer.
-    const salutation = String(entry?.parsed?.requesterName || '').trim()
-        || tagRaw
+    // D.N.A placeholders count as missing (never greet "D.N.A").
+    const parsedName = String(entry?.parsed?.requesterName || '').trim();
+    const salutation = (!isDna(parsedName) && parsedName)
+        || (!isDna(tagRaw) && tagRaw)
         || 'Requesting Officer';
     return { discordId: null, salutation };
 }

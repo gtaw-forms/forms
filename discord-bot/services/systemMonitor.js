@@ -342,6 +342,25 @@ async function checkOverdueAutopsies(db) {
 
         const now = Date.now();
         const FINAL_STATES = new Set(['complete', 'dry_run', 'skipped', 'cancelled', 'denied']);
+        const progressScore = (v) => {
+            if (v.completedAt || FINAL_STATES.has(String(v.caseState || '').toLowerCase())) return 3;
+            if (v.assignedTo) return 2;
+            return 1;
+        };
+
+        // Best progress per caseNum across ALL entries (not just overdue ones):
+        // several request topics can share one caseNum (reposts, test
+        // duplicates, multi-decedent splits). A stale zombie twin must not
+        // alert when its sibling case is complete or being worked.
+        const caseBest = new Map();
+        snap.forEach((child) => {
+            const v = child.val() || {};
+            if (v.wasMatch === false && !v.name) return;
+            if (!v.caseNum) return;
+            const s = progressScore(v);
+            if (s > (caseBest.get(v.caseNum) || 0)) caseBest.set(v.caseNum, s);
+        });
+
         const overdue = [];
 
         snap.forEach((child) => {
@@ -353,8 +372,16 @@ async function checkOverdueAutopsies(db) {
             if (!detected) return;
             const limitHours = thresholdHoursFor(v);
             if (now - detected <= limitHours * 60 * 60 * 1000) return;
+            // Suppress stale twins: a sibling with the same caseNum is further
+            // along (complete beats assigned beats bare detection).
+            if (v.caseNum && (caseBest.get(v.caseNum) || 0) > progressScore(v)) {
+                console.log(`[MONITOR] Overdue-suppressed superseded duplicate: t=${child.key} Case #${v.caseNum} (sibling further along).`);
+                return;
+            }
             overdue.push({
+                topicId: child.key,
                 name: v.name || child.key,
+                oocName: v.oocName || '',
                 assignedTo: v.assignedTo || '',
                 state: v.caseState || 'detected',
                 since: detected,
@@ -381,7 +408,9 @@ async function checkOverdueAutopsies(db) {
         const lines = overdue.slice(0, 10).map((o) => {
             const days = Math.floor((now - o.since) / 86400000);
             const since = new Date(o.since).toISOString().slice(0, 10);
-            return `• ${o.name}${o.assignedTo ? ` → ${o.assignedTo}` : ' (unassigned)'} [${o.type}] — ${o.state} — since ${since} (${days}d, limit ${o.limitHours}h)${o.caseNum ? ` — Case #${o.caseNum}` : ''}`;
+            const who = o.oocName && o.name !== o.oocName ? `${o.name} ((${o.oocName}))` : o.name;
+            const topic = `t=${o.topicId}`;
+            return `• ${who}${o.assignedTo ? ` → ${o.assignedTo}` : ' (unassigned)'} [${o.type}] — ${o.state} — since ${since} (${days}d, limit ${o.limitHours}h)${o.caseNum ? ` — Case #${o.caseNum}` : ''} — ${topic}`;
         }).join('\n');
 
         const ownerPing = process.env.BOT_OWNER_ID ? `<@${process.env.BOT_OWNER_ID}>` : '<@228306972204597248>';
@@ -517,6 +546,10 @@ export async function runHealthCheck(db, { skipForums = false } = {}) {
         console.log(`[MONITOR] ${allAlerts.length} alert(s) detected and sent to Discord.`);
     }
 }
+
+// Exported for one-shot probing (debug scripts) — the scheduled cycle calls
+// it internally via runAll above.
+export { checkOverdueAutopsies };
 
 // ── Startup ──
 

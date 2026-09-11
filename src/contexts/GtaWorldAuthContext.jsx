@@ -114,6 +114,34 @@ export const GtaWorldAuthProvider = ({ children }) => {
         }
     }, [user]);
 
+    // Attribute LaunchDarkly sessions to the signed-in identity (replays list
+    // a name instead of "anonymous"); back to anonymous on logout. Covers
+    // boot-restore, fresh login, and character switches. Never throws.
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                const { identifyLaunchDarkly, resetLaunchDarklyIdentity } = await import('../services/launchdarkly');
+                if (cancelled) return;
+                if (!user) {
+                    await resetLaunchDarklyIdentity().catch(() => {});
+                    return;
+                }
+                const username = user?.username || null;
+                const character = activeCharacter?.characterName
+                    || user?.faction?.characterName
+                    || user?.activeCharacter?.characterName
+                    || user?.characterName
+                    || null;
+                await identifyLaunchDarkly({
+                    key: username || character || 'unknown user',
+                    name: character || username || 'unknown user',
+                }).catch(() => {});
+            } catch {}
+        })();
+        return () => { cancelled = true; };
+    }, [user, activeCharacter]);
+
     const swapCharacter = useCallback((character) => {
         if (!user) return;
         if (!character || (character.id === undefined && character.characterId === undefined)) return;

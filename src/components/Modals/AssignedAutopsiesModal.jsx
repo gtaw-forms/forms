@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { database } from '../../firebase';
-import { ref, onValue, get } from 'firebase/database';
+import { ref, onValue, get, query, orderByChild, equalTo, push } from 'firebase/database';
+import { getUserOAuthIdentity } from '../../utils/logging';
 
 const MOCK_ROTATION_LIST = ['Dr. Alyson Frost', 'Dr. Marcus Reed', 'Dr. Emily Hart', 'Dr. Sarah Mitchell', 'Dr. James Walker'];
 
@@ -57,7 +58,9 @@ const AssignedAutopsiesModal = ({ show, onClose, onLoadCase, factionsData, loadM
             }
         });
 
-        const r = ref(database, 'autopsy-requested');
+        // RTDB cost optimization: pending-only query (completedAt index) instead
+        // of the full node — same set this view already filters to below.
+        const r = query(ref(database, 'autopsy-requested'), orderByChild('completedAt'), equalTo(null));
         const unsub = onValue(r, (snap) => {
             const data = snap.val();
             const list = [];
@@ -171,6 +174,63 @@ const AssignedAutopsiesModal = ({ show, onClose, onLoadCase, factionsData, loadM
         });
     };
 
+    // ── Morgue-match monitor ──
+    // Pushes every Load attempt (hit AND miss) to `morgueMatchLogs/` — the VPS
+    // bot watches that node (services/morgueMatchLogger.js, same pattern as
+    // deployNotifier) and posts the embed to the bot-spam channel with its own
+    // client. No webhook URLs anywhere. Fire-and-forget: monitoring must never
+    // break or delay the Load itself. Skipped on localhost (mock records).
+    const logMorgueMatchToSpam = ({ entry, ranked, bestMatch, bestScore, loaded }) => {
+        try {
+            if (typeof window !== 'undefined' && window.location.hostname === 'localhost') return;
+            const clamp = (v, max = 200) => String(v ?? '').slice(0, max);
+            const ident = getUserOAuthIdentity() || {};
+            const p = entry?.parsed || {};
+            const winnerKey = bestMatch ? String(bestMatch.caseId ?? bestMatch.firebaseKey ?? '') : '';
+            push(ref(database, 'morgueMatchLogs'), {
+                status: 'pending',
+                source: 'assigned-autopsies-modal',
+                createdAt: Date.now(),
+                loaded,
+                bestScore,
+                tie: ranked.length > 1 && ranked[0].score === ranked[1].score,
+                loadedBy: {
+                    username: clamp(ident.username, 80),
+                    characterName: clamp(ident.characterName, 80),
+                    characterId: clamp(ident.characterId, 40),
+                },
+                entry: {
+                    name: clamp(entry?.name, 80),
+                    oocName: clamp(entry?.oocName, 80),
+                    faction: clamp(entry?.faction, 20),
+                    assignedTo: clamp(entry?.assignedTo, 80),
+                    topicUrl: clamp(entry?.topicUrl, 200),
+                    dateOfDeath: clamp(p.dateOfDeath, 30),
+                    timeOfDeath: clamp(p.timeOfDeath, 30),
+                    placeOfDeath: clamp(p.placeOfDeath, 120),
+                },
+                winner: bestMatch && loaded ? {
+                    caseId: clamp(bestMatch.caseId ?? bestMatch.firebaseKey, 30),
+                    name: clamp(bestMatch.name, 80),
+                    score: bestScore,
+                    narcotics: clamp(bestMatch.narcotics, 80),
+                    bac: clamp(bestMatch.bac, 30),
+                    location: clamp(bestMatch.location, 120),
+                    timeOfDeath: clamp(bestMatch.timeOfDeath, 60),
+                } : null,
+                candidates: ranked.slice(0, 5).map(r => {
+                    const key = String(r.rec.caseId ?? r.rec.firebaseKey ?? '');
+                    return {
+                        caseId: clamp(r.rec.caseId ?? r.rec.firebaseKey, 30),
+                        name: clamp(r.rec.name, 80),
+                        score: r.score,
+                        loaded: loaded && key !== '' && key === winnerKey,
+                    };
+                }),
+            }).catch(() => {});
+        } catch { /* monitoring must never break Load */ }
+    };
+
     const handleLoad = async (entry) => {
         setLoadingCase(entry.id);
         setMorgueErrors(prev => { const n = new Set(prev); n.delete(entry.id); return n; });
@@ -179,6 +239,13 @@ const AssignedAutopsiesModal = ({ show, onClose, onLoadCase, factionsData, loadM
                 ? { records: mockMorgueRecords }
                 : await loadMorgueRecords();
             const records = result?.records || (Array.isArray(result) ? result : Object.values(result || {}));
+            // The VPS API returns newest-first, but DataContext re-keys records into a
+            // plain object by numeric caseId — and Object.values() iterates integer-like
+            // keys in ASCENDING order (oldest-first). Same-name repeat decedents then tie
+            // on score and the OLDEST wins via the strict `>` below (e.g. Lukas Adomaitis:
+            // 74896 beat 82864 at 110-110). Restore newest-first so ties break toward the
+            // latest death.
+            const ordered = [...records].sort((a, b) => (b.lastUpdated || 0) - (a.lastUpdated || 0));
             const terms = [entry.oocName.toLowerCase(), entry.name.toLowerCase()].filter(Boolean);
             let bestMatch = null;
             let bestScore = 0;
@@ -186,7 +253,9 @@ const AssignedAutopsiesModal = ({ show, onClose, onLoadCase, factionsData, loadM
             const parsedLoc = (p.placeOfDeath || '').toLowerCase();
             const parsedDate = (p.dateOfDeath || '').toLowerCase();
 
-            for (const rec of records) {
+            const recScores = new Map(); // caseKey -> { rec, score } (max across terms)
+            for (const rec of ordered) {
+                const recKey = String(rec.caseId ?? rec.firebaseKey ?? rec.name ?? '');
                 const rn = (rec.name || '').toLowerCase();
                 for (const t of terms) {
                     if (!t) continue;
@@ -234,14 +303,19 @@ const AssignedAutopsiesModal = ({ show, onClose, onLoadCase, factionsData, loadM
                             }
                         }
                     }
+                    const prev = recScores.get(recKey);
+                    if (!prev || s > prev.score) recScores.set(recKey, { rec, score: s });
                     if (s > bestScore) { bestScore = s; bestMatch = rec; }
                 }
             }
+            const ranked = [...recScores.values()].sort((a, b) => b.score - a.score);
             if (bestMatch && bestScore >= 50) {
+                logMorgueMatchToSpam({ entry, ranked, bestMatch, bestScore, loaded: true });
                 setMorgueErrors(prev => { const n = new Set(prev); n.delete(entry.id); return n; });
                 onLoadCase(bestMatch, entry);
                 onClose();
             } else {
+                logMorgueMatchToSpam({ entry, ranked, bestMatch, bestScore, loaded: false });
                 setMorgueErrors(prev => new Set(prev).add(entry.id));
             }
         } catch (err) {

@@ -14,6 +14,8 @@
 export const PHMC_CHANNELS = {
     // PHMC Discord #autopsies (same channel the old Autopsy Bot webhook lived in)
     autopsies: process.env.AUTOPSIES_CHANNEL_ID || '1367217501137797252',
+    // Dedicated PHMC status dashboard (simplified: all sections except VPS stats)
+    dashboard: process.env.PHMC_DASHBOARD_CHANNEL_ID || '1456793208125264014',
 };
 
 /** Resolve a mapped channel id by name ('' when unknown). */
@@ -28,8 +30,14 @@ export function getChannelId(name) {
  * join the PHMC guild, read/fetch channels, and prove the mapping resolves,
  * without ever posting a message until every sender is verified.
  */
-function channelSendEnabled() {
+export function channelSendEnabled() {
     return String(process.env.PHMC_CHANNEL_SEND_ENABLED || '').toLowerCase() === 'true';
+}
+
+// ── Bot client holder (registered once from index.js, like setLogClient) ──
+let _client = null;
+export function setPhmcClient(client) {
+    _client = client;
 }
 
 /**
@@ -72,4 +80,39 @@ export async function sendChannelMessage(client, channelId, payload = {}) {
         console.warn(`[PHMC-CHANNEL] Send to ${channelId} failed: ${err.message}`);
         return false;
     }
+}
+
+/**
+ * Post an ME assignment notice to the PHMC #autopsies channel via the bot
+ * client. Gated by PHMC_CHANNEL_SEND_ENABLED and never fires in DEV TEST
+ * mode (test autopsies must not ping the live PHMC Discord). On success an
+ * audit line goes to the audit channel — every PHMC post gets its trail.
+ *
+ * @param {object} payload — { content?, embeds?, components?, allowed_mentions? }
+ * @param {string} auditDetail — token-free detail for the audit line
+ * @returns {Promise<boolean>} true when posted
+ */
+export async function postAutopsyNotice(payload, auditDetail = '') {
+    if (!channelSendEnabled()) return false;
+    try {
+        const { isDevTestActive } = await import('./devRouting.js');
+        if (isDevTestActive()) {
+            console.log('[PHMC-CHANNEL] Suppressed autopsies post (DEV TEST mode)');
+            return false;
+        }
+    } catch { /* devRouting unavailable — proceed to gate decision */ }
+    const ok = await sendChannelMessage(_client, getChannelId('autopsies'), payload || {});
+    if (ok) {
+        try {
+            const { sendToChannel } = await import('./logChannel.js');
+            const auditId = process.env.AUDIT_CHANNEL_ID || null;
+            if (auditId) {
+                sendToChannel(
+                    auditId,
+                    `[AUDIT] POST autopsies-bot | ${String(auditDetail || '').slice(0, 400)}`
+                ).catch(() => {});
+            }
+        } catch { /* audit must never break sending */ }
+    }
+    return ok;
 }

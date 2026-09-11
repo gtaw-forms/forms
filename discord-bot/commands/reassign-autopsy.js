@@ -1,5 +1,5 @@
 import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, MessageFlags } from 'discord.js';
-import { isOwnerOrWhitelisted } from '../services/permissions.js';
+import { isSupervisorUp } from '../services/permissions.js';
 import firebase from '../services/firebase.js';
 import { getForumClient } from '../services/forumClient.js';
 import { reassignME } from '../services/autopsyRotation.js';
@@ -23,8 +23,8 @@ async function getMeNames(db) {
 }
 
 export async function execute(interaction) {
-    if (!isOwnerOrWhitelisted(interaction)) {
-        await interaction.reply({ content: 'Only the bot owner can reassign cases.', flags: MessageFlags.Ephemeral });
+    if (!isSupervisorUp(interaction)) {
+        await interaction.reply({ content: 'Only Supervisors and up can reassign cases.', flags: MessageFlags.Ephemeral });
         return;
     }
 
@@ -118,8 +118,8 @@ export async function onCasePick(interaction) {
  * Handle the ME selection — perform the actual reassignment.
  */
 export async function onMePick(interaction) {
-    if (!isOwnerOrWhitelisted(interaction)) {
-        await interaction.reply({ content: 'Only the bot owner can reassign cases.', flags: MessageFlags.Ephemeral });
+    if (!isSupervisorUp(interaction)) {
+        await interaction.reply({ content: 'Only Supervisors and up can reassign cases.', flags: MessageFlags.Ephemeral });
         return;
     }
 

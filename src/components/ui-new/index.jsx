@@ -27,7 +27,7 @@ import ServiceStatusTicker from './ServiceStatusTicker';
 import BusinessCardModal from '../UI/BusinessCard';
 import { useImageUpload } from '../../hooks/useImageUpload';
 import { triggerGetPatientNames } from '../../services/firebaseFunctions';
-import { ref, onValue } from 'firebase/database';
+import { ref, onValue, query, orderByChild, equalTo } from 'firebase/database';
 import { database } from '../../firebase';
 import './styles.css';
 import moduleStyles from './index.module.css';
@@ -45,6 +45,16 @@ const NewUIPrototype = ({ basicMode = false }) => {
   const [formValues, setFormValues] = useState({});
   const [searchTerm, setSearchTerm] = useState('');
   const [activeView, setActiveView] = useState('forms'); // 'forms' | 'morgue' | 'ems'
+
+  // ── Collapsible left sidebar (collapse to the left / expand back) ──
+  // Persisted so a refresh keeps the user's preferred layout.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try { return localStorage.getItem('phmc_sidebar_collapsed') === '1'; } catch { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('phmc_sidebar_collapsed', sidebarCollapsed ? '1' : '0'); } catch { /* ignore */ }
+  }, [sidebarCollapsed]);
+  const toggleSidebar = useCallback(() => setSidebarCollapsed(prev => !prev), []);
 
   // EMS Protocols (tree lives in the sidebar, selection renders in main content)
   const [emsProtocols, setEmsProtocols] = useState([]);
@@ -527,7 +537,28 @@ const NewUIPrototype = ({ basicMode = false }) => {
       setFormBackups(next);
       showNotification('Draft backed up — restore it anytime from the top of this form.', 'check-circle');
     }
-    setFormValues({});
+    // Preserve identity on clear — "Clear Form" wipes inputs, never who you
+    // are. A bare setFormValues({}) blanked employee/rank/badge with no
+    // re-sync trigger, which surfaced later as blank-credentials-at-save
+    // (Fix C backfill + alert). Seed from the resolved-credentials memo,
+    // falling back to whatever identity was already present.
+    const empType = selectedForm?.accessType === 'Coroner' ? 'coroner' : 'phmc';
+    setFormValues(prev => {
+      const kept = {};
+      if (resolvedCredentials?.employeeName) {
+        kept[`${empType}Employee`] = resolvedCredentials.employeeName;
+        if (resolvedCredentials.rank) kept[`${empType}Rank`] = resolvedCredentials.rank;
+        if (resolvedCredentials.badge) kept[`${empType}Badge`] = resolvedCredentials.badge;
+        if (resolvedCredentials.discord) kept[`${empType}Discord`] = resolvedCredentials.discord;
+        if (resolvedCredentials.phNumber) kept[`${empType}PHNumber`] = resolvedCredentials.phNumber;
+        if (resolvedCredentials.firstName) kept[`${empType}FirstName`] = resolvedCredentials.firstName;
+        if (resolvedCredentials.lastName) kept[`${empType}LastName`] = resolvedCredentials.lastName;
+      } else {
+        CREDENTIAL_KEYS.forEach(k => { if (prev[k]) kept[k] = prev[k]; });
+      }
+      return kept;
+    });
+    console.log(`[ClearForm] Cleared ${selectedForm?.firebaseKey || 'form'} inputs, preserved identity (${resolvedCredentials?.employeeName || 'prev values'} / matchedBy: ${resolvedCredentials?.matchedBy || 'n/a'})`);
     clearBBCode();
     if (selectedForm?.firebaseKey) localStorage.removeItem(`form_progression_${selectedForm.firebaseKey}`);
   };
@@ -625,6 +656,45 @@ const NewUIPrototype = ({ basicMode = false }) => {
     });
   }, [user, isAuthenticated, selectedForm, factionListData, cleanRankText]);
 
+  // ── Blank-credential refill watcher ──
+  // Draft/report/progression loads can overwrite credentials AFTER
+  // CredentialSync ran (it only watches user/form/roster, not formValues),
+  // leaving blanks that surface later as save-time backfills. If all three
+  // identity fields go blank while we can resolve, refill once per form.
+  // The once-per-form guard means deliberate user clears are never fought:
+  // refill once, then leave the fields alone.
+  const credRefillDoneRef = useRef({});
+  useEffect(() => {
+    credRefillDoneRef.current = {};
+  }, [selectedForm?.firebaseKey]);
+  useEffect(() => {
+    if (!selectedForm?.accessType || !isAuthenticated) return;
+    const empType = selectedForm.accessType === 'Coroner' ? 'coroner' : 'phmc';
+    const emp = String(formValues[`${empType}Employee`] || '').trim();
+    const rank = String(formValues[`${empType}Rank`] || '').trim();
+    const badge = String(formValues[`${empType}Badge`] || '').trim();
+    if (emp || rank || badge) return;
+    const formKey = selectedForm.firebaseKey;
+    if (credRefillDoneRef.current[formKey]) return;
+    const resolved = resolveEmployeeCredentials(user, {
+      factionListData,
+      cleanRank: cleanRankText,
+    });
+    if (!resolved.employeeName) return;
+    credRefillDoneRef.current[formKey] = true;
+    setFormValues(prev => ({
+      ...prev,
+      [`${empType}Employee`]: resolved.employeeName,
+      ...(resolved.rank ? { [`${empType}Rank`]: resolved.rank } : {}),
+      ...(resolved.badge ? { [`${empType}Badge`]: resolved.badge } : {}),
+      ...(resolved.discord ? { [`${empType}Discord`]: resolved.discord } : {}),
+      ...(resolved.phNumber ? { [`${empType}PHNumber`]: resolved.phNumber } : {}),
+      ...(resolved.firstName ? { [`${empType}FirstName`]: resolved.firstName } : {}),
+      ...(resolved.lastName ? { [`${empType}LastName`]: resolved.lastName } : {}),
+    }));
+    console.log(`[CredentialSync] Refilled blank credentials for ${resolved.employeeName} (matchedBy: ${resolved.matchedBy}, roster: ${factionListData.length})`);
+  }, [formValues, selectedForm, isAuthenticated, user, factionListData, cleanRankText]);
+
   // Live UTC clock
   const fmtUtc = (d) => { const p = n => n.toString().padStart(2,'0'); return `${d.getUTCFullYear()}-${p(d.getUTCMonth()+1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())} UTC`; };
   const [currentUtcTime, setCurrentUtcTime] = useState(() => fmtUtc(new Date()));
@@ -665,7 +735,10 @@ const NewUIPrototype = ({ basicMode = false }) => {
   const charSwitchLogged = useRef(false);
   useEffect(() => {
     const isLocalHost = window.location.hostname === 'localhost';
-    const r = ref(database, 'autopsy-requested');
+    // RTDB cost optimization: bell only needs incomplete cases — subscribe to
+    // the completedAt-indexed pending query instead of the full 400KB+ node,
+    // so every status write doesn't re-push history to every open tab.
+    const r = query(ref(database, 'autopsy-requested'), orderByChild('completedAt'), equalTo(null));
     const unsub = onValue(r, (snap) => {
       const data = snap.val();
       const list = [];
@@ -874,11 +947,12 @@ const NewUIPrototype = ({ basicMode = false }) => {
   };
 
   return (
-    <div className="app">
+    <div className={`app${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
 
       {/* ═══ LEFT SIDEBAR ═══ */}
       <div className="sidebar">
         <div className="sidebar-head">
+          <div className="brand-row">
           <div className="brand">
             <div className="brand-mark">
 <img src={phmcLogo} alt="PHMC" style={{ width: 22, height: 22, objectFit: 'contain' }} />            </div>
@@ -886,6 +960,15 @@ const NewUIPrototype = ({ basicMode = false }) => {
               <div className="t1">PHMC Tools</div>
               <div className="t2">{isAuthenticated ? characterName || 'Authenticated' : 'Not signed in'}</div>
             </div>
+          </div>
+          <button
+            className="icon-btn sidebar-collapse-btn"
+            onClick={toggleSidebar}
+            title="Collapse sidebar"
+            aria-label="Collapse sidebar"
+          >
+            <i className="fas fa-chevron-left" />
+          </button>
           </div>
           <div className="search-box">
             <input ref={searchRef} type="text" placeholder={activeView === 'ems' ? 'Search protocols…' : 'Search forms…'} value={searchTerm}
@@ -969,6 +1052,15 @@ const NewUIPrototype = ({ basicMode = false }) => {
 
         {/* ═══ TOP BAR ═══ */}
         <div className="topbar">
+          <button
+            className="icon-btn sidebar-toggle"
+            onClick={toggleSidebar}
+            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-expanded={!sidebarCollapsed}
+          >
+            <i className={`fas ${sidebarCollapsed ? 'fa-chevron-right' : 'fa-chevron-left'}`} />
+          </button>
           <div className="topbar-title">
             <h1>{activeView === 'morgue' ? 'Morgue Records' : activeView === 'ems' ? 'LS County EMS Protocols' : activeForm?.name || 'No Form Selected'}</h1>
             {activeView === 'morgue' ? <span className="case-tag">Database</span> : activeView === 'ems' ? <span className="case-tag">Protocols</span> : activeForm && <span className="case-tag">{activeForm.accessType || 'General'}</span>}

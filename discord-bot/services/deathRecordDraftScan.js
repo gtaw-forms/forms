@@ -770,6 +770,14 @@ export async function scanAndDraftCKs(db, options = {}) {
 
 export const DEATH_RECORD_VERIFY_FORUM_ID = 404; // matches where death records post
 export const VERIFY_DELAY_MS = 30 * 60 * 1000;
+// Sentinel for terminal verify states (RTDB cost optimization). Entries that
+// are verified / verification-failed / denied keep matching
+// orderByChild('verifyAfter').endAt(now) forever because verifyAfter stays in
+// the past — re-downloaded 6x/hr indefinitely. Stamping this far-future value
+// drops them out of the due set. (Clearing the field would NOT work: endAt
+// also matches null/missing.) Approval always stamps a fresh verifyAfter, so
+// re-armed entries re-enter automatically.
+export const VERIFY_DONE_AFTER = 4102444800000; // 2100-01-01T00:00:00Z
 
 export async function verifyPostedDeathRecords(db) {
     const now = Date.now();
@@ -786,7 +794,16 @@ export async function verifyPostedDeathRecords(db) {
     let verified = 0, flagged = 0, skipped = 0;
 
     for (const { key, val } of entries) {
-if (val.status === 'denied' || val.verified === true || val.verificationFailed === true) { skipped++; continue; }
+        if (val.status === 'denied' || val.verified === true || val.verificationFailed === true) {
+            // Terminal state reached without a sentinel (pre-fix backlog or
+            // out-of-band edit) — stamp it so this entry leaves the due set.
+            // Self-terminating: one write, never seen again.
+            if (val.verifyAfter !== VERIFY_DONE_AFTER) {
+                db.ref(`${DRAFT_TRACK_PATH}/${key}`).update({ verifyAfter: VERIFY_DONE_AFTER }).catch(() => {});
+            }
+            skipped++;
+            continue;
+        }
         // Only verify REAL posts — simulated/DRY approvals have no forum topic.
         if (val.status !== 'approved') { skipped++; continue; }
 
@@ -810,6 +827,7 @@ if (val.status === 'denied' || val.verified === true || val.verificationFailed =
                 verified: true,
                 verifiedAt: Date.now(),
                 verifiedTopicId: found.topicId,
+                verifyAfter: VERIFY_DONE_AFTER, // terminal — leave the due set
             });
             verified++;
             console.log(`[DRAFT-VERIFY] ${key} VERIFIED in f=${DEATH_RECORD_VERIFY_FORUM_ID} (t=${found.topicId})`);
@@ -817,6 +835,7 @@ if (val.status === 'denied' || val.verified === true || val.verificationFailed =
             await db.ref(`${DRAFT_TRACK_PATH}/${key}`).update({
                 verificationFailed: true,
                 verificationAttemptedAt: Date.now(),
+                verifyAfter: VERIFY_DONE_AFTER, // terminal — leave the due set
             });
             flagged++;
             console.warn(`[DRAFT-VERIFY] ${key} NOT FOUND in f=${DEATH_RECORD_VERIFY_FORUM_ID}`);

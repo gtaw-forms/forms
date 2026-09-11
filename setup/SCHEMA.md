@@ -120,6 +120,38 @@ A detected autopsy request being processed.
 | `discord-members/<forumName>` | string — ME forum name → Discord user id |
 | `pending/<id>` | object — web "Request Autopsy" submissions (see below) |
 
+---
+
+## `appMetadata/infoPanels/<messageId>` (info-panel tracking)
+
+`{ channelId, section, updatedAt }` per posted Information panel. Lets
+`/info-panel refresh` re-render every live panel in place (each in the section
+its readers last left it). Written only on manual post / button tap / refresh.
+Rules deny client writes (bot uses Admin SDK).
+
+## `appMetadata/phmcDashboard` (dedicated PHMC dashboard tracking)
+
+`{ messageId, channelId, updatedAt }` — the live PHMC Discord dashboard message
+(all sections except VPS stats, gated by `PHMC_CHANNEL_SEND_ENABLED`).
+
+## `completionStepRetries/<topicId>/<stepName>` (bot-internal retry index)
+
+Tiny marker ({ failedAt, detail }) written by `finishCompletionStep` on failure
+and removed on success; (re)seeded at monitor startup. Lets the 10-min recovery
+sweep fetch only entries with failed steps instead of the full
+`autopsy-requested` node. Rules deny all client access (bot uses Admin SDK).
+
+## `deployNotifications/<id>` (web-deploy → Discord, via bot)
+
+Written by `tools/deploy.js` (local, service-account key); picked up event-driven by the bot's `deployNotifier` service, posted to the log channel with the bot client, then removed. No webhook URLs anywhere.
+
+| Field | Shape |
+|---|---|
+| `title` / `description` / `color` | embed content |
+| `createdAt` | string — ISO timestamp |
+| `status` | `pending` (bot removes the node after posting) |
+| `source` | `web-deploy` |
+
 ### `autopsy-requests/pending/<id>` (web submission)
 
 `caseId, decedentName, oocName, gender, ethnicity, dateOfDeath, timeOfDeath,

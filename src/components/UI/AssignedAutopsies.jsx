@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { database } from '../../firebase';
-import { ref, onValue } from 'firebase/database';
+import { ref, onValue, query, orderByChild, equalTo } from 'firebase/database';
 import { triggerGetMorgueRecords } from '../../services/firebaseFunctions';
 
 const AssignedAutopsies = ({ showNotification, onLoadCase }) => {
@@ -9,7 +9,11 @@ const AssignedAutopsies = ({ showNotification, onLoadCase }) => {
     const [loadingCase, setLoadingCase] = useState(null);
 
     useEffect(() => {
-        const r = ref(database, 'autopsy-requested');
+        // RTDB cost optimization: pending-only query (completedAt index).
+        // NOTE: this legacy view previously also listed completed cases; it is
+        // now active-only, matching AssignedAutopsiesModal. Say the word if the
+        // history was intentional and we'll restore it differently.
+        const r = query(ref(database, 'autopsy-requested'), orderByChild('completedAt'), equalTo(null));
         const unsub = onValue(r, (snap) => {
             const data = snap.val();
             if (!data) { setAssignments([]); setLoading(false); return; }

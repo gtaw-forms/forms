@@ -347,6 +347,34 @@ async function notifyCompletionStepFailure(topicId, stepName, detail) {
 }
 
 /**
+ * Tiny retry index for failed completion steps (RTDB cost optimization).
+ *
+ * The recovery sweep used to download the whole 400KB+ autopsy-requested node
+ * every 10 min just to find failed steps. Now a failure drops a marker here and
+ * the sweep reads this index first, then fetches ONLY the listed entries.
+ * Markers are also (re)seeded from the monitor's startup snapshot (free — same
+ * read that rebuilds assignment counts), so pre-deploy failures aren't lost.
+ */
+export const STEP_RETRY_PATH = 'completionStepRetries';
+
+export function markStepRetry(topicId, stepName, detail = '') {
+    if (!topicId || !stepName || !state.dbRef) return;
+    try {
+        state.dbRef
+            .child(`${STEP_RETRY_PATH}/${topicId}/${stepName}`)
+            .set({ failedAt: new Date().toISOString(), detail: String(detail || '').slice(0, 300) })
+            .catch(() => {});
+    } catch { /* fire-and-forget */ }
+}
+
+export function clearStepRetry(topicId, stepName) {
+    if (!topicId || !stepName || !state.dbRef) return;
+    try {
+        state.dbRef.child(`${STEP_RETRY_PATH}/${topicId}/${stepName}`).remove().catch(() => {});
+    } catch { /* fire-and-forget */ }
+}
+
+/**
  * Mark a completion step as "completed" or "failed" (written after the operation finishes).
  * Writes to Firebase for retry tracking + console log for PM2. On failure, posts a
  * dedicated alert to the log channel so staff are informed (self-healing still retries).
@@ -371,6 +399,9 @@ async function finishCompletionStep(topicId, stepName, ok, detail = '') {
         } catch (e) {
             // Fire-and-forget — don't let tracking failures block anything
         }
+        // Keep the tiny retry index in sync so the sweep never scans the full node.
+        if (ok) clearStepRetry(topicId, stepName);
+        else markStepRetry(topicId, stepName, detail);
     }
 }
 
@@ -414,17 +445,21 @@ export async function handleAutopsyReply(report) {
         try {
             const guardSnap = await db.ref("autopsy-requested").orderByChild("oocName").equalTo(oocGuard).once("value");
             let anyPending = false;
-            let allComplete = true;
+            let matched = 0;
             if (guardSnap.exists()) guardSnap.forEach(c => {
                 const entry = c.val();
                 if (entry.name === nameGuard) {
-                    if (entry.completedAt) { /* complete — counts toward allComplete */ }
-                    else anyPending = true;
+                    matched++;
+                    if (!entry.completedAt) anyPending = true;
                 }
             });
-            if (guardSnap.exists()) allComplete = !anyPending;
-            // Only skip if there are matching entries AND all of them are completed (no pending request)
-            if (!anyPending && guardSnap.exists()) {
+            // Only skip when at least one entry actually matched this OOC+name
+            // AND all matched entries are completed. A bare oocName hit with a
+            // different decedent name (or no match at all) must NOT skip —
+            // otherwise a live case never gets its reply (false positive seen
+            // 2026-09-10: report "John Doe ((Gabriel Ontiveros))" skipped while
+            // case 10103 was still open).
+            if (matched > 0 && !anyPending) {
                 console.log(`[AUTO] ${key} all requests for this OOC+name are already completed — skipping duplicate reply`);
                 await setDeployStatus(db, authorId, key, "already_completed", "Skipped duplicate reply.");
                 await markReportComplete(db, authorId, key, reportData.originalKey || key, "autopsy-reply-skip", null);
@@ -1228,8 +1263,38 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
     const COOLDOWN_MS = 30 * 60 * 1000; // skip steps retried within the last 30 min
     try {
         if (entries === undefined) {
-            const snap = await db.ref('autopsy-requested').once('value');
-            entries = snap.exists() ? snap.val() || {} : {};
+            // Marker-driven scan: the tiny completionStepRetries index names every
+            // known failed step, so fetch ONLY those entries — never the full node.
+            // (Startup reseeds markers from the monitor snapshot; finishCompletionStep
+            // + the retry tail below keep them live. A missing marker with a failed
+            // step self-heals on the next restart reseed.)
+            let markers = {};
+            try {
+                const mSnap = await db.ref(STEP_RETRY_PATH).once('value');
+                markers = mSnap.exists() ? mSnap.val() || {} : {};
+            } catch { markers = {}; }
+            const markerKeys = Object.keys(markers);
+            if (markerKeys.length === 0) return; // nothing failed — zero entry reads
+            entries = {};
+            for (const topicId of markerKeys) {
+                try {
+                    const eSnap = await db.ref(`autopsy-requested/${topicId}`).once('value');
+                    if (eSnap.exists()) {
+                        entries[topicId] = eSnap.val() || {};
+                    } else {
+                        // Stale markers — entry gone, drop them.
+                        for (const s of Object.keys(markers[topicId] || {})) clearStepRetry(topicId, s);
+                    }
+                } catch { /* keep markers for the next sweep */ }
+            }
+            // Drop markers whose steps are no longer failed (manually fixed or
+            // resolved out-of-band) so the index can't go stale.
+            for (const [topicId, entry] of Object.entries(entries)) {
+                for (const s of Object.keys(markers[topicId] || {})) {
+                    const st = entry?.completionSteps?.[s]?.status;
+                    if (!st || st === 'completed') clearStepRetry(topicId, s);
+                }
+            }
         }
         if (Object.keys(entries).length === 0) return;
 
@@ -1535,6 +1600,9 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
                                 : (stepData.detail || 'Retry failed'),
                             retriedAt: new Date().toISOString(),
                         });
+                    // Keep the tiny retry index in sync (see STEP_RETRY_PATH).
+                    if (success) clearStepRetry(key, stepName);
+                    else markStepRetry(key, stepName, stepData.detail || 'Retry failed');
                 }
 
                 if (success) {

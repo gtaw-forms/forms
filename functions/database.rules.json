@@ -3,7 +3,10 @@
     ".read": "auth != null",
     ".write": "auth != null",
     "appMetadata": {
-      ".read": true
+      ".read": true,
+      "infoPanels": {
+        ".write": false
+      }
     },
     "translations": {
       ".read": true,
@@ -69,12 +72,19 @@
     "deathRecordDrafts": {
       ".indexOn": ["needsMorgue", "deploying", "needsBetterMorgue", "verifyAfter", "status"]
     },
+    "facePostDrafts": {
+      ".indexOn": ["status"]
+    },
+    "completionStepRetries": {
+      ".read": false,
+      ".write": false
+    },
     "morgue-records": {
       ".read": false,
       ".indexOn": "lastUpdated"
     },
     "autopsy-requested": {
-    ".indexOn": ["oocName", "name", "completedAt", "lssdCrosspostStatus", "lspdCrosspostStatus", "lssdTopicId", "lspd-acknowledge-reply", "lssd-acknowledge-reply", "phmc-acknowledge-reply", "sadcr-acknowledge-reply", "dao-acknowledge-reply"]
+    ".indexOn": ["oocName", "name", "completedAt", "caseTopicId", "lssdCrosspostStatus", "lspdCrosspostStatus", "lssdTopicId", "lspd-acknowledge-reply", "lssd-acknowledge-reply", "phmc-acknowledge-reply", "sadcr-acknowledge-reply", "dao-acknowledge-reply"]
     },
     "dev-reports": {
       ".read": true,

@@ -99,7 +99,7 @@ async function liveForumCheck() {
     return results;
 }
 
-async function gatherDashboardData(db, force = false) {
+export async function gatherDashboardData(db, force = false) {
     const now = Date.now();
     const data = {};
 
@@ -282,10 +282,11 @@ async function gatherDashboardData(db, force = false) {
         data.meLoa = [];
     }
 
-    // 9. Scheduled Face posts (awaiting their publish delay)
+    // 9. Scheduled Face posts (awaiting their publish delay) — scheduled-only
+    // query (needs the facePostDrafts status index); approved history never ships.
     try {
         const faceList = [];
-        const faceSnap = await db.ref('facePostDrafts').once('value');
+        const faceSnap = await db.ref('facePostDrafts').orderByChild('status').equalTo('scheduled').once('value');
         if (faceSnap.exists()) {
             faceSnap.forEach((child) => {
                 if (child.key === '_ids') return;
@@ -636,19 +637,19 @@ async function cleanupOrphanDashboards(channel, activeMessageId) {
 }
 
 async function postOrUpdateDashboard(db) {
-    if (!client) return;
+    if (!client) return null;
 
     try {
         const configSnap = await db.ref(DASHBOARD_CONFIG_PATH).once('value');
         const config = configSnap.val();
-        if (!config || !config.channelId) return;
+        if (!config || !config.channelId) return null;
         cachedConfig = config;
 
         const channel = await client.channels.fetch(config.channelId).catch(() => null);
         if (!channel) {
             console.warn('[DASHBOARD] ⚠️ Configured channel not found, clearing config.');
             await db.ref(DASHBOARD_CONFIG_PATH).set(null);
-            return;
+            return null;
         }
 
         // Clean up orphaned dashboard messages — delete any other PHMC System
@@ -694,7 +695,7 @@ async function postOrUpdateDashboard(db) {
                 // rather than flashing a pending state and rebuilding wholesale.
                 await patchDashboardEmbed(msg, embed, row);
                 cachedConfig = { ...config };
-                return;
+                return data;
             } catch (err) {
                 console.error(`[DASHBOARD] ⚠️ Patch failed for ${config.messageId}: ${err.message} — will post new`);
             }
@@ -705,8 +706,10 @@ async function postOrUpdateDashboard(db) {
         await db.ref(DASHBOARD_CONFIG_PATH).update({ messageId: msg.id });
         cachedConfig = { ...config, messageId: msg.id };
         console.log(`[DASHBOARD] 📋 Dashboard posted in #${channel.name}`);
+        return data;
     } catch (err) {
         console.error('[DASHBOARD] ⚠️ Update error:', err.message);
+        return null;
     }
 }
 
@@ -886,18 +889,49 @@ export async function handleDashboardRestart(interaction) {
 
 // ── Startup / Teardown ──
 
+/**
+ * One dashboard cycle: main dashboard first, then the dedicated PHMC
+ * dashboard reusing the same gathered data (zero extra RTDB reads). The PHMC
+ * post is independently gated by PHMC_CHANNEL_SEND_ENABLED (read-only until
+ * the VPS .env authorizes it).
+ */
+async function runDashboardCycle(db) {
+    const data = await postOrUpdateDashboard(db);
+    let shared = data;
+    if (!shared) {
+        // Main dashboard not configured — only gather when the PHMC board is
+        // actually authorized to post (otherwise the reads serve no audience).
+        try {
+            const { channelSendEnabled } = await import('./phmcChannels.js');
+            if (!channelSendEnabled()) return;
+            shared = await gatherDashboardData(db, false);
+            shared.lastCheckTime = Date.now();
+        } catch {
+            shared = null;
+        }
+    }
+    if (shared) {
+        try {
+            const { postPhmcDashboard } = await import('./phmcDashboard.js');
+            await postPhmcDashboard(client, db, shared);
+        } catch (err) {
+            console.warn(`[PHMC-DASH] Cycle error: ${err.message}`);
+        }
+    }
+}
+
 export function startDashboardManager() {
     firebase.init();
     const db = firebase.db;
 
     // Recursive timer — next cycle starts after current one finishes (no overlap)
     async function scheduleNext() {
-        await postOrUpdateDashboard(db);
+        await runDashboardCycle(db);
         refreshInterval = setTimeout(scheduleNext, DASHBOARD_REFRESH_MS);
     }
 
     // Check if a dashboard is configured and start the cycle
-    postOrUpdateDashboard(db).then(() => {
+    runDashboardCycle(db).then(() => {
         refreshInterval = setTimeout(scheduleNext, DASHBOARD_REFRESH_MS);
         statsInterval = setInterval(updateVpsStatsField, VPS_STATS_REFRESH_MS);
     });

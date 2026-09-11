@@ -1,5 +1,168 @@
 # PHMC Discord Bot — Changelog
 
+## 2026-09-11 — /card appends a shareable ImgBB URL
+
+### Added
+- **`uploadBufferToImgBB()` in `services/cardGenerator.js`** — mirrors the web `uploadImageProxy` (base64 `image` field), key read from `IMGBB_API_KEY` at send time. `/card` keeps the native attachment and appends `Your image URL: \`…\`` when the upload succeeds; fail-open otherwise (no key / error → attachment only, warn in logs).
+- `.env.example` documents the proxy env (`FIREBASE_PROJECT_ID`, `FIREBASE_WEB_API_KEY`); VPS `IMGBB_API_KEY` (fresh key) left in place, currently unused.
+- Key handoff 2026-09-11: first key was double-pasted (rejected, removed) — genuinely invalid (code 100), that finding stands.
+- **Correction — ImgBB was never broken.** All "blocked" verdicts came from a degenerate 70-byte 1px probe image that ImgBB 400s. Proof: (a) 20 DISTINCT fresh `i.ibb.co` photo URLs in this week's saves — real user uploads through the same proxy+key; (b) live 16KB probe via the new proxy chain returned `i.ibb.co` OK. Direct-VPS 103s were likely the same degenerate payload, not an IP/account block — that theory is withdrawn.
+- **New `services/imageProxy.js`** (mint custom token → ID token → `uploadImageProxy` callable) + `/card` uses it with **ImgBB** (reverted from the Imgur detour once proven). `uploadBufferToImgBB` renamed to `uploadCardImage`. One 16KB probe image (repo logo) remains on the account — deletable from the imgbb dashboard if wanted. Temp scripts destroyed both sides.
+
+### Deployed
+- 2026-09-11 live: SCP `services/imageProxy.js` (new), `services/cardGenerator.js`, `commands/card.js` (both md5-identical pre-edit) + `pm2 restart phmc-bot`; boot clean, login + trimmed registration confirmed, error count steady.
+
+### Deployed
+- 2026-09-11 live: SCP `commands/card.js` + `services/cardGenerator.js` (both md5-identical pre-edit) + `pm2 restart phmc-bot`; boot clean (no new errors; the `getDevTestME` lines in the tail were stale from 11:14 — count steady at 17, fresh login + trimmed registration confirmed).
+
+## 2026-09-11 — Trimmed slash-command set for the PHMC guild
+
+### Added
+- **`registerCommands()` now registers a trimmed set to the PHMC guild** (`PHMC_GUILD_ID`, default `860254678653992992`; list via `PHMC_COMMANDS`, default `reassign-autopsy,autopsy-loa,card`) while the primary guild keeps the full arsenal. Unknown names warn-and-skip. Verified read-only via API: staging 45 commands unchanged, PHMC exactly the 3.
+
+### Deployed
+- 2026-09-11 live: surgical insert into VPS `index.js` (full-file SCP skipped — local drift) + `pm2 restart phmc-bot`; boot log confirms `Registering 3 trimmed commands for PHMC guild`. VPS backup at `/tmp/index.js.phmccmd.bak`.
+
+## 2026-09-11 — CASE_STATES documented; first live post to PHMC #fmp-autopsies
+
+### Added
+- **`CASE_STATES` constants + lifecycle doc block** in `services/autopsyRequestMonitor.js`: `complete` = intake pipeline done (NOT autopsy done; that's `completedAt` + report). Mirrored to VPS surgically (comment-only, no restart). No renames — readers + existing RTDB records stay compatible.
+
+### Verified live
+- **Case 508 test post to PHMC `#fmp-autopsies`** (one-shot approved send, 2026-09-11): message `1547924500103036988` — content, all 6 embed fields, both link buttons confirmed via read-only fetch; mention resolved to `ralof.from.riverwood` (Anne Carter's Discord — ping fired). Audit line posted to `#audit-log-spam`. Author shows as the bot itself (bot-client sends can't set the `PHMC Autopsy Assignments` webhook username — cosmetic only).
+
+## 2026-09-11 — Audit trail on every external assignment post
+
+### Added
+- **`assignmentWebhook.js` now logs a token-free `[AUDIT] POST <assignment-ping|forward> | ME … | case #… …` line** to the dedicated audit channel (`AUDIT_CHANNEL_ID` → #audit-log-spam) via the bot client after every successful external send — so any post that reaches the PHMC Discord has a matching trail. Singular per post, best-effort, never breaks sending. Uses the already-deployed `sendToChannel` primitive; local file was md5-identical to VPS, so full-file SCP was exact.
+
+### Deployed
+- 2026-09-11 live: SCP `services/assignmentWebhook.js` + `pm2 restart phmc-bot`; boot clean, roster/forum pipelines nominal. (Note: `pm2 logs` tail shows stale `Cannot find module …/test-ping.js` "Failed to start" lines — verified pre-existing from 2026-09-10; error log untouched since, file exists on VPS.)
+
+## 2026-09-11 — Morgue-match monitor: Load attempts posted to bot-spam
+
+### Added
+- **New `services/morgueMatchLogger.js`** — watches `morgueMatchLogs/` (same RTDB-node pattern as `deployNotifier`) and posts a "who loaded what + confidence table" embed to the bot-spam channel (`BOT_LOG_CHANNEL_ID`) with the bot's own client. Colors: green = clean load, amber = tie-break decided it, red = no match (best < 50). Nodes removed after posting; pending nodes replay on boot.
+- Registered in `index.js` next to `startDeployNotifier` (non-fatal start).
+
+### Root cause it watches
+- Same-name repeat decedents (e.g. Lukas Adomaitis ×4) can tie on match score; the web modal iterated records oldest-first (DataContext object-keying reorders numeric keys ascending) so the oldest tied record won — Case 501 loaded #74896 (N/A) instead of #82864. Web side now sorts newest-first before scoring.
+
+### Deployed
+- 2026-09-11 live: SCP `services/morgueMatchLogger.js` (new file) + surgical 8-line registration insert into the VPS `index.js` after the deploy-notifier block (full-file SCP skipped — local `index.js` carries unrelated uncommitted features) + `pm2 restart phmc-bot`. Verified `[MORGUE-MATCH] Watching morgueMatchLogs...` in pm2 logs. VPS `index.js` backup at `/tmp/index.js.morguematch.bak`.
+
+## 2026-09-10 — Server join/leave flags (owner-paged on surprise joins)
+
+### Added
+- **`guildCreate` handler**: the moment the bot joins any server, the owner gets paged in the log channel — `<@owner> Priority Note: Server Joined: <name, id, member count, owner id>` — plus a red embed with join timestamp. Also file-logged as `[BOT] [AUDIT]`.
+- **`guildDelete` handler**: quiet log-channel + file note when the bot is removed from a server (no ping).
+
+### Deployed
+- SCP `index.js` + `pm2 restart phmc-bot`.
+
+## 2026-09-10 — Overdue autopsy alert: suppress handled duplicates, add topic links
+
+### Fixed
+- **False "Unknown (unassigned)" overdue flags**: the check flagged every non-final entry past its window, including stale zombie twins of already-handled cases (e.g. t=10076/Case #504 and t=10083/Case #506 — unassigned, unparsed test duplicates whose siblings were completed/assigned). Now a per-caseNum best-progress map (complete > assigned > detected) suppresses entries whose sibling is further along. Verified live: both zombies suppressed, "No overdue autopsies".
+- **`[?] limit 48h` explained**: entries with no parsed `deathType` (BBCode never fetched) fall back to the 48h default — correct behavior for genuinely untyped entries; the dup-suppression removes the reported instances.
+- **Alert lines now show OOC name + topic id** (`Name ((OOC)) … — t=10076`) so staff can triage without guessing which post it is.
+- `checkOverdueAutopsies` exported for one-shot debug probing.
+
+### Deployed
+- SCP `services/systemMonitor.js` + `pm2 restart phmc-bot`. Probe scripts removed from VPS after verification.
+
+## 2026-09-10 — Command permissions: staff card, owner dev, supervisor reassign, retire autopsy/user
+
+### Changed
+- **`/card` is PHMC Staff only** (role `860595219472842753`, env-overridable via `PHMC_STAFF_ROLE_ID`; owner bypasses). New `isPhmcStaff()` in `services/permissions.js`.
+- **`/dev` is owner-gated at the slash command** (was only enforced inside the panel/buttons — now denied up front too).
+- **`/reassign-autopsy` is Supervisors+** (role `860257102324301864`, env-overridable via `PHMC_SUPERVISOR_ROLE_ID`; owner/leadership bypass). Both `execute` and `onMePick` gates changed. New `isSupervisorUp()`.
+- **Retired `/autopsy` + `/user`**: unregistered from Discord (import + register + loader blocks removed in `index.js`); files kept on disk, restore by uncommenting.
+- Env: `PHMC_STAFF_ROLE_ID` / `PHMC_SUPERVISOR_ROLE_ID` documented in `.env.example`.
+
+### Deployed
+- SCP `services/permissions.js` + `commands/card.js` + `commands/dev.js` + `commands/reassign-autopsy.js` + `index.js` + `pm2 restart phmc-bot`.
+
+## 2026-09-10 — Autopsy request required fields + D.N.A parsing
+
+### Added
+- **Parser extracts Rank, Badge, Cell, Forum Account URL** (`parseAutopsyRequestBbcode`): new `requesterRank` / `requesterBadge` / `requesterCell` / `forumAccountUrl` fields (forum line prefers the `[url=]` href over link text).
+- **Missing/blank/`ANSWER`-style requester fields normalize to `D.N.A (Did Not Answer)`** (new `DNA_VALUE` / `dna()` / `isDna()`); absent fields backfilled post-parse. Decedent/details/OOC parsing untouched.
+- **DNA-aware guards**: `requesterDiscordTag` never written from DNA (both write paths), ack greeting falls back to "Requesting Party", completion salutation (`requesterWebhook.js`) never greets "D.N.A".
+- Web side (needs owner deploy): Request Autopsy modal requires Name/Rank/Department/Forum URL at submit (cell optional); BBCode blanks render D.N.A; Forum Account line now posted to f=265.
+
+### Deployed
+- SCP `services/autopsyRequestMonitor.js` + `services/requesterWebhook.js` + `pm2 restart phmc-bot`.
+
+## 2026-09-10 — Interaction audit log (abuse observation)
+
+### Added
+- **New `services/auditLog.js`**: every slash command, button, modal, and select menu is logged to the session file as `[AUDIT] ...` (who, what + options, channel, outcome + duration). Autocomplete excluded (keystroke noise).
+- **Discord-visible trail**: sensitive/mutating commands (restarts, skips, retries, reassigns, morgue/patient/user lookups, autopsy tools, dev, …) also post to the log channel, plus command errors on those.
+- **Flood alert**: >25 interactions/5 min from one user posts a `[WARN]` to the log channel (once per window). Tunables: `AUDIT_FLOOD_THRESHOLD`, `AUDIT_FLOOD_WINDOW_MS` (see `.env.example`).
+
+### Changed
+- **Dedicated audit channel + bulk sends**: set `AUDIT_CHANNEL_ID` (e.g. `#audit-log-spam`) and ALL audit lines go there in bundled messages (flush every `AUDIT_FLUSH_MS`, or early at `AUDIT_BATCH_MAX` lines). Under flood demand the buffer collapses into per-user/per-command summary counts instead of singular lines. Flood WARNs stay singular + immediate. Unset = legacy sensitive-only posts to the main log channel. `AUDIT_DISCORD_ALL` removed (superseded).
+- `services/logChannel.js`: shared delivery core + new `sendToChannel(channelId, content)` (no pings, no dev-redirect) for the audit batch sender.
+
+### Deployed
+- SCP `services/auditLog.js` + `services/logChannel.js` + `index.js` + `pm2 restart phmc-bot`. Then set `AUDIT_CHANNEL_ID` in the VPS `.env`.
+
+## 2026-09-10 — /card migrated to website Business Card layout
+
+### Fixed
+- **`/card` now mirrors the PHMC Tools website layout exactly** (`src/components/UI/BusinessCard.jsx`): name 2.75%/23.44% black 35px, rank 3.31%/31.92% red `#cb1212` 15px, phone 12.56%/52.77% black 15px (percentages of card size, fonts scaled from the website's 750px reference width). Old hardcoded px values (name y=450 off-canvas, grey rank) removed.
+- **Added optional `phone` parameter** — the bot previously had no phone field at all.
+- **Bundled `LufgaMedium.ttf`** (`templates/`) so the bot renders the same typeface as the website (Arial fallback when missing).
+
+### Deployed
+- SCP `services/cardGenerator.js` + `commands/card.js` + `templates/LufgaMedium.ttf` + `pm2 restart phmc-bot`.
+- Follow-up: `/card` failed live with "Template not found" — `business-card.png` was never on the VPS. SCP'd `templates/business-card.png` up + restarted.
+- Follow-up: phone text rendered ~22px above the phone icon's center (canvas `top` baseline vs SVG `hanging` baseline). Phone `topPct` 52.77% → 54.60%, verified pixel-exact (text ink center = icon center y=667/1200). Name/rank untouched.
+
+## 2026-09-10 — Dedicated PHMC dashboard (gated)
+
+### Added
+- **🏥 PHMC Dashboard** for channel `1456793208125264014` (mapped in `PHMC_CHANNELS.dashboard`, env-overridable via `PHMC_DASHBOARD_CHANNEL_ID`): every main-dashboard section **except VPS stats**, Refresh-only buttons (no Restart on the PHMC server).
+- Piggybacks the main 10-min gather (zero extra RTDB reads; falls back to its own gather only when the main board is unconfigured AND sends are authorized).
+- **Gate enforced**: posts AND edits drop while `PHMC_CHANNEL_SEND_ENABLED` isn't `true` — verified live (cycle logs suppression, nothing posted).
+- Owner-only **`/phmc-dashboard status`** (mapping proof, fetch-only) and **`post`** (live gather + gated post).
+
+### Deployed
+- SCP service + command + `dashboardManager.js` + `phmcChannels.js` + `index.js` + `pm2 restart phmc-bot`; rules unchanged (tracking node under existing `appMetadata` perms).
+
+## 2026-09-10 — Information panel push-refresh + tracking
+
+### Added
+- **`/info-panel refresh`** re-renders every posted panel in place from current code (each kept in the section its readers last left it). Panels self-track at `appMetadata/infoPanels/<messageId>` (rules deny client writes); deleted messages/channels are untracked silently. `/info-panel` is now `setup` + `refresh` subcommands.
+- Rules deployed (`infoPanels` write-locked).
+
+## 2026-09-10 — Information panel trim (Leadership + Support rework)
+
+### Changed
+- **Leadership section cut to the basics** (`/dashboard`, `/rotation-list`, `/autopsy-loa`, `/reassign-autopsy`, `/pending-reports`) — everything else routes to the owner, by request.
+- **Support section rebuilt around a goal**: live Maintenance Status line (🟢 All Systems Normal / 🔴 Outage, read from the bot's maintenance flag on every view), "Having an issue? Contact Fr0styDev" with owner mention, and 3 troubleshooting steps. No overload.
+
+### Deployed
+- SCP `services/infoPanel.js` + `pm2 restart phmc-bot`.
+
+## 2026-09-10 — Leadership Information panel (`/info-panel`)
+
+### Added
+- **Owner-only `/info-panel [channel]`** posts a button-navigated embed: Overview (what the bot automates), Leadership (essential commands reference), ME & Staff (daily use + assignment flow), Support (outages, maintenance mode, how to report). Static content — zero RTDB reads.
+- New `services/infoPanel.js` + `commands/info-panel.js`; `info_*` button route in `index.js`.
+
+### Deployed
+- SCP service + command + `index.js` + `pm2 restart phmc-bot` (guild commands re-registered).
+
+## 2026-09-10 — duplicate-reply guard false-positive fix
+
+### Fixed
+- **`handleAutopsyReply` completion guard could skip a live case**: it skipped when `!anyPending && guardSnap.exists()`, but `guardSnap` only proves the OOC exists — with a different decedent name (or no name match at all) nothing matched, yet it still skipped. Now requires `matched > 0 && !anyPending`. Live case: report "John Doe ((Gabriel Ontiveros))" was skipped while case 10103 was still open; after the fix + re-queue the reply posted ([post](https://phmc.gta.world/viewtopic.php?p=25005#p25005)) and #10102 completed.
+
+### Deployed
+- SCP `services/deployAutopsyReply.js` + re-queued the report + `pm2 restart phmc-bot`.
+
 ## 2026-09-10 — Morgue API hourly poll metrics (noise reduction)
 
 ### Changed

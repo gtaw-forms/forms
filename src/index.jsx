@@ -14,6 +14,7 @@ import { DataProvider } from './contexts/DataContext.jsx';
 import { ModalProvider } from './contexts/ModalProvider.jsx';
 import { useNotification } from './contexts/NotificationContext';
 import * as Sentry from "@sentry/react";
+import { initLaunchDarkly } from './services/launchdarkly';
 import ErrorBoundary from './components/UI/ErrorBoundary';
 import { sendDiscordErrorWebhook, getLastInputInteraction, getCurrentFormType, initConsoleInterceptor, getUserOAuthIdentity, isIndexedDBCascadeError } from './utils/logging';
 import { checkIndexedDBAvailability, clearSiteData } from './utils/idbCache';
@@ -129,6 +130,11 @@ init({
     return event;
   },
 });
+
+// LaunchDarkly Observability (session replay + logs/traces) — complements
+// Sentry, which stays authoritative for errors/breadcrumbs. Prod-only, strict
+// input masking; no-op without VITE_LAUNCHDARKLY_CLIENT_ID. Never throws.
+initLaunchDarkly();
 
 // Use addEventListener to avoid overwriting Sentry's handlers
 window.addEventListener('error', (event) => {

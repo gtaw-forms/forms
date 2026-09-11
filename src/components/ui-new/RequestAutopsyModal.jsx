@@ -50,6 +50,20 @@ const inputStyle = {
 };
 const labelStyle = { fontSize: 11, color: 'var(--text-faint)', fontWeight: 600, display: 'block' };
 
+// Required-field markers: red asterisk (label text itself stays neutral so it
+// doesn't read as a validation error) + hover bubble explaining WHY the ME
+// team needs it. Optional fields get an explicit "(optional)" suffix instead.
+const reqStar = <span style={{ color: '#ff6b6b' }} title="Required">*</span>;
+const optionalTag = <span style={{ fontWeight: 400, color: 'var(--text-faint)' }}> (optional)</span>;
+const infoBubble = (hint) => (
+    <span title={hint} style={{ display: 'inline-block', marginLeft: 5, width: 14, height: 14, lineHeight: '13px', textAlign: 'center', borderRadius: '50%', border: '1px solid var(--text-faint)', color: 'var(--text-faint)', fontSize: 9, fontWeight: 700, cursor: 'help', verticalAlign: '1px' }}>i</span>
+);
+const requiredNote = (
+    <span style={{ fontWeight: 400, color: 'var(--text-faint)', fontSize: 10.5 }}>
+        ({reqStar} required — requests without requester details can't be processed)
+    </span>
+);
+
 const RequestAutopsyModal = ({ show, onClose, record, showNotification, characterName }) => {
     const [deathType, setDeathType] = useState('PK');
     const [requesterName, setRequesterName] = useState('');
@@ -105,7 +119,11 @@ const RequestAutopsyModal = ({ show, onClose, record, showNotification, characte
     const topicTitle = `Autopsy Request - ${decedentName} ((${oocName || 'Unknown OOC'})) [${agencyTag}]`;
 
     const buildRequestBBCode = () => {
-        const ans = (v) => String(v || '').trim() || 'ANSWER';
+        // Blank optional fields render as D.N.A (Did Not Answer) — never raw
+        // 'ANSWER' placeholders. Name/Rank/Department/Forum Account are gated
+        // as required at submit (see handleSubmit); cell stays optional.
+        const DNA = 'D.N.A (Did Not Answer)';
+        const ans = (v) => String(v || '').trim() || DNA;
         return `[divbox=grey][center][img]https://i.imgur.com/s5acD6S.png[/img][/center][/divbox]
 [divbox=white]
 [br][/br]
@@ -124,6 +142,7 @@ const RequestAutopsyModal = ({ show, onClose, record, showNotification, characte
 [b] 5.) Read and understood [url=https://phmc.gta.world/viewtopic.php?t=9572]Autopsy Guidelines[/url][/b]: ${guidelinesRead ? 'YES' : 'NO'}
 [b]6.) Contact Information:[/b]: 
 [list][*]Cell Number: ${ans(requesterCell)}
+[*]Forum Account: ${ans(forumAccountUrl)}
 [*](( Discord Name: ${ans(requesterDiscord)} ))[/list]
 
 [/divbox]
@@ -151,9 +170,18 @@ const RequestAutopsyModal = ({ show, onClose, record, showNotification, characte
 
     const requestBBCode = buildRequestBBCode();
 
+    // Live validity: submit stays disabled until every mandatory field is
+    // filled. The missing list doubles as the inline prompt + submit guard.
+    const missingRequired = [];
+    if (!requesterName.trim()) missingRequired.push('Name');
+    if (!requesterRank.trim()) missingRequired.push('Rank');
+    if (!requesterDept.trim()) missingRequired.push('Department / Assignment');
+    if (!forumAccountUrl.trim()) missingRequired.push('Forum Account URL');
+
     const handleSubmit = async () => {
-        if (!requesterName.trim()) {
-            showNotification('Enter the requester name.', 'warning');
+        // Backstop (button is disabled while invalid, but never trust UI alone).
+        if (missingRequired.length) {
+            showNotification(`Required fields missing: ${missingRequired.join(', ')}.`, 'warning');
             return;
         }
         setSubmitting(true);
@@ -246,11 +274,11 @@ const RequestAutopsyModal = ({ show, onClose, record, showNotification, characte
                     <span style={{ fontSize: 10.5, color: 'var(--text-faint)', alignSelf: 'center' }}>CKs require /cexamine + /cinjuries below.</span>
                 </div>
 
-                {section('SECTION 1 — REQUESTER')}
+                {section('SECTION 1 — REQUESTER', requiredNote)}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 10 }}>
-                    <div><span style={labelStyle}>1.) Name *</span><input style={inputStyle} value={requesterName} onChange={e => setRequesterName(e.target.value)} placeholder="e.g. Officer J. Baker" /></div>
-                    <div><span style={labelStyle}>2.) Rank</span><input style={inputStyle} value={requesterRank} onChange={e => setRequesterRank(e.target.value)} placeholder="e.g. Officer I" /></div>
-                    <div><span style={labelStyle}>3.) Department / Assignment</span><input style={inputStyle} value={requesterDept} onChange={e => setRequesterDept(e.target.value)} placeholder="e.g. LSPD - Homicide" /></div>
+                    <div><span style={labelStyle}>1.) Name {reqStar}{infoBubble('Your character\u2019s full name — used in the ME acknowledgement reply.')}</span><input style={inputStyle} value={requesterName} onChange={e => setRequesterName(e.target.value)} placeholder="e.g. Officer J. Baker" /></div>
+                    <div><span style={labelStyle}>2.) Rank {reqStar}{infoBubble('Your rank at the time of the request.')}</span><input style={inputStyle} value={requesterRank} onChange={e => setRequesterRank(e.target.value)} placeholder="e.g. Officer I" /></div>
+                    <div><span style={labelStyle}>3.) Department / Assignment {reqStar}{infoBubble('Routes the request and detects the agency forum (LSPD, LSSD, SADCR, DAO).')}</span><input style={inputStyle} value={requesterDept} onChange={e => setRequesterDept(e.target.value)} placeholder="e.g. LSPD - Homicide" /></div>
                     <div><span style={labelStyle}>4.) Badge/Serial Number</span><input style={inputStyle} value={requesterBadge} onChange={e => setRequesterBadge(e.target.value)} placeholder="Serial #" /></div>
                     <div><span style={labelStyle}>Agency Forum Account (deliver to)</span>
                         <select style={inputStyle} value={agencyForum} onChange={e => setAgencyForum(e.target.value)}>
@@ -258,7 +286,7 @@ const RequestAutopsyModal = ({ show, onClose, record, showNotification, characte
                             {['LSPD', 'LSSD', 'SADCR', 'DAO', 'PHMC'].map(a => <option key={a} value={a}>{a} Forum</option>)}
                         </select>
                     </div>
-                    <div><span style={labelStyle}>Forum Account URL</span>
+                    <div><span style={labelStyle}>Forum Account URL {reqStar}{infoBubble('Your forum member profile URL — the ME team delivers the completed report here.')}</span>
                         <input style={inputStyle} value={forumAccountUrl} onChange={e => setForumAccountUrl(e.target.value)} placeholder="https://lspd.gta.world/… member profile" />
                     </div>
                     <div style={{ gridColumn: 'span 2', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
@@ -270,7 +298,7 @@ const RequestAutopsyModal = ({ show, onClose, record, showNotification, characte
                             Autopsy Guidelines
                         </button>
                     </div>
-                    <div><span style={labelStyle}>6a.) Cell Number</span><input style={inputStyle} value={requesterCell} onChange={e => setRequesterCell(e.target.value)} placeholder="555-0123" /></div>
+                    <div><span style={labelStyle}>6a.) Cell Number{optionalTag}</span><input style={inputStyle} value={requesterCell} onChange={e => setRequesterCell(e.target.value)} placeholder="555-0123" /></div>
                     <div><span style={labelStyle}>6b.) (( Discord Name ))</span><input style={inputStyle} value={requesterDiscord} onChange={e => setRequesterDiscord(e.target.value)} placeholder="(( Discord username ))" /></div>
                 </div>
 
@@ -298,9 +326,19 @@ const RequestAutopsyModal = ({ show, onClose, record, showNotification, characte
                     </div>
                 </div>
 
-                <div style={{ display: 'flex', gap: 8, marginTop: 14, justifyContent: 'flex-end' }}>
+                <div style={{ display: 'flex', gap: 8, marginTop: 14, justifyContent: 'flex-end', alignItems: 'center' }}>
+                    {missingRequired.length > 0 && (
+                        <div style={{ fontSize: 11.5, color: '#ff6b6b', marginRight: 'auto' }}>
+                            Complete required fields: <strong>{missingRequired.join(', ')}</strong>
+                        </div>
+                    )}
                     <button onClick={onClose} style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, padding: '8px 14px', fontSize: 12.5, cursor: 'pointer' }}>Cancel</button>
-                    <button onClick={handleSubmit} disabled={submitting} style={{ background: 'var(--teal-dim)', border: '1px solid var(--teal)', color: 'var(--teal)', borderRadius: 6, padding: '8px 16px', fontSize: 12.5, cursor: submitting ? 'default' : 'pointer', opacity: submitting ? 0.6 : 1 }}>
+                    <button
+                        onClick={handleSubmit}
+                        disabled={submitting || missingRequired.length > 0}
+                        title={missingRequired.length > 0 ? `Required: ${missingRequired.join(', ')}` : 'Submit request'}
+                        style={{ background: 'var(--teal-dim)', border: '1px solid var(--teal)', color: 'var(--teal)', borderRadius: 6, padding: '8px 16px', fontSize: 12.5, cursor: (submitting || missingRequired.length > 0) ? 'not-allowed' : 'pointer', opacity: (submitting || missingRequired.length > 0) ? 0.45 : 1 }}
+                    >
                         {submitting ? <><i className="fas fa-spinner fa-spin me-1" />Submitting…</> : <><i className="fas fa-paper-plane me-1" />Submit Request</>}
                     </button>
                 </div>

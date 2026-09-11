@@ -7,7 +7,8 @@
  */
 
 import { sendLogMessage } from './logChannel.js';
-import { notifyAssignmentWebhook, assignmentWebhookConfigured, forwardAssignmentWebhook, getForwardWebhookUrl } from './assignmentWebhook.js';
+import { notifyAssignmentWebhook, assignmentWebhookConfigured, forwardAssignmentWebhook, getForwardWebhookUrl, buildContent, buildCaseEmbed, buildComponents, deathTypeWindow } from './assignmentWebhook.js';
+import { postAutopsyNotice } from './phmcChannels.js';
 
 /**
  * Look up a Discord user ID for a given forum username.
@@ -87,6 +88,26 @@ export async function notifyAssignment(db, assignedName, caseTitle, caseUrl, {
             });
         } catch (e) {
             console.warn(`[ME-NOTIFY] Auto-forward failed for ${assignedName}: ${e.message}`);
+        }
+
+        // Bot-native post to the PHMC #autopsies channel (same template as the
+        // webhook ping, minus the webhook-only username). Gated by
+        // PHMC_CHANNEL_SEND_ENABLED and skipped in DEV TEST mode — see
+        // postAutopsyNotice. Audit-trailed there on success.
+        try {
+            const buttonTitle = embedTitle || (isMassAutopsy ? '🔬 Mass Autopsy Assigned' : '🔬 Autopsy Case Assigned');
+            await postAutopsyNotice({
+                content: buildContent({ me: assignedName, discordId, label }),
+                allowed_mentions: { parse: ['users'] },
+                embeds: [buildCaseEmbed({
+                    me: assignedName, caseTitle, caseNumber, decedent, ooc, caseUrl,
+                    deadline: deathTypeWindow(deathType),
+                    title: buttonTitle,
+                })],
+                components: buildComponents({ caseUrl }),
+            }, `ME ${assignedName} | case #${caseNumber ?? '?'} ${caseTitle || ''}`.trim());
+        } catch (e) {
+            console.warn(`[ME-NOTIFY] Bot-native autopsies post failed for ${assignedName}: ${e.message}`);
         }
 
         // Webhook mode already pinged — never mention again here.

@@ -7,6 +7,9 @@ import { syncFactionMembers } from './src/maintenance/factionSync.js';
 
 const MORGUE_API_URL = process.env.MORGUE_API_URL || 'http://88.208.243.254';
 const MORGUE_API_KEY = process.env.MORGUE_API_KEY;
+// Write key for mutating VPS calls (PUT/DELETE). The VPS rejects those methods
+// without it — the read key alone yields 403 and surfaces as 500 to clients.
+const MORGUE_WRITE_API_KEY = process.env.MORGUE_WRITE_API_KEY || null;
 
 // Identity headers are set server-side from Firebase Auth claims. The browser
 // cannot spoof these values when the callable function proxies to morgue-api.
@@ -303,7 +306,7 @@ export const deleteMorgueRecord = onCall({
     try {
         const response = await fetch(url, {
             method: 'DELETE',
-            headers: { 'x-api-key': MORGUE_API_KEY },
+            headers: { 'x-api-key': MORGUE_WRITE_API_KEY || MORGUE_API_KEY },
         });
 
         // 404 from VPS means record was already deleted from local file.
@@ -779,10 +782,15 @@ export const getPatientNames = onCall({
 // continue using RTDB so the Discord bot queue remains unchanged.
 async function callSavedReportsApi(path, options = {}) {
     if (!MORGUE_API_KEY) throw new functions.https.HttpsError('internal', 'Server configuration error.');
+    const method = String(options.method || 'GET').toUpperCase();
+    // PUT/DELETE require a write key on the VPS; GET/POST work with the read key.
+    const apiKey = (method === 'PUT' || method === 'DELETE') && MORGUE_WRITE_API_KEY
+        ? MORGUE_WRITE_API_KEY
+        : MORGUE_API_KEY;
     const response = await fetch(`${MORGUE_API_URL}${path}`, {
         ...options,
         headers: {
-            'x-api-key': MORGUE_API_KEY,
+            'x-api-key': apiKey,
             ...(options.body ? { 'Content-Type': 'application/json' } : {}),
             ...(options.headers || {}),
         },

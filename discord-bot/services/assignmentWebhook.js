@@ -8,6 +8,7 @@
  */
 
 import { isDevTestActive, devWebhookUrl } from './devRouting.js';
+import { sendToChannel } from './logChannel.js';
 
 const FORMS_URL = 'https://gtaw-forms.github.io/forms/';
 const SEND_TIMEOUT_MS = 10000;
@@ -36,6 +37,23 @@ export function assignmentWebhookConfigured() {
     return !!getAssignmentWebhookUrl();
 }
 
+// ── Audit trail ──
+// Every successful external post (assignment ping or forward) leaves one
+// token-free line in the dedicated audit channel (AUDIT_CHANNEL_ID, e.g.
+// #audit-log-spam) via the bot client — so PHMC Discord posts always have a
+// matching trail. Singular per post (assignment volume is low); delivery is
+// best-effort and never breaks the send path.
+function auditExternalPost(kind, { me, caseNumber, caseTitle } = {}) {
+    try {
+        const channelId = process.env.AUDIT_CHANNEL_ID || null;
+        if (!channelId) return;
+        const line =
+            `[AUDIT] POST ${kind} | ME ${me || '?'} | ` +
+            `case #${caseNumber ?? '?'} ${caseTitle || ''}`.trim();
+        sendToChannel(channelId, line).catch(() => {});
+    } catch { /* audit must never break sending */ }
+}
+
 /**
  * Derive a wait-window label from the death type (mirrors the overdue monitor).
  * @param {string} [deathType] e.g. "CK" / "PK"
@@ -48,7 +66,7 @@ export function deathTypeWindow(deathType) {
     return null;
 }
 
-function buildContent({ me, discordId, label }) {
+export function buildContent({ me, discordId, label }) {
     const ping = discordId ? `<@${discordId}>` : (me ? `**${me}**` : '');
     const action = label || 'assigned an autopsy';
     // e.g. "@Ralof Dr. Anne Carter, you've been assigned an autopsy — here's the case file and links."
@@ -62,7 +80,7 @@ function cleanDecedent(name) {
     return String(name || '').replace(/\(\s*\)/g, '').replace(/\s+/g, ' ').trim();
 }
 
-function buildCaseEmbed(c) {
+export function buildCaseEmbed(c) {
     const fields = [];
     const decedent = cleanDecedent(c.decedent);
     const decedentLine = decedent + (c.ooc ? ` ((${c.ooc}))` : '');
@@ -88,7 +106,7 @@ function buildCaseEmbed(c) {
 
 // Link buttons (style 5) render on incoming webhooks with ?with_components=true and
 // need no interaction handler.
-function buildComponents({ caseUrl }) {
+export function buildComponents({ caseUrl }) {
     const buttons = [];
     if (caseUrl) buttons.push({ type: 2, style: 5, label: 'View Case', url: caseUrl });
     buttons.push({ type: 2, style: 5, label: 'PHMC Forms', url: FORMS_URL });
@@ -143,6 +161,7 @@ export async function notifyAssignmentWebhook({
             return false;
         }
         console.log(`[ASSIGN-WEBHOOK] Sent assignment ping for ${me} (case ${caseNumber || '?'})${discordId ? ' [ping]' : ' [no mapping]'}`);
+        auditExternalPost('assignment-ping', { me, caseNumber, caseTitle });
         return true;
     } catch (err) {
         console.warn(`[ASSIGN-WEBHOOK] Send error for ${me}/${caseNumber || '?'}: ${err.message}`);
@@ -189,6 +208,7 @@ export async function forwardAssignmentWebhook(webhookUrl, {
             return false;
         }
         console.log(`[FORWARD-WEBHOOK] Forwarded assignment for ${me} (case ${caseNumber || '?'})${discordId ? ' [ping]' : ' [no mapping]'}`);
+        auditExternalPost('forward', { me, caseNumber, caseTitle });
         return true;
     } catch (err) {
         console.warn(`[FORWARD-WEBHOOK] Send error for ${me}/${caseNumber || '?'}: ${err.message}`);

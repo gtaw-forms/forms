@@ -49,30 +49,60 @@ export async function sendLogMessage(content, embed, { crash = false } = {}) {
         new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${SEND_TIMEOUT_MS}ms`)), SEND_TIMEOUT_MS)),
     ]);
 
+    const payload = {};
+    if (content) {
+        payload.content = crash ? `@here ${content}` : content;
+    }
+    if (embed) {
+        payload.embeds = [embed];
+    }
+    // Explicitly allow user/role pings in the content (so <@id> notifications
+    // reliably tag staff). @here is only allowed for crash reports, never for
+    // routine notifications.
+    payload.allowedMentions = { parse: crash ? ['users', 'roles', 'here'] : ['users', 'roles'] };
+
+    const ok = await deliverTo(channelId, payload, withTimeout);
+    if (!ok) {
+        // Don't use the logger here to avoid potential infinite loops
+        console.warn(`[LOG] [WARN] Failed to send log message: delivery failed`);
+    }
+}
+
+/**
+ * Shared Discord delivery core: fetch channel, send payload, all bounded by
+ * the caller's timeout wrapper. Returns true on success, false on any failure.
+ */
+async function deliverTo(channelId, payload, withTimeout) {
     try {
         const channel = await withTimeout(_client.channels.fetch(channelId), 'channel fetch');
         if (!channel?.isTextBased()) {
-            console.warn(`[LOG] ⚠️ Channel ${channelId} is not a text channel`);
-            return;
+            console.warn(`[LOG] [WARN] Channel ${channelId} is not a text channel`);
+            return false;
         }
-
-        const payload = {};
-        if (content) {
-            payload.content = crash ? `@here ${content}` : content;
-        }
-        if (embed) {
-            payload.embeds = [embed];
-        }
-        // Explicitly allow user/role pings in the content (so <@id> notifications
-        // reliably tag staff). @here is only allowed for crash reports, never for
-        // routine notifications.
-        payload.allowedMentions = { parse: crash ? ['users', 'roles', 'here'] : ['users', 'roles'] };
-
         await withTimeout(channel.send(payload), 'channel send');
+        return true;
     } catch (err) {
-        // Don't use the logger here to avoid potential infinite loops
-        console.warn(`[LOG] ⚠️ Failed to send log message: ${err.message}`);
+        console.warn(`[LOG] [WARN] Delivery to ${channelId} failed: ${err.message}`);
+        return false;
     }
+}
+
+/**
+ * Send plain text to an explicit channel (used by the audit batch sender for
+ * the dedicated audit channel). No dev-routing redirect, no pings — audit
+ * lines must never notify anyone. Returns true on success.
+ */
+export async function sendToChannel(channelId, content) {
+    if (!channelId || !_client) return false;
+    const SEND_TIMEOUT_MS = 10000;
+    const withTimeout = (promise, label) => Promise.race([
+        promise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${SEND_TIMEOUT_MS}ms`)), SEND_TIMEOUT_MS)),
+    ]);
+    return deliverTo(channelId, {
+        content,
+        allowedMentions: { parse: [] },
+    }, withTimeout);
 }
 
 /**

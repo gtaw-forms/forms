@@ -71,8 +71,6 @@ async function registerCommands() {
     const morgue = await import('./commands/morgue.js');
     const card = await import('./commands/card.js');
     const restart = await import('./commands/restart.js');
-    const autopsy = await import('./commands/autopsy.js');
-    const user = await import('./commands/user.js');
     const formQueued = await import('./commands/form-queued.js');
     const maintenance = await import('./commands/maintenance.js');
     const dashboard = await import('./commands/dashboard.js');
@@ -113,6 +111,8 @@ async function registerCommands() {
     const webAutopsyAutopost = await import('./commands/web-autopsy-autopost.js');
     const forwardAutopsyComplete = await import('./commands/forward-autopsy-complete.js');
     const debugChannels = await import('./commands/debug-channels.js');
+    const infoPanel = await import('./commands/info-panel.js');
+    const phmcDashboard = await import('./commands/phmc-dashboard.js');
     // Personal AGH dashboard — optional. The files are gitignored/not part of a
     // fork; guard so the bot still boots when they're absent.
     let aghDashboard = null;
@@ -121,8 +121,6 @@ async function registerCommands() {
         morgue.data.toJSON(),
         card.data.toJSON(),
         restart.data.toJSON(),
-        autopsy.data.toJSON(),
-        user.data.toJSON(),
         formQueued.data.toJSON(),
         maintenance.data.toJSON(),
         dashboard.data.toJSON(),
@@ -162,8 +160,16 @@ async function registerCommands() {
         webAutopsyAutopost.data.toJSON(),
         forwardAutopsyComplete.data.toJSON(),
         debugChannels.data.toJSON(),
+        infoPanel.data.toJSON(),
+        phmcDashboard.data.toJSON(),
         ...(aghDashboard ? [aghDashboard.data.toJSON()] : []),
     ];
+
+    // PHMC guild gets a trimmed public set (env-overridable); the primary
+    // guild keeps the full arsenal. Guild IDs are committable, not secrets.
+    const phmcGuildId = process.env.PHMC_GUILD_ID || '860254678653992992';
+    const phmcCommandNames = (process.env.PHMC_COMMANDS || 'reassign-autopsy,autopsy-loa,card')
+        .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
 
     const rest = new REST({ version: '10' }).setToken(token);
 
@@ -175,6 +181,20 @@ async function registerCommands() {
                 { body: commands },
             );
             console.log('[BOT] ✅ Commands registered to guild successfully');
+            if (phmcGuildId && phmcGuildId !== guildId) {
+                const trimmed = commands.filter(c => phmcCommandNames.includes(String(c.name || '').toLowerCase()));
+                for (const n of phmcCommandNames) {
+                    if (!trimmed.some(c => String(c.name || '').toLowerCase() === n)) {
+                        console.warn(`[BOT] ⚠️ PHMC command '${n}' not found in registry — skipped`);
+                    }
+                }
+                console.log(`[BOT] 📍 Registering ${trimmed.length} trimmed commands for PHMC guild: ${phmcGuildId}`);
+                await rest.put(
+                    Routes.applicationGuildCommands(client.user.id, phmcGuildId),
+                    { body: trimmed },
+                );
+                console.log('[BOT] ✅ Trimmed commands registered to PHMC guild');
+            }
         } else {
             console.log('[BOT] 🌍 Registering commands globally (may take up to 1 hour to propagate)');
             await rest.put(
@@ -227,6 +247,14 @@ client.once('clientReady', async () => {
     // ── Register log channel (for startup, error, crash messages) ──
     const { setLogClient, sendLogMessage } = await import('./services/logChannel.js');
     setLogClient(client);
+
+    // ── Register bot client for PHMC-channel sends (autopsies notices) ──
+    try {
+        const { setPhmcClient } = await import('./services/phmcChannels.js');
+        setPhmcClient(client);
+    } catch (err) {
+        console.warn('[BOT] ⚠️ PHMC channel client failed to register (non-fatal):', err.message);
+    }
 
     // ── Rich presence baseline (idle until a task pushes a label) ──
     try {
@@ -315,6 +343,22 @@ client.once('clientReady', async () => {
         console.warn('[BOT] ⚠️ Web autopsy request poster failed to start (non-fatal):', err.message);
     }
 
+    // ── Start deploy notifier (deployNotifications -> log channel) ──
+    try {
+        const { startDeployNotifier } = await import('./services/deployNotifier.js');
+        startDeployNotifier();
+    } catch (err) {
+        console.warn('[BOT] ⚠️ Deploy notifier failed to start (non-fatal):', err.message);
+    }
+
+    // ── Start morgue-match logger (morgueMatchLogs -> log channel) ──
+    try {
+        const { startMorgueMatchLogger } = await import('./services/morgueMatchLogger.js');
+        startMorgueMatchLogger();
+    } catch (err) {
+        console.warn('[BOT] ⚠️ Morgue-match logger failed to start (non-fatal):', err.message);
+    }
+
     // ── Start queue dashboard (lightweight deploy queue embed in bot-spam) ──
     try {
         const { setQueueDashboardClient, setupQueueDashboard } = await import('./services/queueDashboard.js');
@@ -346,6 +390,14 @@ client.once('clientReady', async () => {
 });
 
 client.on('interactionCreate', async (interaction) => {
+    // Abuse-observable audit trail: every interaction -> file log, sensitive
+    // commands -> Discord log channel. Never throws (best effort).
+    let auditCtx = null;
+    try {
+        const { auditReceive } = await import('./services/auditLog.js');
+        auditCtx = auditReceive(interaction);
+    } catch { /* audit must never break command handling */ }
+
     // Handle dashboard refresh button
     if (interaction.isButton() && interaction.customId === 'dashboard_refresh') {
         const { handleDashboardRefresh } = await import('./services/dashboardManager.js');
@@ -383,6 +435,18 @@ client.on('interactionCreate', async (interaction) => {
         const { handleQueueRefresh } = await import('./services/queueDashboard.js');
         await handleQueueRefresh(interaction);
         return;
+    }
+
+    // Handle Information panel section buttons
+    if (interaction.isButton() && interaction.customId.startsWith('info_')) {
+        const { handleInfoButton } = await import('./services/infoPanel.js');
+        if (await handleInfoButton(interaction)) return;
+    }
+
+    // Handle PHMC dashboard refresh button
+    if (interaction.isButton() && interaction.customId === 'phmc_dashboard_refresh') {
+        const { handlePhmcRefresh } = await import('./services/phmcDashboard.js');
+        if (await handlePhmcRefresh(interaction)) return;
     }
 
     // Handle Autopsy topic picker buttons (PHMC Case Management + LSSD cross-post)
@@ -596,7 +660,15 @@ client.on('interactionCreate', async (interaction) => {
 
     try {
         await command.execute(interaction);
+        try {
+            const { auditCommandDone } = await import('./services/auditLog.js');
+            auditCommandDone(auditCtx, { ok: true });
+        } catch { /* best effort */ }
     } catch (error) {
+        try {
+            const { auditCommandDone } = await import('./services/auditLog.js');
+            auditCommandDone(auditCtx, { ok: false, error });
+        } catch { /* best effort */ }
         // DiscordAPIError[10062] = Unknown interaction (expired 3s window) — silent skip
         if (error?.code === 10062) {
             console.log(`[BOT] ⏰ Interaction expired for /${interaction.commandName} — skipped reply`);
@@ -622,6 +694,35 @@ client.on('interactionCreate', async (interaction) => {
             }
         }
     }
+});
+
+// ── Guild join/leave flags (abuse-observable: a surprise server join pages
+// the owner immediately; leaves are logged quietly) ──
+client.on('guildCreate', async (guild) => {
+    try {
+        const { sendLogMessage } = await import('./services/logChannel.js');
+        const ownerId = process.env.BOT_OWNER_ID || '228306972204597248';
+        const info = `${guild.name} (id ${guild.id}, ~${guild.memberCount ?? '?'} members, ownerId ${guild.ownerId ?? '?'})`;
+        console.log(`[BOT] [AUDIT] Joined new server: ${info}`);
+        await sendLogMessage(`<@${ownerId}> Priority Note: Server Joined: ${info}`, {
+            title: 'Server Joined',
+            description: `**${guild.name}**\nServer ID: \`${guild.id}\`\nMembers: ~${guild.memberCount ?? '?'}\nOwner ID: \`${guild.ownerId ?? '?'}\`\nJoined: <t:${Math.floor(Date.now() / 1000)}:F>`,
+            color: 0xe74c3c,
+            footer: { text: 'If this was not expected, remove the bot and rotate the token if leaked.' },
+        });
+    } catch { /* best effort — never break gateway handling */ }
+});
+
+client.on('guildDelete', async (guild) => {
+    try {
+        const { sendLogMessage } = await import('./services/logChannel.js');
+        console.log(`[BOT] [AUDIT] Removed from server: ${guild.name} (${guild.id})`);
+        await sendLogMessage(null, {
+            title: 'Server Left',
+            description: `**${guild.name}**\nServer ID: \`${guild.id}\``,
+            color: 0x6c757d,
+        });
+    } catch { /* best effort */ }
 });
 
 // ── Crash handlers (set up before login to catch early crashes) ──
@@ -680,11 +781,12 @@ async function start() {
     const restartCmd = await import('./commands/restart.js');
     client.commands.set(restartCmd.data.name, { execute: restartCmd.execute });
 
-    const autopsyCmd = await import('./commands/autopsy.js');
-    client.commands.set(autopsyCmd.data.name, { execute: autopsyCmd.execute });
-
-    const userCmd = await import('./commands/user.js');
-    client.commands.set(userCmd.data.name, { execute: userCmd.execute });
+    // Retired (2026-09-10): /autopsy + /user unregistered (files kept on disk).
+    // Re-add the two blocks below to restore.
+    // const autopsyCmd = await import('./commands/autopsy.js');
+    // client.commands.set(autopsyCmd.data.name, { execute: autopsyCmd.execute });
+    // const userCmd = await import('./commands/user.js');
+    // client.commands.set(userCmd.data.name, { execute: userCmd.execute });
 
     const formQueuedCmd = await import('./commands/form-queued.js');
     client.commands.set(formQueuedCmd.data.name, { execute: formQueuedCmd.execute });
@@ -788,6 +890,12 @@ async function start() {
 
     const debugChannelsCmd = await import('./commands/debug-channels.js');
     client.commands.set(debugChannelsCmd.data.name, { execute: debugChannelsCmd.execute });
+
+    const infoPanelCmd = await import('./commands/info-panel.js');
+    client.commands.set(infoPanelCmd.data.name, { execute: infoPanelCmd.execute });
+
+    const phmcDashboardCmd = await import('./commands/phmc-dashboard.js');
+    client.commands.set(phmcDashboardCmd.data.name, { execute: phmcDashboardCmd.execute });
 
     const testPingCmd = await import('./commands/test-ping.js');
     client.commands.set(testPingCmd.data.name, { execute: testPingCmd.execute });

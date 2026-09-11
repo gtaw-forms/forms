@@ -188,6 +188,28 @@ let _sweepTimer = null;
 const _sweepInFlight = new Set();
 
 /**
+ * In-memory due-map (RTDB cost optimization). The sweep used to download the
+ * whole facePostDrafts node (incl. full post bodies) every 60s. Now child
+ * events keep a tiny key→publishAt map for scheduled entries only, and the
+ * sweep fetches just the due keys. Initial child_added priming costs one
+ * node-read per restart; steady state is event deltas only.
+ */
+const _faceDue = new Map(); // reportKey -> publishAt (status === 'scheduled' only)
+let _faceTrackRef = null;
+
+function trackFaceChild(snap) {
+    const key = snap?.key;
+    if (!key || key === '_ids') return;
+    const v = snap.val() || {};
+    if (v.status === 'scheduled' && v.publishAt) _faceDue.set(key, v.publishAt);
+    else _faceDue.delete(key);
+}
+
+function untrackFaceChild(snap) {
+    if (snap?.key) _faceDue.delete(snap.key);
+}
+
+/**
  * Start the Face publish sweep — periodically publishes scheduled posts whose
  * 48h wait is over. Call once from index.js on bot ready.
  */
@@ -203,6 +225,18 @@ export async function startFacePublishSweep() {
 
     console.log(`[FACE] Publish sweep starting — ${FACE_PUBLISH_DELAY_HOURS}h delay, checking every ${FACE_SWEEP_INTERVAL_MS / 1000}s.`);
 
+    // Child-event due-map (see _faceDue): steady-state sweep costs zero reads
+    // when nothing is scheduled; status flips update the map live.
+    try {
+        _faceTrackRef = db.ref(FACE_TRACK_PATH);
+        _faceTrackRef.on('child_added', trackFaceChild);
+        _faceTrackRef.on('child_changed', trackFaceChild);
+        _faceTrackRef.on('child_removed', untrackFaceChild);
+    } catch (err) {
+        console.warn(`[FACE] Due-map watchers failed (sweep falls back to per-key checks): ${err.message}`);
+        _faceTrackRef = null;
+    }
+
     // First check shortly after startup, then on the interval.
     setTimeout(() => runFacePublishSweep(db), 10 * 1000);
     _sweepTimer = setInterval(() => runFacePublishSweep(db), FACE_SWEEP_INTERVAL_MS);
@@ -216,23 +250,42 @@ export function stopFacePublishSweep() {
         clearInterval(_sweepTimer);
         _sweepTimer = null;
     }
+    try {
+        if (_faceTrackRef) {
+            _faceTrackRef.off('child_added', trackFaceChild);
+            _faceTrackRef.off('child_changed', trackFaceChild);
+            _faceTrackRef.off('child_removed', untrackFaceChild);
+            _faceTrackRef = null;
+        }
+    } catch { /* ignore */ }
+    _faceDue.clear();
 }
 
 /**
  * Find all scheduled Face posts past their publishAt and publish them.
+ * Reads ONLY due keys (publishScheduledFacePost re-verifies status itself);
+ * when the due-map is empty this costs zero RTDB reads.
  */
 async function runFacePublishSweep(db) {
     try {
-        const snap = await db.ref(FACE_TRACK_PATH).once('value').catch(() => null);
-        if (!snap?.exists()) return;
-
         const now = Date.now();
         const due = [];
-        snap.forEach((child) => {
-            if (child.key === '_ids') return;
-            const v = child.val() || {};
-            if (v.status === 'scheduled' && v.publishAt && v.publishAt <= now) due.push(child.key);
-        });
+        for (const [key, publishAt] of _faceDue) {
+            if (publishAt && publishAt <= now) due.push(key);
+        }
+        // Safety net: if the due-map watchers never attached, fall back to a
+        // scheduled-only query so posts can't stall silently (needs the
+        // facePostDrafts status index; without it the server still answers,
+        // just unindexed).
+        if (due.length === 0 && !_faceTrackRef) {
+            try {
+                const qSnap = await db.ref(FACE_TRACK_PATH).orderByChild('status').equalTo('scheduled').once('value').catch(() => null);
+                qSnap?.forEach((child) => {
+                    const v = child.val() || {};
+                    if (v.publishAt && v.publishAt <= now) due.push(child.key);
+                });
+            } catch { /* ignore — next tick retries */ }
+        }
         if (due.length === 0) return;
 
         console.log(`[FACE] Publish sweep — ${due.length} due post(s)`);

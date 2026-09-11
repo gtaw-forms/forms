@@ -56,7 +56,13 @@
     border-right:1px solid var(--border);
     display:flex; flex-direction:column;
     height:100vh; position:sticky; top:0;
+    transition:margin-left .22s ease;
   }
+  .app.sidebar-collapsed .sidebar{ margin-left:-271px; }
+  .brand-row{ display:flex; align-items:center; gap:8px; }
+  .brand-row .brand{ flex:1; min-width:0; }
+  .sidebar-collapse-btn{ flex-shrink:0; }
+  .sidebar-toggle{ flex-shrink:0; }
   .sidebar-head{
     padding:20px 18px 14px; border-bottom:1px solid var(--border);
   }
@@ -120,7 +126,7 @@
     height:56px; flex-shrink:0; border-bottom:1px solid var(--border);
     display:flex; align-items:center; justify-content:space-between;
     padding:0 22px; background:var(--bg-elevated);
-    position:relative;
+    position:relative; gap:12px;
   }
   .topbar-title{ display:flex; align-items:center; gap:10px; min-width:0; }
   .topbar-title h1{ font-size:14.5px; font-weight:700; margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -548,3 +554,9 @@
   .app ::-webkit-scrollbar{ width:8px; height:8px; }
   .app ::-webkit-scrollbar-thumb{ background:var(--border-accent); border-radius:8px; }
   .app ::-webkit-scrollbar-track{ background:transparent; }
+
+  /* Collapsed sidebar becomes an overlay drawer on narrow screens */
+  @media (max-width: 900px){
+    .sidebar{ position:fixed; left:0; z-index:50; box-shadow:0 12px 40px rgba(0,0,0,0.5); }
+    .app.sidebar-collapsed .sidebar{ box-shadow:none; }
+  }

@@ -39,6 +39,27 @@ export const ACK_FIELD_NAMES = {
     dao: 'dao-acknowledge-reply',
 };
 
+// ── Case lifecycle states (`caseState` on autopsy-requested/<topicId>) ──
+// 'complete' means the INTAKE pipeline finished (case file created, ME
+// assigned, acks/crossposts done, counters updated — Step 4). It does NOT mean
+// the autopsy was performed; a finished examination is marked by `completedAt`
+// + `completedBbCode` on the entry. Readers keying on the literal 'complete':
+// the monitor skip-guard, systemMonitor FINAL_STATES, autopsy-stats, and the
+// force-lssd gate — do not rename the value without migrating existing RTDB
+// records, or old entries will re-enter intake (duplicate case files + pings).
+//   case_created → me_assigned → ack_sent → complete
+//   dry_run (AUTOPSY_DRY_RUN) · multi (multi-decedent parent) · skipped
+//   (systemMonitor FINAL_STATES additionally reserves cancelled/denied)
+export const CASE_STATES = {
+    CASE_CREATED: 'case_created',
+    ME_ASSIGNED: 'me_assigned',
+    ACK_SENT: 'ack_sent',
+    COMPLETE: 'complete',
+    DRY_RUN: 'dry_run',
+    MULTI: 'multi',
+    SKIPPED: 'skipped',
+};
+
 // Autopsy Request - Name ((OOC Name)) - [LSPD/LSSD]  OR  [Autopsy Request] Name [Faction]
 // Supports: various dash chars, with/without brackets, with/without ((OOC)).
 // Faction tags now include SADCR and DAO (their requests previously fell into
@@ -547,7 +568,7 @@ export async function checkForNewRequests() {
                 ...(requestBbCode ? {
                     requestBbCode,
                     parsed: parsedBbFields,
-                    ...(parsedBbFields.requesterDiscord ? { requesterDiscordTag: parsedBbFields.requesterDiscord } : {}),
+                    ...(parsedBbFields.requesterDiscord && !isDna(parsedBbFields.requesterDiscord) ? { requesterDiscordTag: parsedBbFields.requesterDiscord } : {}),
                 } : {}),
                 // Preserve crosspost topic ids across reprocessing so a re-run
                 // REUSES the existing LSPD/LSSD/SADCR/DAO topics instead of duplicating them
@@ -607,7 +628,7 @@ export async function checkForNewRequests() {
                     await _db.ref(`autopsy-requested/${topic.topicId}/requestBbCode`).set(bbcode).catch(() => {});
                     // Requester Discord contact string (username or numeric ID) —
                     // consumed by the completion webhook for the requester ping.
-                    if (parsedBbFields.requesterDiscord) {
+                    if (parsedBbFields.requesterDiscord && !isDna(parsedBbFields.requesterDiscord)) {
                         entry.requesterDiscordTag = parsedBbFields.requesterDiscord;
                         await _db.ref(`autopsy-requested/${topic.topicId}/requesterDiscordTag`).set(parsedBbFields.requesterDiscord).catch(() => {});
                     }
@@ -1408,6 +1429,28 @@ function parseDecedentNameLine(raw) {
  * The request template has labeled sections like "1.) Name: ANSWER".
  * Returns a flat object of extracted fields.
  */
+// Missing/blank requester contact fields parse as D.N.A (Did Not Answer) so
+// downstream displays never show raw 'ANSWER' placeholders or empty strings.
+export const DNA_VALUE = 'D.N.A (Did Not Answer)';
+const DNA_BLANK_RE = /^(answer|n\/a\b|na\b|none|unknown|tbd|—|–|-|\.+)$/i;
+export function isDna(value) {
+    return String(value ?? '').trim() === DNA_VALUE;
+}
+function dna(value) {
+    const v = String(value ?? '').trim();
+    if (!v || DNA_BLANK_RE.test(v)) return DNA_VALUE;
+    return v;
+}
+// Strip forum wrapper parens ("(( value ))") from contact values. Only 2+
+// paren runs are wrappers — a single trailing ")" belongs to the value itself
+// (notably the D.N.A constant ends with one).
+function unwrapContact(value) {
+    return String(value ?? '')
+        .replace(/\){2,}\s*$/, '')
+        .replace(/^\s*\({2,}/, '')
+        .trim();
+}
+
 export function parseAutopsyRequestBbcode(bbcode) {
     const fields = {};
     if (!bbcode) return fields;
@@ -1473,9 +1516,29 @@ export function parseAutopsyRequestBbcode(bbcode) {
 
         if (currentSection === 'requester') {
             const m1 = trimmed.match(/1\.\)\s*Name:\s*(.+)/i);
-            if (m1) fields.requesterName = m1[1].trim();
+            if (m1) fields.requesterName = dna(m1[1]);
+            const m2 = trimmed.match(/2\.\)\s*Rank:\s*(.+)/i);
+            if (m2) fields.requesterRank = dna(m2[1]);
             const m3 = trimmed.match(/3\.\)\s*Department\s*\/\s*Assignment:\s*(.+)/i);
-            if (m3) fields.requesterDept = m3[1].trim();
+            if (m3) fields.requesterDept = dna(m3[1]);
+            const m4 = trimmed.match(/4\.\)\s*Badge(?:\/Serial Number)?:\s*(.+)/i);
+            if (m4) fields.requesterBadge = dna(m4[1]);
+            // Cell Number lives in the Contact list ("[*]Cell Number: ...").
+            const mCell = trimmed.match(/Cell\s*(?:Number|#|No\.?)?\s*:\s*(.+)/i);
+            if (mCell && !fields.requesterCell) {
+                fields.requesterCell = dna(unwrapContact(mCell[1]));
+            }
+            // Forum Account line ("[*]Forum Account: <url>"). Prefer the raw
+            // [url=...] href when the poster linked it — tag-stripping keeps
+            // only the link text, which may be "My Profile" instead of the URL.
+            const mForumHref = line.match(/Forum\s*Account\s*:[^\[]*\[url=([^\]]+)\]/i);
+            if (mForumHref && !fields.forumAccountUrl) {
+                fields.forumAccountUrl = dna(mForumHref[1]);
+            }
+            const mForum = trimmed.match(/Forum\s*Account\s*(?:URL|Link|Profile)?\s*:\s*(.+)/i);
+            if (mForum && !fields.forumAccountUrl) {
+                fields.forumAccountUrl = dna(unwrapContact(mForum[1]));
+            }
             // Contact Information line — "(( Discord Name: ._diaaa ))" or a numeric
             // "Discord ID:". BBCode tags are already stripped, so the raw value is
             // e.g. "._diaaa ))" → trim the wrapping parens off. This is a USERNAME
@@ -1483,10 +1546,7 @@ export function parseAutopsyRequestBbcode(bbcode) {
             // real ping lives in services/requesterWebhook.js.
             const mDis = trimmed.match(/Discord(?:\s*(?:Name|ID|Tag|Username))?\s*:\s*(.+)/i);
             if (mDis && !fields.requesterDiscord) {
-                fields.requesterDiscord = mDis[1]
-                    .replace(/\)+\s*$/, '')
-                    .replace(/^\(+/, '')
-                    .trim();
+                fields.requesterDiscord = dna(unwrapContact(mDis[1]));
             }
         }
 
@@ -1504,6 +1564,13 @@ export function parseAutopsyRequestBbcode(bbcode) {
             const o1 = trimmed.match(/1\.\)\s*PK\/CK:\s*(.+)/i);
             if (o1) fields.deathType = o1[1].trim();
         }
+    }
+
+    // Backfill DNA for required requester fields absent from the whole post
+    // (e.g. older templates without a Rank line). Runs once AFTER the line
+    // loop — never per-line, or it would shadow real values seen later.
+    for (const k of ['requesterName', 'requesterRank', 'requesterDept', 'requesterBadge', 'requesterCell', 'requesterDiscord', 'forumAccountUrl']) {
+        if (fields[k] === undefined) fields[k] = DNA_VALUE;
     }
 
     return fields;
@@ -1548,7 +1615,7 @@ Website: [url][color=#808080]www.phmc.health[/color][/url][/size]
  */
 export async function sendAutopsyAcknowledgement(topicId, requesterName, bbCode, { baseUrl, lssdTopicId, lspdTopicId, agencyTopicId, agencyFaction } = {}) {
     const client = getForumClient();
-    const name = requesterName || 'Requesting Party';
+    const name = (requesterName && !isDna(requesterName)) ? requesterName : 'Requesting Party';
     const ackBbcode = ACK_TEMPLATE.replace('REQUESTING_NAME', name);
     const results = { phmc: null, lssd: null, lspd: null };
 
@@ -1690,6 +1757,29 @@ async function initializeRotationAtStartup() {
         const totalCases = Object.values(assignments).reduce((s, a) => s + a.active, 0);
         if (totalCases > 0) {
             console.log(`[AUTOPSY-MON] Rebuilt assignment counts: ${total} ME(s) with ${totalCases} active case(s)`);
+        }
+        // Seed completion-step retry markers (RTDB cost optimization, free — same
+        // snapshot). The recovery sweep reads only the tiny completionStepRetries
+        // index instead of this full node, so failed steps need markers to be found.
+        try {
+            const { markStepRetry } = await import('./deployAutopsyReply.js');
+            let failed = 0, ambiguous = 0;
+            for (const [topicId, entry] of Object.entries(entries)) {
+                const steps = entry?.completionSteps;
+                if (!steps || typeof steps !== 'object') continue;
+                for (const [sName, sData] of Object.entries(steps)) {
+                    if (sData?.status === 'failed') {
+                        failed++;
+                        markStepRetry(topicId, sName, sData?.detail || 'Seeded at startup');
+                    } else if (sData?.status === 'attempting') {
+                        ambiguous++;
+                    }
+                }
+            }
+            if (failed > 0) console.log(`[AUTOPSY-MON] Seeded ${failed} completion-step retry marker(s)`);
+            if (ambiguous > 0) console.warn(`[AUTOPSY-MON] ${ambiguous} step(s) stuck in "attempting" (crash mid-op) — skipped to avoid duplicates, check manually if needed`);
+        } catch (seedErr) {
+            console.warn(`[AUTOPSY-MON] Retry-marker seeding skipped: ${seedErr.message}`);
         }
         // Retry any failed assignment replies from previous sessions
         // (also runs as part of the recovery heartbeat via retryFailedAssignmentReplies)
