@@ -6,7 +6,10 @@
  *   - Full Breakdown  — every form type, top users overall + per section
  *   - Activity Heatmap— reports by day-of-week × hour-of-day (UTC) grid
  *
- * Aggregates `scheduledReports` (bot deploy queue) + `newSavedReports` (live saves).
+ * Aggregates the VPS report store (live saves) + `scheduledReports`
+ * (bot deploy queue, still RTDB). No RTDB fallback for saved reports —
+ * if the VPS is unreachable the command fails loudly instead of
+ * reporting wrong numbers.
  */
 import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from 'discord.js';
 import { isOwnerOrWhitelisted } from '../services/permissions.js';
@@ -93,42 +96,32 @@ async function gatherStats(db) {
 
     // Normal reports are served by morgue-api after migration. Keep the small
     // scheduled queue in RTDB because it is still the bot's live work queue.
-    let vpsStatsLoaded = false;
+    // No RTDB fallback for saved reports: fail loudly if the VPS is down.
+    let vpsStats;
     try {
         const apiKey = firstApiKey(process.env.MORGUE_API_KEYS);
         const response = await fetch('http://127.0.0.1:3001/api/reports/stats', {
             headers: { 'x-api-key': apiKey || '' },
         });
-        if (response.ok) {
-            const vps = await response.json();
-            vpsStatsLoaded = true;
-            for (const [fid, count] of Object.entries(vps.byForm || {})) byForm.set(fid, Number(count) || 0);
-            for (const [author, count] of Object.entries(vps.byAuthor || {})) allAuthors.set(author, Number(count) || 0);
-            for (const [month, count] of Object.entries(vps.byMonth || {})) byMonth.set(month, Number(count) || 0);
-            for (const [author, forms] of Object.entries(vps.byAuthorForm || {})) {
-                for (const [fid, count] of Object.entries(forms)) {
-                    const section = sectionOf(fid);
-                    if (!sectionAuthors.has(section)) sectionAuthors.set(section, new Map());
-                    sectionAuthors.get(section).set(author, Number(count) || 0);
-                }
-            }
-            for (const [day, hours] of (vps.heat || []).entries()) {
-                for (const [hour, count] of (hours || []).entries()) heat[day][hour] += Number(count) || 0;
-            }
-            total += Number(vps.total) || 0;
-        }
+        if (!response.ok) throw new Error(`VPS stats returned HTTP ${response.status}`);
+        vpsStats = await response.json();
     } catch (err) {
-        console.warn('[GLOBAL-STATS] VPS report stats unavailable:', err.message);
+        throw new Error(`VPS report stats unavailable (${err.message}). Saved-report stats require morgue-api; the RTDB fallback was retired with the migration.`);
     }
-
-    if (!vpsStatsLoaded) {
-        const legacySnap = await db.ref('newSavedReports').once('value');
-        if (legacySnap.exists()) {
-            for (const [author, reports] of Object.entries(legacySnap.val() || {})) {
-                for (const report of Object.values(reports || {})) addReport(author, report);
-            }
+    for (const [fid, count] of Object.entries(vpsStats.byForm || {})) byForm.set(fid, Number(count) || 0);
+    for (const [author, count] of Object.entries(vpsStats.byAuthor || {})) allAuthors.set(author, Number(count) || 0);
+    for (const [month, count] of Object.entries(vpsStats.byMonth || {})) byMonth.set(month, Number(count) || 0);
+    for (const [author, forms] of Object.entries(vpsStats.byAuthorForm || {})) {
+        for (const [fid, count] of Object.entries(forms)) {
+            const section = sectionOf(fid);
+            if (!sectionAuthors.has(section)) sectionAuthors.set(section, new Map());
+            sectionAuthors.get(section).set(author, Number(count) || 0);
         }
     }
+    for (const [day, hours] of (vpsStats.heat || []).entries()) {
+        for (const [hour, count] of (hours || []).entries()) heat[day][hour] += Number(count) || 0;
+    }
+    total += Number(vpsStats.total) || 0;
 
     const scheduledSnap = await db.ref('scheduledReports').once('value');
     if (scheduledSnap.exists()) {

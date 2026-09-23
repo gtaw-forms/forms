@@ -50,16 +50,24 @@
       }
     },
     "newSavedReports": {
-      "$user_id": {
-        ".read": true,
-        ".indexOn": "timestamp"
-      }
+      ".read": false,
+      ".write": false
+    },
+    "newSavedReportBBCode": {
+      ".read": false,
+      ".write": false
     },
     "savedReports": {
-      "$user_id": {
-        ".read": true,
-        ".indexOn": "timestamp"
-      }
+      ".read": false,
+      ".write": false
+    },
+    "savedReportBBCode": {
+      ".read": false,
+      ".write": false
+    },
+    "migrateBackup": {
+      ".read": false,
+      ".write": false
     },
     "factions": {
       ".read": "auth != null",

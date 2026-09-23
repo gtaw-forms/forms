@@ -11,6 +11,7 @@ import { shortId, findMorgueRecord } from './deathRecordDraftCache.js';
 import { getDraftClient, updateDraftFaceField } from './deathRecordDraftUI.js';
 import { generateDraft, baseReportKey, decedentFromReport, buildVirtualReportData } from './deathRecordDraftGenerator.js';
 import { generateFacePostContent, postToFace, isFaceConfigured, isFaceDryRun } from './facePost.js';
+import { firstApiKey } from './apiKeyUtil.js';
 
 const FACE_TRACK_PATH = 'facePostDrafts';
 const DEATH_RECORD_TRACK_PATH = 'deathRecordDrafts';
@@ -22,7 +23,7 @@ export const FACE_DRAFT_CHANNEL_ID = process.env.FACE_DRAFT_CHANNEL_ID || proces
 // sweep publishes due posts regardless of FACE_DRY_RUN (which still simulates).
 export const FACE_PUBLISH_DELAY_HOURS = parseFloat(process.env.FACE_PUBLISH_DELAY_HOURS || '48');
 const FACE_PUBLISH_DELAY_MS = (Number.isFinite(FACE_PUBLISH_DELAY_HOURS) ? FACE_PUBLISH_DELAY_HOURS : 0) * 3600 * 1000;
-const FACE_SWEEP_INTERVAL_MS = 60 * 1000;
+const FACE_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 
 const PREFIX_APPROVE = 'face_approve_';
 const PREFIX_EDIT = 'face_edit_';
@@ -55,8 +56,20 @@ async function resolveFacePostValues(db, draftInfo, reportKey) {
     for (const candidateKey of candidates) {
         const schedSnap = await db.ref(`scheduledReports/${draftInfo.authorId}/${candidateKey}`).once('value').catch(() => null);
         if (schedSnap?.exists()) { reportData = schedSnap.val(); break; }
-        const newSnap = await db.ref(`newSavedReports/${draftInfo.authorId}/${candidateKey}`).once('value').catch(() => null);
-        if (newSnap?.exists()) { reportData = newSnap.val(); break; }
+        // Task 3b: normal saved reports live on the VPS — point-read there
+        // instead of the drained RTDB `newSavedReports` node.
+        try {
+            const vpsRes = await fetch(
+                `http://127.0.0.1:3001/api/reports/${encodeURIComponent(draftInfo.authorId)}/${encodeURIComponent(candidateKey)}`,
+                { headers: { 'x-api-key': firstApiKey(process.env.MORGUE_API_KEYS) || '' } }
+            );
+            if (vpsRes.ok) {
+                const vpsBody = await vpsRes.json();
+                if (vpsBody?.report) { reportData = vpsBody.report; break; }
+            }
+        } catch (err) {
+            console.warn(`[FACE] [WARN] VPS report read ${draftInfo.authorId}/${candidateKey}: ${err.message}`);
+        }
     }
     if (!reportData) {
         console.warn(`[FACE] [WARN] ${reportKey} — no values on draft and source report not found, Face post will be minimal`);

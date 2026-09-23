@@ -6,6 +6,7 @@ import { auth } from '../firebase';
 import { ref, onValue, get } from 'firebase/database';
 import { useAuth } from './AuthContext';
 import { triggerRefreshGtawUser } from '../services/firebaseFunctions';
+import { hasSyncedFactionThisSession, markFactionSyncedThisSession, clearFactionSyncSessionFlag } from '../services/factionSyncGuard';
 import { useInactivityReload } from '../hooks/useInactivityReload';
 import { useNotification } from './NotificationContext.jsx';
 import { logIdentityRefresh } from '../utils/logging';
@@ -226,6 +227,8 @@ export const GtaWorldAuthProvider = ({ children }) => {
 
     const handleLogout = useCallback((reason = null) => {
         logout();
+        // New login after this must sync fresh — drop the session debounce flag.
+        clearFactionSyncSessionFlag();
         setUser(null);
         setError(null);
         setActiveCharacter(null);
@@ -238,10 +241,23 @@ export const GtaWorldAuthProvider = ({ children }) => {
 
     const clearError = useCallback(() => setError(null), []);
 
-    const triggerFactionSync = useCallback(async () => {
+    // Debounced triggerFactionSync wrapper (per-browser-session guard).
+    // The callable was the heaviest function (725 invocations/7d) because every
+    // revisit re-ran it. Automatic call sites go through this wrapper: at most
+    // ONE sync per browser session (sessionStorage flag), unless the caller
+    // passes { force: true } (fresh OAuth login, explicit user/admin refresh,
+    // or stale/missing faction data).
+    const triggerFactionSync = useCallback(async (options = {}) => {
+        const { force = false } = options || {};
+        if (!force && hasSyncedFactionThisSession()) {
+            console.log('[GtaWorldAuthContext] Skipping duplicate faction sync (already synced this browser session).');
+            return { skipped: true };
+        }
         try {
             const syncFn = httpsCallable(functions, 'triggerFactionSync');
-            return await syncFn();
+            const result = await syncFn();
+            markFactionSyncedThisSession();
+            return result;
         } catch (err) {
             console.error('[GtaWorldAuthContext] triggerFactionSync failed:', err);
             throw err;
@@ -376,8 +392,10 @@ export const GtaWorldAuthProvider = ({ children }) => {
                                 console.warn('[GtaWorldAuthContext] Proceeding with faction sync despite no Firebase auth');
                             }
                         }
-                        const triggerSync = httpsCallable(functions, 'triggerFactionSync');
-                        await triggerSync();
+                        // Fresh OAuth login — always sync (force bypasses the
+                        // per-session guard) and arms the guard for later
+                        // automatic paths in this session.
+                        await triggerFactionSync({ force: true });
                         
                         // Wait for sync propagation
                         await new Promise(resolve => setTimeout(resolve, 3000));
@@ -512,9 +530,14 @@ export const GtaWorldAuthProvider = ({ children }) => {
                 console.log('[GtaWorldAuthContext] Stored session found but no Firebase auth. Attempting recovery...');
                 tryRestoreFirebaseAuth().then(restored => {
                     if (restored) {
+                        // Stale-data exception: faction data missing from the
+                        // stored session forces a sync even if this session
+                        // already synced; otherwise the per-session guard
+                        // inside triggerFactionSync skips repeat visits.
+                        const factionMissing = !(user?.faction?.characterId || user?.faction?.id)
+                            && !(user?.allFactionCharacters?.length);
                         console.log('[GtaWorldAuthContext] Firebase auth recovered. Re-running faction sync.');
-                        const syncFn = httpsCallable(functions, 'triggerFactionSync');
-                        syncFn().catch(err => {
+                        triggerFactionSync(factionMissing ? { force: true } : undefined).catch(err => {
                             if (!err.code?.includes('permission-denied')) {
                                 console.error('[GtaWorldAuthContext] Recovery sync failed:', err);
                             }
@@ -523,7 +546,7 @@ export const GtaWorldAuthProvider = ({ children }) => {
                 });
             }
         }
-    }, [processCallback, getIsInactivityWarningTriggered, firebaseIsPhmcMember, authLoading, user]);
+    }, [processCallback, triggerFactionSync, getIsInactivityWarningTriggered, firebaseIsPhmcMember, authLoading, user]);
 
     // SESSION VALIDATION ON MOUNT
     useEffect(() => {
@@ -612,9 +635,11 @@ export const GtaWorldAuthProvider = ({ children }) => {
                     setIdentityRefreshStatus('success');
                     logIdentityRefresh({ username: user.username, characterName, trigger, attempt, maxAttempts: IDENTITY_REFRESH_MAX, matchedBy: 'id', success: true });
                     // Re-run the roster sync so the fresh character flows into
-                    // the app's credential sync and the form auto-fills.
-                    const syncFn = httpsCallable(functions, 'triggerFactionSync');
-                    syncFn().catch((err) => {
+                    // the app's credential sync and the form auto-fills. The
+                    // stale-faction trigger always syncs (missing data was just
+                    // restored — this is the preserved stale-data refresh
+                    // path); periodic re-syncs respect the per-session guard.
+                    triggerFactionSync(trigger === 'stale-faction' ? { force: true } : undefined).catch((err) => {
                         if (!err?.code?.includes('permission-denied')) console.error('[IdentityRefresh] faction sync after refresh failed:', err?.message || err);
                     });
                 } else {
@@ -639,7 +664,7 @@ export const GtaWorldAuthProvider = ({ children }) => {
                 setTimeout(() => setIdentityRefreshStatus((s) => (s === 'success' || s === 'failed' ? 'idle' : s)), 4000);
             });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [user?.id, user?.loginRole, isGoogleAdmin, isStaff, authLoading]);
+    }, [user?.id, user?.loginRole, isGoogleAdmin, isStaff, authLoading, triggerFactionSync]);
 
     // Normalize a raw API character object so it always has a characterName property.
     // The GTA World API returns characters in multiple formats:

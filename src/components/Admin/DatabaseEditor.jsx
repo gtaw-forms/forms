@@ -88,9 +88,32 @@ const DatabaseEditor = ({ showNotification, currentUser: propCurrentUser, gtawUs
         })();
     }, []);
 
+    // Task 3b guardrail (§4.5): saved-report data lives on the VPS — refuse
+    // free-form fetches of migrated (or queue) roots so an admin can never
+    // pull ~17 MB into the browser. Use Analytics (VPS aggregates) or the VPS
+    // Backup & Restore card instead.
+    const BLOCKED_FETCH_ROOTS = [
+        'newSavedReports',
+        'newSavedReportBBCode',
+        'savedReports',
+        'savedReportBBCode',
+        'migrateBackup',
+        'scheduledReports',
+        'scheduledReportsBBCode',
+        'morgue-records',
+    ];
+
     const handleFetch = async () => {
         if (!path) {
             showNotification('Please enter a database path.', 'warning');
+            return;
+        }
+        const normalizedPath = String(path).trim().replace(/^\/+/, '');
+        const rootSegment = normalizedPath.split('/')[0];
+        if (BLOCKED_FETCH_ROOTS.includes(rootSegment)) {
+            const msg = `Fetching "${rootSegment}" is blocked: report data lives on the VPS now. Use Analytics for aggregates or Backup & Restore for snapshots.`;
+            setError(msg);
+            showNotification(msg, 'error', 8000);
             return;
         }
         setIsLoading(true);
@@ -210,54 +233,9 @@ const DatabaseEditor = ({ showNotification, currentUser: propCurrentUser, gtawUs
         reader.readAsText(restoreFile);
     };
 
-    const handleRestoreBBCode = async () => {
-        if (!restoreFile) {
-            showNotification('Please select a JSON file to restore.', 'warning');
-            return;
-        }
-
-        setIsRestoring(true);
-        const reader = new FileReader();
-        reader.onload = async (e) => {
-            try {
-                const { userAgent, timeZone } = getUserContext();
-                logAdminAction(
-                    currentUser?.email || gtawUsername,
-                    'Restored BBCode from Backup',
-                    `File: ${restoreFile.name}`,
-                    'Database Editor',
-                    userAgent,
-                    timeZone,
-                    gtawUsername,
-                    gtawUser
-                );
-
-                const fileContent = e.target.result;
-                const parsedData = JSON.parse(fileContent);
-
-                if (!parsedData.savedReportBBCode) {
-                    showNotification('Invalid JSON: File must contain a "savedReportBBCode" key to restore BBCode.', 'error');
-                    setIsRestoring(false);
-                    return;
-                }
-
-                const bbCodeRef = ref(database, '/savedReportBBCode');
-                await update(bbCodeRef, parsedData.savedReportBBCode);
-                
-                showNotification('Successfully restored saved BBCode from backup!', 'check-circle');
-            } catch (err) {
-                showNotification(`Error processing file: ${err.message}`, 'error');
-                console.error(err);
-            } finally {
-                setIsRestoring(false);
-            }
-        };
-        reader.onerror = (err) => {
-            showNotification(`Error reading file: ${err.message}`, 'error');
-            setIsRestoring(false);
-        };
-        reader.readAsText(restoreFile);
-    };
+    // NOTE: legacy BBCode restore (wrote to /savedReportBBCode) removed
+    // 2026-09-14 — node deleted + rules-locked; restores go through the VPS
+    // snapshot flow (handleCreateVpsBackup / handleRestoreVpsBackup).
 
     const handleCategorySelect = useCallback(async (category) => {
         if (!category) return;

@@ -64,6 +64,38 @@ let _sharedBrowser = null;
 let _browserInitPromise = null;
 
 /**
+ * Global forum gate: max concurrent forum operations across ALL client
+ * instances sharing the browser. The old per-instance mutex let N isolated
+ * clients hammer the same accounts/forums in parallel (Cloudflare challenges,
+ * phpBB flood blocks, session thrash). Every public method funnels through
+ * _acquire(), so this bounds total forum concurrency for boot storms and
+ * steady state alike. Tune via FORUM_GLOBAL_CONCURRENCY (default 2).
+ */
+const _globalMax = Math.max(1, parseInt(process.env.FORUM_GLOBAL_CONCURRENCY || '2', 10) || 2);
+let _globalActive = 0;
+const _globalWaiters = [];
+
+function _acquireGlobal() {
+    return new Promise((resolve) => {
+        const tryTake = () => {
+            if (_globalActive < _globalMax) {
+                _globalActive++;
+                resolve();
+            } else {
+                _globalWaiters.push(tryTake);
+            }
+        };
+        tryTake();
+    });
+}
+
+function _releaseGlobal() {
+    _globalActive = Math.max(0, _globalActive - 1);
+    const next = _globalWaiters.shift();
+    if (next) next();
+}
+
+/**
  * Kill any chrome-headless-shell processes that have been orphaned — i.e. their
  * parent is dead (reparented to PID 1). This happens when a previous bot run
  * died abruptly (uncaughtException → exit(1), SIGKILL), leaving its Chromium
@@ -96,6 +128,68 @@ function reapOrphanBrowsers() {
  * outside forumClient.js on the stack (e.g. "postTopic (forumClient.js)" stays
  * internal, so we walk up to "processAutopsyRequest (autopsyRequestMonitor.js)").
  */
+/**
+ * Match a name against a local faction roster file (data/<key>-roster.json,
+ * written by the 12h roster sync: { members: [{ name, userId }] }).
+ * Instant and flood-free — always preferred over live memberlist search.
+ *
+ * @param {string} forumKey - lspd|lssd|sadcr
+ * @param {string} name - intended recipient
+ * @param {number} [threshold=0.85]
+ * @returns {{userId: string, username: string, score: number}|null}
+ */
+export function matchRosterFile(forumKey, name, threshold = 0.85) {
+    try {
+        const file = resolve(__dirname, '..', 'data', `${forumKey}-roster.json`);
+        if (!existsSync(file)) return null;
+        const data = JSON.parse(readFileSync(file, 'utf-8'));
+        const members = data?.members || [];
+        const want = String(name || '').trim().toLowerCase();
+        if (!want) return null;
+        let best = null;
+        for (const m of members) {
+            const uname = String(m?.name || '').trim();
+            if (!uname) continue;
+            const score = nameSimilarity(want, uname.toLowerCase());
+            if (score === 1) return { userId: String(m.userId || ''), username: uname, score: 1 };
+            if ((!best || score > best.score)) best = { userId: String(m?.userId || ''), username: uname, score };
+        }
+        if (best && best.score >= threshold && best.userId) return best;
+        return null;
+    } catch {
+        return null;
+    }
+}
+
+/** Map a forum base URL to its roster key (null when no roster file exists). */
+export function rosterKeyForBaseUrl(baseUrl) {
+    const b = String(baseUrl || '').toLowerCase();
+    if (b.includes('lspd.gta.world')) return 'lspd';
+    if (b.includes('lssd.gta.world')) return 'lssd';
+    if (b.includes('sadcr.gta.world')) return 'sadcr';
+    return null;
+}
+
+/**
+ * Normalized string similarity 0..1 via Levenshtein distance.
+ * Both inputs should already be lowercased by the caller.
+ */
+export function nameSimilarity(a, b) {
+    const s = String(a || '');
+    const t = String(b || '');
+    if (s === t) return 1;
+    if (!s.length || !t.length) return 0;
+    let prev = Array.from({ length: t.length + 1 }, (_, i) => i);
+    for (let i = 1; i <= s.length; i++) {
+        const cur = [i];
+        for (let j = 1; j <= t.length; j++) {
+            cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (s[i - 1] === t[j - 1] ? 0 : 1));
+        }
+        prev = cur;
+    }
+    return 1 - prev[t.length] / Math.max(s.length, t.length);
+}
+
 function spawnReason() {
     try {
         const stack = new Error().stack.split('\n');
@@ -202,14 +296,23 @@ class ForumClient {
      * Returns a unique token; call release(token) to hand the lock back.
      */
     async _acquire(owner = 'unknown') {
+        // Global gate first (bounds total concurrency), then the per-instance
+        // mutex (serializes each session). Always in this order — the only
+        // place both are taken, so no lock-order inversion is possible.
+        await _acquireGlobal();
         const token = Symbol('lock-token');
         let release;
         const prev = this._lock;
         this._lock = new Promise((resolve) => { release = resolve; });
-        await prev; // wait for previous holder to finish
+        try {
+            await prev; // wait for previous holder to finish
+        } catch {
+            _releaseGlobal();
+            throw new Error(`lock interrupted for ${owner}`);
+        }
         this._lockOwner = owner;
         console.log(`[FORUM] 🔒 Lock acquired by: ${owner}`);
-        return { token, release: () => { this._lockOwner = null; release(token); } };
+        return { token, release: () => { this._lockOwner = null; release(token); _releaseGlobal(); } };
     }
 
     get baseUrl() {
@@ -744,6 +847,7 @@ class ForumClient {
         const lock = await this._acquire('sendPM');
         let ok;
         let finalUrl;
+        let reason = null;
         try {
         await this.ensureBrowser();
 
@@ -766,9 +870,83 @@ class ForumClient {
         const pageTitle = await this.page.title().catch(() => '(no title)');
         console.log(`[FORUM] 🔍 PM page: ${pageTitle} — ${pageUrl}`);
 
-        // Recipient is set via the URL parameter username_list=Name above,
-        // which phpBB handles server-side. Most themes don't render a visible
-        // username_list input on the page — so we skip any DOM manipulation here.
+        // ── Recipient handling (three theme shapes) ──
+        // 1. URL param worked (field preset / address present) → proceed.
+        // 2. Visible username_list input, empty (LSPD) → fill + Add flow.
+        // 3. No input at all (SADCR: "Find a member" popup only) → resolve the
+        //    user ID via memberlist search and re-open compose with &u=<id>.
+        // This runs BEFORE subject/message fill (Add / re-navigate reloads).
+        const recipientState = await this.page.evaluate((name) => {
+            const input = document.querySelector('input[name="username_list"]');
+            if (input && input.value && input.value.trim()) return 'preset';
+            const addr = document.querySelector('input[name^="address_list"], input[name="to"], .to-field, .address-list');
+            if (addr) {
+                const t = (addr.value !== undefined ? addr.value : addr.innerText) || '';
+                if (String(t).toLowerCase().includes(name.toLowerCase())) return 'preset';
+            }
+            if (input) return 'needs-add';
+            return 'no-field';
+        }, recipient).catch(() => 'error');
+        if (recipientState === 'preset') {
+            console.log(`[FORUM] ✅ Recipient preset: ${recipient}`);
+        } else if (recipientState === 'needs-add') {
+            await this.page.evaluate((name) => {
+                const input = document.querySelector('input[name="username_list"]');
+                if (input) { input.value = name; input.dispatchEvent(new Event('input', { bubbles: true })); }
+                const addBtn = document.querySelector('input[type="submit"][name="add_to"], button[type="submit"][name="add_to"]');
+                if (addBtn) addBtn.click();
+            }, recipient).catch(() => {});
+            try { await this.page.waitForLoadState('networkidle', { timeout: 25000 }); } catch {
+                console.log('[FORUM] ⏳ Network did not reach idle after recipient Add — checking anyway');
+            }
+            await this.page.waitForTimeout(2000);
+            const accepted = await this.page.evaluate((name) => {
+                const t = document.body?.innerText || '';
+                return t.includes(name);
+            }, recipient).catch(() => false);
+            if (!accepted) {
+                reason = `Recipient "${recipient}" was not accepted by the forum (username may not exist)`;
+                throw new Error(reason);
+            }
+            console.log(`[FORUM] ✅ Recipient added: ${recipient}`);
+        } else if (recipientState === 'no-field') {
+            // Roster file first (exact match only): the 12h sync banks every
+            // member + ID locally, and live memberlist search is broken on
+            // some themes (SADCR returns nothing). Fuzzy stays an explicit
+            // orchestrator decision — sendPM never guesses on its own.
+            // NOTE: lock-free inner call — sendPM already holds this lock.
+            let resolved = null;
+            const rKey = rosterKeyForBaseUrl(domain);
+            if (rKey) {
+                const m = matchRosterFile(rKey, recipient, 1);
+                if (m && m.userId) {
+                    console.log(`[FORUM] 👤 Roster exact: "${recipient}" -> id ${m.userId} ("${m.username}")`);
+                    resolved = { userId: m.userId, username: m.username };
+                }
+            }
+            if (!resolved) {
+                resolved = await this._resolveMemberUserIdInner([recipient], { baseUrl: domain }).catch(() => null);
+            }
+            if (!resolved) {
+                reason = `Recipient "${recipient}" not found on this forum (memberlist search)`;
+                throw new Error(reason);
+            }
+            console.log(`[FORUM] 🔄 Re-opening compose addressed by user ID ${resolved.userId}`);
+            await this.page.goto(`${domain}/ucp.php?i=pm&mode=compose&u=${resolved.userId}`, { waitUntil: 'networkidle', timeout: 180000 }).catch(() => {});
+            await this.page.waitForTimeout(2000);
+            const present = await this.page.evaluate((name) => {
+                const t = document.body?.innerText || '';
+                return t.includes(name);
+            }, resolved.username).catch(() => false);
+            if (!present) {
+                reason = `Recipient "${recipient}" (id ${resolved.userId}) did not stick on compose`;
+                throw new Error(reason);
+            }
+            console.log(`[FORUM] ✅ Recipient addressed by ID: ${resolved.username}`);
+        } else {
+            reason = `Recipient setup failed (${recipientState}) for "${recipient}"`;
+            throw new Error(reason);
+        }
 
         // Fill subject
         await this.page.evaluate((s) => {
@@ -916,11 +1094,14 @@ class ForumClient {
             // Also check for error messages and log them clearly
             if (!ok) {
                 const errMsg = await this.page.evaluate(() => {
-                    const errEl = document.querySelector('.error, .notification.error');
-                    return errEl ? errEl.textContent.trim() : null;
+                    const errEl = document.querySelector('.error, .notification.error, .alert-error, .alert-danger');
+                    return errEl ? errEl.textContent.trim().replace(/\s+/g, ' ').slice(0, 300) : null;
                 }).catch(() => null);
                 if (errMsg) {
                     console.warn(`[FORUM] ❌ PM error detected: "${errMsg}"`);
+                    reason = errMsg;
+                } else {
+                    reason = 'PM stayed on the compose page with no success confirmation';
                 }
             }
         }
@@ -937,7 +1118,7 @@ class ForumClient {
             console.log(`[FORUM] 💾 Full page HTML saved to ${debugPath} for debugging`);
         }
 
-        console.log(`[FORUM] 📬 PM result: ${ok ? '✅ Sent' : '⚠️ Unknown'} — ${finalUrl}`);
+        console.log(`[FORUM] 📬 PM result: ${ok ? '✅ Sent' : `⚠️ ${reason || 'Unknown'}`} — ${finalUrl}`);
         } finally { lock.release(); }
 
         return {
@@ -945,6 +1126,7 @@ class ForumClient {
             url: ok ? finalUrl : null,
             recipient,
             subject,
+            reason: ok ? null : (reason || 'Unknown'),
         };
     }
 
@@ -2006,6 +2188,246 @@ class ForumClient {
             return pms;
         } finally {
             lock.release();
+        }
+    }
+
+    /**
+     * Open a private message and return its full EXPANDED body text.
+     * Spoiler toggles (`a[href="#"]` inside the message, e.g. LSPD addendum
+     * spoilers) are clicked open first — collapsed content is invisible to
+     * innerText otherwise. Subject/sender/date come from the inbox listing;
+     * only the body is read here. Read-only: no reply, no state change beyond
+     * normal page views.
+     *
+     * @param {string|number} msgId - PM id (p= param)
+     * @param {object} [options]
+     * @param {string} [options.baseUrl] - Forum base URL
+     * @param {number} [options.folder=0] - PM folder (0 = inbox)
+     * @returns {Promise<{msgId: string, url: string, bodyText: string}|null>}
+     */
+    async readPrivateMessage(msgId, { baseUrl, folder = 0 } = {}) {
+        const lock = await this._acquire('readPrivateMessage');
+        try {
+            await this.ensureBrowser();
+            const domain = baseUrl || this.baseUrl;
+            const url = `${domain}/ucp.php?i=pm&mode=view&f=${folder}&p=${msgId}`;
+            await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 120000 }).catch(() => {});
+            await this.page.waitForTimeout(2500);
+
+            // Expand in-message spoiler toggles (LSPD addenda render as
+            // `a[href="#"]` with onclick=return false; real postlinks have
+            // distinct hrefs/classes and are left alone).
+            await this.page.evaluate(() => {
+                const c = document.querySelector('div.content');
+                if (!c) return 0;
+                let n = 0;
+                for (const a of c.querySelectorAll('a[href="#"]')) {
+                    try { a.click(); n++; } catch { /* best effort */ }
+                }
+                return n;
+            }).catch(() => 0);
+            await this.page.waitForTimeout(1500);
+
+            const bodyText = await this.page.evaluate(() => {
+                const c = document.querySelector('div.content');
+                return (c?.innerText || '').trim();
+            }).catch(() => '');
+
+            if (!bodyText) {
+                console.log(`[FORUM] ⚠️ PM p=${msgId} body empty — page: ${this.page.url()}`);
+                return null;
+            }
+
+            // Authoritative sender/subject from the view page chrome. The inbox
+            // row is unreliable (multiline label text, no username link on some
+            // themes). LSPD view pages show "From: Name (Alias)" and the subject
+            // in a short heading element.
+            const chrome = await this.page.evaluate(() => {
+                const all = document.body?.innerText || '';
+                const fromM = all.match(/From:\s*([^\n]{1,80})/i);
+                // The subject heading is the short block containing the tag —
+                // never the nav banner (a bare h2/h3/p scan grabs that instead).
+                let subject = null;
+                for (const el of document.querySelectorAll('h2, h3, p')) {
+                    const t = (el.innerText || '').trim();
+                    if (t.length > 4 && t.length < 300 && /\[private autopsy\]/i.test(t)) {
+                        subject = t.replace(/^["\s]+|["\s]+$/g, '');
+                        break;
+                    }
+                }
+                return { sender: fromM ? fromM[1].trim() : null, subject };
+            }).catch(() => ({ sender: null, subject: null }));
+
+            console.log(`[FORUM] 📨 Read PM p=${msgId} (${bodyText.length} chars expanded) from="${chrome.sender || '?'}"`);
+            return { msgId: String(msgId), url, bodyText, sender: chrome.sender, subject: chrome.subject };
+        } finally {
+            lock.release();
+        }
+    }
+
+    /**
+     * Resolve a display string to the exact forum account name via memberlist
+     * search. Tries each candidate in order, exact match (case-insensitive),
+     * returns the link text (canonical spelling) or null. Used to turn PM
+     * "From: Character (Account)" strings into a deliverable PM recipient —
+     * signatures and character names never resolve, only accounts do.
+     *
+     * @param {string[]} candidates - names to try, first resolvable wins
+     * @param {object} [options]
+     * @param {string} [options.baseUrl] - Forum base URL
+     * @returns {Promise<string|null>}
+     */
+    async resolveMemberUsername(candidates, { baseUrl } = {}) {
+        const lock = await this._acquire('resolveMemberUsername');
+        try {
+            await this.ensureBrowser();
+            const domain = baseUrl || this.baseUrl;
+            const seen = new Set();
+            for (const raw of candidates || []) {
+                const name = String(raw || '').trim();
+                if (!name || seen.has(name.toLowerCase())) continue;
+                seen.add(name.toLowerCase());
+                await this.page.goto(
+                    `${domain}/memberlist.php?mode=searchuser&username=${encodeURIComponent(name)}&submit=Search`,
+                    { waitUntil: 'domcontentloaded', timeout: 120000 }).catch(() => {});
+                await this.page.waitForTimeout(2000);
+                const hit = await this.page.evaluate((want) => {
+                    const wl = want.toLowerCase();
+                    for (const a of document.querySelectorAll('a[href*="memberlist.php"][href*="u="]')) {
+                        const t = (a.textContent || '').trim();
+                        if (t.toLowerCase() === wl) return t;
+                    }
+                    return null;
+                }, name).catch(() => null);
+                if (hit) {
+                    console.log(`[FORUM] 👤 Resolved "${name}" -> account "${hit}"`);
+                    return hit;
+                }
+            }
+            console.log(`[FORUM] 👤 No account resolved for [${(candidates || []).join('|')}]`);
+            return null;
+        } finally {
+            lock.release();
+        }
+    }
+
+    /**
+     * Resolve a display name to a forum user ID via memberlist search.
+     * Needed for PM compose flows that address recipients by ID (`&u=`),
+     * e.g. themes with no username_list input (SADCR). Exact match
+     * (case-insensitive); first resolvable candidate wins.
+     *
+     * @param {string[]} candidates - names to try
+     * @param {object} [options]
+     * @param {string} [options.baseUrl] - Forum base URL
+     * @returns {Promise<{userId: string, username: string}|null>}
+     */
+    async resolveMemberUserId(candidates, { baseUrl } = {}) {
+        const lock = await this._acquire('resolveMemberUserId');
+        try {
+            return await this._resolveMemberUserIdInner(candidates, { baseUrl });
+        } finally {
+            lock.release();
+        }
+    }
+
+    /**
+     * Fuzzy member lookup: when the exact name resolves to nothing, search by
+     * name tokens and return the closest username at or above threshold.
+     * Self-heal primitive for misspelled recipients (never auto-sends — the
+     * caller decides, and must surface the match it chose).
+     *
+     * @param {string} name - intended recipient
+     * @param {object} [options]
+     * @param {string} [options.baseUrl] - Forum base URL
+     * @param {number} [options.threshold=0.85] - minimum similarity to accept
+     * @returns {Promise<{userId: string, username: string, score: number, checked: number}|null>}
+     */
+    async resolveMemberUserIdFuzzy(name, { baseUrl, threshold = 0.85 } = {}) {
+        const lock = await this._acquire('resolveMemberUserIdFuzzy');
+        try {
+            await this.ensureBrowser();
+            const domain = baseUrl || this.baseUrl;
+            // Local roster first: instant, no browser load. The 12h sync banks
+            // every faction member with IDs (proven: Isabella Sato u=1954).
+            const rosterKey = rosterKeyForBaseUrl(domain);
+            if (rosterKey) {
+                const hit = matchRosterFile(rosterKey, name, threshold);
+                if (hit) {
+                    console.log(`[FORUM] 🔍 Fuzzy match "${name}" — roster ${rosterKey}: "${hit.username}" (${Math.round(hit.score * 100)}%)`);
+                    return { ...hit, checked: -1, source: 'roster' };
+                }
+            }
+            const tokens = String(name || '').trim().split(/\s+/).filter((t) => t.length > 1);
+            // Last token first (surnames discriminate best), then first token.
+            const queries = [...new Set([tokens[tokens.length - 1], tokens[0]].filter(Boolean))];
+            const candidates = new Map();
+            for (const q of queries) {
+                await this.page.goto(
+                    `${domain}/memberlist.php?mode=searchuser&username=${encodeURIComponent(q)}&submit=Search`,
+                    { waitUntil: 'domcontentloaded', timeout: 120000 }).catch(() => {});
+                await this.page.waitForTimeout(2000);
+                const hits = await this.page.evaluate(() => {
+                    const out = [];
+                    for (const a of document.querySelectorAll('a[href*="memberlist.php"][href*="u="]')) {
+                        const m = (a.getAttribute('href') || '').match(/[?&]u=(\d+)/);
+                        const t = (a.textContent || '').trim();
+                        if (m && t) out.push({ userId: m[1], username: t });
+                        if (out.length >= 50) break;
+                    }
+                    return out;
+                }).catch(() => []);
+                for (const h of hits) {
+                    if (!candidates.has(h.userId)) candidates.set(h.userId, h.username);
+                }
+            }
+            const want = String(name || '').trim().toLowerCase();
+            let best = null;
+            for (const [userId, username] of candidates) {
+                const score = nameSimilarity(want, username.toLowerCase());
+                if (!best || score > best.score) best = { userId, username, score };
+            }
+            console.log(`[FORUM] 🔍 Fuzzy match "${name}" — live search checked ${candidates.size}, best: ${best ? `"${best.username}" (${Math.round(best.score * 100)}%)` : 'none'}`);
+            if (best && best.score >= threshold) return { ...best, checked: candidates.size, source: 'search' };
+            return null;
+        } finally {
+            lock.release();
+        }
+    }
+
+    /**
+     * Lock-free core of resolveMemberUserId for callers that already hold the
+     * instance lock (e.g. sendPM). Never call directly without holding it.
+     */
+    async _resolveMemberUserIdInner(candidates, { baseUrl } = {}) {
+        {
+            await this.ensureBrowser();
+            const domain = baseUrl || this.baseUrl;
+            const seen = new Set();
+            for (const raw of candidates || []) {
+                const name = String(raw || '').trim();
+                if (!name || seen.has(name.toLowerCase())) continue;
+                seen.add(name.toLowerCase());
+                await this.page.goto(
+                    `${domain}/memberlist.php?mode=searchuser&username=${encodeURIComponent(name)}&submit=Search`,
+                    { waitUntil: 'domcontentloaded', timeout: 120000 }).catch(() => {});
+                await this.page.waitForTimeout(2000);
+                const hit = await this.page.evaluate((want) => {
+                    const wl = want.toLowerCase();
+                    for (const a of document.querySelectorAll('a[href*="memberlist.php"][href*="u="]')) {
+                        const m = (a.getAttribute('href') || '').match(/[?&]u=(\d+)/);
+                        const t = (a.textContent || '').trim();
+                        if (m && t.toLowerCase() === wl) return { userId: m[1], username: t };
+                    }
+                    return null;
+                }, name).catch(() => null);
+                if (hit) {
+                    console.log(`[FORUM] 👤 Resolved "${name}" -> id ${hit.userId} ("${hit.username}")`);
+                    return hit;
+                }
+            }
+            console.log(`[FORUM] 👤 No user ID resolved for [${(candidates || []).join('|')}]`);
+            return null;
         }
     }
 

@@ -784,7 +784,7 @@ const NewUIPrototype = ({ basicMode = false }) => {
   }, [showCharSwitch]);
 
   // ── Saved Reports ──
-  const { savedReports, isLoadingReports, loadUserSavedReports, loadReportForUser } = useReportLoader();
+  const { savedReports, savedReportsTotal, isLoadingReports, loadUserSavedReports, loadMoreSavedReports, loadReportForUser } = useReportLoader();
   const { deleteReportForUser } = useReportActions();
 
   // ── Fix Deployed Report (Edit & Repost) ──
@@ -2040,6 +2040,8 @@ const NewUIPrototype = ({ basicMode = false }) => {
         deleteReportForUser={deleteReportForUser}
         onEmployeeSelect={loadUserSavedReports}
         reportsForSelectedUser={savedReports}
+        reportsTotalCount={savedReportsTotal}
+        onLoadMoreReports={loadMoreSavedReports}
         isLoadingReports={isLoadingReports}
         isAttachMode={isAttachMode}
         currentPhmcEmployee={characterName}

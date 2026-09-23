@@ -453,118 +453,13 @@ export const processGtaWorldAuth = onCall({
 
 
 
-/**
- * Helper function to get access token for Firebase Secrets setup
- * This function performs OAuth and clearly logs the token for easy copying
- */
-export const getTokenForSecrets = onCall({
-    region: "europe-west2",
-    secrets: ["PHMC_CONFIG"],
-    cors: [
-        'https://ancad-studios.github.io',
-        'http://localhost:3000',
-        'https://gtaw-forms.github.io',
-        'https://phmc-tools.gta.world',
-        'https://global.gta.world'
-    ]
-}, async (request) => {
-    console.log('🔧 [Token Setup] Starting token retrieval for Firebase Secrets setup');
-    
-    const data = request.data;
-    const { code, redirectUri } = data || {};
-    const clientId = getConfigValue("GTAWORLD_CLIENT_ID");
-    const clientSecret = getConfigValue("GTAWORLD_CLIENT_SECRET");
-
-    if (!code || !redirectUri) {
-        throw new functions.https.HttpsError('invalid-argument', 'Authorization code and redirect URI are required');
-    }
-
-    try {
-        // Exchange auth code for access token
-        const tokenRequestBody = new URLSearchParams({
-            grant_type: 'authorization_code',
-            client_id: clientId,
-            client_secret: clientSecret,
-            redirect_uri: redirectUri,
-            code: code,
-        });
-
-        const tokenResponse = await fetch('https://global.gta.world/oauth/token', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'User-Agent': 'PHMC-Tools/1.0 (Firebase Functions)'
-            },
-            body: tokenRequestBody,
-        });
-
-        const tokenData = await tokenResponse.json();
-
-        if (!tokenResponse.ok) {
-            throw new functions.https.HttpsError('invalid-argument', `Token exchange failed: ${tokenData.error_description || tokenData.error}`);
-        }
-
-        // CLEAR INSTRUCTIONS FOR SETTING UP SECRETS
-        console.log('\n' + '='.repeat(100));
-        console.log('🎉 SUCCESS! Your GTA World Access Token is ready!');
-        console.log('='.repeat(100));
-        console.log('');
-        console.log('📋 COPY AND PASTE THESE COMMANDS:');
-        console.log('');
-        console.log('1️⃣  Set your main access token:');
-        console.log(`firebase functions:secrets:set GTAWORLD_PERSISTENT_TOKEN --data="${tokenData.access_token}"`);
-        console.log('');
-        if (tokenData.refresh_token) {
-            console.log('2️⃣  Set your refresh token (optional but recommended):');
-            console.log(`firebase functions:secrets:set GTAWORLD_REFRESH_TOKEN --data="${tokenData.refresh_token}"`);
-            console.log('');
-        }
-        console.log('3️⃣  Deploy your functions to use the new secrets:');
-        console.log('firebase deploy --only functions');
-        console.log('');
-        console.log('='.repeat(100));
-        console.log('📊 TOKEN DETAILS:');
-        console.log(`   • Token Type: ${tokenData.token_type || 'Bearer'}`);
-        console.log(`   • Expires In: ${tokenData.expires_in} seconds (${Math.floor(tokenData.expires_in / 3600)} hours)`);
-        console.log(`   • Has Refresh Token: ${tokenData.refresh_token ? 'Yes ✅' : 'No ❌'}`);
-        console.log(`   • Token Length: ${tokenData.access_token.length} characters`);
-        console.log('='.repeat(100));
-        console.log('');
-
-        return {
-            success: true,
-            message: 'Token retrieved successfully! Check the function logs for setup instructions.',
-            tokenInfo: {
-                type: tokenData.token_type || 'Bearer',
-                expiresIn: tokenData.expires_in,
-                hasRefreshToken: !!tokenData.refresh_token,
-                tokenLength: tokenData.access_token.length
-            },
-            setupInstructions: [
-                `firebase functions:secrets:set GTAWORLD_PERSISTENT_TOKEN --data="${tokenData.access_token}"`, 
-                tokenData.refresh_token ? `firebase functions:secrets:set GTAWORLD_REFRESH_TOKEN --data="${tokenData.refresh_token}"` : null,
-                'firebase deploy --only functions'
-            ].filter(Boolean),
-            timestamp: new Date().toISOString()
-        };
-
-    } catch (error) {
-        console.error('❌ [Token Setup] Error retrieving token:', error);
-        throw new functions.https.HttpsError('internal', 'Failed to retrieve token for secrets setup', {
-            originalError: error.message
-        });
-    }
-});
-
-
-
-
 
 /**
  * Validate an existing access token and return user data if valid
  */
 export const validateGtaWorldToken = onCall({
     region: "europe-west2",
+    memory: "256MiB",
     cors: [
         'https://gtaw-forms.github.io',
         'https://phmc-tools.gta.world',
@@ -799,6 +694,7 @@ export const refreshGtawUser = onCall({
  */
 export const checkFactionMembership = onCall({
     region: "europe-west2",
+    memory: "256MiB",
     cors: [
         'https://gtaw-forms.github.io',
         'https://phmc-tools.gta.world',

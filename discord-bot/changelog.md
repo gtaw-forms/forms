@@ -1,5 +1,142 @@
 # PHMC Discord Bot — Changelog
 
+## 2026-09-14 — Task 3b-6: CK-scan saved-reports VPS cutover (bot)
+
+### Changed
+- **`services/deathRecordDraftScan.js`**: `findSourceReport` point-reads normal reports from the VPS (`GET /api/reports/:author/:key`) instead of RTDB `newSavedReports` (`scheduledReports` RTDB read kept); passive CK listener falls through to the same VPS point read when the RTDB read misses a `newSavedReports`-pathed entry; manual `scanAndDraftCKs` keeps the `scheduledReports` RTDB scan but enumerates normal reports via VPS (`/api/reports/stats` author list + per-author `GET /api/reports?author=`) — zero full-node `newSavedReports` reads. VPS failures warn + skip, never touch `scheduledReports`.
+- **`services/deathRecordDraftFace.js`**: `resolveFacePostValues` source-report lookup uses the VPS point read for non-scheduled reports (scheduled RTDB read kept).
+- **`commands/global-stats.js`**: unchanged — RTDB fallback KEPT as outage-only path per owner Q4.
+- **`morgue-api.js`**: unchanged — no new endpoints needed (`/api/reports?author=`, `/api/reports/:author/:key`, `/api/reports/stats` already cover the bot paths; per-author stats filter / coroner-stats aggregation not required for this step, cut per Q5).
+
+### Deployed
+- 2026-09-14 live: 2 files SCP'd (md5-verified: Scan `bb23c94b…`, Face `bdcf3bc7…`), `pm2 restart phmc-bot` clean — phased boot verified (browser-warmup 25s → roster-sync running, forum locks serializing, Cloudflare passed), heartbeat sweep clean (0.2s, all ok), CK auto-draft firing post-restart (2 Gary Hicks drafts, distinct report keys — no dupes), error log shows only pre-existing issues (dashboard Missing Access, coroner-email recipient misses). morgue-api untouched (still pid from earlier boot).
+
+## 2026-09-13 — Coroner emails decoupled into their own queue entity
+
+### Added
+- **`services/coronerEmailQueue.js`** — `coroner-email-queue/<authorId>|<reportKey>` entities with own status/attempts/backoff (30m, 2h, 6h; stuck-sending reset; 7-day sent prune). Worker processes sequentially + 10-min sweep. A failed email can never disturb its already-deployed topic again.
+- **Refactored `handleCoronerEmail`** into prep/enqueue + exported `deliverCoronerEmail` (worker-driven send core with the fuzzy self-heal intact). `deployTopic` passes the topic URL through. Report record only ever receives delivery *results* (coronerEmailUrl/SentAt/To), never email state.
+- **Dashboard "Coroner Emails" field** — non-terminal entities with status/countdown/failure detail.
+
+### Deployed
+- 2026-09-14 live: 5 files SCP'd (hash-checked), restarts clean, phased boot verified. Safe lifecycle test with a fake recipient: enqueue → deliver → exact-reject → fuzzy-miss → `retry_queued` with the true reason, zero sends, probe entity removed. Test caught a real bug first pass: `sentTo` shorthand referenced a nonexistent variable (would have masked every delivery result) — fixed and re-verified.
+- 2026-09-14 Firebase optimization pass: audited every RTDB touch added this session — intake empty polls read nothing, bookkeeping writes fire on state change only, numbering is per-new-patient, sweeps read tiny nodes. The one trim: dashboard Firebase reads (`retry-queue` + `coroner-email-queue`) cached 5 min (≈600 tiny reads/day vs ≈5,760), manual Refresh bypasses the cache.
+
+## 2026-09-13 — Queue dashboard shows failed retries with countdowns
+
+### Added
+- **Failed Queued Forms section**: the dashboard now reads the tiny `retry-queue` index each tick (no scheduledReports scan) and lists every failed form with attempt count, last error, and a live "starting <relative>" retry countdown. Legacy index rows without labels resolve via a single cached report read.
+- **`retryIndexEntry()`** in deployRetry: backfill + requeue writes now carry label/formId/detail so the dashboard never needs the full node.
+- Queued section renamed to "Queued Forms — INFO" with per-form type + fire time.
+
+### Deployed
+- (pending — SCP queueDashboard.js + deployRetry.js + changelog, restart, verify both sections render)
+
+## 2026-09-13 — Phased startup + global forum gate
+
+### Changed
+- **New `services/startupQueue.js`**: forum-heavy starters now boot strictly in order — browser warmup (15s, single PHMC session check) → roster sync → autopsy first scan → patient index → PM intake first poll — each awaited with timeout, failures skip forward. Recovery heartbeat keeps its 30s timer (failed work first, unchanged). Discord/Firebase-only starters still fire immediately.
+- **Global forum semaphore** (`FORUM_GLOBAL_CONCURRENCY`, default 2): per-instance locks never actually serialized across clients — now every forum op also takes a shared slot, bounding boot storms and steady-state overlap. Same acquire order everywhere (global, then instance), so no new deadlock shape.
+- **Reuse-first logins** at roster sync + PM intake polls (form fallback preserved — strictly fewer full logins).
+- **Interval retunes (defaults, env-overridable):** recovery heartbeat 10m→60m, PM intake 10m→30m, Face sweep 60s→5m. f=265 detection stays 15m.
+
+### Deployed
+- 2026-09-13 live: 8 files SCP'd (md5-verified after catching a misdirected upload before restart), restart clean. Boot log proves the sequence: warmup 24s → roster (cooldown, 0s) → autopsy scan 13s → patient → PM poll 12s, zero overlap, no FLOOD/Cloudflare/startup errors. Heartbeat confirms 60-min cadence; PM intake logs 30-min. Note: `startAutopsyRequestMonitor`/`startPrivateAutopsyPmMonitor` accept `{ immediate: false }` (queue runs first work directly); `startFactionRosterSync` returns the in-flight sync for awaiting.
+
+## 2026-09-13 — Medical record numbers: highest-owned + 1
+
+### Fixed
+- **New-patient record numbers** no longer come from the blind Firebase counter (which had drifted to 36 while real files reach 1970 — the next new file would have been issued #37, a likely collision). `getNextPatientId` now takes the max numeric id from the patient index (1025 patients, full f=97 history + write-through), floors at the Firebase counter so it never goes backwards, syncs the counter forward, and reserves the id in the index immediately against concurrent creates (a failed create leaves a harmless gap). Forum scan remains as last-resort fallback only.
+
+### Deployed
+- 2026-09-13 live: SCP `services/deployMedicalRecord.js` + restart; boot verified below. Kelly Rhodes has no index entry (confirmed) — her file will take the next computed number.
+
+## 2026-09-13 — Private autopsy PM intake (LSPD inbox, TEST MODE)
+
+### Added
+- **`services/privateAutopsyPmMonitor.js`** — polls the LSPD inbox every 10 min for `[Private Autopsy]` PMs; sender gate (allowlist, else LSPD group when configured); spoiler addenda expanded + parsed per body (requester, decedent/OOC-or-unknown, PK/CK, location, reason); approval draft with Approve/Deny to the log channel; Firebase dedupe survives restarts. Approving while `PRIVATE_PM_INTAKE_LIVE` is unset posts a TEST simulation report only.
+- **`forumClient.readPrivateMessage(msgId)`** — PM view reader with spoiler-toggle expansion (read-only).
+- **Wiring in `index.js`** (monitor start + `pmintake_*` buttons) and `.env.example` docs.
+
+### Deployed
+- 2026-09-13 live (TEST MODE): all files SCP'd, VPS `.env` `PRIVATE_PM_INTAKE_ALLOWED=Marcus Ward,Chris Wright`, restarts clean. First cycles verified against real PM p=145194: view-page identity (`Marcus Ward (Chris Wright)`, multi-alias gate PASS), clean subject extraction (banner/quotes pitfalls fixed), approval draft with 4 bodies posted to the dev log channel, TEST-APPROVE confirmed with zero forum posts. Probe scripts + probe session removed.
+- 2026-09-13 dry-run command: `/pm-intake-dryrun pm_id:<n>` (owner-only, ephemeral) replays intake read-only and attaches one case-BBCode `.txt` per body plus the ME each would get from live rotation. Superseded drafts deleted via API (3). Simulation on p=145194: 4/4 bodies, MEs Brandy Smith / Anne Carter / Sarah Bell / Arthur Blackwood. Parser lookahead fix for label-on-own-line fields (Contact). False alarm noted: a grep filter once hid BBCode content lines — no code regression.
+- 2026-09-13 incident: `/pm-intake-dryrun` shipped with a 101-char description (limit 100) — discord.js builders throw `RangeError: Invalid string length` at import, crash-looping the bot (~65 restarts before the stop was issued). Fixed (75 chars), redeployed, boot verified. Lesson: keep slash-command descriptions short; `node --check` does NOT catch builder validation errors.
+- 2026-09-13 intake LIVE: Approve now creates the private f=266 cases (rotation ME, title edit, assignment reply, Firebase entry + completion PM routing to the sender) followed by the standard `notifyAssignment` staff notification (ME ping + PHMC #autopsies post), matching the normal flow.
+- 2026-09-13 live-run recovery (p=145194): the maiden run posted A/B/C (Cases #511-513, topics #10131-33) then the process died mid-run (~19:11:55 UTC, single crash, cause undetermined — no error logged; bot stable since) before D. Recovered via the idempotent path: A/B/C auto-skipped as already recorded, D posted as Case #517/topic #10134 (number gap 514-516, harmless), C's title fixed to Sarah Bell (reply had already landed despite the logged error), `notifyAssignment` sent once per case (the crashed run never reached notifications), node marked completed. No duplicates: exactly one topic per addendum. Duplicate protection: PM-level processed records (polls never re-handle) + read-check-set claim with immediate button strip + serialized live runs (single pm2 instance) + per-addendum created-records (retries/replays skip posted cases) + fail-closed crash guard (`creating` alerts instead of auto-retrying).
+- 2026-09-13 double-fix on the Approve path: (1) node is now claimed BEFORE the draft posts (an instant click could see a null node); (2) Firebase RTDB transactions proven unusable as claim primitives here — this admin SDK invokes the update fn once with a cold null and aborts without retry (verified live), so read-check-set + serialization replaces it. Abort branch now logs the observed status.
+- 2026-09-13 intake BBCode trimmed to the original: case content is now Sections 1-4 only (requester/decedent/details/OOC as sent, guidelines parsed not hardcoded, OOC inline on the name line). Removed the invented CONFIDENTIAL header block and Origin footer — provenance stays in Firebase + Discord. Also hardened addendum splitting (V8 drops zero-width-lookahead splits at index 0; filter by content instead of blind slice).
+- 2026-09-13 notification audit: A/B/C received exactly 1 webhook ping each; D received 2 (recovery script called notify both inside the live path and in its own loop — overlap, now understood). Hardened with a `notified:true` flag on created records (set after each notify; reuse path notifies only when the flag is absent); all four records flagged. #autopsies channel posts were dropped during standalone-script recovery (no Discord client) — the live path posts normally.
+- 2026-09-13 stranded-retry fix: a report with `deployStatus=queued` but `hasdeployed=true` (the Isabela Sato coroner email) is primed as done on cold-load and skipped by the listener forever — invisible on the dashboard, no retry fires. Both retry-write paths (`checkRetryQueue` re-enqueue, `requeueReport`) now force `hasdeployed=false`; the stranded report was reset and requeued.
+- 2026-09-13 intake account rule + first delivery: intake now resolves the sender's forum ACCOUNT via memberlist search (candidates: parenthetical first, then base) and stores it from poll time (draft shows "Forum account"); delivery refuses without one. Proved necessary: `Marcus Ward` resolves to nothing — the account is `Chris Wright` (u=14385, his alt); 4 live entries patched. First completion DM (#10133 → Chris Wright) delivered 21:04:52 UTC after the retry-sweep fix picked up the marker; step completed, marker cleared.
+- 2026-09-13 LSPD PM recipient fix: first completion DM (#10133 → Marcus Ward) failed with bare "Unknown" — the `username_list` URL param is ignored on the LSPD theme (recipient field renders EMPTY, send stalls on compose with no error). `sendPM` now fills the field + runs phpBB's Add flow and verifies the recipient stuck (clear error otherwise). Failure reasons are now returned (no more "Unknown") and error-element selectors widened.
+- 2026-09-13 SADCR recipient fix (coroner email → Isabela Sato failed "No recipient defined."): SADCR compose has NO username_list input at all ("Find a member" popup only), so the URL param path silently addressed nobody. `sendPM` now has three theme shapes: preset → proceed; visible input → Add flow; no input → resolve user ID via memberlist search and re-open compose with `&u=<id>`. Also fixed a would-be self-deadlock (resolver split into locking wrapper + lock-free core for the already-locked sendPM path).
+- 2026-09-13 fuzzy recipient self-heal: `resolveMemberUserIdFuzzy` (Levenshtein, 0.85 threshold) checks the LOCAL roster files first (instant, flood-free — proven: "Isabela Sato" → Isabella Sato u=1954 at 92% from sadcr-roster.json), live memberlist search as fallback; coroner-email narrates Sending → fail → Best Match → re-send. Live SADCR memberlist search itself returns nothing (form never submits via GET), which is why roster-first matters.
+- 2026-09-13 sendPM roster-exact fallback + Isabela delivery: the no-field branch now tries the roster file (exact only — fuzzy stays an orchestrator decision) before live search. Stranded-report root cause also fixed above; the resend to Isabella Sato delivered live (SADCR p=5082, record updated).
+- 2026-09-13 finally-block bug (coroner email → Catalina Romero): the wrapper split left a stray `finally { lock.release(); }` referencing a nonexistent `lock` inside the lock-free resolver — every successful resolve threw ReferenceError *after* logging success, surfacing as the misleading "not found" error. Removed; dry-run proof + live re-send to Catalina Romero completed (LSSD p=86685, report record updated). Lesson: log-then-return across a finally is fragile — review split points for orphaned references.
+- 2026-09-13 retry-sweep blind spot: the heartbeat passes an INCOMPLETE-only snapshot to `retryFailedCompletionSteps`, which skipped the marker-index branch entirely — failed steps on completed cases (like #10133's dmSent) were never retried despite having markers, contradicting the code's own comment. The function now merges marker-listed entries the caller omitted.
+- 2026-09-13 intake robustness: per-addendum continue-on-error (one bad addendum yields `completed-partial` + alert instead of aborting the batch); Discord alerts (not just logs) for unreadable/unparseable PMs and failed drafts.
+- 2026-09-13 intake recipient fix: `pmRecipient` stored the full view string `Marcus Ward (Chris Wright)`, which phpBB `username_list` never resolves — completion PMs would have failed delivery. Now stripped to the bare forum account (`Marcus Ward`); the 4 live entries patched the same way. Verified the completion path otherwise: full report PM via isolated LSPD client to the recipient, LSPD/LSSD crossposts + CASELINK requester webhook all correctly skipped for private entries.
+
+## 2026-09-13 — /mass-autopsy private delivery (bulk confidential cases)
+
+### Added
+- **`/mass-autopsy` `pm_forum` option** (LSPD/LSSD/PHMC) — each completed report is PM'd to the batch `requester` on the chosen forum instead of any public post. Entries store `pmForum`/`pmRecipient`, which the existing completion flow (`deployAutopsyReply` DM step) already consumes for private cases — no completion-side changes. `pm_forum` without `requester` is rejected up front; the summary embed shows a Delivery line (visible in dry-run too).
+
+### Deployed
+- 2026-09-13 live: SCP `commands/mass-autopsy.js` + `services/massAutopsy.js` + `changelog.md`, `pm2 restart phmc-bot`; boot clean, registrations confirmed. Parser export smoke-tested locally.
+
+## 2026-09-13 — Morgue API bulk upload 413 fix (343-record logger run)
+
+### Fixed
+- **Bulk body limit**: the global `express.json({ limit: '1mb' })` 413'd the logger's 343-record bulk POST before any handler ran. Bulk paths (`/api/morgue/bulk`, `/api/reports/bulk`) now get a scoped 25mb parser; every other route keeps the 1mb cap (DoS posture unchanged).
+- **Record-count guard**: `/api/morgue/bulk` rejects >5000 records with a 400 telling the caller to split batches.
+- **`setup/morgue-logger.ps1`**: uploads in batches of 100 (per-batch results, one failed batch no longer loses the run). Re-run the script locally to pick this up — no VPS step needed for it.
+
+### Deployed
+- 2026-09-13 live: SCP `morgue-api.js` + `pm2 restart morgue-api`; health OK, both processes online. Verified with a 1.7MB synthetic bulk payload + junk key: both bulk routes return 401 (parsed, auth-rejected) instead of 413 — zero side effects. /tmp check script removed.
+
+## 2026-09-13 — /check-background: read-only LSPD background-check lookup
+
+### Added
+- **`/check-background name:<applicant>`** (supervisors+, ephemeral) — searches LSPD topic t=73256 ("Criminal Record Request Form — PHMC") via a scoped `search.php?t=` query and classifies: completed (LSPD reply quotes the request + summary markers) / pending (request only) / not found. Narrates progress (browser → login → search → reading → verdict) and links every match with per-post `p=` anchors.
+- **`services/lspdBackground.js`** — read-only lookup (never posts); isolated client `lspd-bgcheck` (own session file, shared Chromium reused); LSPD-theme selectors (`div.postbody`/`dl.postprofile`); caps detail-fetch at 6 newest matches.
+
+### Deployed
+- 2026-09-13 live: SCP `services/lspdBackground.js` (new), `commands/check-background.js` (new), `index.js`, `changelog.md` + `pm2 restart phmc-bot`; boot clean, full-guild registration confirmed. Service-level verify: "Ren Cooper" → completed (2 summaries: Elizabeth Nixon with all three record lines, Danica Ashford license VALID + no derogatory; 2 requests by Jade Stewart #69245), "Alyson Frost" → not_found (negative control). Two probe-round fixes shipped: force-login for the isolated client (guest search silently returns 0) and whole-page match extraction (first name hit is the request, summary sits posts later). /tmp probes + probe session removed; production `forum-session-lspd-bgcheck.json` retained.
+- 2026-09-13 follow-up (same deploy): every match block now leads with **Applicant:** (parsed from the request/quote, falls back to the searched name) so blocks can't be misread; `cite` strip fixed to remove the quoted date (`wrote:[\s\S]*` — `.` missed the newline); progress steps accumulate in ONE message (each step edits the reply to append its line: Step 1 / Step 1+2 / …), final edit appends `[DONE]` plus the verdict embed — no message spam.
+- 2026-09-13 rename: `/check-background` → `/background` (`commands/background.js`; old file removed both sides). Same behavior, same options.
+- 2026-09-13 PHMC guild access: `/background` added to the trimmed PHMC-guild set (VPS `.env` `PHMC_COMMANDS=reassign-autopsy,autopsy-loa,card,background` + restart; boot confirms "Registering 4 trimmed commands"). Supervisors+ gate unchanged. Background: Thiago Larranaga reported "no perms" — audit showed the bot never received an interaction (command wasn't registered in the PHMC guild).
+- 2026-09-13 queue + dates: lookups run through a module-level FIFO (shared Chromium + one LSPD account + one session file made concurrent runs thrash the login); waiters see `Queued — N lookup(s) ahead...`. Post dates parse from the sibling `DIV.pull-left` "by X - date" line (verified: concurrent 2x Ren Cooper → both completed, all 4 dates present). /tmp test scripts removed.
+
+## 2026-09-11 — RCE-semicolon pattern + manual IP ban endpoints + RootEvidence banned
+
+### Added
+- **`RCE-semicolon-shell` suspicious pattern** (`;\s*(touch|curl|wget|chmod|rm|bash|sh|python|perl)`) — the Airflow `; touch test #` canary class now counts toward bans like other RCE shapes.
+- **`POST /api/admin/ban` + `/api/admin/unban`** (write-key only; loopback/trusted IPs refused) — instant permanent bans with Discord alert + disk persistence, plus a safety-valve unban.
+- **Banned `66.175.215.31`** (RootEvidence: Kibana fingerprinting → Airflow RCE canary) via the new endpoint; persisted in `ban-state.json`. Note: VPS `.env` already carried a write key (local copy lacked it) — no new secrets minted.
+
+### Deployed
+- 2026-09-11 live: file was md5-identical pre-edit, full SCP + `pm2 restart morgue-api`; health OK.
+
+## 2026-09-11 — Discord API logs always show the user agent
+
+### Changed
+- **`morgue-api.js` `flushWebhookBatch`**: every batched request line now ends with `ua="…"` (first 60 chars; `ua="-"` when absent — itself a scanner signal). UA was already in console/file/activity logs but missing from the Discord batch. Suspicious-request alerts already carried the full UA; unchanged.
+
+### Deployed
+- 2026-09-11 live: file was md5-identical pre-edit, full SCP + `pm2 restart morgue-api`; health OK. Bot untouched.
+
+## 2026-09-11 — Security patches: qs, undici, sharp (Dependabot triage)
+
+### Fixed
+- **Bot `qs@6.15.3` → 6.16.0** (DoS via attacker-controlled `isBuffer`) — the one genuinely reachable advisory: Express parses every inbound query string on the public morgue-api. Pinned via `overrides` (express wants `~6.15.1`). Verified `qs@6.16.0 overridden` in tree.
+- **Bot `undici` 6.27.0 → 6.28.1** (cookie injection, discord.js chain) and **`sharp` 0.35.1 → 0.35.4** (libheif CVEs; `/card` inputs are committed PNG + staff text, so exposure was nil) — cheap opportunistic bumps.
+- Triage verdict on the other ~30 open alerts: dev/build-only or inapplicable (brace-expansion/js-yaml/browserslist/postcss/nanoid/humanfs in eslint/vite/jest chains; fast-xml-parser on Google's own responses; protobufjs on bundled protos; react-router RSC advisory vs our plain HashRouter SPA; esbuild localhost dev only). Remaining `npm audit` highs are exactly that accepted-noise set.
+
+### Deployed
+- 2026-09-11 live: SCP `package.json` + `package-lock.json`, VPS `npm install`, versions confirmed on disk (qs 6.16.0 / undici 6.28.1 / sharp 0.35.4), restarted **both** processes (morgue-api shares the modules); bot logged in, API healthy, no new boot errors.
+
 ## 2026-09-11 — /card appends a shareable ImgBB URL
 
 ### Added

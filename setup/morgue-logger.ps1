@@ -244,19 +244,33 @@ function Sync-MorgueRecords-ToApi {
         return
     }
 
-    # Upload all records in a single bulk request
-    Write-Host "--- Uploading $($records.Count) records via bulk endpoint ---" -ForegroundColor Cyan
-    try {
-        $bulkPayload = @{ records = $records }
-        $json = $bulkPayload | ConvertTo-Json -Depth 10
-        $utf8Body = [System.Text.Encoding]::UTF8.GetBytes($json)
-        $targetUrl = "${apiBaseUrl}/api/morgue/bulk"
-        $response = Invoke-WebRequest -Uri $targetUrl -Method Post -Body $utf8Body -ContentType "application/json; charset=utf-8" -Headers @{"x-api-key" = $apiKey} -UseBasicParsing -ErrorAction Stop
-        $result = $response.Content | ConvertFrom-Json
-        Write-Host "--- Bulk Complete: $($result.ok) uploaded, $($result.failed) failed (out of $totalCount) ---" -ForegroundColor Cyan
-    } catch {
-        Write-Host "[FAIL] Bulk upload failed: $($_.Exception.Message)" -ForegroundColor Red
+    # Upload records in batches (keeps each request well under server limits
+    # and isolates failures so one bad batch does not lose the whole run)
+    $batchSize = 100
+    $totalOk = 0
+    $totalFailed = 0
+    $batchCount = [Math]::Ceiling($records.Count / $batchSize)
+    Write-Host "--- Uploading $($records.Count) records via bulk endpoint ($batchCount batch(es) of up to $batchSize) ---" -ForegroundColor Cyan
+    for ($i = 0; $i -lt $records.Count; $i += $batchSize) {
+        $end = [Math]::Min($i + $batchSize - 1, $records.Count - 1)
+        $batch = @($records[$i..$end])
+        $batchNum = [Math]::Floor($i / $batchSize) + 1
+        try {
+            $bulkPayload = @{ records = $batch }
+            $json = $bulkPayload | ConvertTo-Json -Depth 10
+            $utf8Body = [System.Text.Encoding]::UTF8.GetBytes($json)
+            $targetUrl = "${apiBaseUrl}/api/morgue/bulk"
+            $response = Invoke-WebRequest -Uri $targetUrl -Method Post -Body $utf8Body -ContentType "application/json; charset=utf-8" -Headers @{"x-api-key" = $apiKey} -UseBasicParsing -ErrorAction Stop
+            $result = $response.Content | ConvertFrom-Json
+            $totalOk += $result.ok
+            $totalFailed += $result.failed
+            Write-Host "  Batch $batchNum/${batchCount}: $($result.ok) uploaded, $($result.failed) failed" -ForegroundColor Gray
+        } catch {
+            $totalFailed += $batch.Count
+            Write-Host "[FAIL] Batch $batchNum/${batchCount} failed: $($_.Exception.Message)" -ForegroundColor Red
+        }
     }
+    Write-Host "--- Bulk Complete: $totalOk uploaded, $totalFailed failed (out of $totalCount) ---" -ForegroundColor Cyan
 }
 
 

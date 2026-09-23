@@ -97,6 +97,8 @@ async function registerCommands() {
     const testNotify = await import('./commands/test-autopsy-notify.js');
     const testPing = await import('./commands/test-ping.js');
     const patientSearch = await import('./commands/patient-search.js');
+    const checkBackground = await import('./commands/background.js');
+    const pmIntakeDryrun = await import('./commands/pm-intake-dryrun.js');
     const fixAutopsy = await import('./commands/fix-autopsy.js');
     const groupMorgueCheck = await import('./commands/group-morgue-check.js');
     const faceRedraft = await import('./commands/face-redraft.js');
@@ -147,6 +149,8 @@ async function registerCommands() {
         testNotify.data.toJSON(),
         testPing.data.toJSON(),
         patientSearch.data.toJSON(),
+        checkBackground.data.toJSON(),
+        pmIntakeDryrun.data.toJSON(),
         groupMorgueCheck.data.toJSON(),
         faceRedraft.data.toJSON(),
         agencyCreds.data.toJSON(),
@@ -327,12 +331,13 @@ client.once('clientReady', async () => {
         console.warn('[BOT] ⚠️ Auto-deploy client failed to register (non-fatal):', err.message);
     }
 
-    // ── Start autopsy request monitor (checks forum for new requests) ──
+    // ── Register PM intake client now; the monitor itself starts in the
+    // phased boot queue below (forum-heavy — never at T+0) ──
     try {
-        const { startAutopsyRequestMonitor } = await import('./services/autopsyRequestMonitor.js');
-        startAutopsyRequestMonitor();
+        const { setPmIntakeClient } = await import('./services/privateAutopsyPmMonitor.js');
+        setPmIntakeClient(client);
     } catch (err) {
-        console.warn('[BOT] ⚠️ Autopsy request monitor failed to start (non-fatal):', err.message);
+        console.warn('[BOT] ⚠️ PM intake client failed to register (non-fatal):', err.message);
     }
 
     // ── Start web autopsy request poster (autopsy-requests/pending -> f=265) ──
@@ -357,6 +362,17 @@ client.once('clientReady', async () => {
         startMorgueMatchLogger();
     } catch (err) {
         console.warn('[BOT] ⚠️ Morgue-match logger failed to start (non-fatal):', err.message);
+    }
+
+    // ── Start coroner-email worker (dedicated queue entity; Phase 0 — ──
+    // Firebase listener only, no forum traffic at boot) ──
+    try {
+        const firebase = (await import('./services/firebase.js')).default;
+        firebase.init();
+        const { startCoronerEmailWorker } = await import('./services/coronerEmailQueue.js');
+        startCoronerEmailWorker(firebase.db);
+    } catch (err) {
+        console.warn('[BOT] ⚠️ Coroner-email worker failed to start (non-fatal):', err.message);
     }
 
     // ── Start queue dashboard (lightweight deploy queue embed in bot-spam) ──
@@ -386,6 +402,66 @@ client.once('clientReady', async () => {
         startFacePublishSweep().catch((err) => console.warn('[BOT] ⚠️ Face publish sweep failed to start (non-fatal):', err.message));
     } catch (err) {
         console.warn('[BOT] ⚠️ Face publish sweep failed to start (non-fatal):', err.message);
+    }
+
+    // ── Phased boot queue (forum-heavy starters, one at a time) ──
+    // Phase 0 above touched Discord/Firebase only. The recovery heartbeat keeps
+    // its own 30s timer (failed work first — unchanged). Everything below runs
+    // strictly in order via the shared browser warmup + global forum gate.
+    try {
+        const { runStartupQueue, warmupBrowser, WARMUP_DELAY_MS } = await import('./services/startupQueue.js');
+        const queue = [
+            {
+                name: 'browser-warmup',
+                run: async () => {
+                    await new Promise((r) => setTimeout(r, WARMUP_DELAY_MS));
+                    await warmupBrowser();
+                },
+            },
+            {
+                // Awaits the real sync (starter now returns it) — or returns
+                // fast when the cooldown schedules it later.
+                name: 'roster-sync',
+                run: async () => {
+                    const { startFactionRosterSync } = await import('./services/factionRosterSync.js');
+                    await startFactionRosterSync();
+                },
+            },
+            {
+                // Awaits the real first scan, then starts the monitor without
+                // repeating it (rotation init continues in background, gated).
+                name: 'autopsy-monitor',
+                run: async () => {
+                    const { checkForNewRequests, startAutopsyRequestMonitor } = await import('./services/autopsyRequestMonitor.js');
+                    await checkForNewRequests();
+                    startAutopsyRequestMonitor({ immediate: false });
+                },
+            },
+            {
+                // Fast return; the 45s self-delayed rebuild (if stale) runs
+                // afterwards under the global gate.
+                name: 'patient-index',
+                run: async () => {
+                    const firebase = (await import('./services/firebase.js')).default;
+                    firebase.init();
+                    const { startPatientIndex } = await import('./services/patientIndex.js');
+                    await startPatientIndex(firebase.db);
+                },
+            },
+            {
+                // Awaits the real first poll, then schedules the interval
+                // without repeating it.
+                name: 'pm-intake',
+                run: async () => {
+                    const { pollOnce, startPrivateAutopsyPmMonitor } = await import('./services/privateAutopsyPmMonitor.js');
+                    await pollOnce();
+                    startPrivateAutopsyPmMonitor({ immediate: false });
+                },
+            },
+        ];
+        runStartupQueue(queue).catch((err) => console.warn('[BOT] ⚠️ Phased boot queue failed (non-fatal):', err.message));
+    } catch (err) {
+        console.warn('[BOT] ⚠️ Phased boot queue failed to start (non-fatal):', err.message);
     }
 });
 
@@ -536,6 +612,13 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.isModalSubmit() && interaction.customId.startsWith('ar_modal_')) {
         const { handleModal } = await import('./commands/autopsy-request.js');
         await handleModal(interaction);
+        return;
+    }
+
+    // Handle private-autopsy PM intake approval buttons (Approve / Deny)
+    if (interaction.isButton() && (interaction.customId.startsWith('pmintake_ok_') || interaction.customId.startsWith('pmintake_no_'))) {
+        const { handlePmIntakeButton } = await import('./services/privateAutopsyPmMonitor.js');
+        await handlePmIntakeButton(interaction);
         return;
     }
 
@@ -866,6 +949,12 @@ async function start() {
 
     const patientSearchCmd = await import('./commands/patient-search.js');
     client.commands.set(patientSearchCmd.data.name, { execute: patientSearchCmd.execute });
+
+    const checkBackgroundCmd = await import('./commands/background.js');
+    client.commands.set(checkBackgroundCmd.data.name, { execute: checkBackgroundCmd.execute });
+
+    const pmIntakeDryrunCmd = await import('./commands/pm-intake-dryrun.js');
+    client.commands.set(pmIntakeDryrunCmd.data.name, { execute: pmIntakeDryrunCmd.execute });
 
     const massAutopsyCmd = await import('./commands/mass-autopsy.js');
     client.commands.set(massAutopsyCmd.data.name, { execute: massAutopsyCmd.execute });

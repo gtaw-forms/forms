@@ -162,10 +162,12 @@ export function parseMassAutopsyBbcode(bbcode) {
  * @param {object} [options]
  * @param {boolean} [options.dryRun=true]
  * @param {string} [options.requesterName='']
+ * @param {string} [options.pmForum=''] - Private delivery forum (lspd/lssd/phmc); completion PMs go to pmRecipient
+ * @param {string} [options.pmRecipient=''] - Forum username receiving the completion PMs (whole batch)
  * @param {string} [options.baseUrl='https://phmc.gta.world']
  * @returns {Promise<MassAutopsyResult[]>}
  */
-export async function executeMassAutopsy(db, client, bodies, { dryRun = true, requesterName = '', baseUrl = PHMC_BASE } = {}) {
+export async function executeMassAutopsy(db, client, bodies, { dryRun = true, requesterName = '', pmForum = '', pmRecipient = '', baseUrl = PHMC_BASE } = {}) {
     const results = [];
 
     if (bodies.length === 0) {
@@ -319,6 +321,8 @@ export async function executeMassAutopsy(db, client, bodies, { dryRun = true, re
                     wasMatch: true,
                     assignedTo: assignedName,
                     isPrivate: true,
+                    pmForum: pmForum || null,
+                    pmRecipient: pmRecipient || null,
                     massAutopsy: true,
                     massAutopsyGroup: `${Date.now()}`,
                     parsed: {

@@ -4,7 +4,6 @@ import {
     triggerValidateGtaWorldToken,
     triggerUploadFactionData,
     triggerCheckFactionMembership,
-    triggerTestHealthAlert,
     triggerFetchExternalUrl
 } from '../../services/firebaseFunctions';
 

@@ -126,10 +126,13 @@ const EmployeeCredentialsSection = ({
     try {
       setIsRefreshing(true);
       
-      // Step 1: Trigger Faction Sync (RTDB -> GtaWorld API)
+      // Step 1: Trigger Faction Sync (RTDB -> GtaWorld API). Explicit user
+      // action (Reload button) — force bypasses the per-session debounce
+      // guard in GtaWorldAuthContext; harmless if the injected prop version
+      // ignores the options argument.
       if (typeof triggerFactionSync === 'function') {
         try {
-          await triggerFactionSync();
+          await triggerFactionSync({ force: true });
         } catch (syncErr) {
           // If it's a permission error (e.g., Only Super Admins can manually trigger a sync), 
           // we just log it and proceed to Step 2 to at least refresh local data.

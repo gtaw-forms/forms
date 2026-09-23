@@ -49,6 +49,7 @@ export * from './src/webhooks/index.js';
  */
 export const getPublicConfig = onCall({
     region: "europe-west2",
+    memory: "256MiB",
     cors: [
         'https://gtaw-forms.github.io',
         'https://phmc-tools.gta.world',
@@ -69,6 +70,9 @@ export const getPublicConfig = onCall({
  */
 export const triggerFactionSync = onCall({
     region: "europe-west2",
+    memory: "512MiB",
+    secrets: ["PHMC_CONFIG"],
+    timeoutSeconds: 300,
     cors: [
         'https://gtaw-forms.github.io',
         'https://phmc-tools.gta.world',
@@ -113,6 +117,7 @@ export const triggerFactionSync = onCall({
  */
 export const getMorgueRecords = onCall({
     region: "europe-west2",
+    memory: "256MiB",
     cors: [
         'https://gtaw-forms.github.io',
         'https://phmc-tools.gta.world',
@@ -157,82 +162,6 @@ export const getMorgueRecords = onCall({
 });
 
 /**
- * saveReportBBCode — store a saved report's BBCode on the VPS (P2: keeps
- * newSavedReportBBCode out of RTDB — that node was ~11MB and growing).
- */
-export const saveReportBBCode = onCall({
-    cors: [
-        'https://gtaw-forms.github.io',
-        'https://phmc-tools.gta.world',
-        'http://localhost:3000',
-        'http://localhost:5173',
-    ],
-}, async (request) => {
-    if (!request.auth) throw new functions.https.HttpsError('unauthenticated', 'Authentication required.');
-    if (!MORGUE_API_KEY) throw new functions.https.HttpsError('internal', 'Server configuration error.');
-    const { author, key, bbCode } = request.data || {};
-    if (!author || !key || typeof bbCode !== 'string') {
-        throw new functions.https.HttpsError('invalid-argument', 'author, key and bbCode are required.');
-    }
-    try {
-        const response = await fetch(`${MORGUE_API_URL}/api/report-bbcode`, {
-            method: 'POST',
-            headers: { 'x-api-key': MORGUE_API_KEY, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ author, key, bbCode }),
-        });
-        if (!response.ok) {
-            const text = await response.text();
-            console.error(`[saveReportBBCode] VPS returned ${response.status}: ${text}`);
-            throw new functions.https.HttpsError('internal', 'Failed to save report BBCode.');
-        }
-        return { success: true };
-    } catch (err) {
-        if (err instanceof functions.https.HttpsError) throw err;
-        console.error('[saveReportBBCode] Error:', err.message);
-        throw new functions.https.HttpsError('internal', `Failed to save report BBCode: ${err.message}`);
-    }
-});
-
-/**
- * getReportBBCode — fetch a saved report's BBCode from the VPS, falling back to
- * RTDB newSavedReportBBCode for reports saved before the P2 migration.
- */
-export const getReportBBCode = onCall({
-    cors: [
-        'https://gtaw-forms.github.io',
-        'https://phmc-tools.gta.world',
-        'http://localhost:3000',
-        'http://localhost:5173',
-    ],
-}, async (request) => {
-    if (!request.auth) throw new functions.https.HttpsError('unauthenticated', 'Authentication required.');
-    const { author, key } = request.data || {};
-    if (!author || !key) throw new functions.https.HttpsError('invalid-argument', 'author and key are required.');
-    if (MORGUE_API_KEY) {
-        try {
-            const response = await fetch(
-                `${MORGUE_API_URL}/api/report-bbcode/${encodeURIComponent(author)}/${encodeURIComponent(key)}`,
-                { headers: { 'x-api-key': MORGUE_API_KEY } }
-            );
-            if (response.ok) {
-                const data = await response.json();
-                return { bbCode: data.bbCode || '' };
-            }
-        } catch (err) {
-            console.error('[getReportBBCode] VPS read error:', err.message);
-        }
-    }
-    // Legacy fallback: reports saved before the migration still live in RTDB.
-    try {
-        const snap = await adminDb.ref(`newSavedReportBBCode/${author}/${key}`).once('value');
-        return { bbCode: snap.exists() ? (snap.val()?.bbCode || '') : '' };
-    } catch (err) {
-        console.error('[getReportBBCode] RTDB fallback error:', err.message);
-        throw new functions.https.HttpsError('internal', 'Failed to read report BBCode.');
-    }
-});
-
-/**
  * getProtocolsDev — Returns the dev EMS protocols dataset (for localhost
  * preview). Hosted on the VPS (data/protocols-dev.json) to keep the heavy
  * base64 images out of RTDB.
@@ -241,6 +170,7 @@ export const getReportBBCode = onCall({
  */
 export const getProtocolsDev = onCall({
     region: "europe-west2",
+    memory: "256MiB",
     cors: [
         'https://gtaw-forms.github.io',
         'https://phmc-tools.gta.world',
@@ -282,6 +212,7 @@ export const getProtocolsDev = onCall({
  */
 export const deleteMorgueRecord = onCall({
     region: "europe-west2",
+    memory: "256MiB",
     cors: [
         'https://gtaw-forms.github.io',
         'https://phmc-tools.gta.world',
@@ -343,6 +274,7 @@ export const deleteMorgueRecord = onCall({
  */
 export const purgeMorgueRecords = onCall({
     region: "europe-west2",
+    memory: "256MiB",
     cors: [
         'https://gtaw-forms.github.io',
         'https://phmc-tools.gta.world',
@@ -393,6 +325,7 @@ export const purgeMorgueRecords = onCall({
  */
 export const syncMorgueFile = onCall({
     region: "europe-west2",
+    memory: "256MiB",
     cors: [
         'https://gtaw-forms.github.io',
         'https://phmc-tools.gta.world',
@@ -447,6 +380,7 @@ export const syncMorgueFile = onCall({
  */
 export const getCctvData = onCall({
     region: "europe-west2",
+    memory: "256MiB",
     cors: [
         'https://gtaw-forms.github.io',
         'https://phmc-tools.gta.world',
@@ -518,6 +452,7 @@ export const getCctvData = onCall({
  */
 export const triggerCctvFetch = onCall({
     region: "europe-west2",
+    memory: "256MiB",
     cors: [
         'https://gtaw-forms.github.io',
         'https://phmc-tools.gta.world',
@@ -587,6 +522,7 @@ export const triggerCctvFetch = onCall({
  */
 export const checkOfficerName = onCall({
     region: "europe-west2",
+    memory: "256MiB",
     cors: [
         'https://gtaw-forms.github.io',
         'https://phmc-tools.gta.world',
@@ -647,6 +583,7 @@ export const checkOfficerName = onCall({
  */
 export const getAgencyCredentials = onCall({
     region: "europe-west2",
+    memory: "256MiB",
     cors: [
         'https://gtaw-forms.github.io',
         'https://phmc-tools.gta.world',
@@ -722,6 +659,7 @@ export const getAgencyCredentials = onCall({
  */
 export const getPatientNames = onCall({
     region: "europe-west2",
+    memory: "256MiB",
     cors: [
         'https://gtaw-forms.github.io',
         'https://phmc-tools.gta.world',
@@ -808,42 +746,115 @@ function requireSignedIn(request) {
     if (!request.auth) throw new functions.https.HttpsError('unauthenticated', 'Authentication required.');
 }
 
-export const listSavedReports = onCall({ region: 'europe-west2' }, async (request) => {
+// ── Saved-report author gate (Task 3b-8, design §3 auth tightening) ──
+// Q6 resolution: the canonical caller identity is the set of custom claims put
+// into request.auth.token by processGtaWorldAuth
+// (functions/src/auth/index.js:387-397): gtawUsername + oauthName (both = the
+// UCP account username) and characterName (highest-rank PHMC roster character
+// name, null for non-members). refreshGtawUser (functions/src/auth/index.js:
+// 650-656) sets gtawUsername ONLY — no characterName/oauthName — so refreshed
+// sessions would lose their identity under a characterName-only check. The
+// gate therefore matches the requested author against ALL THREE sanitized
+// claim values (same comprehensiveSanitize rule as the client,
+// src/utils/textUtils.js:161-167) and never trusts the client string alone.
+// Superadmin (isSuperAdmin claim or accessLevel 'superadmin', same convention
+// as getSavedReportStats) bypasses. Reads additionally allow faction admins
+// (accessLevel 'admin'/'management' = scriptRank >= 12); writes/deletes do
+// not — admin tools never write user reports.
+function savedReportSanitize(str) {
+    if (!str || typeof str !== 'string') return '';
+    let sanitized = str.trim().replace(/[.#$[/ \]]+/g, '_');
+    sanitized = sanitized.replace(/_{2,}/g, '_');
+    sanitized = sanitized.replace(/^_+|_+$/g, '');
+    return sanitized;
+}
+
+function savedReportCaller(request) {
+    const token = request.auth?.token || {};
+    const allowed = new Set(
+        [token.characterName, token.oauthName, token.gtawUsername]
+            .map((v) => savedReportSanitize(v))
+            .filter(Boolean)
+    );
+    const accessLevel = token.accessLevel;
+    const isSuperAdmin = token.isSuperAdmin === true || accessLevel === 'superadmin';
+    const isFactionAdmin = isSuperAdmin
+        || accessLevel === 'admin'
+        || accessLevel === 'management'
+        || (typeof accessLevel === 'number' && accessLevel >= 12);
+    return { allowed, isSuperAdmin, isFactionAdmin, uid: request.auth?.uid || null };
+}
+
+// Localhost dev escape hatch: useFormSaver saves under the FIXED author
+// 'GTAW_Dev' on localhost while the token still carries the dev's real
+// identity. Fixed string, not client identity — allowlisting it preserves
+// localhost dev without weakening per-user isolation.
+const SAVED_REPORT_DEV_AUTHOR = 'GTAW_Dev';
+
+function requireSavedReportAuthor(request, fnName, author, allowAdminRead) {
+    const requested = savedReportSanitize(author);
+    const caller = savedReportCaller(request);
+    if (caller.isSuperAdmin) return;
+    if (requested === SAVED_REPORT_DEV_AUTHOR) return;
+    if (requested && caller.allowed.has(requested)) return;
+    if (allowAdminRead && caller.isFactionAdmin) return;
+    // Warn-level, diagnosable, no raw tokens/keys: requested author vs the
+    // caller's identity CLASS (booleans + uid only).
+    console.warn(`[${fnName}] author gate denied: requested="${requested}" ` +
+        `identityClass={hasIdentity:${caller.allowed.size > 0},` +
+        `isSuperAdmin:${caller.isSuperAdmin},isFactionAdmin:${caller.isFactionAdmin},` +
+        `uid:${caller.uid || 'none'}}`);
+    throw new functions.https.HttpsError('permission-denied', 'You can only access your own saved reports.');
+}
+
+export const listSavedReports = onCall({ region: 'europe-west2', memory: '256MiB' }, async (request) => {
     requireSignedIn(request);
     const author = String(request.data?.author || '').trim();
     if (!author) throw new functions.https.HttpsError('invalid-argument', 'author is required.');
-    return callSavedReportsApi(`/api/reports?author=${encodeURIComponent(author)}`);
+    requireSavedReportAuthor(request, 'listSavedReports', author, true);
+    // Paginated list: limit/offset optional, no limit = all (count/exists checks).
+    const rawLimit = Number(request.data?.limit);
+    const rawOffset = Number(request.data?.offset);
+    const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(Math.floor(rawLimit), 500) : 0;
+    const offset = Number.isFinite(rawOffset) && rawOffset > 0 ? Math.floor(rawOffset) : 0;
+    let path = `/api/reports?author=${encodeURIComponent(author)}`;
+    if (limit > 0) path += `&limit=${limit}`;
+    if (offset > 0) path += `&offset=${offset}`;
+    return callSavedReportsApi(path);
 });
 
-export const getSavedReport = onCall({ region: 'europe-west2' }, async (request) => {
+export const getSavedReport = onCall({ region: 'europe-west2', memory: '256MiB' }, async (request) => {
     requireSignedIn(request);
     const author = String(request.data?.author || '').trim();
     const key = String(request.data?.key || '').trim();
     if (!author || !key) throw new functions.https.HttpsError('invalid-argument', 'author and key are required.');
+    requireSavedReportAuthor(request, 'getSavedReport', author, true);
     return callSavedReportsApi(`/api/reports/${encodeURIComponent(author)}/${encodeURIComponent(key)}`);
 });
 
-export const saveSavedReport = onCall({ region: 'europe-west2' }, async (request) => {
+export const saveSavedReport = onCall({ region: 'europe-west2', memory: '256MiB' }, async (request) => {
     requireSignedIn(request);
     const { author, key, report, bbCode = '' } = request.data || {};
     if (!author || !key || !report || typeof report !== 'object' || Array.isArray(report)) {
         throw new functions.https.HttpsError('invalid-argument', 'author, key and report are required.');
     }
+    requireSavedReportAuthor(request, 'saveSavedReport', author, false);
     return callSavedReportsApi('/api/reports', {
         method: 'POST',
         body: JSON.stringify({ author, key, report, bbCode }),
     });
 });
 
-export const deleteSavedReport = onCall({ region: 'europe-west2' }, async (request) => {
+export const deleteSavedReport = onCall({ region: 'europe-west2', memory: '256MiB' }, async (request) => {
     requireSignedIn(request);
     const author = String(request.data?.author || '').trim();
     const key = String(request.data?.key || '').trim();
     if (!author || !key) throw new functions.https.HttpsError('invalid-argument', 'author and key are required.');
+    requireSavedReportAuthor(request, 'deleteSavedReport', author, false);
     return callSavedReportsApi(`/api/reports/${encodeURIComponent(author)}/${encodeURIComponent(key)}`, { method: 'DELETE' });
 });
 
-export const getSavedReportStats = onCall({ region: 'europe-west2' }, async (request) => {
+export const getSavedReportStats = onCall({ region: 'europe-west2', memory: '256MiB' }, async (request) => {
     requireSignedIn(request);
     const isSuperAdmin = request.auth.token.isSuperAdmin === true || request.auth.token.accessLevel === 'superadmin';
     const accessLevel = Number(request.auth.token.accessLevel) || 0;
@@ -854,14 +865,14 @@ export const getSavedReportStats = onCall({ region: 'europe-west2' }, async (req
     return callSavedReportsApi('/api/reports/stats');
 });
 
-export const createSavedReportsBackup = onCall({ region: 'europe-west2' }, async (request) => {
+export const createSavedReportsBackup = onCall({ region: 'europe-west2', memory: '256MiB' }, async (request) => {
     requireSignedIn(request);
     const isSuperAdmin = request.auth.token.isSuperAdmin === true || request.auth.token.accessLevel === 'superadmin';
     if (!isSuperAdmin) throw new functions.https.HttpsError('permission-denied', 'Super-admin access required.');
     return callSavedReportsApi('/api/reports/backup', { method: 'POST', body: '{}' });
 });
 
-export const restoreSavedReportsBackup = onCall({ region: 'europe-west2' }, async (request) => {
+export const restoreSavedReportsBackup = onCall({ region: 'europe-west2', memory: '256MiB' }, async (request) => {
     requireSignedIn(request);
     const isSuperAdmin = request.auth.token.isSuperAdmin === true || request.auth.token.accessLevel === 'superadmin';
     if (!isSuperAdmin) throw new functions.https.HttpsError('permission-denied', 'Super-admin access required.');

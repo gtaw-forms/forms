@@ -42,6 +42,7 @@ async function isWebhookDeleted(url) {
 
 export const sendWebhookProxy = onCall({
   region: "europe-west2",
+  memory: "256MiB",
   cors: [
     'https://gtaw-forms.github.io',
     'https://phmc-tools.gta.world',

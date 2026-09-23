@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { database } from '../firebase';
 import { ref, get } from 'firebase/database';
-import { triggerGetReportBBCode, triggerListSavedReports, triggerGetSavedReport } from '../services/firebaseFunctions';
+import { triggerListSavedReports, triggerGetSavedReport } from '../services/firebaseFunctions';
 import * as Sentry from "@sentry/react";
 import { useNotification } from '../contexts/NotificationContext';
 import { useData } from '../contexts/DataContext';
@@ -9,9 +9,8 @@ import { getCharacterName } from '../utils/identityUtils';
 import { comprehensiveSanitize } from '../utils/textUtils';
 import useGtaWorldAuth from './useGtaWorldAuth';
 
-const isLocalHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-const REPORTS_PATH = isLocalHost ? 'scheduledReports' : 'newSavedReports';
-const BBCODE_PATH = isLocalHost ? 'scheduledReportsBBCode' : 'newSavedReportBBCode';
+// Note: all non-scheduled reads go through the VPS after the Task 3b
+// cutover — no RTDB report paths are read here anymore.
 
 export const useReportLoader = () => {
     const { showNotification, removeNotification } = useNotification();
@@ -21,6 +20,8 @@ export const useReportLoader = () => {
     const [savedReports, setSavedReports] = useState([]);
     const [isLoadingUserReports, setIsLoadingUserReports] = useState(false);
     const [selectedUserForSavedReports, setSelectedUserForSavedReports] = useState(null);
+    // VPS-side total for the selected user (paging: loaded < total => "Show more").
+    const [savedReportsTotal, setSavedReportsTotal] = useState(0);
 
     const findEmployeeDetails = useCallback((employeeName) => {
         if (!employeeName) return null;
@@ -31,71 +32,48 @@ export const useReportLoader = () => {
         return employee || null;
     }, [factionListData]);
 
-    const loadUserSavedReports = useCallback(async (userId) => {
+    // Paginated: loads the 50 most recent VPS reports by default.
+    // "Show more" paging goes through loadMoreSavedReports(userId).
+    const DEFAULT_REPORT_PAGE_SIZE = 50;
+    const loadUserSavedReports = useCallback(async (userId, options = {}) => {
         if (!userId) {
             setSavedReports([]);
             setSelectedUserForSavedReports(null);
+            setSavedReportsTotal(0);
             return [];
         }
+
+        const limit = options.limit ?? DEFAULT_REPORT_PAGE_SIZE;
+        const offset = options.offset ?? 0;
+        const append = options.append === true && offset > 0;
 
         setIsLoadingUserReports(true);
         setSelectedUserForSavedReports(userId);
         const loadingNotifId = showNotification(`Loading reports for ${userId}...`, 'info-circle', 0);
-        
+
         const sanitizedUserId = comprehensiveSanitize(userId);
-        const legacyReportsRef = ref(database, `savedReports/${sanitizedUserId}`);
-        const newReportsRef = ref(database, `${REPORTS_PATH}/${sanitizedUserId}`);
         const scheduledRef = ref(database, `scheduledReports/${sanitizedUserId}`);
 
         try {
-            let legacySnapshot = null;
-            let newSnapshot = null;
-            let vpsReports = null;
+            let vpsReports = [];
+            let vpsTotal = 0;
             try {
-                const result = await triggerListSavedReports({ author: sanitizedUserId });
+                const result = await triggerListSavedReports({ author: sanitizedUserId, limit, offset });
                 vpsReports = Array.isArray(result?.reports) ? result.reports : [];
-                if (vpsReports.length === 0) {
-                    [legacySnapshot, newSnapshot] = await Promise.all([get(legacyReportsRef), get(newReportsRef)]);
-                }
+                vpsTotal = Number(result?.total) || (offset + vpsReports.length);
             } catch (error) {
-                console.warn('[useReportLoader] VPS report list unavailable; falling back to RTDB:', error.message);
-                [legacySnapshot, newSnapshot] = await Promise.all([get(legacyReportsRef), get(newReportsRef)]);
+                // Task 3b cutover: saved reports live on the VPS. No RTDB
+                // fallback — a VPS failure surfaces as an error below instead
+                // of silently re-reading the drained legacy nodes.
+                console.warn('[useReportLoader] VPS report list unavailable:', error.message);
+                throw error;
             }
             const scheduledSnapshot = await get(scheduledRef);
+            setSavedReportsTotal(vpsTotal);
 
             let allReports = [];
 
-            if (vpsReports) {
-                allReports.push(...vpsReports.map(report => ({ ...report, _src: 'vps', legacy: false })));
-            }
-
-            if (legacySnapshot?.exists()) {
-                const legacyData = legacySnapshot.val();
-                const legacyReports = Object.keys(legacyData).map(key => ({
-                    ...legacyData[key],
-                    key: key // The firebase key
-                }));
-
-                const processedLegacyReports = legacyReports.map(report => {
-                    if (report.legacy === undefined) {
-                        // These versions were saved before the `legacy` flag existed.
-                        const legacyVersions = [1, 2, 3, 4, 5, 6, 7, 11, 18, 19, 24, 25, 37];
-                        const isLegacy = legacyVersions.includes(report.bbCodeVersion);
-                        return { ...report, legacy: isLegacy };
-                    }
-                    return report;
-                });
-                allReports.push(...processedLegacyReports);
-            }
-
-            if (newSnapshot?.exists()) {
-                const newData = newSnapshot.val();
-                const newReports = Object.keys(newData).map(key => ({
-                    ...newData[key],
-                    key: key // The firebase key
-                }));
-                allReports.push(...newReports);
-            }
+            allReports.push(...vpsReports.map(report => ({ ...report, _src: 'vps', legacy: false })));
 
             // Deploy-tracked reports live under scheduledReports (bot queue) — the
             // deployed ones carry hasdeployed/deployStatus/deployUrl there. Include
@@ -112,10 +90,32 @@ export const useReportLoader = () => {
 
             removeNotification(loadingNotifId);
 
-            if (allReports.length > 0) {
+            if (allReports.length > 0 || append) {
                 allReports.sort((a, b) => b.timestamp - a.timestamp);
+                if (append) {
+                    // Append page: merge with existing, de-dupe by key.
+                    // Functional update avoids a stale closure over savedReports.
+                    setSavedReports(prev => {
+                        const seen = new Set();
+                        const merged = [];
+                        for (const r of [...prev, ...allReports]) {
+                            const k = `${r._src}:${r.key}`;
+                            if (seen.has(k)) continue;
+                            seen.add(k);
+                            merged.push(r);
+                        }
+                        merged.sort((a, b) => b.timestamp - a.timestamp);
+                        return merged;
+                    });
+                    showNotification(`Loaded more reports for ${userId}.`, 'check-circle');
+                    return allReports;
+                }
                 setSavedReports(allReports);
-                showNotification(`Loaded ${allReports.length} report(s) for ${userId}.`, 'check-circle');
+                if (vpsTotal > vpsReports.length) {
+                    showNotification(`Showing ${vpsReports.length} most recent of ${vpsTotal} reports for ${userId}.`, 'check-circle');
+                } else {
+                    showNotification(`Loaded ${allReports.length} report(s) for ${userId}.`, 'check-circle');
+                }
             } else {
                 showNotification(`No reports found for ${userId}.`, 'info-circle');
             }
@@ -125,7 +125,10 @@ export const useReportLoader = () => {
             console.error(`Error loading reports for user ${userId}:`, error);
             Sentry.captureException(error, { extra: { context: 'loadUserSavedReports', userId } });
             showNotification(`Failed to load reports for ${userId}.`, 'error');
-            setSavedReports([]);
+            if (!append) {
+                setSavedReports([]);
+                setSavedReportsTotal(0);
+            }
             return [];
         } finally {
             setIsLoadingUserReports(false);
@@ -142,15 +145,13 @@ export const useReportLoader = () => {
         const isLegacyReport = report.legacy;
         const sanitizedUserId = comprehensiveSanitize(userId);
 
-        let reportPath = isLegacyReport
-            ? `savedReports/${sanitizedUserId}/${reportFirebaseKey}`
-            : `${REPORTS_PATH}/${sanitizedUserId}/${reportFirebaseKey}`;
+        let reportPath = null;
+        let bbCodePath = null;
 
-        let bbCodePath = isLegacyReport
-            ? `savedReportBBCode/${sanitizedUserId}/${reportFirebaseKey}`
-            : `${BBCODE_PATH}/${sanitizedUserId}/${reportFirebaseKey}`;
-
-        // Deploy-tracked reports (from the bot queue) read/write scheduledReports.
+        // Deploy-tracked reports (from the bot queue) read scheduledReports on
+        // RTDB. Everything else lives on the VPS after the Task 3b cutover —
+        // items without `_src` (pre-cutover bundles) resolve through the VPS
+        // too, since the backfill covers all legacy authors/keys.
         if (report._src === 'scheduled') {
             reportPath = `scheduledReports/${sanitizedUserId}/${reportFirebaseKey}`;
             bbCodePath = `scheduledReportsBBCode/${sanitizedUserId}/${reportFirebaseKey}`;
@@ -164,7 +165,14 @@ export const useReportLoader = () => {
         try {
             let reportSnapshot;
             let bbCodeSnapshot = null;
-            if (report._src === 'vps') {
+            if (report._src === 'scheduled') {
+                const reportRef = ref(database, reportPath);
+                const bbCodeRef = ref(database, bbCodePath);
+                reportSnapshot = await get(reportRef);
+                bbCodeSnapshot = await get(bbCodeRef);
+            } else {
+                // Task 3b cutover: VPS is the only store for non-scheduled
+                // reports (report + BBCode in one call). No RTDB fallback.
                 const result = await triggerGetSavedReport({ author: sanitizedUserId, key: reportFirebaseKey });
                 reportSnapshot = {
                     exists: () => !!result?.report,
@@ -174,25 +182,6 @@ export const useReportLoader = () => {
                     exists: () => typeof result?.bbCode === 'string' && result.bbCode.length > 0,
                     val: () => ({ bbCode: result?.bbCode || '' }),
                 };
-            } else {
-                const reportRef = ref(database, reportPath);
-                const bbCodeRef = ref(database, bbCodePath);
-                reportSnapshot = await get(reportRef);
-
-                // Legacy reports may still have BBCode in RTDB. Modern reports
-                // use the VPS BBCode store until the full report migration lands.
-                const useVpsBbcode = !isLegacyReport && report._src !== 'scheduled' && !isLocalHost && bbCodePath.startsWith(BBCODE_PATH);
-                if (useVpsBbcode) {
-                    let vpsBbCode = '';
-                    try {
-                        const res = await triggerGetReportBBCode({ author: sanitizedUserId, key: reportFirebaseKey });
-                        if (res && typeof res.bbCode === 'string' && res.bbCode) vpsBbCode = res.bbCode;
-                    } catch (e) { /* fall through to RTDB */ }
-                    if (vpsBbCode) {
-                        bbCodeSnapshot = { exists: () => true, val: () => ({ bbCode: vpsBbCode }) };
-                    }
-                }
-                if (!bbCodeSnapshot) bbCodeSnapshot = await get(bbCodeRef);
             }
 
             if (reportSnapshot.exists()) {
@@ -219,7 +208,7 @@ export const useReportLoader = () => {
                     sendDataRequestLog(
                         'useReportLoader.js/loadReportForUser',
                         false,
-                        report._src === 'vps' ? 'VPS Report API' : 'Firebase Read',
+                        report._src === 'scheduled' ? 'Firebase Read' : 'VPS Report API',
                         0,
                         reportSizeKb + bbCodeSizeKb,
                         isGtaAuthenticated,
@@ -418,25 +407,24 @@ export const useReportLoader = () => {
         if (!userId) return 0;
         const sanitizedUserId = comprehensiveSanitize(userId);
         try {
+            // No limit sent: server returns everything (plus a total count).
             const vpsResult = await triggerListSavedReports({ author: sanitizedUserId });
-            if (Array.isArray(vpsResult?.reports) && vpsResult.reports.length > 0) return vpsResult.reports.length;
-        } catch { /* fall back to legacy RTDB during migration */ }
-        const legacyReportsRef = ref(database, `savedReports/${sanitizedUserId}`);
-        const newReportsRef = ref(database, `${REPORTS_PATH}/${sanitizedUserId}`);
-        try {
-            const [legacySnapshot, newSnapshot] = await Promise.all([
-                get(legacyReportsRef),
-                get(newReportsRef)
-            ]);
-            let totalCount = 0;
-            if (legacySnapshot.exists()) totalCount += Object.keys(legacySnapshot.val()).length;
-            if (newSnapshot.exists()) totalCount += Object.keys(newSnapshot.val()).length;
-            return totalCount;
+            if (Number.isFinite(Number(vpsResult?.total))) return Number(vpsResult.total);
+            return Array.isArray(vpsResult?.reports) ? vpsResult.reports.length : 0;
         } catch (error) {
-            console.error(`Error counting reports for user ${userId}:`, error);
+            // Task 3b cutover: VPS-only count, no RTDB fallback.
+            console.error(`Error counting VPS reports for user ${userId}:`, error);
             return 0;
         }
     }, []);
+
+    // "Show more" paging: appends the next page to the loaded list.
+    const loadMoreSavedReports = useCallback(async (userId) => {
+        if (!userId || isLoadingUserReports) return [];
+        const offset = savedReports.filter(r => r._src === 'vps').length;
+        if (savedReportsTotal > 0 && offset >= savedReportsTotal) return [];
+        return loadUserSavedReports(userId, { offset, append: true });
+    }, [savedReports, savedReportsTotal, isLoadingUserReports, loadUserSavedReports]);
 
     const checkIfMigratedReportExists = useCallback(async (userId, originalKey) => {
         if (!userId || !originalKey) return { exists: false };
@@ -445,24 +433,10 @@ export const useReportLoader = () => {
             const vpsResult = await triggerListSavedReports({ author: sanitizedUserId });
             const match = (vpsResult?.reports || []).find(report => report.originalKey === originalKey);
             if (match) return { exists: true, reportKey: match.key };
-        } catch { /* fall back to RTDB during migration */ }
-        const newReportsRef = ref(database, `${REPORTS_PATH}/${sanitizedUserId}`);
-        try {
-            const snapshot = await get(newReportsRef);
-            if (snapshot.exists()) {
-                const reports = snapshot.val();
-                for (const key in reports) {
-                    if (Object.prototype.hasOwnProperty.call(reports, key)) {
-                        const report = reports[key];
-                        if (report.originalKey === originalKey) {
-                            return { exists: true, reportKey: key };
-                        }
-                    }
-                }
-            }
             return { exists: false };
         } catch (error) {
-            console.error(`Error checking migrated report:`, error);
+            // Task 3b cutover: VPS-only check, no RTDB fallback.
+            console.error(`Error checking VPS report:`, error);
             return { exists: false };
         }
     }, []);
@@ -473,7 +447,9 @@ export const useReportLoader = () => {
         isLoadingUserReports,
         selectedUserForSavedReports,
         setSelectedUserForSavedReports,
+        savedReportsTotal,
         loadUserSavedReports,
+        loadMoreSavedReports,
         loadReportForUser,
         countAllUserReports,
         checkIfMigratedReportExists

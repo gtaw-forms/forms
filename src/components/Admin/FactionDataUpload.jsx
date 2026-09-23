@@ -7,6 +7,7 @@ import { useDropzone } from 'react-dropzone';
 import { httpsCallable } from 'firebase/functions';
 import { ref, get, set, remove } from 'firebase/database';
 import { functions, database } from '../../firebase';
+import { markFactionSyncedThisSession } from '../../services/factionSyncGuard';
 import * as Sentry from "@sentry/react";
 
 /**
@@ -77,14 +78,17 @@ const FactionDataUpload = ({ showNotification }) => {
         }
     };
 
+    // Manual admin trigger — explicit action, never debounced. On success it
+    // arms the per-session guard so later automatic paths skip their dupes.
     const handleTriggerRemoteSync = async () => {
         setIsSyncing(true);
         try {
             const triggerSync = httpsCallable(functions, 'triggerFactionSync');
             const result = await triggerSync();
+            markFactionSyncedThisSession();
             
             if (result.data.success) {
-                showNotification(`Successfully synced ${result.data.count} members!`, 'success');
+                showNotification(result.data.message || 'Faction sync completed.', 'success');
                 loadStoredFactionData();
             } else {
                 showNotification(`Sync failed: ${result.data.error}`, 'error');

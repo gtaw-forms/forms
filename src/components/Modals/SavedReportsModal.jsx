@@ -30,8 +30,10 @@ const SavedReportsModal = ({
     showNotification, 
     loadReport, 
     deleteReportForUser, 
-    reportsForSelectedUser = [], 
-    isLoadingReports, 
+    reportsForSelectedUser = [],
+    reportsTotalCount = 0,
+    onLoadMoreReports = null,
+    isLoadingReports,
     isAttachMode, 
     handleReportSelectedForAttachment, 
     loadButtonText, 
@@ -392,6 +394,24 @@ const SavedReportsModal = ({
                         </div>
                     )}
                 </div>
+
+                {(() => {
+                    const vpsLoaded = (reportsForSelectedUser || []).filter(r => r._src === 'vps').length;
+                    const remaining = (Number(reportsTotalCount) || 0) - vpsLoaded;
+                    if (!onLoadMoreReports || remaining <= 0 || isLoadingReports || !selectedEmployee) return null;
+                    return (
+                        <div style={{ display: 'flex', justifyContent: 'center', marginTop: '10px' }}>
+                            <Button
+                                variant="outline-primary"
+                                size="sm"
+                                onClick={() => onLoadMoreReports(selectedEmployee.value)}
+                                style={{ fontWeight: '600' }}
+                            >
+                                Show more ({remaining} older report{remaining === 1 ? '' : 's'} not loaded)
+                            </Button>
+                        </div>
+                    );
+                })()}
 
                 {totalPages > 1 && !isLoadingReports && selectedEmployee && (
                     <div style={{ display: 'flex', justifyContent: 'center', gap: '15px', alignItems: 'center', marginTop: '10px' }}>

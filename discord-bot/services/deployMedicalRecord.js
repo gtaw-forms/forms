@@ -13,7 +13,7 @@ import { getForumClient } from './forumClient.js';
 import { logFnCall, DeployProgressEmbed, notifyDeployFailure } from './deployLogger.js';
 import { state } from './deployState.js';
 import { setDeployStatus, markReportComplete } from './deployStatus.js';
-import { upsertPatient, findPatientIndexEntry, removePatientIndexEntry } from './patientIndex.js';
+import { upsertPatient, findPatientIndexEntry, removePatientIndexEntry, readIndex } from './patientIndex.js';
 import { isMaintenanceMode } from './deployQueue.js';
 
 // ── Safety env vars ──
@@ -32,20 +32,41 @@ function pruneRecentPatientRecords() {
 }
 
 /**
- * Scan f=97 for the highest existing patient ID, return next ID + 1.
- * Caches the result in Firebase appMetadata/nextPatientId to avoid re-scanning.
- * Falls back to a forum scan if cache is missing.
+ * Next Medical Record Number = highest number WE own + 1.
+ *
+ * "Ours" = the patient index (full f=97 history + write-through of every
+ * deploy). The old blind Firebase counter drifted from reality (manual topics,
+ * old files, first-page-only scans), issuing numbers far below — or colliding
+ * with — existing files. Now the index max wins; the Firebase counter is only
+ * a floor (never go backwards past numbers it already issued) and is synced
+ * forward. The id is reserved in the index immediately so concurrent creates
+ * can't draw the same number; a failed create leaves a harmless gap.
+ * Falls back to a forum scan only when both index and counter are empty.
  */
-async function getNextPatientId(client, db) {
+async function getNextPatientId(client, db, patientName) {
+    let indexMax = 0;
     try {
-        // Check Firebase cache first
-        const cacheSnap = await db.ref('appMetadata/nextPatientId').once('value').catch(() => null);
-        if (cacheSnap?.exists()) {
-            const next = cacheSnap.val() + 1;
-            await db.ref('appMetadata/nextPatientId').set(next).catch(() => {});
-            return next;
+        for (const p of readIndex().patients || []) {
+            const n = parseInt(p?.id, 10);
+            if (!isNaN(n) && n > indexMax) indexMax = n;
         }
-    } catch (e) { /* fall through to scan */ }
+    } catch (e) { /* fall through */ }
+
+    let counter = 0;
+    try {
+        const cacheSnap = await db.ref('appMetadata/nextPatientId').once('value').catch(() => null);
+        if (cacheSnap?.exists()) counter = parseInt(cacheSnap.val(), 10) || 0;
+    } catch (e) { /* fall through */ }
+
+    if (indexMax > 0 || counter > 0) {
+        const next = Math.max(indexMax, counter) + 1;
+        await db.ref('appMetadata/nextPatientId').set(next).catch(() => {});
+        if (patientName) {
+            upsertPatient({ name: patientName, id: String(next), threadId: null, lastSeen: Date.now(), source: 'deploy:medical-record' });
+        }
+        console.log(`[MEDICAL-RECORD] Next record number: ${next} (index max ${indexMax}, counter was ${counter})`);
+        return next;
+    }
 
     // Scan f=97 for all topic titles, extract highest patient ID
     try {
@@ -285,7 +306,7 @@ export async function handleMedicalRecord(report) {
     // Doing this AFTER the search avoids an expensive f=97 scan when we don't need it.
     if (!topicId) {
         console.log(`[MEDICAL-RECORD] No existing thread — assigning next patient ID...`);
-        const newId = await getNextPatientId(client, db);
+        const newId = await getNextPatientId(client, db, searchTerm);
         if (newId) {
             resolvedPatientId = String(newId);
             console.log(`[MEDICAL-RECORD] Auto-assigned patient ID: ${resolvedPatientId}`);

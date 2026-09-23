@@ -13,11 +13,9 @@ const triggerFunction = async (functionName, data) => {
 };
 
 
-export const triggerExchangeAuthCodeForToken = (data) => triggerFunction('processGtaWorldAuth', data);
 export const triggerValidateGtaWorldToken = (data) => triggerFunction('validateGtaWorldToken', data);
 export const triggerUploadFactionData = (data) => triggerFunction('uploadFactionData', data);
 export const triggerCheckFactionMembership = (data) => triggerFunction('checkFactionMembership', data);
-export const triggerTestHealthAlert = (data) => triggerFunction('triggerTestHealthAlert', data);
 export const triggerFetchExternalUrl = (data) => triggerFunction('fetchExternalUrl', data);
 export const triggerRefreshGtawUser = (data) => triggerFunction('refreshGtawUser', data);
 export const triggerWebhookProxy = (webhookType, payload, webhookId = null) => {
@@ -35,8 +33,6 @@ export const triggerGetPatientNames = (data) => triggerFunction('getPatientNames
 export const triggerGetAgencyCredentials = () => triggerFunction('getAgencyCredentials', {});
 export const triggerGetCctvData = (data) => triggerFunction('getCctvData', data);
 export const triggerCctvFetch = () => triggerFunction('triggerCctvFetch', {});
-export const triggerSaveReportBBCode = (data) => triggerFunction('saveReportBBCode', data);
-export const triggerGetReportBBCode = (data) => triggerFunction('getReportBBCode', data);
 export const triggerListSavedReports = (data) => triggerFunction('listSavedReports', data);
 export const triggerGetSavedReport = (data) => triggerFunction('getSavedReport', data);
 export const triggerSaveSavedReport = (data) => triggerFunction('saveSavedReport', data);

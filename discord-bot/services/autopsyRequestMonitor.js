@@ -1984,7 +1984,7 @@ async function checkPrivateMessages() {
  * Start the autopsy request monitor.
  * Called once on bot startup from index.js.
  */
-export function startAutopsyRequestMonitor() {
+export function startAutopsyRequestMonitor({ immediate = true } = {}) {
     console.log('[AUTOPSY-MON] Starting autopsy request monitor...');
 
     firebase.init();
@@ -2016,9 +2016,12 @@ export function startAutopsyRequestMonitor() {
         Promise.resolve(sendLogMessage(devMsg)).catch(() => { /* non-fatal */ });
     }
 
-    // Run the first check immediately.
+    // Run the first check immediately — unless the phased boot queue already
+    // ran it (pass { immediate: false } to avoid a double first scan).
     // On restart, pending cases with partial state will resume from where they left off.
-    checkForNewRequests();
+    if (immediate) {
+        checkForNewRequests();
+    }
 
     _monitorTimer = setInterval(() => {
         checkForNewRequests();

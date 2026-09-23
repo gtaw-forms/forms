@@ -1296,6 +1296,26 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
                 }
             }
         }
+        // Merge marker-listed entries the caller didn't include. The heartbeat
+        // passes an INCOMPLETE-only snapshot, so failed steps on completed
+        // cases (e.g. a DM send that failed after the case was marked
+        // completed) would otherwise never be retried despite having markers.
+        try {
+            const mSnap = await db.ref(STEP_RETRY_PATH).once('value');
+            const markers = mSnap.exists() ? mSnap.val() || {} : {};
+            entries = entries || {};
+            for (const topicId of Object.keys(markers)) {
+                if (entries[topicId]) continue;
+                try {
+                    const eSnap = await db.ref(`autopsy-requested/${topicId}`).once('value');
+                    if (eSnap.exists()) {
+                        entries[topicId] = eSnap.val() || {};
+                    } else {
+                        for (const s of Object.keys(markers[topicId] || {})) clearStepRetry(topicId, s);
+                    }
+                } catch { /* keep markers for the next sweep */ }
+            }
+        } catch { /* marker merge best-effort */ }
         if (Object.keys(entries).length === 0) return;
 
         const failedEntries = [];

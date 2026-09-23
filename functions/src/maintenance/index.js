@@ -6,6 +6,59 @@ import { runWeeklyCoronerSummary, runMonthlyCoronerSummary, runYearlyCoronerSumm
 // import { syncFactionMembers } from './factionSync.js';  // Commented out: sync now runs on auth recovery only, not scheduled
 import { getFunctionStats } from '../utils/functionStats.js';
 
+// --- VPS saved-report store client (3b-5) ---
+// Direct Admin-SDK-free HTTPS calls to morgue-api with server-side keys
+// (same MORGUE_API_URL / MORGUE_API_KEY / MORGUE_WRITE_API_KEY env as
+// functions/index.js callSavedReportsApi). Keys are never logged.
+const VPS_BASE_URL = (process.env.MORGUE_API_URL || 'http://88.208.243.254').replace(/\/$/, '');
+const VPS_READ_KEY = process.env.MORGUE_API_KEY || null;
+const VPS_WRITE_KEY = process.env.MORGUE_WRITE_API_KEY || null;
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function vpsSavedReportsGet(path, apiKey) {
+    if (!apiKey) throw new Error('Saved-report VPS key is not configured.');
+    for (let attempt = 0; attempt < 2; attempt++) {
+        const response = await fetch(`${VPS_BASE_URL}${path}`, {
+            headers: { 'x-api-key': apiKey },
+        });
+        if (response.status === 429 && attempt === 0) {
+            console.warn(`[Maintenance] VPS rate-limited on GET ${path}; waiting 61s and retrying.`);
+            await sleep(61000);
+            continue;
+        }
+        if (!response.ok) {
+            const text = await response.text().catch(() => '');
+            throw new Error(`VPS GET ${path} returned ${response.status}${text ? `: ${text.slice(0, 200)}` : ''}`);
+        }
+        return response.json();
+    }
+    throw new Error('VPS GET rate-limited twice; giving up on this call.');
+}
+
+async function vpsDeleteSavedReport(author, key) {
+    if (!VPS_WRITE_KEY) throw new Error('Saved-report VPS write key is not configured.');
+    const path = `/api/reports/${encodeURIComponent(author)}/${encodeURIComponent(key)}`;
+    for (let attempt = 0; attempt < 2; attempt++) {
+        const response = await fetch(`${VPS_BASE_URL}${path}`, {
+            method: 'DELETE',
+            headers: { 'x-api-key': VPS_WRITE_KEY },
+        });
+        if (response.status === 429 && attempt === 0) {
+            console.warn(`[Maintenance] VPS rate-limited on DELETE; waiting 61s and retrying.`);
+            await sleep(61000);
+            continue;
+        }
+        if (response.status === 404) return false;
+        if (!response.ok) {
+            const text = await response.text().catch(() => '');
+            throw new Error(`VPS DELETE returned ${response.status}${text ? `: ${text.slice(0, 200)}` : ''}`);
+        }
+        return true;
+    }
+    throw new Error('VPS DELETE rate-limited twice; giving up on this report.');
+}
+
 const _runMaintenance = async (triggerContext) => {
     console.log("Running maintenance task.", triggerContext);
 
@@ -14,13 +67,12 @@ const _runMaintenance = async (triggerContext) => {
     const isFirstOfMonth = now.getUTCDate() === 1;
     const isFirstOfYear = isFirstOfMonth && now.getUTCMonth() === 0;
 
-    const REPORTS_PATH = '/newSavedReports';
-    const BBCODE_PATH = '/newSavedReportBBCode';
-    
     // Results Tracker
     let maintenanceResults = {
         duplicateCleanup: { scanned: 0, duplicatesFound: 0, duplicatesDeleted: 0, errors: [] },
         reportCleanup: { oldReportsCleaned: 0, errors: [] },
+        webhookLogsCleanup: { cleaned: 0, error: null },
+        monitoringCleanup: { cleaned: 0, error: null },
         // factionSync: { success: false, count: 0, error: null },  // Commented out with import above
         pendingDeployments: { coronerReports: 0, coronerEmails: 0, total: 0, errors: [] },
         functionStats: null,
@@ -58,113 +110,124 @@ const _runMaintenance = async (triggerContext) => {
         maintenanceResults.pendingDeployments.errors.push(e.message);
     }
 
-    // --- 2. Optimized User Report Maintenance (Duplicates & Old Reports) ---
+    // --- 2. VPS Saved-Report Maintenance (Duplicates & Old Reports) ---
+    // 3b-5: reimplemented against the VPS store — zero RTDB report scans.
+    // Windows preserved: 365-day old-report cleanup + 14-day duplicate scan.
+    // Authors enumerated via GET /api/reports/stats (byAuthor keys); per-author
+    // reports via GET /api/reports?author= (full list, summaries spread the
+    // stored report body so timestamp/data/originalKey are present); deletes via
+    // DELETE /api/reports/:author/:key (write key, one file holds report+BBCode).
+    // Authors processed sequentially to respect the VPS 60 req/min per-key
+    // rate limit (429s wait 61s and retry once, same pattern as the backfill
+    // script). Reports with no usable timestamp are never treated as old.
     try {
-        console.log('[Maintenance] Starting User Report Maintenance...');
-        const userCountsRef = db.ref('userReportCounts');
-        const userCountsSnapshot = await userCountsRef.once('value');
-        
-        if (userCountsSnapshot.exists()) {
-            const userIds = Object.keys(userCountsSnapshot.val());
-            const threeSixtyFiveDaysAgo = Date.now() - (365 * 24 * 60 * 60 * 1000);
-            const fourteenDaysAgo = Date.now() - (14 * 24 * 60 * 60 * 1000);
+        console.log('[Maintenance] Starting VPS Saved-Report Maintenance...');
 
-            // Process users in chunks to control concurrency
-            const CHUNK_SIZE = 10;
-            for (let i = 0; i < userIds.length; i += CHUNK_SIZE) {
-                const chunk = userIds.slice(i, i + CHUNK_SIZE);
-                
-                await Promise.all(chunk.map(async (userId) => {
-                    // A. Old Reports Cleanup (> 365 days)
+        const threeSixtyFiveDaysAgo = Date.now() - (365 * 24 * 60 * 60 * 1000);
+        const fourteenDaysAgo = Date.now() - (14 * 24 * 60 * 60 * 1000);
+
+        let authorIds = [];
+        try {
+            const statsResult = await vpsSavedReportsGet('/api/reports/stats', VPS_READ_KEY);
+            authorIds = Object.keys(statsResult?.byAuthor || {});
+        } catch (err) {
+            throw new Error(`Could not list VPS report authors: ${err.message}`);
+        }
+        console.log(`[Maintenance] VPS saved-report authors: ${authorIds.length}`);
+
+        for (const authorId of authorIds) {
+            let reports = [];
+            try {
+                const listResult = await vpsSavedReportsGet(
+                    `/api/reports?author=${encodeURIComponent(authorId)}`, VPS_READ_KEY);
+                reports = Array.isArray(listResult?.reports) ? listResult.reports : [];
+            } catch (err) {
+                console.error(`Error listing VPS reports for author ${authorId}:`, err.message);
+                maintenanceResults.reportCleanup.errors.push(`Author ${authorId} list: ${err.message}`);
+                continue;
+            }
+
+            const recentReports = [];
+
+            for (const report of reports) {
+                const reportKey = report?.key;
+                if (!reportKey) continue;
+                const reportTimestamp = Number(report?.timestamp) || 0;
+
+                // A. Old Reports Cleanup (> 365 days)
+                if (reportTimestamp && reportTimestamp <= threeSixtyFiveDaysAgo) {
                     try {
-                        const oldReportsQuery = db.ref(`${REPORTS_PATH}/${userId}`)
-                            .orderByChild('timestamp')
-                            .endAt(threeSixtyFiveDaysAgo);
-                        
-                        const oldSnapshot = await oldReportsQuery.once('value');
-                        if (oldSnapshot.exists()) {
-                            const updates = {};
-                            oldSnapshot.forEach((snap) => {
-                                updates[`${REPORTS_PATH}/${userId}/${snap.key}`] = null;
-                                updates[`${BBCODE_PATH}/${userId}/${snap.key}`] = null;
-                                maintenanceResults.reportCleanup.oldReportsCleaned++;
-                            });
-                            await db.ref().update(updates);
-                        }
+                        await vpsDeleteSavedReport(authorId, reportKey);
+                        maintenanceResults.reportCleanup.oldReportsCleaned++;
                     } catch (err) {
-                        console.error(`Error cleaning old reports for user ${userId}:`, err);
+                        console.error(`Error deleting old VPS report ${authorId}/${reportKey}:`, err.message);
+                        maintenanceResults.reportCleanup.errors.push(`Old ${authorId}/${reportKey}: ${err.message}`);
+                    }
+                    continue;
+                }
+
+                if (reportTimestamp && reportTimestamp >= fourteenDaysAgo) {
+                    recentReports.push({ key: reportKey, val: report });
+                }
+            }
+
+            // C. Duplicate Cleanup (Last 14 Days Only) — same entity-key +
+            // 6-hour-window rule as the pre-3b-5 RTDB version.
+            try {
+                recentReports.sort((a, b) => (b.val.timestamp || 0) - (a.val.timestamp || 0));
+
+                const getEntityKey = (reportVal) => {
+                    const d = reportVal.data || {};
+                    if (d.decedentName || d.decedentOOC) {
+                        return `DECEDENT:${d.decedentName || ''}|${d.decedentOOC || ''}|${d.dateTime || ''}`;
+                    }
+                    return `TITLE:${reportVal.originalKey || ''}`;
+                };
+
+                const keptReports = [];
+                let authorDuplicates = 0;
+
+                for (const report of recentReports) {
+                    maintenanceResults.duplicateCleanup.scanned++;
+                    const currentEntityKey = getEntityKey(report.val);
+                    const currentTimestamp = report.val.timestamp || 0;
+
+                    let isDuplicate = false;
+
+                    for (const keptReport of keptReports) {
+                        if (getEntityKey(keptReport.val) === currentEntityKey
+                            && Math.abs((keptReport.val.timestamp || 0) - currentTimestamp) <= 6 * 60 * 60 * 1000) {
+                            isDuplicate = true;
+                            break;
+                        }
                     }
 
-                    // C. Duplicate Cleanup (Last 14 Days Only)
-                    try {
-                        const recentReportsQuery = db.ref(`${REPORTS_PATH}/${userId}`)
-                            .orderByChild('timestamp')
-                            .startAt(fourteenDaysAgo);
-                        
-                        const recentSnapshot = await recentReportsQuery.once('value');
-                        if (recentSnapshot.exists()) {
-                            const recentReports = [];
-                            recentSnapshot.forEach(snap => {
-                                recentReports.push({ key: snap.key, val: snap.val() });
-                            });
-
-                            recentReports.sort((a, b) => (b.val.timestamp || 0) - (a.val.timestamp || 0));
-
-                            const updates = {};
-                            const keptReports = []; 
-
-                            const getEntityKey = (reportVal) => {
-                                const d = reportVal.data || {};
-                                if (d.decedentName || d.decedentOOC) {
-                                    return `DECEDENT:${d.decedentName || ''}|${d.decedentOOC || ''}|${d.dateTime || ''}`;
-                                }
-                                return `TITLE:${reportVal.originalKey || ''}`;
-                            };
-
-                            for (const report of recentReports) {
-                                maintenanceResults.duplicateCleanup.scanned++;
-                                const currentEntityKey = getEntityKey(report.val);
-                                const currentTimestamp = report.val.timestamp || 0;
-                                
-                                let isDuplicate = false;
-
-                                for (const keptReport of keptReports) {
-                                    const keptEntityKey = getEntityKey(keptReport.val);
-                                    const keptTimestamp = keptReport.val.timestamp || 0;
-
-                                    if (currentEntityKey === keptEntityKey) {
-                                        const timeDiff = Math.abs(keptTimestamp - currentTimestamp);
-                                        if (timeDiff <= 6 * 60 * 60 * 1000) {
-                                            isDuplicate = true;
-                                            break; 
-                                        }
-                                    }
-                                }
-
-                                if (isDuplicate) {
-                                    updates[`${REPORTS_PATH}/${userId}/${report.key}`] = null;
-                                    updates[`${BBCODE_PATH}/${userId}/${report.key}`] = null;
-                                    maintenanceResults.duplicateCleanup.duplicatesFound++;
-                                    maintenanceResults.duplicateCleanup.duplicatesDeleted++;
-                                } else {
-                                    keptReports.push(report);
-                                }
-                            }
-
-                            if (Object.keys(updates).length > 0) {
-                                await db.ref().update(updates);
-                                console.log(`[Maintenance] Cleaned ${Object.keys(updates).length / 2} duplicates for user ${userId}`);
-                            }
+                    if (isDuplicate) {
+                        try {
+                            await vpsDeleteSavedReport(authorId, report.key);
+                            maintenanceResults.duplicateCleanup.duplicatesFound++;
+                            maintenanceResults.duplicateCleanup.duplicatesDeleted++;
+                            authorDuplicates++;
+                        } catch (err) {
+                            console.error(`Error deleting duplicate VPS report ${authorId}/${report.key}:`, err.message);
+                            maintenanceResults.duplicateCleanup.errors.push(`Duplicate ${authorId}/${report.key}: ${err.message}`);
+                            keptReports.push(report);
                         }
-                    } catch (err) {
-                        console.error(`Error cleaning duplicates for user ${userId}:`, err);
-                        maintenanceResults.duplicateCleanup.errors.push(`User ${userId}: ${err.message}`);
+                    } else {
+                        keptReports.push(report);
                     }
-                }));
+                }
+
+                if (authorDuplicates > 0) {
+                    console.log(`[Maintenance] Cleaned ${authorDuplicates} duplicates for author ${authorId}`);
+                }
+            } catch (err) {
+                console.error(`Error cleaning VPS duplicates for author ${authorId}:`, err.message);
+                maintenanceResults.duplicateCleanup.errors.push(`Author ${authorId}: ${err.message}`);
             }
         }
     } catch (error) {
-        console.error("Critical error in Report Maintenance:", error);
+        console.error("Critical error in VPS Report Maintenance:", error);
         maintenanceResults.reportCleanup.errors.push(`Critical: ${error.message}`);
     }
 
@@ -183,6 +246,11 @@ const _runMaintenance = async (triggerContext) => {
 
     const hasCleanedUp = maintenanceResults.reportCleanup.oldReportsCleaned > 0 || maintenanceResults.duplicateCleanup.duplicatesDeleted > 0;
     const hasPending = maintenanceResults.pendingDeployments.total > 0;
+    // Webhook-log + monitoring cleanup moved to the bot — no Functions-side
+    // cleanup runs here. Flags stay defined (false) so the embed below renders
+    // without throwing; the result fields are init'd in maintenanceResults above.
+    const hasWebhooksCleanup = false;
+    const hasMonitoringCleanup = false;
     const fnStats = maintenanceResults.functionStats;
 
     const topFunctions = fnStats?.functions?.slice(0, 5) || [];
@@ -241,6 +309,9 @@ Deleted: ${maintenanceResults.duplicateCleanup.duplicatesDeleted}`, inline: true
         ]);
     }
 
+    // Plan 5 cleanup (2026-09-14): runMonthlyCoronerSummary is @deprecated and
+    // early-returns null — kept in the call list so re-enabling is a validation
+    // task, not a rediscovery task. See functions/src/reports/coroner.js.
     if (isFirstOfMonth) {
         console.log('[Maintenance] Triggering monthly summaries (1st of month)...');
         await Promise.allSettled([
@@ -360,34 +431,6 @@ export const updateAuthState = onCall({
         };
     } catch (error) {
         console.error(`Error updating auth state for path ${path}:`, error);
-        throw new HttpsError('internal', error.message);
-    }
-});
-
-/**
- * Manually triggers a faction member sync.
- */
-export const triggerFactionSync = onCall({
-    region: "europe-west2",
-    secrets: ["PHMC_CONFIG"],
-    memory: "512MiB",
-    timeoutSeconds: 300,
-}, async (request) => {
-    if (!request.auth) {
-        throw new HttpsError('unauthenticated', 'You must be logged in.');
-    }
-
-    const isSuperAdmin = request.auth.token.isSuperAdmin === true || request.auth.token.accessLevel === 'superadmin';
-    const isFactionMember = request.auth.token.isFactionMember === true;
-    
-    if (!isSuperAdmin && !isFactionMember) {
-        throw new HttpsError('permission-denied', 'Only Faction Members or Super Admins can manually trigger a sync.');
-    }
-
-    try {
-        const result = await syncFactionMembers('manual_trigger');
-        return result;
-    } catch (error) {
         throw new HttpsError('internal', error.message);
     }
 });

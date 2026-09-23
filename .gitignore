@@ -51,6 +51,9 @@ docs/
 
 # plans / plan files (keep local, never commit)
 plan/
+# ad-hoc debug/probe scripts (local + VPS via SCP only — never commit;
+# they routinely carry live credentials during incident work)
+discord-bot/debug-testing-scripts/
 # functions (Firebase Cloud Functions API/proxy endpoints)#
 functions
 # AI context artifact

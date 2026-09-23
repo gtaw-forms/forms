@@ -94,10 +94,12 @@ async function scrapeFaction(config) {
     console.log(`[ROSTER-SYNC] Scraping ${config.label} (g=${config.groupId})...`);
     const client = createIsolatedClient(`roster-${config.label.toLowerCase()}`);
     try {
+        // Reuse-first: login() falls back to the credential form when the
+        // stored session is dead, so this skips redundant full logins.
         await client.login(
             process.env[config.usernameEnv],
             process.env[config.passwordEnv],
-            { force: true, baseUrl: config.baseUrl }
+            { force: false, baseUrl: config.baseUrl }
         );
 
         const members = await client.getGroupMembers(config.groupId, {
@@ -179,11 +181,14 @@ export function startFactionRosterSync() {
 
     if (elapsed > COOLDOWN_MS) {
         console.log(`[ROSTER-SYNC] Last sync was ${Math.round(elapsed / 3600000)}h ago — running now`);
-        syncFactionRosters().then(() => scheduleNextSync());
+        // Return the in-flight sync so the phased boot queue can await the
+        // real work (not just the scheduler kickoff).
+        return syncFactionRosters().then(() => scheduleNextSync());
     } else {
         const remaining = COOLDOWN_MS - elapsed;
         console.log(`[ROSTER-SYNC] Last sync was ${Math.round(elapsed / 3600000)}h ago — next in ${Math.round(remaining / 3600000)}h`);
         scheduleNextSync();
+        return Promise.resolve();
     }
 }
 

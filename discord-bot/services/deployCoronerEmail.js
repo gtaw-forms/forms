@@ -16,9 +16,7 @@ import { fileURLToPath } from 'url';
 import { logFnCall, sendWebhook, DeployProgressEmbed } from './deployLogger.js';
 import { state, C } from './deployState.js';
 import { getForumClient } from './forumClient.js';
-import { setDeployStatus, markReportComplete } from './deployStatus.js';
 import { isMaintenanceMode } from './deployQueue.js';
-import { requeueReport } from './deployRetry.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -153,7 +151,7 @@ export async function handleCoronerEmail(report) {
 
     // ── Extract form data ──
     const data = reportData.data || {};
-    const recipient = (data.requestingOfficer || data.requesting_officer || data.officerName || '').trim();
+    let recipient = (data.requestingOfficer || data.requesting_officer || data.officerName || '').trim();
     const department = data.department || '';
     const coronerEmployee = data.coronerEmployee || 'PHMC Coroner';
     const additionalReports = data.additionalReports || [];
@@ -273,6 +271,51 @@ export async function handleCoronerEmail(report) {
         console.warn('[CORONER-EMAIL] Could not write debug file:', e.message);
     }
 
+    // ── Hand off to the dedicated email queue ──
+    // The topic deploy owns the report record; from here email delivery state
+    // lives on its own entity (own status, attempts, backoff). The worker
+    // delivers; nothing here touches the forum or the report status.
+    const topicUrl = report.topicUrl || null;
+    const topicId = topicUrl ? ((topicUrl.match(/[?&]t=(\d+)/) || [])[1] || null) : null;
+    const { enqueueCoronerEmail } = await import('./coronerEmailQueue.js');
+    const emailKey = await enqueueCoronerEmail(db, {
+        authorId, reportKey: key, topicId, topicUrl,
+        recipient, department, forumLabel: forum.forumLabel,
+        subject, bbCode,
+    });
+    if (emailKey) {
+        await progress.addStep('Queued', 'ok', `Email queued (${forum.forumLabel} → ${recipient})`);
+        await progress.finalize('complete');
+    } else {
+        await progress.addStep('Queued', 'fail', 'Could not queue email');
+        await progress.finalize('failed');
+    }
+    return emailKey;
+}
+
+/**
+ * Deliver one coroner email end-to-end (used by the queue worker).
+ * Owns its progress embed; writes nothing to the report record (the worker
+ * mirrors delivery results). Returns { ok, url?, reason?, sentTo?, dryRun? }.
+ */
+export async function deliverCoronerEmail({ recipient, subject, bbCode, department, progressTitle }) {
+    let target = (recipient || '').trim();
+    const progress = new DeployProgressEmbed(state.discordClient, process.env.BOT_LOG_CHANNEL_ID);
+    await progress.start(progressTitle || `Coroner Email — ${subject}`);
+    if (!target) {
+        await progress.addStep('No Recipient', 'fail', 'Empty recipient');
+        await progress.finalize('failed');
+        return { ok: false, reason: 'Empty recipient' };
+    }
+
+    const forum = resolveForum(department);
+    if (!forum.username || !forum.password) {
+        console.warn(`[CORONER-EMAIL] No credentials for ${forum.forumLabel} — skipping`);
+        await progress.addStep('No Credentials', 'fail', `${forum.forumLabel} not configured`);
+        await progress.finalize('failed');
+        return { ok: false, reason: `${forum.forumLabel} not configured` };
+    }
+
     // ── Login to forum (both dry-run and live need this) ──
     await progress.addStep(`Logging in (${forum.forumLabel})`, 'pending');
     console.log(`[CORONER-EMAIL] Logging into ${forum.forumLabel} (${forum.forumUrl})...`);
@@ -282,22 +325,19 @@ export async function handleCoronerEmail(report) {
 
     // ── Dry run: fill the form but don't submit ──
     if (CORONER_EMAIL_DRY_RUN) {
-        await progress.addStep('Filling PM Form', 'pending', `To: ${recipient}`);
-        console.log(`[CORONER-EMAIL] DRY RUN — filling PM form for "${recipient}" via ${forum.forumLabel}...`);
-        const dryResult = await client.sendPM(recipient, subject, bbCode, { baseUrl: forum.forumUrl, dryRun: true });
+        await progress.addStep('Filling PM Form', 'pending', `To: ${target}`);
+        console.log(`[CORONER-EMAIL] DRY RUN — filling PM form for "${target}" via ${forum.forumLabel}...`);
+        const dryResult = await client.sendPM(target, subject, bbCode, { baseUrl: forum.forumUrl, dryRun: true });
         if (dryResult.ok) {
-            console.log(`[CORONER-EMAIL] ✅ DRY RUN — form filled successfully for ${recipient} via ${forum.forumLabel}`);
+            console.log(`[CORONER-EMAIL] ✅ DRY RUN — form filled successfully for ${target} via ${forum.forumLabel}`);
             await progress.addStep('Filling PM Form', 'ok', `Form filled — not submitted`);
         } else {
             console.warn(`[CORONER-EMAIL] ⚠️ DRY RUN — form fill issue: ${dryResult.reason || 'Unknown'}`);
             await progress.addStep('Filling PM Form', 'fail', dryResult.reason || 'Form fill failed');
         }
         await progress.finalize('complete');
-        await setDeployStatus(db, authorId, key, 'dry_run',
-            `Coroner Email dry run — form filled for ${recipient} via ${forum.forumLabel}. Not submitted.`
-        );
         try { client.close(); } catch (e) { /* ignore */ }
-        return;
+        return { ok: true, dryRun: true };
     }
 
     // Dual safety: even with DRY_RUN=false, check ALLOWED list
@@ -305,48 +345,58 @@ export async function handleCoronerEmail(report) {
         console.warn(`[CORONER-EMAIL] BLOCKED — ${forum.forumUrl} not in CORONER_EMAIL_ALLOWED`);
         await progress.addStep('Blocked', 'fail', `${forum.forumLabel} not in ALLOWED list`);
         await progress.finalize('failed');
-        await setDeployStatus(db, authorId, key, 'dry_run',
-            `Blocked — ${forum.forumLabel} not in CORONER_EMAIL_ALLOWED list`
-        );
         try { client.close(); } catch (e) { /* ignore */ }
-        return;
+        return { ok: false, reason: `${forum.forumLabel} not in ALLOWED list` };
     }
 
-    // ── LIVE: Send the PM ──
-    await progress.addStep('Sending PM', 'pending', `To: ${recipient}`);
-    console.log(`[CORONER-EMAIL] Sending PM to "${recipient}" via ${forum.forumLabel}...`);
-    const result = await client.sendPM(recipient, subject, bbCode, { baseUrl: forum.forumUrl });
+    // ── LIVE: Send the PM (with best-match self-heal) ──
+    // Delivery state belongs to the queue entity (the worker updates it) —
+    // nothing here writes the report record, so a failed email can never
+    // disturb the already-deployed topic again.
+    let sendTo = recipient;
+    const attemptSend = async (to) => {
+        console.log(`[CORONER-EMAIL] Sending PM to "${to}" via ${forum.forumLabel}...`);
+        try {
+            return await client.sendPM(to, subject, bbCode, { baseUrl: forum.forumUrl });
+        } catch (err) {
+            return { ok: false, reason: err.message, recipient: to, subject };
+        }
+    };
+    const isRecipientFailure = (r) => !r.ok && /not found|not accepted|no recipient|did not stick/i.test(r.reason || '');
+
+    await progress.addStep('Sending PM', 'pending', `To: ${sendTo}`);
+    let result = await attemptSend(sendTo);
+
+    // Self-heal: exact recipient rejected → fuzzy-match the closest forum
+    // account and re-send once, narrating every step. Anything else (or a
+    // second failure) returns the failure for the worker to schedule.
+    if (isRecipientFailure(result)) {
+        await progress.addStep('Sending PM', 'fail', `To: ${sendTo} — ${result.reason}`);
+        await progress.addStep('Best Match', 'pending', `Checking forum for names like "${sendTo}"...`);
+        console.log(`[CORONER-EMAIL] Recipient failed — fuzzy-matching "${sendTo}" on ${forum.forumLabel}...`);
+        const match = await client.resolveMemberUserIdFuzzy(sendTo, { baseUrl: forum.forumUrl }).catch(() => null);
+        if (match) {
+            const pct = Math.round(match.score * 100);
+            await progress.addStep('Best Match', 'ok', `${match.username} (${pct}% match) — re-sending`);
+            console.log(`[CORONER-EMAIL] Best match: "${match.username}" (${pct}%) — re-sending PM...`);
+            result = await attemptSend(match.username);
+            if (result.ok) sendTo = match.username;
+        } else {
+            await progress.addStep('Best Match', 'fail', 'No close match — manual handling needed');
+            console.warn(`[CORONER-EMAIL] No fuzzy match for "${sendTo}" — giving up`);
+        }
+    }
 
     if (result.ok) {
-        const label = reportData.originalKey || key;
-        await progress.addStep('Sending PM', 'ok', result.url || recipient);
+        await progress.addStep('Sending PM', 'ok', result.url || sendTo);
         await progress.finalize('complete');
-
-        // Auto-email sent as a side-effect of a topic deploy (coroner-report /
-        // mass-fatality "ReportRequested") shares the TOPIC's record key. Record the
-        // PM URL on its own field so it never overwrites the topic's deployUrl —
-        // "View post" and Edit & Repost must point at the PHMC topic, not the PM.
-        const isSideEffect = String(reportData.formId || '') !== 'coroner_email';
-        if (isSideEffect) {
-            await db.ref(`scheduledReports/${authorId}/${key}`).update({
-                coronerEmailUrl: result.url || null,
-                coronerEmailSentAt: new Date().toISOString(),
-                coronerEmailTo: recipient,
-                deployMessage: 'Coroner email sent; topic posted.',
-            }).catch(() => {});
-            console.log(`[CORONER-EMAIL] ✅ Auto email sent for ${key} (topic deployUrl preserved): ${result.url || 'OK'}`);
-        } else {
-            await markReportComplete(db, authorId, key, label, 'pm', result.url);
-            console.log(`[CORONER-EMAIL] ✅ PM sent to ${recipient} via ${forum.forumLabel}: ${result.url || 'OK'}`);
-        }
+        console.log(`[CORONER-EMAIL] ✅ PM sent to ${sendTo} via ${forum.forumLabel}: ${result.url || 'OK'}`);
     } else {
-        console.error(`[CORONER-EMAIL] ❌ PM send failed to ${recipient}: ${result.reason || 'Unknown'}`);
-        await requeueReport(db, authorId, key, 'PM send failed: ' + (result.reason || 'Unknown')).catch(err =>
-            console.warn('[CORONER-EMAIL] Failed to requeue: ' + err.message)
-        );
+        console.error(`[CORONER-EMAIL] ❌ PM send failed to ${sendTo}: ${result.reason || 'Unknown'}`);
         await progress.addStep('Sending PM', 'fail', result.reason || 'Unknown');
-        await progress.addStep('Retry Scheduled', 'warn', 'Will auto-retry on next cycle');
+        await progress.addStep('Retry Scheduled', 'warn', 'Worker will retry with backoff');
         await progress.finalize('failed');
     }
     try { client.close(); } catch (e) { /* ignore */ }
+    return { ok: result.ok, url: result.url || null, reason: result.reason || null, sentTo: sendTo };
 }

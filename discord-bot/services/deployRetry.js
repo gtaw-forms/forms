@@ -8,6 +8,21 @@ import { isMaintenanceMode } from './deployQueue.js';
 
 //  Retry Queue Backfill
 
+/**
+ * Build a retry-queue index row. Carries display labels so the queue
+ * dashboard can render failed forms from this tiny index alone (no
+ * scheduledReports scan). Keep it small — label/formId/detail only.
+ */
+export function retryIndexEntry(authorId, reportKey, reportData, retryAt, deployRetries) {
+    const d = reportData || {};
+    return {
+        authorId, reportKey, retryAt, deployRetries: deployRetries || 0,
+        label: String(d.originalKey || reportKey || '').slice(0, 80),
+        formId: String(d.formId || '').slice(0, 40),
+        detail: String(d.deployMessage || '').slice(0, 120),
+    };
+}
+
 export async function backfillRetryQueue(db) {
     logFnCall('deployRetry', 'backfillRetryQueue', 'Backfilling retry queue');
     try {
@@ -20,11 +35,9 @@ export async function backfillRetryQueue(db) {
                 const reportKey = reportSnap.key;
                 const reportData = reportSnap.val();
                 if (reportData.deployStatus === 'retry_queued' && reportData.retryAt) {
-                    db.ref(`retry-queue/${authorId}|${reportKey}`).set({
-                        authorId, reportKey,
-                        retryAt: reportData.retryAt,
-                        deployRetries: reportData.deployRetries || 0,
-                    }).catch(() => {});
+                    db.ref(`retry-queue/${authorId}|${reportKey}`).set(
+                        retryIndexEntry(authorId, reportKey, reportData, reportData.retryAt, reportData.deployRetries)
+                    ).catch(() => {});
                     count++;
                 }
             });
@@ -114,9 +127,12 @@ export async function checkRetryQueue() {
                     failed++;
                     return;
                 }
-                // Re-enqueue
+                // Re-enqueue (hasdeployed=false is load-bearing: the cold-load
+                // and value listener both skip anything not strictly false,
+                // which would strand the report across restarts)
                 db.child(`scheduledReports/${authorId}/${reportKey}`).update({
                     deployStatus: 'queued',
+                    hasdeployed: false,
                     deployCheckedAt: new Date().toISOString(),
                     retryAt: null,
                 }).catch(() => {});
@@ -156,16 +172,19 @@ export async function requeueReport(db, authorId, reportKey, reportData) {
     console.log(`[AUTO] ${reportKey} re-queued for retry at ${retryAt} (attempt ${retries}/${C.MAX_RETRIES})`);
     await db.ref(`scheduledReports/${authorId}/${reportKey}`).update({
         deployStatus: 'retry_queued',
+        // Load-bearing (see checkRetryQueue): a requeued report must read as
+        // not-deployed or restarts will prime it as done and strand it.
+        hasdeployed: false,
         deployRetries: retries,
         retryAt,
         deployCheckedAt: new Date().toISOString(),
         deployMessage: `Retry queued — attempt ${retries}/${C.MAX_RETRIES} at ${new Date(retryAt).toLocaleString()}`,
     });
 
-    // Update retry queue index
-    await db.ref(`retry-queue/${authorId}|${reportKey}`).set({
-        authorId, reportKey, retryAt, deployRetries: retries,
-    }).catch(() => {});
+    // Update retry queue index (with display labels for the dashboard)
+    await db.ref(`retry-queue/${authorId}|${reportKey}`).set(
+        retryIndexEntry(authorId, reportKey, reportData, retryAt, retries)
+    ).catch(() => {});
 
     if (state.knownReportKeys) state.knownReportKeys.delete(reportKey);
 }

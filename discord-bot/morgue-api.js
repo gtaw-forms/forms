@@ -240,7 +240,16 @@ import express from 'express';
 const app = express();
 
 // ── Body parser for write endpoints ──
-app.use(express.json({ limit: '1mb' }));
+// Bulk upload routes accept large payloads (343 morgue records exceed the
+// default 1mb cap — that 413s before any handler runs). Everything else keeps
+// the tight 1mb cap so the general DoS posture is unchanged.
+const jsonDefault = express.json({ limit: '1mb' });
+const jsonBulk = express.json({ limit: '25mb' });
+const BULK_PATHS = new Set(['/api/morgue/bulk', '/api/reports/bulk']);
+app.use((req, res, next) => {
+    if (req.method === 'POST' && BULK_PATHS.has(req.path)) return jsonBulk(req, res, next);
+    return jsonDefault(req, res, next);
+});
 
 // ── Input sanitization middleware ──
 function sanitizeInputs(req, _res, next) {
@@ -790,7 +799,10 @@ async function flushWebhookBatch() {
         const n = e.note ? ` ${e.note}` : '';
         const d = e.detail ? ` ${e.detail}` : '';
         const r = e.requestedBy ? ` requestedBy="${e.requestedBy}"` : '';
-        lines.push(`\`${e.time.slice(11, 19)}\` **${e.method}** \`${e.path}\` → ${e.status} (${e.ms}ms) [${e.key}]${q}${s}${r}${n}${d}`);
+        // UA always shown (sliced for the 2000-char Discord budget) — '-' when
+        // absent, which is itself signal (scanners often send none).
+        const u = e.ua ? ` ua="${e.ua.slice(0, 60)}"` : ' ua="-"';
+        lines.push(`\`${e.time.slice(11, 19)}\` **${e.method}** \`${e.path}\` → ${e.status} (${e.ms}ms) [${e.key}]${q}${s}${r}${n}${d}${u}`);
     }
 
     // Discord has a 2000-char limit on webhook content
@@ -840,6 +852,8 @@ const SUSPICIOUS_PATTERNS = [
     { pattern: /\$\(/,                    label: 'RCE-subshell' },
     { pattern: /\|\s*(sh|bash|cmd|ping|nslookup|wget|curl)\s/i,
                                            label: 'RCE-pipe-shell' },
+    { pattern: /;\s*(touch|curl|wget|chmod|rm|bash|sh|python|perl)\b/i,
+                                           label: 'RCE-semicolon-shell' },
 
     // Path traversal
     { pattern: /\.\.(\/|\\){2,}/,         label: 'TRAVERSAL-double' },
@@ -1308,6 +1322,76 @@ app.get('/api/activity', validateApiKey, rateLimiter, (req, res) => {
     });
 });
 
+/**
+ * POST /api/admin/ban
+ * Immediately + permanently ban an IP (same machinery as the automatic bans:
+ * Discord alert, persisted to disk so it survives restarts).
+ * Loopback and trusted IPs (MORGUE_API_TRUSTED_IPS) are refused — a typo
+ * there would self-DoS local health checks and monitoring.
+ *
+ * Body: { ip: string, reason?: string }
+ * Auth: WRITE API key only (x-api-key header)
+ */
+app.post('/api/admin/ban', validateApiKey, rateLimiter, (req, res) => {
+    if (!req.isAdminKey) {
+        return res.status(403).json({
+            success: false,
+            error: 'Forbidden',
+            message: 'Write operations require a write API key.',
+        });
+    }
+    const ip = String(req.body?.ip || '').trim();
+    if (!ip || !/^[\da-fA-F.:]{3,45}$/.test(ip)) {
+        return res.status(400).json({
+            success: false,
+            error: 'Bad request',
+            message: 'Valid ip required.',
+        });
+    }
+    if (isTrustedIp(ip)) {
+        return res.status(400).json({
+            success: false,
+            error: 'Bad request',
+            message: 'Refusing to ban a trusted/loopback IP.',
+        });
+    }
+    const reason = String(req.body?.reason || 'manual-ban').slice(0, 80);
+    const already = isIpBanned(ip);
+    registerSuspiciousRequest(ip, reason, true);
+    console.warn(`[MORGUE-API] [WARN] Manual ban ${ip} (${reason}) by ${req.apiKeyName}`);
+    res.json({ success: true, ip, alreadyBanned: already, reason });
+});
+
+/**
+ * POST /api/admin/unban
+ * Lift a ban (safety valve for typos). Removes the IP from the ban map and
+ * persists immediately.
+ *
+ * Body: { ip: string }
+ * Auth: WRITE API key only (x-api-key header)
+ */
+app.post('/api/admin/unban', validateApiKey, rateLimiter, (req, res) => {
+    if (!req.isAdminKey) {
+        return res.status(403).json({
+            success: false,
+            error: 'Forbidden',
+            message: 'Write operations require a write API key.',
+        });
+    }
+    const ip = String(req.body?.ip || '').trim();
+    if (!ip) {
+        return res.status(400).json({
+            success: false,
+            error: 'Bad request',
+            message: 'Valid ip required.',
+        });
+    }
+    const wasBanned = ipBanMap.delete(ip);
+    persistBanState();
+    console.warn(`[MORGUE-API] [WARN] Manual unban ${ip} (wasBanned=${wasBanned}) by ${req.apiKeyName}`);
+    res.json({ success: true, ip, wasBanned });
+});
+
 // ──────────────────────────────────────────
 // Write endpoints (local file storage)
 // ──────────────────────────────────────────
@@ -1461,6 +1545,8 @@ app.post('/api/morgue/purge', validateApiKey, rateLimiter, async (req, res) => {
  *
  * Auth: x-api-key header (query param ?key= is no longer supported)
  */
+const MAX_BULK_RECORDS = 5000;
+
 app.post('/api/morgue/bulk', validateApiKey, rateLimiter, async (req, res) => {
     try {
         const { records } = req.body;
@@ -1469,6 +1555,13 @@ app.post('/api/morgue/bulk', validateApiKey, rateLimiter, async (req, res) => {
                 success: false,
                 error: 'Bad request',
                 message: 'Send { records: [...] } with at least one record.',
+            });
+        }
+        if (records.length > MAX_BULK_RECORDS) {
+            return res.status(400).json({
+                success: false,
+                error: 'Bad request',
+                message: `Send at most ${MAX_BULK_RECORDS} records per request — split into smaller batches.`,
             });
         }
 
@@ -2153,50 +2246,11 @@ app.post('/api/cctv/fetch', validateApiKey, rateLimiter, async (req, res) => {
     }
 });
 
-// ── Saved-report BBCode store (P2: off RTDB — newSavedReportBBCode ~11MB) ──
-// The web app writes/reads report BBCode here (via Cloud Function) instead of
-// growing newSavedReportBBCode in RTDB. POST is a read-key op; GET is read.
-// Files: data/saved-report-bbcode/<author>/<key>.json
-const REPORT_BBCODE_DIR = resolve(__dirname, 'data', 'saved-report-bbcode');
-
-app.get('/api/report-bbcode/:author/:key', validateApiKey, rateLimiter, (req, res) => {
-    try {
-        const safeAuthor = String(req.params.author || '').replace(/[^a-zA-Z0-9_-]/g, '');
-        const safeKey = String(req.params.key || '').replace(/[^a-zA-Z0-9_-]/g, '');
-        if (!safeAuthor || !safeKey) return res.status(400).json({ success: false, error: 'Invalid author/key.' });
-        const file = join(REPORT_BBCODE_DIR, safeAuthor, `${safeKey}.json`);
-        if (!existsSync(file)) return res.status(404).json({ success: false, error: 'Not found' });
-        const data = JSON.parse(readFileSync(file, 'utf-8'));
-        return res.json({ success: true, bbCode: data.bbCode || '' });
-    } catch (err) {
-        console.error('[MORGUE-API] report-bbcode GET error:', err.message);
-        return res.status(500).json({ success: false, error: 'Read failed' });
-    }
-});
-
-app.post('/api/report-bbcode', validateApiKey, rateLimiter, (req, res) => {
-    try {
-        const { author, key, bbCode } = req.body || {};
-        const safeAuthor = String(author || '').replace(/[^a-zA-Z0-9_-]/g, '');
-        const safeKey = String(key || '').replace(/[^a-zA-Z0-9_-]/g, '');
-        if (!safeAuthor || !safeKey || typeof bbCode !== 'string') {
-            return res.status(400).json({ success: false, error: 'author, key and bbCode are required.' });
-        }
-        const dir = join(REPORT_BBCODE_DIR, safeAuthor);
-        mkdirSync(dir, { recursive: true });
-        writeFileSync(
-            join(dir, `${safeKey}.json`),
-            JSON.stringify({ author: safeAuthor, key: safeKey, bbCode, savedAt: Date.now() }),
-            'utf-8'
-        );
-        return res.json({ success: true });
-    } catch (err) {
-        console.error('[MORGUE-API] report-bbcode POST error:', err.message);
-        return res.status(500).json({ success: false, error: 'Write failed' });
-    }
-});
-
 // ── Saved-report store (P3: report metadata + BBCode off RTDB) ──
+// NOTE (3b-11): the P2 BBCode-only store (GET/POST /api/report-bbcode +
+// data/saved-report-bbcode/) was retired 2026-09-14 — all 15 legacy files were
+// merged into the P3 store first (gap-fill verified byte-exact). The directory
+// is left on disk as a cold backup; the endpoints are gone.
 // Scheduled/deployment-tracked reports remain in RTDB. These endpoints are for
 // normal saved reports and are called by authenticated Firebase Functions.
 const REPORTS_DIR = resolve(__dirname, 'data', 'saved-reports');
@@ -2268,15 +2322,21 @@ app.get('/api/reports', validateApiKey, rateLimiter, (req, res) => {
         const author = safeReportSegment(req.query.author);
         if (!author) return res.status(400).json({ success: false, error: 'author is required.' });
         const authorDir = join(REPORTS_DIR, author);
-        if (!existsSync(authorDir)) return res.json({ success: true, reports: [] });
+        if (!existsSync(authorDir)) return res.json({ success: true, reports: [], total: 0 });
 
-        const reports = readdirSync(authorDir)
+        const allReports = readdirSync(authorDir)
             .filter(name => name.endsWith('.json'))
             .map(name => readSavedReport(author, name.slice(0, -5)))
             .filter(Boolean)
             .map(reportSummary)
             .sort((a, b) => (Number(b.timestamp) || 0) - (Number(a.timestamp) || 0));
-        return res.json({ success: true, reports });
+        // Paginated list: ?limit=50&offset=0. No limit = all (admin/backfill paths).
+        const rawLimit = Number(req.query.limit);
+        const rawOffset = Number(req.query.offset);
+        const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(Math.floor(rawLimit), 500) : 0;
+        const offset = Number.isFinite(rawOffset) && rawOffset > 0 ? Math.floor(rawOffset) : 0;
+        const reports = limit > 0 ? allReports.slice(offset, offset + limit) : allReports.slice(offset);
+        return res.json({ success: true, reports, total: allReports.length });
     } catch (err) {
         console.error('[MORGUE-API] Saved report list error:', err.message);
         return res.status(500).json({ success: false, error: 'Report list failed.' });
@@ -2331,6 +2391,93 @@ app.delete('/api/reports/:author/:key', validateApiKey, rateLimiter, (req, res) 
     } catch (err) {
         console.error('[MORGUE-API] Saved report delete error:', err.message);
         return res.status(500).json({ success: false, error: 'Report delete failed.' });
+    }
+});
+
+app.get('/api/reports/coroner-stats', validateApiKey, rateLimiter, (req, res) => {
+    // 3b-4: field-level aggregates for the coroner weekly/monthly/yearly
+    // summaries. Scans the local VPS store (never RTDB egress) filtered by
+    // report.timestamp in [start, end] (ms). Classification mirrors the legacy
+    // Functions RTDB loop exactly (coroner-report / coroner_email /
+    // mass-ftality-test). Location matching + agency URL resolution stay in
+    // Functions; this endpoint returns raw place/department value counts.
+    try {
+        const start = Number(req.query.start) || 0;
+        const end = Number(req.query.end) || Date.now();
+        if (end < start) return res.status(400).json({ success: false, error: 'end must be >= start.' });
+        const stats = {
+            totalReports: 0,
+            reportBreakdown: {},
+            topUsers: {},
+            coronerReports: { total: 0, mannerOfDeath: {}, placeOfDeathRaw: {} },
+            coronerEmails: { total: 0, departments: {} },
+            massFatalities: { total: 0, locations: {}, totalDecedents: 0, reports: [] },
+        };
+        if (existsSync(REPORTS_DIR)) {
+            for (const author of readdirSync(REPORTS_DIR)) {
+                const authorDir = join(REPORTS_DIR, author);
+                let files = [];
+                try {
+                    if (!existsSync(authorDir)) continue;
+                    files = readdirSync(authorDir).filter(name => name.endsWith('.json'));
+                } catch (readErr) {
+                    console.warn(`[MORGUE-API] Skipping unreadable author dir ${author}:`, readErr.message);
+                    continue;
+                }
+                for (const file of files) {
+                    const payload = readSavedReport(author, file.slice(0, -5));
+                    const report = payload?.report;
+                    if (!report || typeof report !== 'object') continue;
+                    const timestamp = Number(report.timestamp) || 0;
+                    if (!timestamp || timestamp < start || timestamp > end) continue;
+                    const data = (report.data && typeof report.data === 'object') ? report.data : report;
+                    const formId = report.formId || data.formId;
+                    const displayAuthor = report.authorName || author || 'Unknown';
+                    stats.totalReports++;
+                    stats.reportBreakdown[formId || 'unknown'] = (stats.reportBreakdown[formId || 'unknown'] || 0) + 1;
+                    stats.topUsers[displayAuthor] = (stats.topUsers[displayAuthor] || 0) + 1;
+                    let reportType = 'unknown';
+                    if (formId === 'coroner-report' || (!formId && data.mannerOfDeath)) reportType = 'coroner-report';
+                    else if (formId === 'coroner_email') reportType = 'coroner_email';
+                    else if (formId === 'mass-ftality-test') reportType = 'mass-fatality';
+                    if (reportType === 'coroner-report') {
+                        stats.coronerReports.total++;
+                        const manner = data.mannerOfDeath || 'Undetermined';
+                        stats.coronerReports.mannerOfDeath[manner] = (stats.coronerReports.mannerOfDeath[manner] || 0) + 1;
+                        const place = data.placeOfDeath || 'Unknown';
+                        stats.coronerReports.placeOfDeathRaw[place] = (stats.coronerReports.placeOfDeathRaw[place] || 0) + 1;
+                    } else if (reportType === 'coroner_email') {
+                        stats.coronerEmails.total++;
+                        const rawDept = (typeof data.department === 'object' && data.department !== null) ? data.department.value : data.department;
+                        const dept = rawDept || 'Unknown';
+                        stats.coronerEmails.departments[dept] = (stats.coronerEmails.departments[dept] || 0) + 1;
+                    } else if (reportType === 'mass-fatality') {
+                        stats.massFatalities.total++;
+                        const location = data.location || report.originalKey || 'Unknown Location';
+                        stats.massFatalities.locations[location] = (stats.massFatalities.locations[location] || 0) + 1;
+                        let decedentCount = 0;
+                        if (data.decedentCount) {
+                            decedentCount = Number(data.decedentCount) || 0;
+                        } else if (report.originalKey) {
+                            const match = String(report.originalKey).match(/\(x(\d+)\)/);
+                            if (match && match[1]) decedentCount = Number(match[1]);
+                        }
+                        stats.massFatalities.totalDecedents += decedentCount;
+                        stats.massFatalities.reports.push({
+                            key: payload.key,
+                            originalKey: report.originalKey || 'Untitled',
+                            title: report.originalKey || 'Untitled',
+                            decedents: decedentCount,
+                            author,
+                        });
+                    }
+                }
+            }
+        }
+        return res.json({ success: true, start, end, ...stats });
+    } catch (err) {
+        console.error('[MORGUE-API] Coroner stats error:', err.message);
+        return res.status(500).json({ success: false, error: 'Coroner stats failed.' });
     }
 });
 

@@ -1,17 +1,13 @@
 import { useCallback } from 'react';
 import { database } from '../firebase';
-import { ref, set, get, remove } from 'firebase/database';
+import { ref, remove } from 'firebase/database';
 import * as Sentry from "@sentry/react";
 import { useNotification } from '../contexts/NotificationContext';
 import { useData } from '../contexts/DataContext';
 import { getCharacterName } from '../utils/identityUtils';
 import { comprehensiveSanitize } from '../utils/textUtils';
 import useGtaWorldAuth from './useGtaWorldAuth';
-import { triggerDeleteSavedReport } from '../services/firebaseFunctions';
-
-const isLocalHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-const REPORTS_PATH = isLocalHost ? 'scheduledReports' : 'newSavedReports';
-const BBCODE_PATH = isLocalHost ? 'scheduledReportsBBCode' : 'newSavedReportBBCode';
+import { triggerDeleteSavedReport, triggerCreateSavedReportsBackup } from '../services/firebaseFunctions';
 
 export const useReportActions = () => {
     const { showNotification } = useNotification();
@@ -25,11 +21,14 @@ export const useReportActions = () => {
             return;
         }
 
-        const isLegacyReport = report.legacy;
         const isRecovery = report.isRecovery;
         const sanitizedUserId = comprehensiveSanitize(userId);
 
-        if (report._src === 'vps') {
+        // Task 3b cutover: saved reports live on the VPS (the backfill covers
+        // all legacy authors/keys, so items without `_src` delete via VPS too).
+        // Only the bot deploy queue (`scheduledReports`, `_src === 'scheduled')
+        // and local recovery snapshots stay on RTDB.
+        if (report._src !== 'scheduled' && !isRecovery) {
             try {
                 await triggerDeleteSavedReport({ author: sanitizedUserId, key: reportFirebaseKey });
                 showNotification('Report deleted successfully.', 'trash');
@@ -48,13 +47,8 @@ export const useReportActions = () => {
         if (isRecovery) {
             reportPath = `recoveredReports/${sanitizedUserId}/${reportFirebaseKey}`;
         } else {
-            reportPath = isLegacyReport
-                ? `savedReports/${sanitizedUserId}/${reportFirebaseKey}`
-: `${REPORTS_PATH}/${sanitizedUserId}/${reportFirebaseKey}`;
-
-            bbCodePath = isLegacyReport
-                ? `savedReportBBCode/${sanitizedUserId}/${reportFirebaseKey}`
-                : `${BBCODE_PATH}/${sanitizedUserId}/${reportFirebaseKey}`;
+            reportPath = `scheduledReports/${sanitizedUserId}/${reportFirebaseKey}`;
+            bbCodePath = `scheduledReportsBBCode/${sanitizedUserId}/${reportFirebaseKey}`;
         }
 
         const reportRef = ref(database, reportPath);
@@ -99,87 +93,21 @@ export const useReportActions = () => {
         }
     }, [showNotification, sendDataRequestLog, isGtaAuthenticated, gtaWorldUser]);
 
-    const backupUserReports = useCallback(async (userId) => {
-        if (!userId) {
-            return { success: false, error: "User ID is required for backup." };
-        }
-
-        const sanitizedUserId = comprehensiveSanitize(userId);
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const fullBackupPath = `migrateBackup/${sanitizedUserId}_${timestamp}`;
-
+    // Task 3b cutover (Q2: admin-only backups): per-user self-service backup
+    // is dropped. The old flow duplicated report data inside RTDB under
+    // `migrateBackup/<author>_<timestamp>`; backups are now full VPS snapshots
+    // via `triggerCreateSavedReportsBackup` (superadmin-gated server-side).
+    // This passthrough keeps the hook API stable for any caller.
+    const backupUserReports = useCallback(async () => {
         try {
-            const legacyReportsRef = ref(database, `savedReports/${sanitizedUserId}`);
-            const newReportsRef = ref(database, `${REPORTS_PATH}/${sanitizedUserId}`);
-            const legacyBBCodeRef = ref(database, `savedReportBBCode/${sanitizedUserId}`);
-            const newBBCodeRef = ref(database, `${BBCODE_PATH}/${sanitizedUserId}`);
-
-            const [
-                legacyReportSnapshot,
-                newReportSnapshot,
-                legacyBBCodeSnapshot,
-                newBBCodeSnapshot
-            ] = await Promise.all([
-                get(legacyReportsRef),
-                get(newReportsRef),
-                get(legacyBBCodeRef),
-                get(newBBCodeRef)
-            ]);
-
-            const allReportsToBackup = {};
-            const allBBCodesToBackup = {};
-
-            if (legacyReportSnapshot.exists()) allReportsToBackup.legacy = legacyReportSnapshot.val();
-            if (newReportSnapshot.exists()) allReportsToBackup.new = newReportSnapshot.val();
-            if (legacyBBCodeSnapshot.exists()) allBBCodesToBackup.legacy = legacyBBCodeSnapshot.val();
-            if (newBBCodeSnapshot.exists()) allBBCodesToBackup.new = newBBCodeSnapshot.val();
-
-            if (Object.keys(allReportsToBackup).length === 0 && Object.keys(allBBCodesToBackup).length === 0) {
-                return { success: true, path: fullBackupPath, message: "No reports found to backup." };
-            }
-
-            const backupRef = ref(database, fullBackupPath);
-            await set(backupRef, {
-                reports: allReportsToBackup,
-                bbCodes: allBBCodesToBackup,
-                timestamp: Date.now(),
-                userId: userId
-            });
-
-            if (sendDataRequestLog) {
-                const reportsSize = new TextEncoder().encode(JSON.stringify(allReportsToBackup)).length;
-                const bbCodeSize = new TextEncoder().encode(JSON.stringify(allBBCodesToBackup)).length;
-                sendDataRequestLog(
-                    'useReportActions.js/backupUserReports',
-                    false,
-                    'Firebase Write (Backup)',
-                    reportsSize + bbCodeSize,
-                    isGtaAuthenticated,
-                    getCharacterName(gtaWorldUser),
-                    `Backup path: ${fullBackupPath}`
-                );
-            }
-
-            return { success: true, path: fullBackupPath };
-
+            const result = await triggerCreateSavedReportsBackup();
+            return { success: true, backupId: result?.backupId || null, count: result?.count || 0 };
         } catch (error) {
-            console.error(`Error backing up reports for user ${userId}:`, error);
-            Sentry.captureException(error, { extra: { context: 'backupUserReports', userId } });
-            if (sendDataRequestLog) {
-                sendDataRequestLog(
-                    'useReportActions.js/backupUserReports',
-                    false,
-                    'Firebase Write Error (Backup)',
-                    0,
-                    isGtaAuthenticated,
-                    getCharacterName(gtaWorldUser),
-                    `Backup path: ${fullBackupPath}`,
-                    error.message || 'Unknown Backup Error'
-                );
-            }
-            return { success: false, error: error.message || "Failed to backup reports." };
+            console.error(`Error creating VPS saved-reports backup:`, error);
+            Sentry.captureException(error, { extra: { context: 'backupUserReports' } });
+            return { success: false, error: error.message || "Failed to create VPS backup." };
         }
-    }, [sendDataRequestLog, isGtaAuthenticated, gtaWorldUser]);
+    }, []);
 
     return {
         deleteReportForUser,

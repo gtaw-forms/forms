@@ -11,6 +11,7 @@ import { ref, onValue, onDisconnect, set, serverTimestamp } from 'firebase/datab
 import ProtectedRoute from './components/Auth/ProtectedRoute.jsx';
 import Admin from './components/Admin/Admin.jsx';
 import SplashGate, { AppLoadingScreen } from './components/ui-new/SplashGate.jsx';
+import MigrationNoticeGate from './components/ui-new/MigrationNotice.jsx';
 
 function SessionExpiredBanner() {
     const { sessionExpired, dismissSessionExpiry, logout } = useAuth();
@@ -205,6 +206,7 @@ function App() {
             <FormProvider formData={formData} setFormData={setFormData} setLastWebhookIdentifier={setLastWebhookIdentifier} showNotification={showNotification}>
                 <SessionExpiredBanner />
                 <SplashGate>
+                    <MigrationNoticeGate>
                     <Router>
                         <Suspense fallback={<AppLoadingScreen />}>
                             <Routes>
@@ -220,6 +222,7 @@ function App() {
                             </Routes>
                         </Suspense>
                     </Router>
+                    </MigrationNoticeGate>
                 </SplashGate>
             </FormProvider>
         </Sentry.ErrorBoundary>

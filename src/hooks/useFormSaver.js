@@ -7,7 +7,7 @@ import { ref, set, get, update } from 'firebase/database';
 const jstr = (obj) => {
     try { return JSON.stringify(obj); } catch { return '[unserializable]'; }
 };
-import { triggerSaveReportBBCode, triggerSaveSavedReport } from '../services/firebaseFunctions';
+import { triggerSaveSavedReport } from '../services/firebaseFunctions';
 import * as Sentry from "@sentry/react";
 import { getCharacterName, getCharacterID, resolveEmployeeCredentials, getOAuthShapeFlags } from '../utils/identityUtils';
 import { cleanRankText, comprehensiveSanitize } from '../utils/textUtils';
@@ -539,8 +539,16 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated, rosterData = {}) 
                 if (bbCodeBasePath === 'scheduledReportsBBCode' || bbCodeBasePath === 'dev-reports-bbcode') {
                     promises.push(set(bbCodeRef, { bbCode }));
                 } else {
-                    promises.push(triggerSaveReportBBCode({ author: sanitizedAuthorId, key: sanitizedKey, bbCode })
-                        .catch(() => set(bbCodeRef, { bbCode })));
+                    // Legacy BBCode proxy retired (3b-11): unified report+BBCode
+                    // save covers this path (localhost dev for non-deploy forms).
+                    // Fail closed with a user-visible error.
+                    promises.push(
+                        triggerSaveSavedReport({ author: sanitizedAuthorId, key: sanitizedKey, report: reportDataToSave, bbCode }).catch((bbCodeError) => {
+                            const msg = `BBCode save failed (${bbCodeError?.message || 'VPS store unavailable'}). Report NOT saved — please retry.`;
+                            if (!options.silent) showNotification(msg, 'error', 8000);
+                            throw new Error(msg);
+                        })
+                    );
                 }
             }
 

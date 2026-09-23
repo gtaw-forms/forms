@@ -830,10 +830,12 @@ const handleClearForm = useCallback(() => {
 
 
 
-  const { 
+  const {
       savedReports,
+      savedReportsTotal,
       isLoadingUserReports,
       loadUserSavedReports,
+      loadMoreSavedReports,
       loadReportForUser
   } = useReportLoader();
 
@@ -1244,6 +1246,8 @@ const handleClearForm = useCallback(() => {
           onClose={() => setShowSavedReports(false)}
           showNotification={showNotification}
           reportsForSelectedUser={savedReports}
+          reportsTotalCount={savedReportsTotal}
+          onLoadMoreReports={loadMoreSavedReports}
           onEmployeeSelect={loadUserSavedReports}
           employeeOptions={employeeOptions}
           isLoadingReports={isLoadingUserReports}

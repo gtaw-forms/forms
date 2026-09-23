@@ -1,7 +1,5 @@
-import { onCall } from "firebase-functions/v2/https";
-import * as functions from "firebase-functions";
 import { db } from '../utils/firebase.js';
-import { sendWebhook, sendWebhookWithFile } from '../utils/helpers.js';
+import { sendWebhook } from '../utils/helpers.js';
 import { processUntrackedLocation } from '../utils/locationReporting.js';
 
 const MORGUE_API_URL = (process.env.MORGUE_API_URL || 'http://88.208.243.254').replace(/\/$/, '');
@@ -251,139 +249,85 @@ async function matchLocation(place, processedLocations, reportKey = null, skipRe
 }
 
 
-async function aggregateCoronerStats(startOfMonth, endOfMonth) {
-    const reportsPaths = ['newSavedReports', 'savedReports'];
-    
-    const agencyDataStore = await getReferenceDataset('agencies');
-    const processedLocations = await getProcessedLocations();
-    const processedReportIds = new Set();
-
-
-    const stats = {
-        coronerReports: { total: 0, mannerOfDeath: {}, placeOfDeath: {} }, // Removed topCoroners from here
+function emptyCoronerStats() {
+    return {
+        coronerReports: { total: 0, mannerOfDeath: {}, placeOfDeath: {} },
         coronerEmails: { total: 0, departments: {} },
         massFatalities: { total: 0, locations: {}, totalDecedents: 0, reports: [] },
         reportBreakdown: {},
-        topUsers: {}, // New object to track all top users
-        totalReports: 0 // New field for total reports processed
+        topUsers: {},
+        totalReports: 0
     };
+}
 
-    for (const path of reportsPaths) {
-        const reportsRef = db.ref(path);
-        const snapshot = await reportsRef.once('value');
-        if (!snapshot.exists()) {
-            console.log(`[CoronerStats] No reports found in path: ${path}`);
-            continue;
+async function aggregateCoronerStats(startOfMonth, endOfMonth) {
+    // 3b-4: VPS aggregates — no RTDB full-node scans. Field-level breakdowns
+    // come from GET /api/reports/coroner-stats (local-disk scan on the VPS);
+    // only distinct placeOfDeath strings are matched locally below, and agency
+    // URLs are resolved from the reference dataset. On VPS failure this
+    // returns empty stats (summaries no-op) rather than falling back to RTDB.
+    const stats = emptyCoronerStats();
+
+    if (!MORGUE_API_KEY) {
+        console.warn('[CoronerStats] MORGUE_API_KEY unset — returning empty stats (no RTDB scan).');
+        return stats;
+    }
+
+    let agg;
+    try {
+        const start = Number(startOfMonth) || 0;
+        const end = Number(endOfMonth) || Date.now();
+        const response = await fetch(
+            `${MORGUE_API_URL}/api/reports/coroner-stats?start=${start}&end=${end}`,
+            { headers: { 'x-api-key': MORGUE_API_KEY } }
+        );
+        if (!response.ok) {
+            throw new Error(`VPS coroner-stats returned ${response.status}`);
         }
+        agg = await response.json();
+    } catch (error) {
+        console.error(`[CoronerStats] VPS aggregate unavailable: ${error.message} — returning empty stats (no RTDB scan).`);
+        return stats;
+    }
 
-        const allUsersReports = snapshot.val();
-        let reportsInPath = 0;
-        for (const userId in allUsersReports) {
-            const userReports = allUsersReports[userId];
-            if (userReports && typeof userReports === 'object') {
-                reportsInPath += Object.keys(userReports).length;
-            }
+    const agencyDataStore = await getReferenceDataset('agencies');
+    const processedLocations = await getProcessedLocations();
+
+    stats.totalReports = Number(agg.totalReports) || 0;
+    stats.reportBreakdown = agg.reportBreakdown || {};
+    stats.topUsers = agg.topUsers || {};
+
+    stats.coronerReports.total = Number(agg.coronerReports?.total) || 0;
+    stats.coronerReports.mannerOfDeath = agg.coronerReports?.mannerOfDeath || {};
+    for (const [place, count] of Object.entries(agg.coronerReports?.placeOfDeathRaw || {})) {
+        // skipReport=true: summary jobs map distinct place strings only and must
+        // not write untracked_locations_log entries (per-report deploy path
+        // already handles discovery).
+        const matched = await matchLocation(place, processedLocations, null, true);
+        if (!stats.coronerReports.placeOfDeath[matched.area]) {
+            stats.coronerReports.placeOfDeath[matched.area] = { total: 0, streets: {} };
         }
-        console.log(`[CoronerStats] Located ${reportsInPath} reports in path: ${path}`);
-
-        for (const userId in allUsersReports) {
-            // Only process 'CIVILIAN' reports from the legacy savedReports path
-            if (path === 'savedReports' && userId !== 'CIVILIAN') continue;
-
-            const userReports = allUsersReports[userId];
-            if (!userReports || typeof userReports !== 'object') continue;
-
-            for (const reportId in userReports) {
-                if (processedReportIds.has(reportId)) continue;
-                
-                const report = userReports[reportId];
-                if (!report.timestamp || report.timestamp < startOfMonth || report.timestamp > endOfMonth) continue;
-                
-                processedReportIds.add(reportId);
-                stats.totalReports++;
-
-                const formId = report.formId || report.data?.formId;
-                const data = report.data || report;
-                const author = report.authorName || userId || 'Unknown'; // Get author for topUsers
-
-                stats.topUsers[author] = (stats.topUsers[author] || 0) + 1; // Increment for all reports
-                stats.totalReports++; // Increment total reports count
-
-                let reportType = 'unknown';
-                if (formId === 'coroner-report' || (!formId && data.mannerOfDeath)) {
-                    reportType = 'coroner-report';
-                } else if (formId === 'coroner_email') {
-                    reportType = 'coroner_email';
-                } else if (formId === 'mass-ftality-test') {
-                    reportType = 'mass-fatality';
-                }
-
-                stats.reportBreakdown[formId || 'unknown'] = (stats.reportBreakdown[formId || 'unknown'] || 0) + 1; // Increment report breakdown
-
-                switch (reportType) {
-                    case 'coroner-report':
-                        stats.coronerReports.total++;
-                        const manner = data.mannerOfDeath || 'Undetermined';
-                        stats.coronerReports.mannerOfDeath[manner] = (stats.coronerReports.mannerOfDeath[manner] || 0) + 1;
-                        const placeInput = data.placeOfDeath || 'Unknown';
-                        const matched = await matchLocation(placeInput, processedLocations, reportId);
-                        if (!stats.coronerReports.placeOfDeath[matched.area]) {
-                            stats.coronerReports.placeOfDeath[matched.area] = { total: 0, streets: {} };
-                        }
-                        stats.coronerReports.placeOfDeath[matched.area].total++;
-                        if (matched.street) {
-                            stats.coronerReports.placeOfDeath[matched.area].streets[matched.street] = (stats.coronerReports.placeOfDeath[matched.area].streets[matched.street] || 0) + 1;
-                        }
-                        break;
-
-                    case 'coroner_email':
-                        stats.coronerEmails.total++;
-                        const deptValue = (typeof data.department === 'object' && data.department !== null) ? data.department.value : data.department;
-                        const dept = deptValue || 'Unknown';
-                        if (!stats.coronerEmails.departments[dept]) {
-                            stats.coronerEmails.departments[dept] = { count: 0, url: null };
-                        }
-                        stats.coronerEmails.departments[dept].count++;
-                        const agency = Object.values(agencyDataStore).find(a => a.fullName === dept);
-                        if (agency && agency.url) {
-                            stats.coronerEmails.departments[dept].url = agency.url;
-                        }
-                        break;
-                    
-                    case 'mass-fatality':
-                        stats.massFatalities.total++;
-                        const location = data.location || report.originalKey || 'Unknown Location';
-                        stats.massFatalities.locations[location] = (stats.massFatalities.locations[location] || 0) + 1;
-
-                        let decedentCount = 0;
-                        if (data.decedentCount) {
-                            decedentCount = Number(data.decedentCount);
-                        } else if (report.originalKey) {
-                            const match = report.originalKey.match(/\(x(\d+)\)/);
-                            if (match && match[1]) {
-                               decedentCount = Number(match[1]);
-                            }
-                        }
-                        stats.massFatalities.totalDecedents += decedentCount;
-                        
-                        stats.massFatalities.reports.push({
-                            key: reportId,
-                            originalKey: report.originalKey || 'Untitled', // Use originalKey for URL
-                            title: report.originalKey || 'Untitled',
-                            decedents: decedentCount,
-                            author: userId
-                        });
-                        break;
-                    
-                    default:
-                        // This will catch any reports that don't match the above types
-                        // and ensure they are still counted in the breakdown.
-                        break;
-                }
-            }
+        stats.coronerReports.placeOfDeath[matched.area].total += count;
+        if (matched.street) {
+            stats.coronerReports.placeOfDeath[matched.area].streets[matched.street] =
+                (stats.coronerReports.placeOfDeath[matched.area].streets[matched.street] || 0) + count;
         }
     }
-    
+
+    stats.coronerEmails.total = Number(agg.coronerEmails?.total) || 0;
+    for (const [dept, count] of Object.entries(agg.coronerEmails?.departments || {})) {
+        stats.coronerEmails.departments[dept] = { count, url: null };
+        const agency = Object.values(agencyDataStore).find(a => a.fullName === dept);
+        if (agency && agency.url) {
+            stats.coronerEmails.departments[dept].url = agency.url;
+        }
+    }
+
+    stats.massFatalities.total = Number(agg.massFatalities?.total) || 0;
+    stats.massFatalities.locations = agg.massFatalities?.locations || {};
+    stats.massFatalities.totalDecedents = Number(agg.massFatalities?.totalDecedents) || 0;
+    stats.massFatalities.reports = Array.isArray(agg.massFatalities?.reports) ? agg.massFatalities.reports : [];
+
     return stats;
 }
 
@@ -547,204 +491,12 @@ export const runYearlyCoronerSummary = async () => {
 };
 
 /**
- * Manually trigger a coroner report summary to be sent to the webhook.
+ * Monthly coroner summary (re-enabled 3b-4, 2026-09-14): the old
+ * `coronerReports.topCoroners` TypeError is fixed by using `fullStats.topUsers`
+ * (same as the weekly/yearly paths), and `aggregateCoronerStats` now reads VPS
+ * aggregates (`GET /api/reports/coroner-stats`) instead of full-node RTDB
+ * scans per `plan/saved-reports-migration-design.md` §8.
  */
-const triggerCoronerReport = onCall({
-    region: "europe-west2",
-    secrets: ["PHMC_CONFIG"],
-}, async (request) => {
-    const { type } = request.data;
-    const now = new Date();
-    let startTime, endTime, title, periodLabel, color;
-
-    switch (type) {
-        case 'weekly':
-            endTime = now.getTime();
-            startTime = endTime - (7 * 24 * 60 * 60 * 1000);
-            title = "📊 Weekly Coroner's Office Summary (Manual)";
-            periodLabel = "Past 7 Days";
-            color = 0x9B59B6;
-            break;
-        case 'monthly':
-            const targetDate = new Date();
-            targetDate.setMonth(targetDate.getMonth() - 1);
-            startTime = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1).getTime();
-            endTime = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0, 23, 59, 59, 999).getTime();
-            const monthName = targetDate.toLocaleString('default', { month: 'long' });
-            title = `📊 Monthly Coroner's Office Summary: ${monthName} ${targetDate.getFullYear()} (Manual)`;
-            periodLabel = `${monthName} ${targetDate.getFullYear()}`;
-            color = 0x9B59B6;
-            break;
-        case 'yearly':
-            startTime = new Date(now.getFullYear(), 0, 1).getTime();
-            endTime = now.getTime();
-            title = `🗓️ Yearly Coroner's Office Summary: ${now.getFullYear()} (Manual)`;
-            periodLabel = `Year ${now.getFullYear()}`;
-            color = 0xE67E22;
-            break;
-        default:
-            return { success: false, message: "Invalid report type." };
-    }
-
-    try {
-        const fullStats = await aggregateCoronerStats(startTime, endTime);
-        const { coronerReports, coronerEmails, massFatalities } = fullStats;
-
-        if (coronerReports.total === 0 && coronerEmails.total === 0 && massFatalities.total === 0) {
-            return { success: false, message: "No activity found for this period." };
-        }
-
-        let coronerReportSummary = `**${coronerReports.total}** death investigations filed.`;
-        if (coronerReports.total > 0) {
-            const topAreasData = Object.entries(coronerReports.placeOfDeath || {}).sort(([, a], [, b]) => b.total - a.total).slice(0, 3);
-            let topAreasDescription = topAreasData.map(([area, data]) => {
-                const topStreets = Object.entries(data.streets || {}).sort(([, a], [, b]) => b - a).slice(0, 2).map(([street, count]) => `${street} (${count})`).join(', ');
-                return `**${area}** (${data.total}) - _Top Streets: ${topStreets || 'N/A'}_`;
-            }).join('\n');
-            if (topAreasDescription) {
-                coronerReportSummary += `\n**Top Regions**:\n${topAreasDescription}`;
-            }
-        }
-
-        const topUsers = Object.entries(fullStats.topUsers || {}).sort(([, a], [, b]) => b - a).slice(0, 3).map(([name, count]) => `${name} (${count})`).join(', ');
-        if (topUsers) {
-            coronerReportSummary += `\n**Top Users**: ${topUsers}`;
-        }
-
-        let emailSummary = `**${coronerEmails.total}** emails sent.`;
-        if (coronerEmails.total > 0) {
-            const topDepts = Object.entries(coronerEmails.departments || {}).sort(([, a], [, b]) => b.count - a.count).slice(0, 3).map(([dept, data]) => {
-                return `${dept} (${data.count})`;
-            }).join(', ');
-            emailSummary += `\n**Top Departments**: ${topDepts}`;
-        }
-
-        let massFatalitySummary = `**${massFatalities.total}** events, **${massFatalities.totalDecedents}** total decedents.`;
-        if (type !== 'yearly' && massFatalities.total > 0) {
-             const reportLinks = massFatalities.reports.slice(0, 5).map(r => {
-                const safeOriginalKey = encodeURIComponent(r.originalKey.replace(/\//g, '_'));
-                const reportUrl = `https://phmc-tools.gta.world/#/view-report/${r.author}/${safeOriginalKey}`;
-                return `[${r.title || 'View Report'}](${reportUrl}) (${r.decedents} decedents)`;
-            }).join('\n');
-            massFatalitySummary += `\n**Recent Events**:\n${reportLinks}`;
-        }
-
-        const embed = {
-            title: title,
-            description: `Manual trigger requested for ${periodLabel}.`,
-            color: color,
-            fields: [
-                { name: "__Coroner Reports__", value: coronerReportSummary, inline: false },
-                { name: "__Coroner Emails__", value: emailSummary, inline: false },
-                { name: "__Mass Fatality Reports__", value: massFatalitySummary, inline: false }
-            ],
-            footer: { text: "PHMC Tools - Manual Report Trigger" },
-            timestamp: new Date().toISOString()
-        };
-
-        const result = await sendWebhook({ embeds: [embed] });
-        return { success: result, message: result ? "Webhook sent successfully." : "Failed to send webhook." };
-
-    } catch (error) {
-        console.error('[Manual Trigger] Error:', error);
-        return { success: false, message: error.message };
-    }
-});
-
-/**
- * Scans reports from the last 60 days to identify untracked locations.
- * Results are sent via Webhook as a .txt file.
- */
-const scanUntrackedLocations = onCall({
-    region: "europe-west2",
-    secrets: ["PHMC_CONFIG"],
-}, async (request) => {
-    const now = Date.now();
-    const SixtyDaysAgo = now - (60 * 24 * 60 * 60 * 1000);
-
-    console.log('[Scan Untracked] Starting manual scan of reports from the last 60 days...');
-
-    try {
-        // 1. Run the scan (updates untracked_locations_log in DB with new findings)
-        await aggregateCoronerStats(SixtyDaysAgo, now);
-
-        // 2. Fetch the updated results
-        const logSnapshot = await db.ref('untracked_locations_log').once('value');
-        const logs = logSnapshot.val() || {};
-        
-        // 3. Filter out things that are now tracked (Cleanup Step)
-        const processedLocations = await getProcessedLocations();
-        const trulyUntracked = [];
-        const updates = {};
-
-        for (const [key, entry] of Object.entries(logs)) {
-            // Use matchLocation with skipReport=true to check if we now know about this place
-            const matched = await matchLocation(entry.place, processedLocations, null, true);
-            
-            // CLEANUP LOGIC: If the system can now match this with at least MEDIUM confidence (> 45),
-            // it is no longer "untracked" and should be purged from the log.
-            if (matched.confidence > 45) {
-                updates[`untracked_locations_log/${key}`] = null;
-            } else {
-                // REPORT FILTER: Only include discoveries from actual report scans in the .txt file
-                if (entry.source === 'REPORT' || (entry.lastReportKey && entry.lastReportKey !== 'N/A')) {
-                    trulyUntracked.push({ ...entry, matchAnalysis: matched });
-                }
-            }
-        }
-
-        // Apply cleanup updates to Firebase
-        if (Object.keys(updates).length > 0) {
-            console.log(`[Scan Untracked] Purged ${Object.keys(updates).length} matched locations from untracked log.`);
-            await db.ref().update(updates);
-        }
-
-        if (trulyUntracked.length === 0) {
-            return { success: true, message: "Scan complete. All discovered locations are already mapped!" };
-        }
-
-        const sortedEntries = trulyUntracked.sort((a, b) => b.timestamp - a.timestamp);
-
-        // 4. Format into a text file
-        let reportText = `PHMC UNTRACKED LOCATIONS REPORT\n`;
-        reportText += `Generated: ${new Date().toISOString()}\n`;
-        reportText += `Total Locations Requiring Mapping: ${sortedEntries.length}\n`;
-        reportText += `(Note: Results with > 45% confidence are auto-accepted and were purged from this log)\n`;
-        reportText += `------------------------------------------\n\n`;
-
-        sortedEntries.forEach(entry => {
-            const analysis = entry.matchAnalysis || {};
-            const confidenceStr = analysis.level ? `${analysis.level} (${analysis.confidence || 0}%)` : 'UNKNOWN (0%)';
-
-            reportText += `PLACE: ${entry.place}\n`;
-            reportText += `NEAREST: ${entry.nearestStreet || analysis.matchedName || 'N/A'}\n`;
-            reportText += `CONFIDENCE: ${confidenceStr}\n`;
-            reportText += `DATABASE SEARCH: ${entry.place} - MATCH RATING: ${analysis.confidence || 0}% (FOUND: ${analysis.matchedName || "None"})\n`;
-            reportText += `TYPE: REPORT\n`;
-            reportText += `REPORT ID: ${entry.lastReportKey || 'N/A'}\n`;
-            reportText += `------------------------------------------\n`;
-        });
-
-        // 5. Send Webhook with File
-        const webhookPayload = {
-            embeds: [{
-                title: "🗺️ Untracked Locations Scan Results",
-                description: `Scan of the last 60 days complete. Found **${sortedEntries.length}** locations that truly require mapping.`,
-                color: 0xFFAA00,
-                footer: { text: "PHMC Tools - Automated Discovery & Cleanup" }
-            }]
-        };
-
-        const fileName = `untracked_locations_${new Date().toISOString().split('T')[0]}.txt`;
-        await sendWebhookWithFile(reportText, fileName, webhookPayload);
-
-        return { success: true, message: `Scan complete. Found ${sortedEntries.length} truly untracked locations. Results sent to Discord.` };
-    } catch (error) {
-        console.error('[Scan Untracked] Error:', error);
-        return { success: false, message: error.message };
-    }
-});
-
 export const runMonthlyCoronerSummary = async () => {
     const targetDate = new Date();
     targetDate.setMonth(targetDate.getMonth() - 1);
@@ -777,9 +529,9 @@ export const runMonthlyCoronerSummary = async () => {
             }
         }
 
-        const topCoroners = Object.entries(coronerReports.topCoroners).sort(([, a], [, b]) => b - a).slice(0, 3).map(([name, count]) => `${name} (${count})`).join(', ');
-        if (topCoroners) {
-            coronerReportSummary += `\n**Top Coroners**: ${topCoroners}`;
+        const topUsers = Object.entries(fullStats.topUsers || {}).sort(([, a], [, b]) => b - a).slice(0, 3).map(([name, count]) => `${name} (${count})`).join(', ');
+        if (topUsers) {
+            coronerReportSummary += `\n**Top Users**: ${topUsers}`;
         }
 
         let emailSummary = `**${coronerEmails.total}** emails sent.`;

@@ -20,8 +20,7 @@ import { resolveAutopsyTopic } from './deployInteraction.js';
 import { crosspostAutopsyToLssd, retryFailedLssdCrossposts } from './deployLssd.js';
 import { crosspostAutopsyToLspd, retryFailedLspdCrossposts } from './deployLspd.js';
 import { clearAssignment, getRotationStatus } from './autopsyRotation.js';
-import { startFactionRosterSync } from './factionRosterSync.js';
-import { startPatientIndex } from './patientIndex.js';
+
 
 //  Discord Client (for interactive messages)
 // Set via setAutoDeployClient() from index.js on startup.
@@ -206,21 +205,8 @@ export function setAutoDeployClient(client) {
             console.warn('[AUTO]  Could not start death record recovery:', err.message);
         }
 
-        //  Start faction roster sync (LSPD/LSSD member list, daily)
-        try {
-            startFactionRosterSync();
-        } catch (err) {
-            console.warn('[AUTO]  Could not start roster sync:', err.message);
-        }
-
-        //  Start patient index service (medical-records-index.json)
-        //  Incremental refresh from saved reports + 3-day f=97 full rebuild.
-        try {
-            startPatientIndex(db).catch((err) => console.warn('[AUTO]  Could not start patient index:', err.message));
-        } catch (err) {
-            console.warn('[AUTO]  Could not start patient index:', err.message);
-        }
-
+        //  NOTE: faction roster sync + patient index are started from the
+        //  phased boot queue in index.js (forum-heavy — never at T+0).
         //  Listen for new reports at scheduledReports
         // Using on('value') because child_added only fires for NEW top-level children (authors),
         // not for reports added under EXISTING authors. value fires on any change.
@@ -717,7 +703,7 @@ export async function retryMissingLspdCrossposts(db, { force = false, entries } 
 
 let _heartbeatRunning = false;
 const RECOVERY_HEARTBEAT_INTERVAL_MS =
-    parseInt(process.env.RECOVERY_HEARTBEAT_INTERVAL_MS || '', 10) || 10 * 60 * 1000;
+    parseInt(process.env.RECOVERY_HEARTBEAT_INTERVAL_MS || '', 10) || 60 * 60 * 1000;
 
 /**
  * Run all recovery/self-healing sweeps in sequence.

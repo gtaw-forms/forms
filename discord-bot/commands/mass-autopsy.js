@@ -13,8 +13,17 @@ export const data = new SlashCommandBuilder()
             .setRequired(true))
     .addStringOption(opt =>
         opt.setName('requester')
-            .setDescription('Requester forum name (used in completion template)')
+            .setDescription('Requester forum name (completion template + PM recipient when pm_forum is set)')
             .setRequired(false))
+    .addStringOption(opt =>
+        opt.setName('pm_forum')
+            .setDescription('On completion, PM each report to the requester on this forum instead of any public post')
+            .setRequired(false)
+            .addChoices(
+                { name: 'LSPD', value: 'lspd' },
+                { name: 'LSSD', value: 'lssd' },
+                { name: 'PHMC', value: 'phmc' },
+            ))
     .addBooleanOption(opt =>
         opt.setName('dryrun')
             .setDescription('Simulate without posting (default: true)')
@@ -30,11 +39,16 @@ export async function execute(interaction) {
 
     const bbAttachment = interaction.options.getAttachment('bbc');
     const requesterName = interaction.options.getString('requester') || '';
+    const pmForum = (interaction.options.getString('pm_forum') || '').toLowerCase();
     const dryRun = interaction.options.getBoolean('dryrun') ?? true;
     const PHMC_BASE = 'https://phmc.gta.world';
 
     if (!bbAttachment) {
         await interaction.editReply({ content: 'No BBCode file provided.' });
+        return;
+    }
+    if (pmForum && !requesterName) {
+        await interaction.editReply({ content: '[ERR] `pm_forum` is set but no `requester` (forum username) was provided. Add the recipient to enable the PMs.' });
         return;
     }
 
@@ -76,7 +90,7 @@ export async function execute(interaction) {
         // ── Execute ──
         await interaction.editReply({ content: `Processing ${bodies.length} bod${bodies.length > 1 ? 'ies' : 'y'} across rotation...` });
 
-        const results = await executeMassAutopsy(db, client, bodies, { dryRun, requesterName, baseUrl: PHMC_BASE });
+        const results = await executeMassAutopsy(db, client, bodies, { dryRun, requesterName, pmForum, pmRecipient: requesterName, baseUrl: PHMC_BASE });
 
         // ── Build summary ──
         const successCount = results.filter(r => r.success).length;
@@ -100,12 +114,13 @@ export async function execute(interaction) {
         }
 
         const requesterLine = requesterName ? `\nRequester: ${requesterName}` : '';
+        const deliveryLine = pmForum ? `\nDelivery: completion reports PM'd to **${requesterName}** on **${pmForum.toUpperCase()}** (no public post)` : '';
 
         const embed = new EmbedBuilder()
             .setColor(failCount === 0 ? 0x28a745 : failCount === results.length ? 0xdc3545 : 0xffc107)
             .setTitle(dryRun ? '[DRY RUN] Mass Autopsy Results' : 'Mass Autopsy Results')
             .setDescription([
-                `**${successCount}** of **${results.length}** bod${results.length > 1 ? 'ies' : 'y'} processed.${requesterLine}`,
+                `**${successCount}** of **${results.length}** bod${results.length > 1 ? 'ies' : 'y'} processed.${requesterLine}${deliveryLine}`,
                 failCount > 0 ? `**${failCount}** failed.` : '',
                 dryRun ? '\n_First body BBCode attached as .txt — run with `dryrun:false` to post live._' : '',
                 '',

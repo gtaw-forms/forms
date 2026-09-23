@@ -4,6 +4,7 @@ import * as logger from "firebase-functions/logger";
 
 export const fetchExternalUrl = onCall({
     region: "europe-west2",
+    memory: "256MiB",
 }, async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required.');
     const {

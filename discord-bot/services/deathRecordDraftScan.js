@@ -7,8 +7,29 @@ import { generateDraft, baseReportKey, decedentFromReport, buildVirtualReportDat
 import { sendDraft, updateDraftWithMorgue, DRAFT_CHANNEL_ID } from './deathRecordDraftUI.js';
 import { sendLogMessage } from './logChannel.js';
 import { isFaceConfigured, findFacePostByContent } from './facePost.js';
+import { firstApiKey } from './apiKeyUtil.js';
 
 const DRAFT_TRACK_PATH = 'deathRecordDrafts';
+const VPS_REPORTS_BASE = 'http://127.0.0.1:3001';
+
+/**
+ * Task 3b cutover: normal saved reports live on the VPS morgue-api, not RTDB.
+ * Point-read one report by author/key. Returns the report object or null.
+ */
+async function fetchVpsReport(authorId, reportKey) {
+    try {
+        const response = await fetch(
+            `${VPS_REPORTS_BASE}/api/reports/${encodeURIComponent(authorId)}/${encodeURIComponent(reportKey)}`,
+            { headers: { 'x-api-key': firstApiKey(process.env.MORGUE_API_KEYS) || '' } }
+        );
+        if (!response.ok) return null;
+        const body = await response.json();
+        return body?.report || null;
+    } catch (err) {
+        console.warn(`[DRAFT] [WARN] VPS report read ${authorId}/${reportKey}: ${err.message}`);
+        return null;
+    }
+}
 
 // Statuses that mean an approval fully completed (nothing to recover).
 const FINAL_DRAFT_STATUSES = ['approved', 'denied', 'simulated', 'approved_simulated'];
@@ -27,14 +48,16 @@ function isLowMatch(rec, reportOoc) {
 /**
  * Locate the source report for a draft. Mass-fatality drafts store keys with a
  * `_decedentN` suffix; the actual report lives under the base key.
+ * Task 3b: the bot queue (`scheduledReports`) stays on RTDB; normal saved
+ * reports are point-read from the VPS.
  */
 async function findSourceReport(db, authorId, reportKey) {
     const candidates = [...new Set([reportKey, baseReportKey(reportKey)])];
     for (const candidateKey of candidates) {
-        for (const path of ['scheduledReports', 'newSavedReports']) {
-            const snap = await db.ref(`${path}/${authorId}/${candidateKey}`).once('value').catch(() => null);
-            if (snap?.exists()) return { path, reportKey: candidateKey, ...snap.val() };
-        }
+        const schedSnap = await db.ref(`scheduledReports/${authorId}/${candidateKey}`).once('value').catch(() => null);
+        if (schedSnap?.exists()) return { path: 'scheduledReports', reportKey: candidateKey, ...schedSnap.val() };
+        const vpsReport = await fetchVpsReport(authorId, candidateKey);
+        if (vpsReport) return { path: 'newSavedReports', reportKey: candidateKey, ...vpsReport };
     }
     return null;
 }
@@ -561,9 +584,14 @@ _knownPassiveCKKeys = new Set();
             ? entry.reportPath : 'newSavedReports';
 
         db.ref(`${base}/${authorId}/${reportKey}`).once('value')
-            .then((reportSnap) => {
-                if (!reportSnap.exists()) return;
-                const reportData = reportSnap.val();
+            .then(async (reportSnap) => {
+                let reportData = reportSnap.exists() ? reportSnap.val() : null;
+                // Task 3b: CK saves land on the VPS — RTDB misses there fall
+                // through to a VPS point read instead of being dropped.
+                if (!reportData && base === 'newSavedReports') {
+                    reportData = await fetchVpsReport(authorId, reportKey);
+                }
+                if (!reportData) return;
                 if (reportData.formId === 'coroner-report' || reportData.formId === 'mass-ftality-test') {
                     passivCKCheck(db, authorId, reportKey, reportData);
                 }
@@ -607,11 +635,13 @@ export async function scanAndDraftCKs(db, options = {}) {
     const filterDate = parseDateFilter(options.date);
     const filterDateKey = filterDate ? toUTCDateKey(filterDate) : null;
 
-    for (const path of ['scheduledReports', 'newSavedReports']) {
-        const snap = await db.ref(path).once('value').catch(() => null);
-        if (!snap?.exists()) continue;
-
-        snap.forEach((authorSnap) => {
+    // Task 3b: the bot queue (`scheduledReports`) stays on RTDB and keeps its
+    // full scan; normal saved reports are enumerated on the VPS (author list
+    // from stats, then one cheap per-author list each) — never a full RTDB
+    // `newSavedReports` read.
+    const schedSnap = await db.ref('scheduledReports').once('value').catch(() => null);
+    if (schedSnap?.exists()) {
+        schedSnap.forEach((authorSnap) => {
             const authorId = authorSnap.key;
             authorSnap.forEach((reportSnap) => {
                 const reportKey = reportSnap.key;
@@ -631,6 +661,42 @@ export async function scanAndDraftCKs(db, options = {}) {
                 ckReports.push({ authorId, reportKey, reportData });
             });
         });
+    }
+
+    try {
+        const statsRes = await fetch(`${VPS_REPORTS_BASE}/api/reports/stats`, {
+            headers: { 'x-api-key': firstApiKey(process.env.MORGUE_API_KEYS) || '' },
+        });
+        if (statsRes.ok) {
+            const stats = await statsRes.json();
+            const authors = Object.keys(stats?.byAuthor || {});
+            for (const authorId of authors) {
+                const listRes = await fetch(
+                    `${VPS_REPORTS_BASE}/api/reports?author=${encodeURIComponent(authorId)}`,
+                    { headers: { 'x-api-key': firstApiKey(process.env.MORGUE_API_KEYS) || '' } }
+                );
+                if (!listRes.ok) continue;
+                const listBody = await listRes.json();
+                for (const reportData of listBody?.reports || []) {
+                    if (reportData.formId !== 'coroner-report') continue;
+                    const typeOfDeath = reportData.data?.typeOfDeath?.value || reportData.data?.typeOfDeath || '';
+                    if (typeOfDeath.toUpperCase() !== 'CK') continue;
+
+                    if (filterDateKey) {
+                        const dod = reportData.data?.dateTime || reportData.data?.dateOfDeath || '';
+                        if (!dod) continue;
+                        const reportDateKey = toUTCDateKey(new Date(dod));
+                        if (!reportDateKey || reportDateKey !== filterDateKey) continue;
+                    }
+
+                    ckReports.push({ authorId, reportKey: reportData.key, reportData });
+                }
+            }
+        } else {
+            console.warn(`[DRAFT] [WARN] VPS report stats unavailable for CK scan: HTTP ${statsRes.status}`);
+        }
+    } catch (err) {
+        console.warn('[DRAFT] [WARN] VPS CK scan failed:', err.message);
     }
 
     results.total = ckReports.length;

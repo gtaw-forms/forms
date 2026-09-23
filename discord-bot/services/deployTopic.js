@@ -84,9 +84,9 @@ export async function handleTopic(report) {
             ? reportData.data?.ReportRequested === true || reportData.data?.ReportRequested === 'true'
             : reportData.formId === 'mass-ftality-test' && !!reportData.data?.requestingOfficer;
         if (isRequested) {
-            console.log('[AUTO]  Report requested — triggering auto coroner email');
+            console.log('[AUTO]  Report requested — queueing auto coroner email (dedicated entity)');
             import('./deployCoronerEmail.js').then(({ handleCoronerEmail }) => {
-                handleCoronerEmail({ authorId, key, report: reportData, db }).catch(err => {
+                handleCoronerEmail({ authorId, key, report: reportData, db, topicUrl: result.url || null }).catch(err => {
                     console.error('[CORONER-EMAIL] Handler error:', err.message);
                 });
             }).catch(err => {
