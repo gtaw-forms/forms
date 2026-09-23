@@ -15,8 +15,8 @@
 
 | Key name | Key | Notes |
 |---|---|---|
-| `phmc-tools-bot-poster` | `REDACTED-FACE-KEY` | Primary. Verified working. Account profile id 323 ("Alyson Frost"). |
-| `testing` | `REDACTED-FACE-KEY` | Secondary. Not yet probed. |
+| `phmc-tools-bot-poster` | `***REMOVED — see FACE_API_KEY in .env***` | Primary. Verified working. Account profile id 323 ("Alyson Frost"). |
+| `testing` | `***REMOVED — see FACE_API_KEY in .env***` | Secondary. Not yet probed. |
 
 ## Base URL
 
