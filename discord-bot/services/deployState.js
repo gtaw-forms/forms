@@ -38,9 +38,12 @@ export const state = {
 };
 
 export const C = {
-    DEFER_MS: 2.5 * 60 * 1000,
-    RETRY_DELAY_MS: 6 * 60 * 60 * 1000,
-    RETRY_CHECK_INTERVAL_MS: 30 * 60 * 1000,
+    // Queue defer: staff get 3 min to re-save/edit before auto-deploy fires.
+    DEFER_MS: 3 * 60 * 1000,
+    // Retry spacing: 1h (outages can need many attempts; retries never expire).
+    RETRY_DELAY_MS: 1 * 60 * 60 * 1000,
+    // Legacy: retry exhaustion was removed (transport failures retry forever;
+    // only data-terminal states end a report). Kept so old references don't break.
     MAX_RETRIES: 3,
     CASE_MGMT_FORUM_ID: 266,
     AUTOPSY_REQUEST_FORUM_ID: 265,

@@ -66,7 +66,7 @@ const AssignedAutopsiesModal = ({ show, onClose, onLoadCase, factionsData, loadM
             const list = [];
             if (data) {
                 Object.entries(data)
-                    .filter(([, v]) => v.wasMatch && !v.completedAt && (v.assignedTo || (v.caseState === 'multi' && v.cases)))
+                    .filter(([, v]) => v.wasMatch && !v.completedAt && !['skipped', 'cancelled', 'denied', 'dry_run'].includes(v.caseState) && (v.assignedTo || (v.caseState === 'multi' && v.cases)))
                     .flatMap(([k, v]) => {
                         // Multi-decedent request (split into one case per decedent):
                         // emit ONE entry per case, each under its own assigned ME.

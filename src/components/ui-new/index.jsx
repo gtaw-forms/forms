@@ -744,7 +744,7 @@ const NewUIPrototype = ({ basicMode = false }) => {
       const list = [];
       if (data) {
         Object.entries(data)
-          .filter(([, v]) => v.assignedTo && v.wasMatch && !v.completedAt)
+          .filter(([, v]) => v.assignedTo && v.wasMatch && !v.completedAt && !['skipped', 'cancelled', 'denied', 'dry_run'].includes(v.caseState))
           .forEach(([key, v]) => {
             const detected = v.detectedAt ? new Date(v.detectedAt).getTime() : Date.now();
             const hours = ((Date.now() - detected) / 3600000).toFixed(1);

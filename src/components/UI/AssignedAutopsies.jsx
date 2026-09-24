@@ -19,7 +19,7 @@ const AssignedAutopsies = ({ showNotification, onLoadCase }) => {
             if (!data) { setAssignments([]); setLoading(false); return; }
 
             const list = Object.entries(data)
-                .filter(([, v]) => v.assignedTo && v.wasMatch)
+                .filter(([, v]) => v.assignedTo && v.wasMatch && !v.completedAt && !['skipped', 'cancelled', 'denied', 'dry_run'].includes(v.caseState))
                 .map(([k, v]) => ({
                     id: k,
                     name: v.name || '?',

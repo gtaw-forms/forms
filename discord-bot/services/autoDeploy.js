@@ -20,6 +20,7 @@ import { resolveAutopsyTopic } from './deployInteraction.js';
 import { crosspostAutopsyToLssd, retryFailedLssdCrossposts } from './deployLssd.js';
 import { crosspostAutopsyToLspd, retryFailedLspdCrossposts } from './deployLspd.js';
 import { clearAssignment, getRotationStatus } from './autopsyRotation.js';
+import { TERMINAL_STATES } from './outstandingAutopsies.js';
 
 
 //  Discord Client (for interactive messages)
@@ -45,6 +46,37 @@ import { processReportEdits } from './reportEdits.js';
 export function setAutoDeployClient(client) {
         logFnCall('autoDeploy', 'setAutoDeployClient', 'Registering Discord client');
     state.discordClient = client;
+}
+
+/**
+ * Build the boot-time Autopsy Status post as Components V2 (pure — safe to
+ * test headlessly). Same row strings as the legacy fallback embed.
+ * Layout: status container (pending cases) + ops container (LOA, next-up,
+ * startup marker). No buttons — fire-and-forget post.
+ */
+export function buildStartupStatusV2({ caseCount = 0, desc = '', loaDesc = 'None', nextUp = 'None available' } = {}) {
+    const td = (content) => ({ type: 10, content: String(content ?? '').slice(0, 3500) });
+    const sep = (divider = true) => ({ type: 14, divider, spacing: 1 });
+    const truncate = (s, n) => {
+        const str = String(s ?? '');
+        return str.length <= n ? str : str.slice(0, Math.max(0, n - 3)) + '...';
+    };
+    const components = [
+        {
+            type: 17,
+            accent_color: caseCount > 0 ? 0xffc107 : 0x28a745,
+            components: [td(truncate(`# Autopsy Status — ${caseCount} Assigned\n**Pending Cases:**\n${desc}`, 3500))],
+        },
+        {
+            type: 17,
+            components: [
+                td(truncate(`**On Leave (LOA):**\n${loaDesc}`, 1500)),
+                sep(false),
+                td(truncate(`**Next in Rotation:** ${nextUp}\n*PHMC Bot — Startup Scan*`, 500)),
+            ],
+        },
+    ];
+    return { components };
 }
 
     /**
@@ -83,7 +115,7 @@ export function setAutoDeployClient(client) {
         cleanupOldDeployed(db);
         setInterval(() => cleanupOldDeployed(db), 6 * 60 * 60 * 1000);
 
-        //  Recovery heartbeat — runs ALL self-healing sweeps in sequence (startup + every 10 min)
+        //  Recovery heartbeat — runs ALL self-healing sweeps in sequence (startup + every 60 min)
         startRecoveryHeartbeat(db);
 
         //  Autopsy status summary — assigned cases + LOA staff
@@ -104,6 +136,12 @@ export function setAutoDeployClient(client) {
                 if (arSnap.exists()) {
                     arSnap.forEach((child) => {
                         const entry = child.val();
+                        // Parity with the V2 dashboard / outstanding / rotation
+                        // paths: terminal states (skipped / cancelled / denied /
+                        // dry_run) are never outstanding — without this, stale
+                        // rows like Case 519 #10154 (skipped when re-filed as
+                        // mass Case 521) resurrect on every startup scan.
+                        if (TERMINAL_STATES.has(String(entry.caseState || '').toLowerCase())) return;
                         const multi = String(entry.caseState || '') === 'multi';
                         const cases = multi && entry.cases && typeof entry.cases === 'object' ? Object.values(entry.cases) : [];
                         if (multi && cases.length > 0) {
@@ -134,7 +172,8 @@ export function setAutoDeployClient(client) {
                 // LOA list
                 const loaNames = [...loaSet].sort();
 
-                // Build assigned cases description
+                // Build assigned cases description (shared by the V2 post
+                // and the legacy fallback embed — same strings, zero drift).
                 const caseCount = assigned.length;
                 let desc = '';
                 if (caseCount === 0) {
@@ -161,19 +200,29 @@ export function setAutoDeployClient(client) {
                 // Rotation next
                 const nextUp = rotation?.effectiveNext || 'None available';
 
-                sendWebhook(null, {
-                    title: ` Autopsy Status — ${caseCount} Assigned`,
-                    description: `**Pending Cases:**\n${desc}\n\n**On Leave (LOA):**\n${loaDesc}\n\n**Next in Rotation:** ${nextUp}`,
-                    color: caseCount > 0 ? 0xffc107 : 0x28a745,
-                    footer: { text: `PHMC Bot — Startup Scan` },
-                    timestamp: new Date().toISOString(),
-                });
+                // Components-V2 post via the bot client (no pings); legacy
+                // embed fallback if V2 delivery fails.
+                try {
+                    const { sendLogV2 } = await import('./logChannel.js');
+                    const ok = await sendLogV2(buildStartupStatusV2({ caseCount, desc, loaDesc, nextUp }).components);
+                    if (!ok) throw new Error('V2 delivery failed');
+                } catch (e) {
+                    console.warn(`[AUTO] Startup status V2 post failed (${e.message}) — legacy fallback`);
+                    sendWebhook(null, {
+                        title: ` Autopsy Status — ${caseCount} Assigned`,
+                        description: `**Pending Cases:**\n${desc}\n\n**On Leave (LOA):**\n${loaDesc}\n\n**Next in Rotation:** ${nextUp}`,
+                        color: caseCount > 0 ? 0xffc107 : 0x28a745,
+                        footer: { text: `PHMC Bot — Startup Scan` },
+                        timestamp: new Date().toISOString(),
+                    });
+                }
             } catch (e) {
                 console.warn('[AUTO] Failed to build autopsy status embed:', e.message);
             }
         })();
 
-        //  Start passive CK listener on newSavedReports
+        //  Start passive CK listener (slim unprocessedCKs index — the
+        // RTDB report nodes were migrated to the VPS and deleted Sept 2026).
         // Monitors opted-out users' reports for CKs and drafts death records
         // when a morgue match is found.
         try {
@@ -207,100 +256,197 @@ export function setAutoDeployClient(client) {
 
         //  NOTE: faction roster sync + patient index are started from the
         //  phased boot queue in index.js (forum-heavy — never at T+0).
-        //  Listen for new reports at scheduledReports
-        // Using on('value') because child_added only fires for NEW top-level children (authors),
-        // not for reports added under EXISTING authors. value fires on any change.
+        //  Listen for new reports at scheduledReports — event-driven deltas.
+        // Shape: ONE `once('value')` cold-load at boot, then per-author
+        // `child_added` / `child_changed` / `child_removed` listeners that
+        // deliver single-report snapshots. Chosen over a single
+        // `child_changed` on `scheduledReports` because the latter fires with
+        // the FULL author subtree on every write — our own status touches
+        // (queued/progress/retry) would re-download that author's reports on
+        // every deploy. Report-level events carry only the one changed
+        // report. New authors are picked up via a lightweight `child_added`
+        // on `scheduledReports` (fires once per new author). There is
+        // deliberately NO `on('value')` listener here anymore: it
+        // re-downloaded the ENTIRE subtree on every write, including the
+        // bot's own status writes (several full downloads per deploy).
         state.knownReportKeys = new Set();
         const _autoDeployStartupTime = Date.now();
         const CK_EPOCH = 1782864000000; // 2026-07-01T00:00:00Z  reports saved before this are skipped for CK drafting
         console.log(`[AUTO]  CK drafting: skipping reports saved before 01/JUL/2026`);
 
-        // Startup cold-load guard: on the first `value` callback, only prime
-        // reports that are ALREADY deployed (hasdeployed=true) into knownReportKeys.
-        // Reports still pending (hasdeployed=false, undefined, or "queued") are
-        // left un-primed so they fall through to normal processing and get queued.
-        // This prevents re-processing already-completed work while not ignoring
-        // legitimate pending reports from a previous session or a bot restart.
-        let _initialLoadDone = false;
-        db.ref('scheduledReports').on('value', (snap) => {
-            if (!_initialLoadDone) {
-                console.log(`[AUTO]  Cold-load: priming knownReportKeys...`);
-                let primed = 0, pending = 0;
-                snap.forEach((authorSnap) => {
-                    authorSnap.forEach((reportSnap) => {
-                        const rd = reportSnap.val();
-                        if (rd?.hasdeployed === true || rd?.deployStatus === 'deployed' || rd?.deployStatus === 'skipped_manual' || rd?.deployStatus === 'failed_permanent') {
-                            state.knownReportKeys.add(reportSnap.key);
-                            primed++;
-                        } else {
-                            pending++;
-                        }
-                    });
-                });
-                _initialLoadDone = true;
-                console.log(`[AUTO]  Cold-load: primed ${primed} done reports, ${pending} pending (will process below).`);
-                // Fall through — pending reports (not in knownReportKeys) will be
-                // picked up by the normal processing logic below in this same callback.
+        // Shared per-report pickup — the old `on('value')` loop body,
+        // verbatim semantics: known-key dedup, hasdeployed gate, dev-mode
+        // skip, future-retryAt guard, consentGateAndEnqueue routing (incl.
+        // the testing-compact-mode alias), and the passive CK check gating.
+        // Used by the cold-load, the per-report events, and the new-author
+        // hook below.
+        const processReportSnapshot = (authorId, reportKey, reportData) => {
+            if (!reportData || typeof reportData !== 'object') {
+                state.knownReportKeys.add(reportKey);
+                return;
+            }
+            if (state.knownReportKeys.has(reportKey)) return;
+
+            if (reportData.hasdeployed !== false) {
+                state.knownReportKeys.add(reportKey);
+                return;
             }
 
+            // Skip dev-mode reports (saved from localhost) — prevents test data from hitting production
+            if (reportData._devMode) {
+                console.log(`[AUTO]  Skipping dev mode report: ${reportData.originalKey || reportKey}`);
+                state.knownReportKeys.add(reportKey);
+                return;
+            }
+
+            // Respect scheduled retries: a retry_queued report with a
+            // FUTURE retryAt belongs to checkRetryQueue, not to
+            // immediate enqueue. Without this, every failure update
+            // re-queues on a fresh 3-min defer and the retry spacing
+            // never takes effect (fail loop instead of hourly probes).
+            // Deliberately left un-primed so it is picked up when due
+            // even if the sweeper misses a cycle.
+            if (reportData.deployStatus === 'retry_queued' && reportData.retryAt) {
+                const retryAtMs = new Date(reportData.retryAt).getTime();
+                if (Number.isFinite(retryAtMs) && retryAtMs > Date.now()) return;
+            }
+
+            state.knownReportKeys.add(reportKey);
+            console.log(`[AUTO]  ${reportData.originalKey || reportKey}`);
+
+            const item = {
+                authorId,
+                key: reportKey,
+                report: reportData,
+                db,
+            };
+
+            // Legacy key alias: reports saved before the form rename
+            // carry formId 'testing-compact-mode'.
+            if (reportData.formId === 'testing-compact-mode') reportData.formId = 'general_consultation';
+
+            if (reportData.formId === 'coroner_email') {
+                consentGateAndEnqueue('pm', item, reportData.formId);
+            } else if (['death_record', 'mass-ftality-test', 'coroner-report'].includes(reportData.formId)) {
+                consentGateAndEnqueue('topic', item, reportData.formId);
+                // Coroner email fires inside handleTopic — after topic post completes
+            } else if (['patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical', 'session_notes', 'intensive_treatment', 'psych-eval', 'general_consultation'].includes(reportData.formId)) {
+                consentGateAndEnqueue('medical-record', item, reportData.formId);
+            } else if (reportData.formId === 'autopsy') {
+                consentGateAndEnqueue('autopsy-reply', item, reportData.formId);
+            }
+
+            //  Passive CK check (death record drafting)
+            // Only for NEW reports (saved after bot startup) to avoid re-processing
+            // legacy records. Silently checks morgue and drafts if matched.
+            if (reportData.timestamp && reportData.timestamp >= _autoDeployStartupTime) {
+                if (reportData.formId === 'coroner-report' || reportData.formId === 'mass-ftality-test') {
+                    import('./deathRecordDraft.js').then(({ passivCKCheck }) => {
+                        passivCKCheck(db, authorId, reportKey, reportData)
+                            .catch((err) => console.error(`[AUTO]  Passive CK error for ${reportKey}:`, err.message));
+                    }).catch(() => { });
+                }
+            }
+        };
+
+        // Per-author report-level listeners: attached for every author seen
+        // at cold-load, plus dynamically for new authors (parent hook below).
+        const _attachedAuthors = new Set();
+        const _authorHandlers = new Map();
+        const attachAuthorListeners = (authorId) => {
+            if (!authorId || _attachedAuthors.has(authorId)) return;
+            _attachedAuthors.add(authorId);
+            const authorRef = db.ref(`scheduledReports/${authorId}`);
+            const added = (reportSnap) => processReportSnapshot(authorId, reportSnap.key, reportSnap.val());
+            const changed = (reportSnap) => processReportSnapshot(authorId, reportSnap.key, reportSnap.val());
+            const removed = (reportSnap) => {
+                // Free the key so a re-saved report under the same key is
+                // treated as new (mirrors the explicit deletes in
+                // checkRetryQueue / requeueReport / skipReport).
+                state.knownReportKeys.delete(reportSnap.key);
+            };
+            _authorHandlers.set(authorId, { added, changed, removed });
+            authorRef.on('child_added', added);
+            authorRef.on('child_changed', changed);
+            authorRef.on('child_removed', removed);
+        };
+        const detachAuthorListeners = (authorId) => {
+            if (!_attachedAuthors.has(authorId)) return;
+            const h = _authorHandlers.get(authorId);
+            if (h) {
+                const authorRef = db.ref(`scheduledReports/${authorId}`);
+                authorRef.off('child_added', h.added);
+                authorRef.off('child_changed', h.changed);
+                authorRef.off('child_removed', h.removed);
+                _authorHandlers.delete(authorId);
+            }
+            _attachedAuthors.delete(authorId);
+        };
+
+        // Startup cold-load guard: on the single `once('value')` read, only
+        // prime reports that are ALREADY deployed (hasdeployed=true) into
+        // knownReportKeys. Reports still pending (hasdeployed=false,
+        // undefined, or "queued") are left un-primed so they fall through to
+        // processReportSnapshot below and get queued. This prevents
+        // re-processing already-completed work while not ignoring legitimate
+        // pending reports from a previous session or a bot restart.
+        db.ref('scheduledReports').once('value').then((snap) => {
+            console.log(`[AUTO]  Cold-load: priming knownReportKeys...`);
+            let primed = 0, pending = 0;
+            const coldAuthors = [];
             snap.forEach((authorSnap) => {
-                const authorId = authorSnap.key;
+                coldAuthors.push(authorSnap.key);
                 authorSnap.forEach((reportSnap) => {
-                    const reportKey = reportSnap.key;
-                    if (state.knownReportKeys.has(reportKey)) return;
-
-                    const reportData = reportSnap.val();
-                    if (reportData.hasdeployed !== false) {
-                        state.knownReportKeys.add(reportKey);
-                        return;
-                    }
-
-                    // Skip dev-mode reports (saved from localhost) — prevents test data from hitting production
-                    if (reportData._devMode) {
-                        console.log(`[AUTO]  Skipping dev mode report: ${reportData.originalKey || reportKey}`);
-                        state.knownReportKeys.add(reportKey);
-                        return;
-                    }
-
-                    state.knownReportKeys.add(reportKey);
-                    console.log(`[AUTO]  ${reportData.originalKey || reportKey}`);
-
-                    const item = {
-                        authorId,
-                        key: reportKey,
-                        report: reportData,
-                        db,
-                    };
-
-                    // Legacy key alias: reports saved before the form rename
-                    // carry formId 'testing-compact-mode'.
-                    if (reportData.formId === 'testing-compact-mode') reportData.formId = 'general_consultation';
-
-                    if (reportData.formId === 'coroner_email') {
-                        consentGateAndEnqueue('pm', item, reportData.formId);
-                    } else if (['death_record', 'mass-ftality-test', 'coroner-report'].includes(reportData.formId)) {
-                        consentGateAndEnqueue('topic', item, reportData.formId);
-                        // Coroner email fires inside handleTopic — after topic post completes
-                    } else if (['patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical', 'session_notes', 'intensive_treatment', 'psych-eval', 'general_consultation'].includes(reportData.formId)) {
-                        consentGateAndEnqueue('medical-record', item, reportData.formId);
-                    } else if (reportData.formId === 'autopsy') {
-                        consentGateAndEnqueue('autopsy-reply', item, reportData.formId);
-                    }
-
-                    //  Passive CK check (death record drafting)
-                    // Only for NEW reports (saved after bot startup) to avoid re-processing
-                    // legacy records. Silently checks morgue and drafts if matched.
-                    if (reportData.timestamp && reportData.timestamp >= _autoDeployStartupTime) {
-                        if (reportData.formId === 'coroner-report' || reportData.formId === 'mass-ftality-test') {
-                            import('./deathRecordDraft.js').then(({ passivCKCheck }) => {
-                                passivCKCheck(db, authorId, reportKey, reportData)
-                                    .catch((err) => console.error(`[AUTO]  Passive CK error for ${reportKey}:`, err.message));
-                            }).catch(() => { });
-                        }
+                    const rd = reportSnap.val();
+                    // 'blocked_empty_employee' is settled: the deployExecutor
+                    // handbrake parks it with hasdeployed:false AND never
+                    // retries. Without this exclusion every restart
+                    // re-queues it, re-blocks it, and re-pings the
+                    // developer webhook forever. Manual repair (set
+                    // deployStatus:'pending') re-arms it — 'pending' is
+                    // not excluded.
+                    if (rd?.hasdeployed === true || rd?.deployStatus === 'deployed' || rd?.deployStatus === 'skipped_manual' || rd?.deployStatus === 'failed_permanent' || rd?.deployStatus === 'blocked_empty_employee') {
+                        state.knownReportKeys.add(reportSnap.key);
+                        primed++;
+                    } else {
+                        pending++;
                     }
                 });
             });
-        });
+            console.log(`[AUTO]  Cold-load: primed ${primed} done reports, ${pending} pending (will process below).`);
+            // Pending reports (not in knownReportKeys) go through the shared
+            // per-report path — identical semantics to live events. Afterwards
+            // every cold report is primed (done → primed above; pending →
+            // primed inside processReportSnapshot; future-retry stays
+            // un-primed by design), so the initial `child_added` flood from
+            // the attaches below hits known keys and cannot double-enqueue.
+            snap.forEach((authorSnap) => {
+                const authorId = authorSnap.key;
+                authorSnap.forEach((reportSnap) => {
+                    if (state.knownReportKeys.has(reportSnap.key)) return;
+                    processReportSnapshot(authorId, reportSnap.key, reportSnap.val());
+                });
+            });
+            // Attach AFTER the snapshot: the snapshot is the single full
+            // read; anything saved in the gap arrives via the initial
+            // `child_added` flood as unknown keys and is processed.
+            for (const authorId of coldAuthors) attachAuthorListeners(authorId);
+            // New authors arriving later get listeners on demand. The payload
+            // is just the new author's subtree (typically one report), never
+            // the whole scheduledReports node. The one-time initial flood for
+            // already-attached authors early-returns.
+            db.ref('scheduledReports').on('child_added', (authorSnap) => {
+                const authorId = authorSnap.key;
+                if (!authorSnap.exists() || _attachedAuthors.has(authorId)) return;
+                attachAuthorListeners(authorId);
+                authorSnap.forEach((reportSnap) => {
+                    processReportSnapshot(authorId, reportSnap.key, reportSnap.val());
+                });
+            });
+            db.ref('scheduledReports').on('child_removed', (authorSnap) => {
+                detachAuthorListeners(authorSnap.key);
+            });
+        }).catch((err) => console.warn('[AUTO] Cold-load failed:', err?.message));
 
         //  Dev-reports listener (localhost testing) — only runs coroner email auto-generation
         let _devInitialLoadDone = false;
@@ -646,9 +792,12 @@ export async function retryMissingLspdCrossposts(db, { force = false, entries } 
                     // posted the topic but failed to persist lspdTopicId (URL parse error or a
                     // dropped db write) — without the search, the next sweep would post a
                     // duplicate request topic.
+                    // NOTE: topicTitle is declared OUTSIDE the blocks below — an earlier
+                    // revision scoped it inside the search branch, so the create branch
+                    // below threw `topicTitle is not defined` and no copy was ever made.
+                    const topicTitle = 'Autopsy Request - ' + name + oocPart + ' [LSPD]';
                     let lspdTopicId = entry.lspdTopicId || null;
                     if (!lspdTopicId) {
-                        const topicTitle = 'Autopsy Request - ' + name + oocPart + ' [LSPD]';
                         try {
                             const existing = await client.searchForum(topicTitle, LSPD_FORUM_ID, { baseUrl: LSPD_BASE });
                             const exact = existing.find(r => r.title === topicTitle);

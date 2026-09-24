@@ -216,31 +216,12 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, notes, onNotesChang
         onDrop={handleDrop}
         style={{ width: '100%' }}
     >
-      {/* Information Bubble */}
-      <div style={{ 
-          background: 'rgba(59, 130, 246, 0.1)', 
-          border: '1px solid rgba(59, 130, 246, 0.3)', 
-          borderRadius: '8px', 
-          padding: '0.8rem 1rem', 
-          marginBottom: '1rem',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px',
-          color: '#60a5fa',
-          fontSize: '0.85rem'
-      }}>
-          <i className="fas fa-info-circle" style={{ fontSize: '1.1rem' }}></i>
-          <div>
-              <strong>Quick Actions:</strong> Paste raw image URLs or images directly (<strong>Ctrl+V</strong>) to add them instantly. We'll avoid re-uploading if a valid URL is detected.
-          </div>
-      </div>
-
       {/* Manual URL Input (Priority) */}
       <div style={{ marginBottom: '1rem' }}>
           <div style={{ position: 'relative', flex: 1, display: 'flex', alignItems: 'center' }}>
               <input
                   type="text"
-                  placeholder="Paste raw image URL and press Enter..."
+                   placeholder="Paste raw image URL and press Enter... (or paste an image directly with Ctrl+V)"
                   value={manualUrl}
                   onChange={(e) => setManualUrl(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleManualUrlAdd()}

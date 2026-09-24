@@ -476,12 +476,22 @@ const PrototypeFieldRenderer = ({
         <div className="field full">
           <label>{field.label}</label>
           {field.name === 'scenePhotosBBCode' && (
+            <div style={{ borderRadius: 7, padding: '9px 12px', fontSize: 12.5, lineHeight: 1.5, marginBottom: 10, border: '1px solid var(--amber)', background: 'var(--amber-dim)', color: 'var(--text)' }}>
+              <strong>Scene photos must show the body — nothing else.</strong> Do not upload scenery, vehicles, crowds, or unrelated images. If you have no photo of the body, tick the checkbox below instead of uploading something else.
+            </div>
+          )}
+          {field.name === 'additionalPhotos' && (
+            <div style={{ borderRadius: 7, padding: '9px 12px', fontSize: 12.5, lineHeight: 1.5, marginBottom: 10, border: '1px solid var(--amber)', background: 'var(--amber-dim)', color: 'var(--text)' }}>
+              <strong>This must be a screenshot of the in-game morgue — nothing else.</strong> Open the morgue in game, take a screenshot of it, and upload it here.
+            </div>
+          )}
+          {field.name === 'scenePhotosBBCode' && (
             <div style={{ marginBottom: 10 }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12.5, color: 'var(--text-muted)' }}>
                 <input type="checkbox"
                   checked={!!allValues.scenePhotosBBCode_missing_bug}
                   onChange={e => onFieldChange('scenePhotosBBCode_missing_bug', e.target.checked)} />
-                Scene Photos missing due to a bug
+                Scene Photos missing due to a bug (no body photo to upload)
               </label>
             </div>
           )}

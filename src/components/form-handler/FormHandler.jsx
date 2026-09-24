@@ -26,7 +26,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useConsent, DEPLOY_TRACKED_FORMS } from '../../hooks/useConsent';
 
 // Must match discord-bot/services/deployState.js DEFER_MS
-const QUEUE_DELAY_MIN = 5;
+const QUEUE_DELAY_MIN = 3;
 import BotDeployOptInModal from '../Modals/BotDeployOptInModal';
 import phmcLogo from '../../assets/phmc.png';
 import { decedentItemSchema } from '../../formSchemas/decedentSchema';
