@@ -56,6 +56,16 @@ const NewUIPrototype = ({ basicMode = false }) => {
   }, [sidebarCollapsed]);
   const toggleSidebar = useCallback(() => setSidebarCollapsed(prev => !prev), []);
 
+  // ── Collapsible right panel (Profile/Misc → tight icon rows) ──
+  // Persisted like the sidebar. Collapse hides the tabs + BBCode info bulk;
+  // Preview + Save & Queue stay visible.
+  const [panelCollapsed, setPanelCollapsed] = useState(() => {
+    try { return localStorage.getItem('phmc_panel_collapsed') === '1'; } catch { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('phmc_panel_collapsed', panelCollapsed ? '1' : '0'); } catch { /* ignore */ }
+  }, [panelCollapsed]);
+
   // EMS Protocols (tree lives in the sidebar, selection renders in main content)
   const [emsProtocols, setEmsProtocols] = useState([]);
   const [emsInjuries, setEmsInjuries] = useState({});
@@ -414,15 +424,24 @@ const NewUIPrototype = ({ basicMode = false }) => {
   const fillableTypes = ['input', 'textarea', 'select', 'multi_select', 'checkbox', 'radio', 'timer', 'employee_select', 'multi_employee_select', 'dynamic_text_list', 'requesting_officer', 'medicine_block', 'body_tampered'];
   const { totalFields, filledFields } = useMemo(() => {
     if (!selectedForm?.fields) return { totalFields: 0, filledFields: 0 };
-    const visible = selectedForm.fields.filter(f => fillableTypes.includes(f.type) && evaluateFieldVisibility(f, formValues));
-    const total = visible.length;
-    const filled = visible.filter(f => {
-      const v = formValues[f.name];
-      if (f.type === 'checkbox') return !!v;
+    const nonEmpty = (v) => {
       if (Array.isArray(v)) return v.length > 0 && v.some(i => i !== '');
       if (typeof v === 'object' && v !== null) return Object.values(v).some(x => x);
-      return v && String(v).trim().length > 0;
-    }).length;
+      return !!(v && String(v).trim().length > 0);
+    };
+    // Checkboxes are optional — never counted themselves. Their associated
+    // inputs count only when actually shown (parent box ticked).
+    const visible = selectedForm.fields.filter(f => fillableTypes.includes(f.type) && evaluateFieldVisibility(f, formValues) && f.type !== 'checkbox' && f.type !== 'body_tampered');
+    let total = visible.length;
+    let filled = visible.filter(f => nonEmpty(formValues[f.name])).length;
+    for (const f of selectedForm.fields) {
+      if ((f.type !== 'checkbox' && f.type !== 'body_tampered') || !formValues[f.name]) continue;
+      const assocKey = f.associatedInputField?.name || (f.type === 'body_tampered' ? `${f.name || 'bodyTampered'}Reason` : null);
+      if (!assocKey) continue;
+      if (visible.some(vf => vf.name === assocKey)) continue; // already counted as its own field
+      total += 1;
+      if (nonEmpty(formValues[assocKey])) filled += 1;
+    }
     return { totalFields: total, filledFields: filled };
   }, [selectedForm, formValues]);
   const pct = totalFields > 0 ? Math.round((filledFields / totalFields) * 100) : 0;
@@ -560,7 +579,74 @@ const NewUIPrototype = ({ basicMode = false }) => {
     });
     console.log(`[ClearForm] Cleared ${selectedForm?.firebaseKey || 'form'} inputs, preserved identity (${resolvedCredentials?.employeeName || 'prev values'} / matchedBy: ${resolvedCredentials?.matchedBy || 'n/a'})`);
     clearBBCode();
+    setCaseInfo(null);
+    setShowCaseInfo(false);
     if (selectedForm?.firebaseKey) localStorage.removeItem(`form_progression_${selectedForm.firebaseKey}`);
+  };
+
+  // ── Save & Queue (shared by the in-panel button + the floating row) ──
+  const handleSaveAndQueue = async () => {
+    // Validate required fields (only checks fields the form actually has)
+    const formFieldNames = new Set((selectedForm?.fields || []).map(f => f.name));
+    const missing = [];
+    if (formFieldNames.has('decedentName') && (!formValues.decedentName || !String(formValues.decedentName).trim())) missing.push('decedentName');
+    if (formFieldNames.has('decedentOOC') && (!formValues.decedentOOC || !String(formValues.decedentOOC).trim())) missing.push('decedentOOC');
+    // Check death-type fields if the form has any of them
+    const deathFields = ['causeOfDeath', 'typeOfDeath', 'deathType', 'causeDetail'];
+    const hasDeathField = deathFields.some(f => formFieldNames.has(f));
+    if (hasDeathField) {
+      const deathVal = deathFields.reduce((v, f) => v || formValues[f], '');
+      if (!deathVal || !String(deathVal).trim()) missing.push('cause of death');
+    }
+    if (missing.length > 0) {
+      showNotification('Fill in ' + missing.join(' and ') + ' before saving.', 'warning');
+      return;
+    }
+    // Always regenerate BBCode from the LATEST formValues —
+    // reusing cached output could ship an earlier (blank)
+    // generation if credentials synced after a preview (Fix D).
+    let bbcode;
+    let title;
+    const genResult = generateBBCode();
+    if (genResult?.bbcode) {
+      bbcode = genResult.bbcode;
+      title = genResult.finalTitle;
+    } else {
+      showNotification('Failed to generate BBCode. Check form fields.', 'error');
+      return;
+    }
+    const result = await saveReport(
+      selectedForm, formValues, title, bbcode,
+      editingDeployedReport ? { editDeployedReport: editingDeployedReport } : {}
+    );
+    if (result.success) {
+      clearFormBackups();
+      if (editingDeployedReport) {
+        setEditingDeployedReport(null);
+        showNotification('Edit queued — the bot will update the forum post in place.', 'check-circle');
+      } else {
+        const isAutoDeploy = isDeployTracked && formConsent;
+        if (isAutoDeploy) {
+          setDeployCountdown({ endTime: Date.now() + 150000, label: title || selectedForm?.name || 'Report' });
+        }
+        const isManualDeploy = isDeployTracked && !formConsent;
+        if (isManualDeploy) {
+          const textToCopy = Array.isArray(bbcode) ? bbcode.join('\n\n[PART_BREAK]\n\n') : bbcode;
+          navigator.clipboard.writeText(textToCopy).catch(() => {});
+        }
+        const deployStatus = isAutoDeploy
+          ? 'Queued for auto-deploy'
+          : (isManualDeploy ? 'Saved & BBCode copied (post manually)' : 'Saved (not deploy-tracked)');
+        const reportLabel = title || selectedForm?.name || 'Report';
+        showNotification(
+          `${reportLabel} — ${deployStatus}`,
+          isAutoDeploy ? 'cloud-upload-alt' : 'save',
+          isAutoDeploy ? 8000 : 5000
+        );
+      }
+    } else {
+      showNotification('Save failed: ' + (result.error || 'unknown error'), 'error');
+    }
   };
 
   const restoreBackup = (entry) => {
@@ -707,6 +793,11 @@ const NewUIPrototype = ({ basicMode = false }) => {
   });
   // ── Misc modals ──
   const [showAssignedAutopsies, setShowAssignedAutopsies] = useState(false);
+  // ── Book FAB: loaded autopsy case at-a-glance ──
+  // caseInfo tracks the load source ({ entry, morgue }); cleared on form
+  // clear / leaving the autopsy form so the FAB never shows a stale case.
+  const [caseInfo, setCaseInfo] = useState(null);
+  const [showCaseInfo, setShowCaseInfo] = useState(false);
   const [showConsentPrefs, setShowConsentPrefs] = useState(false);
   const [showBusinessCard, setShowBusinessCard] = useState(false);
   const [showMapModal, setShowMapModal] = useState(false);
@@ -726,6 +817,16 @@ const NewUIPrototype = ({ basicMode = false }) => {
     }, 1000);
     return () => clearInterval(interval);
   }, [deployCountdown?.endTime]);
+
+  // Leaving the autopsy form drops the loaded case (FAB falls back to View
+  // Assignments). Loading a case sets selectedForm to autopsy, so no clear.
+  useEffect(() => {
+    if ((selectedForm?.firebaseKey || '') !== 'autopsy' && caseInfo) {
+      setCaseInfo(null);
+      setShowCaseInfo(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedForm?.firebaseKey]);
 
   // ── Pending Autopsies (bell dropdown) ──
   const [pendingAutopsies, setPendingAutopsies] = useState([]);
@@ -1275,19 +1376,6 @@ const NewUIPrototype = ({ basicMode = false }) => {
                     </div>
                   )}
                 </div>
-                <div className="doc-footer" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, maxWidth: 300 }}>
-                    <div style={{ flex: 1, height: 6, borderRadius: 3, background: 'var(--bg-surface)', overflow: 'hidden' }}>
-                      <div style={{ width: `${pct}%`, height: '100%', borderRadius: 3, background: 'var(--teal)', transition: 'width 0.3s ease' }} />
-                    </div>
-                    <span style={{ fontSize: 11, color: 'var(--text-faint)', fontFamily: 'var(--mono)', whiteSpace: 'nowrap' }}>
-                      {filledFields}/{totalFields}
-                    </span>
-                  </div>
-                  <button className="btn btn-ghost" onClick={handleClearForm}>
-                    <i className="fas fa-trash-alt me-1" /> Clear Form
-                  </button>
-                </div>
               </>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, color: 'var(--text-muted)', gap: 16 }}>
@@ -1298,7 +1386,7 @@ const NewUIPrototype = ({ basicMode = false }) => {
           </div>
 
           {/* ─── RIGHT PANEL ─── */}
-          <div className="right-panel">
+          <div className={`right-panel${panelCollapsed && !basicMode ? ' collapsed' : ''}`}>
               <div className="panel-card">
                 {basicMode ? (
                   <div className="panel-section active">
@@ -1316,6 +1404,18 @@ const NewUIPrototype = ({ basicMode = false }) => {
                       <span>Select a form, fill it out, and use <strong>Preview</strong> to generate the BBCode. Sign-in is not required.</span>
                     </div>
                   </div>
+                ) : panelCollapsed ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 10 }}>
+                  <div className="panel-icon-row" title="Profile" onClick={() => { setActiveMiscTab('profile'); setPanelCollapsed(false); }}>
+                    <i className="fas fa-user-circle" /> Profile
+                  </div>
+                  <div className="panel-icon-row" title="Misc" onClick={() => { setActiveMiscTab('misc'); setPanelCollapsed(false); }}>
+                    <i className="fas fa-cogs" /> Misc
+                  </div>
+                  <div className="panel-icon-row" title="Expand" onClick={() => setPanelCollapsed(false)}>
+                    <i className="fas fa-expand" /> Expand
+                  </div>
+                </div>
                 ) : (
                   <>
                 <div className="panel-tabs">
@@ -1326,6 +1426,10 @@ const NewUIPrototype = ({ basicMode = false }) => {
                   <div onClick={() => setActiveMiscTab('misc')}
                     className={`panel-tab${activeMiscTab === 'misc' ? ' active' : ''}`}>
                     <i className="fas fa-cogs" /> Misc
+                  </div>
+                  <div onClick={() => setPanelCollapsed(true)}
+                    className="panel-tab panel-collapse-btn" title="Collapse panel">
+                    <i className="fas fa-chevron-right" />
                   </div>
                 </div>
 
@@ -1604,9 +1708,10 @@ const NewUIPrototype = ({ basicMode = false }) => {
                 )}
             </div>
 
+            {!(panelCollapsed && !basicMode) && (
             <div className="panel-card" style={{ overflow: 'visible' }}>
               <div className="bbcode-panel">
-                {bbcodeToolsVisible && (
+                {bbcodeToolsVisible && !(panelCollapsed && !basicMode) && (
                 <div className={`bbcode-banner ${generatedTitle ? 'success' : ''}`}
                   style={!generatedTitle ? { border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-faint)' } : {}}
                   onClick={() => {
@@ -1686,11 +1791,13 @@ const NewUIPrototype = ({ basicMode = false }) => {
                       <i className="fas fa-exclamation-triangle me-1" />Missing fields: <strong>{missing.join(' · ')}</strong>
                     </div>
                   )}
+                {!(panelCollapsed && !basicMode) && (
                 <pre className="bbcode-pre" style={{ maxHeight: showBBCode ? '200px' : '60px' }}>
                   {showBBCode && generatedBBCode
                     ? generatedBBCode
                     : 'Select a form, fill it out, and click "Generate BBCode" to preview it here.'}
                 </pre>
+                )}
                   </div>
                   );
                 })()}
@@ -1705,69 +1812,7 @@ const NewUIPrototype = ({ basicMode = false }) => {
                   )}
                   {!basicMode && (
                   <button className="btn btn-ghost" style={{ flex: 1, fontSize: 12, justifyContent: 'center' }}
-                    onClick={async () => {
-                      // Validate required fields (only checks fields the form actually has)
-                      const formFieldNames = new Set((selectedForm?.fields || []).map(f => f.name));
-                      const missing = [];
-                      if (formFieldNames.has('decedentName') && (!formValues.decedentName || !String(formValues.decedentName).trim())) missing.push('decedentName');
-                      if (formFieldNames.has('decedentOOC') && (!formValues.decedentOOC || !String(formValues.decedentOOC).trim())) missing.push('decedentOOC');
-                      // Check death-type fields if the form has any of them
-                      const deathFields = ['causeOfDeath', 'typeOfDeath', 'deathType', 'causeDetail'];
-                      const hasDeathField = deathFields.some(f => formFieldNames.has(f));
-                      if (hasDeathField) {
-                        const deathVal = deathFields.reduce((v, f) => v || formValues[f], '');
-                        if (!deathVal || !String(deathVal).trim()) missing.push('cause of death');
-                      }
-                      if (missing.length > 0) {
-                        showNotification('Fill in ' + missing.join(' and ') + ' before saving.', 'warning');
-                        return;
-                      }
-                      // Always regenerate BBCode from the LATEST formValues —
-                      // reusing cached output could ship an earlier (blank)
-                      // generation if credentials synced after a preview (Fix D).
-                      let bbcode;
-                      let title;
-                      const genResult = generateBBCode();
-                      if (genResult?.bbcode) {
-                        bbcode = genResult.bbcode;
-                        title = genResult.finalTitle;
-                      } else {
-                        showNotification('Failed to generate BBCode. Check form fields.', 'error');
-                        return;
-                      }
-                      const result = await saveReport(
-                        selectedForm, formValues, title, bbcode,
-                        editingDeployedReport ? { editDeployedReport: editingDeployedReport } : {}
-                      );
-                      if (result.success) {
-                        clearFormBackups();
-                        if (editingDeployedReport) {
-                          setEditingDeployedReport(null);
-                          showNotification('Edit queued — the bot will update the forum post in place.', 'check-circle');
-                        } else {
-                          const isAutoDeploy = isDeployTracked && formConsent;
-                          if (isAutoDeploy) {
-                            setDeployCountdown({ endTime: Date.now() + 150000, label: title || selectedForm?.name || 'Report' });
-                          }
-                          const isManualDeploy = isDeployTracked && !formConsent;
-                          if (isManualDeploy) {
-                            const textToCopy = Array.isArray(bbcode) ? bbcode.join('\n\n[PART_BREAK]\n\n') : bbcode;
-                            navigator.clipboard.writeText(textToCopy).catch(() => {});
-                          }
-                          const deployStatus = isAutoDeploy
-                            ? 'Queued for auto-deploy'
-                            : (isManualDeploy ? 'Saved & BBCode copied (post manually)' : 'Saved (not deploy-tracked)');
-                          const reportLabel = title || selectedForm?.name || 'Report';
-                          showNotification(
-                            `${reportLabel} — ${deployStatus}`,
-                            isAutoDeploy ? 'cloud-upload-alt' : 'save',
-                            isAutoDeploy ? 8000 : 5000
-                          );
-                        }
-                      } else {
-                        showNotification('Save failed: ' + (result.error || 'unknown error'), 'error');
-                      }
-                    }}>
+                    onClick={handleSaveAndQueue}>
                     <i className={`fas ${editingDeployedReport ? 'fa-pen' : (isDeployTracked && !formConsent ? 'fa-copy' : 'fa-cloud-upload-alt')} me-1`} />
                     {editingDeployedReport
                       ? 'Save & Edit Deployed Post'
@@ -1827,7 +1872,7 @@ const NewUIPrototype = ({ basicMode = false }) => {
                     </details>
                   </div>
                 )}
-                {showManualPostGuide && isCoronerOrMassFatal && (
+                {showManualPostGuide && isCoronerOrMassFatal && !(panelCollapsed && !basicMode) && (
                   <a href="https://phmc.gta.world/posting.php?mode=post&f=267" target="_blank" rel="noopener noreferrer"
                     style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, padding: '8px 10px', borderRadius: 8, background: 'var(--bg-surface)', border: '1px solid var(--teal)', color: 'var(--teal)', textDecoration: 'none', fontSize: 12, fontWeight: 600 }}>
                     {phmcAgency?.logo ? (
@@ -1838,7 +1883,7 @@ const NewUIPrototype = ({ basicMode = false }) => {
                     Post to PHMC Forum (f=267)
                   </a>
                 )}
-                {isDeployTracked && (
+                {isDeployTracked && !(panelCollapsed && !basicMode) && (
                   <div style={{
                     marginTop: 10, padding: '8px 10px', borderRadius: 6, fontSize: 10.5,
                     background: 'var(--bg-surface)', border: '1px solid var(--border)',
@@ -1883,6 +1928,7 @@ const NewUIPrototype = ({ basicMode = false }) => {
                 )}
               </div>
             </div>
+            )}
           </div>
         </div>
       </div>
@@ -1946,6 +1992,88 @@ const NewUIPrototype = ({ basicMode = false }) => {
           onChange={setSurgicalDiagram}
         />
       )}
+      {/* ─── Floating action row: progress + clear + book FAB (autopsy only) ─── */}
+      {selectedForm && (
+      <div style={{ position: 'fixed', right: 24, bottom: 20, zIndex: 400, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 999, background: 'var(--bg-elevated)', border: '1px solid var(--border-accent)', boxShadow: '0 8px 24px rgba(0,0,0,0.45)' }}>
+          <div style={{ width: 64, height: 6, borderRadius: 3, background: 'var(--bg-surface)', overflow: 'hidden' }}>
+            <div style={{ width: `${pct}%`, height: '100%', borderRadius: 3, background: 'var(--teal)', transition: 'width 0.3s ease' }} />
+          </div>
+          <span style={{ fontSize: 11, color: 'var(--text-faint)', fontFamily: 'var(--mono)', whiteSpace: 'nowrap' }}>
+            {filledFields}/{totalFields} · {pct}%
+          </span>
+          <button className="btn btn-ghost" style={{ fontSize: 12, padding: '6px 12px' }} onClick={handleClearForm} title="Clear form (draft is backed up)">
+            <i className="fas fa-trash-alt me-1" /> Clear
+          </button>
+          {!basicMode && (
+          <button className="btn btn-primary" style={{ fontSize: 12, padding: '6px 12px' }} onClick={handleSaveAndQueue} title="Save & Queue">
+            <i className={`fas ${editingDeployedReport ? 'fa-pen' : (isDeployTracked && !formConsent ? 'fa-copy' : 'fa-cloud-upload-alt')} me-1`} />
+            {editingDeployedReport ? 'Save Edit' : (isDeployTracked && !formConsent ? 'Save & Copy' : 'Save & Queue')}
+          </button>
+          )}
+          {(selectedForm?.firebaseKey || '') === 'autopsy' && !showAssignedAutopsies && !showCaseInfo && (
+          <button
+            onClick={() => { caseInfo ? setShowCaseInfo(true) : setShowAssignedAutopsies(true); }}
+            title={caseInfo ? 'View Case Info' : 'View Assignments'}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'transparent', border: '1px solid var(--teal)', color: 'var(--teal)', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            <i className="fas fa-book" style={{ fontSize: 12 }} />
+            {caseInfo ? 'View Case Info' : 'View Assignments'}
+          </button>
+          )}
+        </div>
+      </div>
+      )}
+      {showCaseInfo && caseInfo && (() => {
+        const w = caseInfo.entry || {};
+        const m = caseInfo.morgue || {};
+        const p = w.parsed || {};
+        const rows = [
+          ['Decedent', [w.name, w.oocName ? `((${w.oocName}))` : ''].filter(Boolean).join(' ') || '—'],
+          ['Case', w.caseTitle || (w.caseNum ? `Case #${w.caseNum}` : '—')],
+          ['Assigned To', w.assignedTo || '—'],
+          ['Requester', p.requesterName || '—'],
+          ['DOD / TOD', [p.dateOfDeath || w.dateOfDeath, p.timeOfDeath || w.timeOfDeath].filter(Boolean).join(' ') || '—'],
+          ['Location', p.placeOfDeath || w.placeOfDeath || '—'],
+          ['Faction', w.faction || '—'],
+          ['Morgue Record', m.caseId ? `${m.name || ''} (#${m.caseId})` : '—'],
+        ];
+        const synopsis = p.synopsis || w.synopsis || '';
+        return (
+          <div onClick={() => setShowCaseInfo(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1040, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+            <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 480, background: 'var(--bg-elevated)', border: '1px solid var(--border-accent)', borderRadius: 14, boxShadow: '0 24px 80px rgba(0,0,0,0.6)', overflow: 'hidden' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px', borderBottom: '1px solid var(--border)' }}>
+                <i className="fas fa-book" style={{ color: 'var(--teal)', fontSize: 16 }} />
+                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', flex: 1 }}>Case Info</div>
+                <button onClick={() => setShowCaseInfo(false)} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 16 }} title="Close">✕</button>
+              </div>
+              <div style={{ padding: '6px 16px 12px', display: 'flex', flexDirection: 'column' }}>
+                {rows.map(([label, value]) => (
+                  <div key={label} style={{ display: 'flex', gap: 10, padding: '7px 0', borderBottom: '1px solid var(--border)', fontSize: 12.5 }}>
+                    <div style={{ width: 110, flexShrink: 0, color: 'var(--text-muted)', fontWeight: 600 }}>{label}</div>
+                    <div style={{ color: 'var(--text)', wordBreak: 'break-word' }}>{value}</div>
+                  </div>
+                ))}
+                {synopsis ? (
+                  <div style={{ display: 'flex', gap: 10, padding: '7px 0', borderBottom: '1px solid var(--border)', fontSize: 12.5 }}>
+                    <div style={{ width: 110, flexShrink: 0, color: 'var(--text-muted)', fontWeight: 600 }}>Synopsis</div>
+                    <div style={{ color: 'var(--text)', wordBreak: 'break-word', maxHeight: 120, overflowY: 'auto' }}>{synopsis}</div>
+                  </div>
+                ) : null}
+              </div>
+              <div style={{ display: 'flex', gap: 8, padding: 16, borderTop: '1px solid var(--border)' }}>
+                {w.caseUrl && (
+                  <a href={w.caseUrl} target="_blank" rel="noopener noreferrer" className="btn btn-ghost" style={{ flex: 1, justifyContent: 'center', fontSize: 12, textDecoration: 'none' }}>
+                    <i className="fas fa-external-link-alt me-1" /> Case Thread
+                  </a>
+                )}
+                <button className="btn btn-ghost" style={{ flex: 1, justifyContent: 'center', fontSize: 12 }} onClick={() => { setShowCaseInfo(false); setShowAssignedAutopsies(true); }}>
+                  <i className="fas fa-microscope me-1" /> View Assignments
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
       <AssignedAutopsiesModal
         show={showAssignedAutopsies}
         onClose={() => setShowAssignedAutopsies(false)}
@@ -1953,6 +2081,7 @@ const NewUIPrototype = ({ basicMode = false }) => {
         loadMorgueRecords={loadMorgueRecords}
         onLoadCase={(morgue, entry) => {
           setShowAssignedAutopsies(false);
+          setCaseInfo({ entry: entry || null, morgue: morgue || null });
           const autopsyForm = formsData?.find(f => f.firebaseKey === 'autopsy');
           if (!autopsyForm) { showNotification('Autopsy form not found', 'warning'); return; }
           setSelectedForm(autopsyForm);

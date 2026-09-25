@@ -254,16 +254,39 @@ const AssignedAutopsiesModal = ({ show, onClose, onLoadCase, factionsData, loadM
             const parsedDate = (p.dateOfDeath || '').toLowerCase();
 
             const recScores = new Map(); // caseKey -> { rec, score } (max across terms)
+            // Calendar-day mismatch penalty: a record stamped on a different
+            // day than the request DOD sinks it, even if the name/location
+            // match (e.g. same "Unknown" decedents a day apart). Both sides
+            // must parse — missing/unparseable dates stay neutral.
+            const MON = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+            let reqDay = null;
+            {
+                const dm0 = parsedDate.match(/(\d{1,2})\/([a-z]+)\/(\d{4})/i);
+                if (dm0 && MON[dm0[2].toLowerCase().substring(0, 3)] !== undefined) {
+                    reqDay = `${dm0[3]}-${String(MON[dm0[2].toLowerCase().substring(0, 3)] + 1).padStart(2, '0')}-${dm0[1].padStart(2, '0')}`;
+                }
+            }
+            const recDay = (rec) => {
+                const t = Date.parse(rec.timeOfDeath || '');
+                if (isNaN(t)) return null;
+                const d = new Date(t);
+                return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            };
             for (const rec of ordered) {
                 const recKey = String(rec.caseId ?? rec.firebaseKey ?? rec.name ?? '');
                 const rn = (rec.name || '').toLowerCase();
+                const rDay = recDay(rec);
+                const dateClash = !!(reqDay && rDay && reqDay !== rDay);
                 for (const t of terms) {
                     if (!t) continue;
                     let s = 0;
                     if (rn === t) { s = 999; }
-                    else if (rn.includes(t)) { s = Math.max(rn.length, 60); }
-                    else if (t.includes(rn)) { s = Math.max(t.length, 60); }
-                    else if (haystackMatchesTerm(rn, t)) { s = Math.max(rn.length, 55); }
+                    // Substring hits scale with the matched term's length so a
+                    // full OOC-name match ("joseph ruggiero") always outscores
+                    // the generic IC fallback ("unknown") on the same record.
+                    else if (rn.includes(t)) { s = Math.max(rn.length, 60) + t.length * 10; }
+                    else if (t.includes(rn)) { s = Math.max(t.length, 60) + rn.length * 10; }
+                    else if (haystackMatchesTerm(rn, t)) { s = Math.max(rn.length, 55) + t.length * 5; }
                     else continue;
 
                     const cause = (rec.causeOfDeath || '').toLowerCase();
@@ -304,6 +327,7 @@ const AssignedAutopsiesModal = ({ show, onClose, onLoadCase, factionsData, loadM
                         }
                     }
                     const prev = recScores.get(recKey);
+                    if (dateClash) s -= 100;
                     if (!prev || s > prev.score) recScores.set(recKey, { rec, score: s });
                     if (s > bestScore) { bestScore = s; bestMatch = rec; }
                 }

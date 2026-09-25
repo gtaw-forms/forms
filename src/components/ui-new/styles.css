@@ -202,9 +202,9 @@
     display:flex; flex-direction:column; overflow:hidden;
     position:relative;
   }
-  .doc-header{ padding:22px 26px 16px; border-bottom:1px dashed var(--border); }
-  .doc-eyebrow{ font-family:var(--mono); font-size:10.5px; color:var(--text-faint); letter-spacing:1.5px; text-transform:uppercase; margin-bottom:6px;}
-  .doc-header h2{ margin:0 0 8px; font-size:19px; font-weight:700; }
+  .doc-header{ padding:14px 26px 12px; border-bottom:1px dashed var(--border); }
+  .doc-eyebrow{ font-family:var(--mono); font-size:10.5px; color:var(--text-faint); letter-spacing:1.5px; text-transform:uppercase; margin-bottom:4px;}
+  .doc-header h2{ margin:0 0 4px; font-size:19px; font-weight:700; }
   .doc-desc{
     font-size:12.5px; color:var(--teal); background:var(--teal-dim);
     border:1px solid rgba(99,102,241,0.25); border-radius:7px; padding:9px 12px;
@@ -298,8 +298,11 @@
   /* --- E2 right panel --- */
   .right-panel{
     width:380px; flex-shrink:0; display:flex; flex-direction:column; gap:16px;
-    overflow-y:auto; padding-right:2px;
+    overflow-y:auto; padding-right:2px; transition:width .2s ease;
   }
+  .right-panel.collapsed{ width:96px; }
+  .right-panel.collapsed .panel-icon-row{ justify-content:center; padding:8px 0; font-size:0; gap:0; }
+  .right-panel.collapsed .panel-icon-row i{ font-size:15px; }
   .panel-card{
     background:var(--bg-elevated); border:1px solid var(--border); border-radius:var(--radius);
     overflow:hidden;
@@ -312,6 +315,14 @@
   }
   .panel-tab.active{ color:var(--teal); border-bottom-color:var(--teal); background:var(--teal-dim); }
   .panel-tab:hover:not(.active){ color:var(--text); }
+  .panel-tab.panel-collapse-btn{ flex:0 0 34px; }
+  .panel-icon-row{
+    display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:7px;
+    background:var(--bg-surface); border:1px solid var(--border);
+    font-size:12px; font-weight:600; color:var(--text-muted); cursor:pointer;
+  }
+  .panel-icon-row:hover{ color:var(--text); border-color:var(--border-accent); }
+  .panel-icon-row i{ width:16px; text-align:center; }
 
   .panel-section{ padding:18px; display:none; }
   .panel-section.active{ display:block; }

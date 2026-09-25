@@ -324,7 +324,7 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
             </div>
             <div className="modal-foot">
               <button className="btn btn-ghost" onClick={() => setShowDetailModal(false)}>Close</button>
-              <button className="btn btn-primary" onClick={() => {
+              <button className="btn btn-ghost" onClick={() => {
                 // Copy the OOC-safe REDACTED BBCode — casing IDs/types hidden
                 // (tox screen + autopsy findings stay full).
                 const bbcode = generateMorgueBBCode(selectedRecord, { redacted: true });
@@ -335,7 +335,13 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
               }}>
                 <i className="fas fa-file-export me-1" /> Copy BBCode
               </button>
-
+              <button className="btn btn-primary" onClick={() => {
+                setRequestingAutopsy(selectedRecord);
+                setShowDetailModal(false);
+                logMorgueAction('Request Autopsy', `#${selectedRecord.caseId} — ${selectedRecord.name || 'Unknown'}`);
+              }}>
+                <i className="fas fa-microscope me-1" /> Request Autopsy
+              </button>
             </div>
           </div>
         </div>

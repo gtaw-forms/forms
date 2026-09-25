@@ -703,22 +703,22 @@ const PrototypeFieldRenderer = ({
       const blockVal = value && typeof value === 'object' ? value : {};
       return (
         <div className="field full" style={{
-          padding: '1rem', border: '1px solid var(--border)',
+          padding: '0.75rem', border: '1px solid var(--border)',
           borderRadius: 8, background: 'var(--bg-surface)',
         }}>
-          <h5 style={{ color: 'var(--teal)', margin: '0 0 12px' }}>{field.label}</h5>
-          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.5 }}>
+          <h5 style={{ color: 'var(--teal)', margin: '0 0 8px', fontSize: 13 }}>{field.label}</h5>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8, lineHeight: 1.5 }}>
             You MUST document the medicines prescribed and upload proof of prescription images. Failure to do so may result in disciplinary action.
           </div>
-          <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6, display: 'block' }}>Medicine Prescribed</label>
+          <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4, display: 'block' }}>Medicine Prescribed</label>
           <textarea
             value={blockVal.prescribed || ''}
             onChange={e => onChange({ prescribed: e.target.value, proof: blockVal.proof || [] })}
-            rows={field.rows || 4}
+            rows={field.rows || 2}
             placeholder="List the medicines prescribed..."
-            style={{ marginBottom: 16 }}
+            style={{ marginBottom: 10 }}
           />
-          <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6, display: 'block' }}>Proof of Prescription (Images)</label>
+          <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4, display: 'block' }}>Proof of Prescription (Images)</label>
           <ImageUploader
             images={blockVal.proof || []}
             onImagesChange={newImages => onChange({ prescribed: blockVal.prescribed || '', proof: newImages })}

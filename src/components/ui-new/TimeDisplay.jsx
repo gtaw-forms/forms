@@ -8,7 +8,7 @@ const setPref = (val) => localStorage.setItem(PREF_KEY, val ? '12h' : '24h');
 const fmt12 = (d, utc) => {
   const h = utc ? d.getUTCHours() : d.getHours();
   const m = utc ? d.getUTCMinutes() : d.getMinutes();
-  const s = utc ? d.getUTCSeconds() : d.getUTCSeconds();
+  const s = utc ? d.getUTCSeconds() : d.getSeconds();
   const ampm = h >= 12 ? 'PM' : 'AM';
   const h12 = h % 12 || 12;
   const p = n => n.toString().padStart(2, '0');
@@ -41,7 +41,7 @@ const TimeDisplay = ({ compact }) => {
 
   if (compact) {
     return (
-      <div style={{ fontSize: 10.5, color: 'var(--text-faint)', fontFamily: 'var(--mono)', marginBottom: 2, cursor: 'pointer' }} onClick={toggle} title="Click to toggle 12h/24h">
+      <div style={{ fontSize: 10.5, color: 'var(--text-faint)', fontFamily: 'var(--mono)', margin: 0, lineHeight: 1.4, cursor: 'pointer', whiteSpace: 'nowrap' }} onClick={toggle} title="Click to toggle 12h/24h">
         Server: {serverTime} | Local: {localTime}
       </div>
     );
