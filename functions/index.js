@@ -901,6 +901,27 @@ export const restoreSavedReportsBackup = onCall({ region: 'europe-west2', memory
  */
 const TOW_NODE = 'tow-reports';
 const TOW_ACCESS_NODE = 'tow-access';
+const TOW_META_NODE = 'tow-meta';
+
+/** Bump tow-meta.version so clients know the list changed. */
+async function bumpTowVersion() {
+    try {
+        const snap = await adminDb.ref(`${TOW_META_NODE}/version`).transaction((v) => (v || 0) + 1);
+        await adminDb.ref(TOW_META_NODE).update({ updatedAt: Date.now() });
+        return snap.snapshot?.val() ?? null;
+    } catch (err) {
+        console.warn('[tow] version bump failed:', err.message);
+        return null;
+    }
+}
+
+async function readTowVersion() {
+    try {
+        return (await adminDb.ref(`${TOW_META_NODE}/version`).once('value')).val() || 0;
+    } catch {
+        return 0;
+    }
+}
 const TOW_LOCAL_ORIGINS = new Set([
     'http://localhost:3000', 'http://127.0.0.1:3000',
     'http://localhost:5173', 'http://127.0.0.1:5173',
@@ -990,7 +1011,7 @@ export const getTowReports = onCall({
     const data = snap.val() || {};
     const list = Object.entries(data).map(([id, v]) => ({ id, ...(v || {}) }));
     list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-    return { success: true, count: list.length, reports: list };
+    return { success: true, count: list.length, reports: list, version: await readTowVersion() };
 });
 
 export const saveTowReport = onCall({
@@ -1046,12 +1067,14 @@ export const saveTowReport = onCall({
         const action = record.deleted === true && !existing.deleted ? 'delete'
             : (!record.deleted && existing.deleted === true) ? 'restore' : 'update';
         await logTowAuditEntry({ action, reportId: id, plate: record.plate, actor, detail: action === 'delete' ? 'soft-deleted' : null });
+        await bumpTowVersion();
         return { success: true, id, updated: true };
     }
     record.createdBy = actor;
     record.createdAt = now;
     const pushed = await adminDb.ref(TOW_NODE).push(record);
     await logTowAuditEntry({ action: 'create', reportId: pushed.key, plate: record.plate, actor });
+    await bumpTowVersion();
     return { success: true, id: pushed.key, updated: false };
 });
 

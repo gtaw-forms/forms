@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import ImageUploader from '../form-handler/ImageUploader';
 import ImagePreviewModal from '../Modals/ImagePreviewModal';
 import { triggerGetTowReports, triggerSaveTowReport, triggerAddTowAccess, triggerRemoveTowAccess } from '../../services/firebaseFunctions';
+import { getTowCache, setTowCache } from '../../utils/towCache';
 import { useTowAccess, isLeadershipAccess, TOW_LOCAL_ACCESS_KEY } from '../../hooks/useTowAccess';
 
 // ─── Tow Reports ───
@@ -30,6 +31,8 @@ const VehicleImpound = ({ showNotification, isAuthenticated, characterName, ucpN
     // Remembers a successful server load across re-runs so a later failure
     // (cold function, auth flip) keeps the good list instead of blanking it.
     const serverOk = React.useRef(false);
+    // Last-rendered IndexedDB cache (version-checked against the server).
+    const cacheRef = React.useRef(null);
     // Sync status line: makes server vs local visible instead of mysterious.
     const [syncStatus, setSyncStatus] = useState({ state: 'checking', detail: '', localOnly: 0 });
     // Bounded gallery viewer (same as scenePhotos) — never a full-size tab.
@@ -44,9 +47,20 @@ const VehicleImpound = ({ showNotification, isAuthenticated, characterName, ucpN
             return (Array.isArray(list) ? list : []).filter(e => e && !String(e.id || '').startsWith('demo-'));
         } catch { return []; }
     };
+    const mergeWithLocals = (serverList) => {
+        const list = [...serverList];
+        const ids = new Set(list.map(r => r.id));
+        let localOnly = 0;
+        for (const e of readLocalEntries()) {
+            if (!ids.has(e.id)) { list.push({ ...e, _localOnly: true }); localOnly++; }
+        }
+        list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        return { list, localOnly };
+    };
     const loadFromServer = async (dbg) => {
         const res = await triggerGetTowReports();
-        const list = Array.isArray(res?.reports) ? res.reports : [];
+        const serverList = Array.isArray(res?.reports) ? res.reports : [];
+        const serverVersion = res?.version ?? null;
         // Migrate browser-local entries the server lacks (matches by plate +
         // createdAt, so revisits never duplicate). This replaces the old
         // one-shot flag, which could be consumed while empty and strand
@@ -56,7 +70,7 @@ const VehicleImpound = ({ showNotification, isAuthenticated, characterName, ucpN
                 const raw = localStorage.getItem(LOCAL_KEY);
                 const stored = raw ? JSON.parse(raw) || [] : [];
                 const mine = (Array.isArray(stored) ? stored : []).filter(e => e && !String(e.id || '').startsWith('demo-'));
-                const have = new Set(list.map(r => `${String(r.plate || '').toUpperCase()}|${r.createdAt || 0}`));
+                const have = new Set(serverList.map(r => `${String(r.plate || '').toUpperCase()}|${r.createdAt || 0}`));
                 let migrated = false;
                 for (const e of mine) {
                     if (have.has(`${String(e.plate || '').toUpperCase()}|${e.createdAt || 0}`)) continue;
@@ -76,21 +90,27 @@ const VehicleImpound = ({ showNotification, isAuthenticated, characterName, ucpN
                     const remaining = mine.filter(e => !have2.has(`${String(e.plate || '').toUpperCase()}|${e.createdAt || 0}`));
                     try { localStorage.setItem(LOCAL_KEY, JSON.stringify(remaining)); } catch { /* ignore */ }
                     console.warn(`[TOW-DBG] ${dbg} migration done, ${mine.length - remaining.length}/${mine.length} moved server-side`);
-                    list.length = 0;
-                    list.push(...list2);
+                    serverList.length = 0;
+                    serverList.push(...list2);
                 }
             } catch (err) { console.warn(`[TOW-DBG] ${dbg} migration error: ${err?.message || err}`); }
         }
         // Merge leftover browser-local entries so a reachable-but-empty
         // server never hides local work.
-        const ids = new Set(list.map(r => r.id));
-        let localOnly = 0;
-        for (const e of readLocalEntries()) {
-            if (!ids.has(e.id)) { list.push({ ...e, _localOnly: true }); localOnly++; }
+        const { list, localOnly } = mergeWithLocals(serverList);
+        // Version-checked refresh: persist + re-render only when the server
+        // version moved since what we show (avoids flicker on every visit).
+        const prevVersion = cacheRef.current?.version;
+        if (serverVersion === null || serverVersion === undefined || serverVersion !== prevVersion) {
+            if (serverVersion !== null && serverVersion !== undefined) {
+                cacheRef.current = { version: serverVersion, reports: serverList };
+                setTowCache(serverVersion, serverList).catch(() => {});
+            }
+            console.warn(`[TOW-DBG] ${dbg} loadFromServer OK server=${list.length - localOnly} localOnly=${localOnly} v=${serverVersion} (refresh)`);
+            setEntries(list);
+        } else {
+            console.warn(`[TOW-DBG] ${dbg} loadFromServer OK v=${serverVersion} unchanged — keeping current list`);
         }
-        list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-        console.warn(`[TOW-DBG] ${dbg} loadFromServer OK server=${list.length - localOnly} localOnly=${localOnly}`);
-        setEntries(list);
         setLoading(false);
         setSyncStatus({ state: 'online', detail: '', localOnly });
     };
@@ -110,6 +130,20 @@ const VehicleImpound = ({ showNotification, isAuthenticated, characterName, ucpN
         console.warn(`[TOW-DBG] ${mountId} effect start (isAuth=${isAuthenticated})`);
         let cancelled = false;
         (async () => {
+            // Instant paint from IndexedDB (version-checked refresh follows).
+            try {
+                const cached = await getTowCache();
+                if (cancelled) return;
+                if (cached) {
+                    cacheRef.current = { version: cached.version, reports: cached.reports };
+                    const { list, localOnly } = mergeWithLocals(cached.reports || []);
+                    console.warn(`[TOW-DBG] ${mountId} cache paint v=${cached.version} count=${list.length}`);
+                    setEntries(list);
+                    setLoading(false);
+                    setSyncStatus({ state: 'cache', detail: '', localOnly });
+                }
+            } catch { /* fall through to network */ }
+            if (cancelled) return;
             // Migration lives inside loadFromServer now (content-matched, so
             // pre-deploy saves move up on the next successful load instead of
             // depending on a one-shot flag).
