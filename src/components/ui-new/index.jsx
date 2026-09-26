@@ -39,14 +39,16 @@ import phmcLogo from '../../assets/phmc.png';
  * branded sidebar, top bar, and tabbed right panel.
  * Route: /ui-prototype
  */
-const NewUIPrototype = ({ basicMode = false }) => {
+const NewUIPrototype = ({ basicMode = false, initialView = null }) => {
   const [activeMiscTab, setActiveMiscTab] = useState('profile');
   const [showCharSwitch, setShowCharSwitch] = useState(false);
   const [showLoginDialog, setShowLoginDialog] = useState(false);
   const [selectedForm, setSelectedForm] = useState(null);
   const [formValues, setFormValues] = useState({});
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeView, setActiveView] = useState('forms'); // 'forms' | 'morgue' | 'ems' | 'tow'
+  const [activeView, setActiveView] = useState( // 'forms' | 'morgue' | 'ems' | 'tow'
+    ['forms', 'morgue', 'ems', 'tow'].includes(initialView) ? initialView : 'forms'
+  );
   // Tow Reports: dev-open on localhost; in prod, PHMC members auto-pass
   // and contractors pass via UCP grant (shared useTowAccess hook).
   const showImpoundPoc = typeof window !== 'undefined' && window.location.hostname === 'localhost';

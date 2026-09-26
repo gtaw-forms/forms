@@ -28,6 +28,51 @@
       user's mobile device or desktop. See https://developers.google.com/web/fundamentals/web-app-manifest/
     -->
     <link rel="manifest" href="/manifest.json" />
+    <!-- Open Graph fallback (also feeds the Discord link preview) -->
+    <meta property="og:title" content="PHMC Tools" />
+    <meta property="og:description" content="An all-in-one interactive website for the GTA World ENG faction Pillbox Hill Medical Center — morgue records and paperwork tools." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://gtaw-forms.github.io/forms/" />
+    <meta property="og:image" content="https://gtaw-forms.github.io/forms/phmc-logo.png" />
+
+    <!-- Discord component embed (discord/discord-api-docs#8606): replaces the
+      generic link card with a branded layout. Static by necessity — Discord's
+      crawler reads raw HTML with no JS, and Pages serves one index.html for
+      all routes — so this is one generic card for every site link.
+      NOTE: this block lives in SOURCE (it was previously hand-injected into
+      deploy output and wiped by the next deploy — c02a886, 2026-09-23). -->
+    <script id="discord:component-embed" type="application/json">
+    {
+      "component": {
+        "type": 17,
+        "accent_color": 48340,
+        "components": [
+          {
+            "type": 9,
+            "components": [
+              {
+                "type": 10,
+                "content": "# Welcome to PHMC Tools\nAn all-in-one interactive website for the GTA World ENG faction Pillbox Hill Medical Center — morgue records and paperwork tools."
+              }
+            ],
+            "accessory": {
+              "type": 11,
+              "media": { "url": "https://gtaw-forms.github.io/forms/phmc-logo.png" }
+            }
+          },
+          {
+            "type": 1,
+            "components": [
+              { "type": 2, "style": 5, "label": "Open PHMC Tools", "url": "https://gtaw-forms.github.io/forms/" },
+              { "type": 2, "style": 5, "label": "Morgue Records", "url": "https://gtaw-forms.github.io/forms/#/morgue" },
+              { "type": 2, "style": 5, "label": "Paperwork Tools", "url": "https://gtaw-forms.github.io/forms/#/ui-prototype" },
+              { "type": 2, "style": 5, "label": "Tow Reports", "url": "https://gtaw-forms.github.io/forms/#/tow" }
+            ]
+          }
+        ]
+      }
+    }
+    </script>
     <!--
       Learn how to configure a non-root public URL by running `npm run build`.
     -->

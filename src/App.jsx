@@ -216,6 +216,9 @@ function App() {
                                 <Route path="/admin" element={<ProtectedRoute><Admin formData={formData} setFormData={setFormData} showNotification={showNotification} /></ProtectedRoute>} />
                                 <Route path="/ui-prototype" element={<NewUIPrototype />} />
                                 <Route path="/prototype-basic" element={<NewUIPrototype basicMode />} />
+                                {/* Deep links used by the Discord link-preview buttons */}
+                                <Route path="/morgue" element={<NewUIPrototype initialView="morgue" />} />
+                                <Route path="/tow" element={<NewUIPrototype initialView="tow" />} />
                                 {/* Legacy form-handler DECOMMISSIONED — any attempt redirects to the new UI */}
                                 <Route path="/form-handler" element={<Navigate to="/ui-prototype" replace />} />
                                 <Route path="*" element={<Navigate to="/" replace />} />
