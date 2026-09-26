@@ -20,6 +20,7 @@
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from 'discord.js';
 import { createIsolatedClient, getForumClient } from './forumClient.js';
 import firebase from './firebase.js';
+import { registerTick, unregisterTick } from './scheduler.js';
 
 const SUBJECT_TAG = '[Private Autopsy]';
 const POLL_MS = parseInt(process.env.PRIVATE_PM_INTAKE_INTERVAL_MS || `${30 * 60 * 1000}`, 10);
@@ -28,6 +29,7 @@ const LIVE = process.env.PRIVATE_PM_INTAKE_LIVE === 'true';
 
 let _client = null;
 let _timer = null;
+let _firstTimer = null;
 let _running = false;
 
 export function setPmIntakeClient(client) { _client = client; }
@@ -527,7 +529,7 @@ export async function executeLiveIntake(pm, parsed, onStep = () => {}) {
                     const { notifyAssignment } = await import('./meDiscordNotify.js');
                     await notifyAssignment(db, already.assignedTo,
                         `Case ${already.caseNum} - ${already.name}${already.oocName ? ` ((${already.oocName}))` : ''} [PRIVATE] - ${already.assignedTo}`,
-                        already.url, { decedent: already.name, ooc: already.oocName, caseNumber: already.caseNum, deathType: body.pkck === 'PK' ? 'PK' : 'CK' });
+                        already.url, { decedent: already.name, ooc: already.oocName, caseNumber: already.caseNum, deathType: body.pkck === 'PK' ? 'PK' : 'CK', requestTopicId: already.topicId });
                     await createdRef.update({ notified: true });
                     console.log(`[PM-INTAKE] Late notify sent for reused Case #${already.caseNum}`);
                 } catch (e) { console.warn(`[PM-INTAKE] Late notify failed #${already.caseNum}: ${e.message}`); }
@@ -603,6 +605,7 @@ export async function executeLiveIntake(pm, parsed, onStep = () => {}) {
                     ooc,
                     caseNumber: caseNum,
                     deathType: body.pkck === 'PK' ? 'PK' : 'CK',
+                    requestTopicId: topicId,
                 });
                 await createdRef.update({ notified: true });
             } catch (e) { console.warn(`[PM-INTAKE] ME notify failed #${caseNum}: ${e.message}`); }
@@ -740,8 +743,29 @@ export function startPrivateAutopsyPmMonitor({ immediate = true } = {}) {
     console.log(`[PM-INTAKE] Starting LSPD PM intake (every ${Math.round(POLL_MS / 60000)}min, live=${LIVE}, tag="${SUBJECT_TAG}")`);
     // The phased boot queue runs the first poll itself — pass
     // { immediate: false } there to avoid a double first poll.
+    // Stagger vs the autopsy monitor (both forum-heavy): the first poll stays
+    // a FIRST_DELAY_MS one-shot, and the steady tick carries a FIRST_DELAY_MS
+    // jitter so the two polls never fire in lockstep.
     if (immediate) {
-        setTimeout(() => pollOnce().catch(() => {}), FIRST_DELAY_MS);
+        _firstTimer = setTimeout(() => pollOnce().catch(() => {}), FIRST_DELAY_MS);
     }
-    _timer = setInterval(() => pollOnce().catch(() => {}), POLL_MS);
+    registerTick('pm-intake', {
+        intervalMs: POLL_MS,
+        jitterMs: FIRST_DELAY_MS,
+        runAtStart: false,
+        fn: () => pollOnce().catch(() => {}),
+    });
+    _timer = true;
+}
+
+export function stopPrivateAutopsyPmMonitor() {
+    if (_firstTimer) {
+        clearTimeout(_firstTimer);
+        _firstTimer = null;
+    }
+    if (_timer) {
+        unregisterTick('pm-intake');
+        _timer = null;
+        console.log('[PM-INTAKE] Monitor stopped');
+    }
 }

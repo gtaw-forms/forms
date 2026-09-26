@@ -28,6 +28,8 @@ const VehicleImpound = ({ showNotification, isAuthenticated, characterName, ucpN
     const [showAccess, setShowAccess] = useState(false);
     const [newUcp, setNewUcp] = useState('');
     const [newSup, setNewSup] = useState(false);
+    const [granting, setGranting] = useState(false);
+    const [revokingId, setRevokingId] = useState(null);
     // Remembers a successful server load across re-runs so a later failure
     // (cold function, auth flip) keeps the good list instead of blanking it.
     const serverOk = React.useRef(false);
@@ -190,6 +192,7 @@ const VehicleImpound = ({ showNotification, isAuthenticated, characterName, ucpN
             showNotification?.('That UCP name already has access.', 'info');
             return;
         }
+        setGranting(true);
         try {
             if (isLocal) {
                 try {
@@ -208,10 +211,13 @@ const VehicleImpound = ({ showNotification, isAuthenticated, characterName, ucpN
             showNotification?.(`Access granted to ${name}${newSup ? ' (supervisor)' : ''}.`, 'success');
         } catch (err) {
             showNotification?.('Grant failed: ' + (err?.message || err), 'error');
+        } finally {
+            setGranting(false);
         }
     };
 
     const handleRemoveAccess = async (entry) => {
+        setRevokingId(entry.id);
         try {
             if (isLocal) {
                 try {
@@ -223,6 +229,8 @@ const VehicleImpound = ({ showNotification, isAuthenticated, characterName, ucpN
             }
         } catch (err) {
             showNotification?.('Revoke failed: ' + (err?.message || err), 'error');
+        } finally {
+            setRevokingId(null);
         }
     };
 
@@ -366,10 +374,6 @@ const VehicleImpound = ({ showNotification, isAuthenticated, characterName, ucpN
         // Scrollable: main-content is overflow:hidden, so without this the
         // form + gallery clip once they exceed the viewport (Save unreachable).
         <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '4px 10px 16px 2px' }}>
-            <div className="patient-note" style={{ background: 'var(--amber-dim)', color: 'var(--amber)', border: '1px solid rgba(232,163,61,0.25)' }}>
-                <span>POC</span>
-                <span><strong>Prototype</strong> — localhost only, not linked in production. Reports {isLocal ? 'stay in this browser' : <>save to <span style={{ fontFamily: 'var(--mono)' }}>vehicle-impounds</span></>}.</span>
-            </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
                 <h3 style={{ margin: 0, fontSize: 15, color: 'var(--text)', flex: 1 }}>Towed Vehicles ({entries.length})</h3>
                 {canManageTow && (
@@ -397,9 +401,9 @@ const VehicleImpound = ({ showNotification, isAuthenticated, characterName, ucpN
                     </div>
                     <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
                         <input style={{ ...inputStyle, flex: 1 }} value={newUcp} onChange={e => setNewUcp(e.target.value)}
-                            onKeyDown={e => { if (e.key === 'Enter') handleAddAccess(); }} placeholder="UCP name (e.g. JohnDoe99)" />
-                        <button className="btn btn-primary" style={{ fontSize: 12, padding: '8px 14px', whiteSpace: 'nowrap' }} onClick={handleAddAccess}>
-                            <i className="fas fa-plus me-1" /> Grant
+                            onKeyDown={e => { if (e.key === 'Enter') handleAddAccess(); }} placeholder="UCP name (e.g. JohnDoe99)" disabled={granting} />
+                        <button className="btn btn-primary" style={{ fontSize: 12, padding: '8px 14px', whiteSpace: 'nowrap' }} onClick={handleAddAccess} disabled={granting}>
+                            {granting ? (<><i className="fas fa-spinner fa-spin me-1" /> Adding…</>) : (<><i className="fas fa-plus me-1" /> Grant</>)}
                         </button>
                     </div>
                     <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>
@@ -416,8 +420,8 @@ const VehicleImpound = ({ showNotification, isAuthenticated, characterName, ucpN
                                     <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--amber)', border: '1px solid var(--amber)', borderRadius: 5, padding: '2px 7px' }}>SUPERVISOR</span>
                                     )}
                                     <span style={{ fontSize: 10, color: 'var(--text-faint)' }}>by {a.addedBy || '?'}</span>
-                                    <button className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px' }} onClick={() => handleRemoveAccess(a)}>
-                                        Remove
+                                    <button className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px' }} disabled={revokingId === a.id} onClick={() => handleRemoveAccess(a)}>
+                                        {revokingId === a.id ? (<><i className="fas fa-spinner fa-spin me-1" /> Removing…</>) : 'Remove'}
                                     </button>
                                 </div>
                             ))}

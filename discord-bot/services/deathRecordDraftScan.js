@@ -445,6 +445,10 @@ export async function recheckMorgueForDraft(db, reportKey) {
 
 const CK_EPOCH = 1782864000000; // 2026-07-01T00:00:00Z
 let _knownPassiveCKKeys = null;
+// Cold-start prime bookkeeping (see startCKListener): arrivals before the
+// prime resolves are buffered, never processed-or-skipped blindly.
+let _ckPrimeDone = false;
+let _ckPending = [];
 
 // In-memory dedup across the two drafting triggers. Both autoDeploy's
 // scheduledReports listener AND the passive newSavedReports listener
@@ -564,6 +568,8 @@ export function startCKListener(db) {
     }
 
 _knownPassiveCKKeys = new Set();
+_ckPrimeDone = false;
+_ckPending = [];
 
     // P2: watch the slim `unprocessedCKs` index (written by the web app on every
     // CK save) instead of the full `newSavedReports` node. The old listener
@@ -571,7 +577,54 @@ _knownPassiveCKKeys = new Set();
     // streams new CK entries (tiny) and reads each matching report scoped.
     console.log(`[DRAFT] Passive CK listener active on unprocessedCKs (slim index) — no full newSavedReports read`);
 
+    // The slim index has no writer-side TTL/removal (see useFormSaver.js CK
+    // saves + SCHEMA.md `unprocessedCKs/<reportKey>`) and nothing deletes
+    // entries after drafting — growth is unbounded. Deletion is NOT provably
+    // safe (a no-morgue-match entry must survive for future rechecks; readers
+    // only child_added-scan, and mass-fatality keys are per-decedent), so warn
+    // instead of pruning.
+    db.ref('unprocessedCKs').once('value')
+        .then((s) => {
+            const n = s.numChildren ? s.numChildren() : 0;
+            if (n > 500) console.warn(`[DRAFT] [WARN] unprocessedCKs has ${n} entries (no TTL/cleanup) — consider manual archival`);
+        })
+        .catch(() => {});
+
+    db.ref('unprocessedCKs').once('value')
+        .then((s) => {
+            let primed = 0;
+            s?.forEach((child) => {
+                if (!_knownPassiveCKKeys.has(child.key)) {
+                    _knownPassiveCKKeys.add(child.key);
+                    primed++;
+                }
+            });
+            if (primed > 0) console.log(`[DRAFT] Passive CK cold-start primed — ${primed} backlog entr${primed === 1 ? 'y' : 'ies'} skipped (no refetch)`);
+            _ckPrimeDone = true;
+            // Drain anything that arrived while priming (not in the set).
+            for (const pending of _ckPending.splice(0)) handleCKChild(pending);
+        })
+        .catch(() => { _ckPrimeDone = true; });
+
     db.ref('unprocessedCKs').on('child_added', (childSnap) => {
+        // Buffer arrivals until the prime resolves: otherwise a CK saved in
+        // the gap would be primed as "backlog" and skipped forever.
+        if (!_ckPrimeDone) {
+            _ckPending.push(childSnap);
+            return;
+        }
+        handleCKChild(childSnap);
+    });
+
+    function handleCKChild(childSnap) {
+        // Cold-start guard: the initial child_added flood replays the ENTIRE
+        // backlog on every restart/reconnect. Without priming, each backlog
+        // entry costs an RTDB point read + up to 2 VPS API point reads
+        // (reportKey, then baseReportKey fallback) — a boot storm that also
+        // re-runs morgue matching for long-settled reports. Prime the known
+        // set from a single indexed read first; only truly new children
+        // (added after the prime) fall through. Same pattern as the
+        // scheduledReports cold-load guard in autoDeploy.js.
         const entry = childSnap.val();
         const reportKey = childSnap.key;
         if (!entry || _knownPassiveCKKeys.has(reportKey)) return;
@@ -597,7 +650,7 @@ _knownPassiveCKKeys = new Set();
                 }
             })
             .catch((err) => console.error('[DRAFT] [ERR] Passive CK report read:', err.message));
-    });
+    }
 
     console.log('[DRAFT] [OK] Passive CK listener active');
 }

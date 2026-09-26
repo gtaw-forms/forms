@@ -9,17 +9,20 @@
  *
  * Entity: coroner-email-queue/<authorId>|<reportKey>
  *   { authorId, reportKey, topicId, topicUrl, recipient, forumLabel,
- *     subject, bbCode, status, attempts, maxAttempts, retryAt, lastError,
+ *     subject, bbCode, status, attempts, retryAt, lastError,
  *     pmUrl, sentAt, createdAt, updatedAt }
- * Status: queued → sending → sent | retry_queued | failed (+ dry_run terminal
- * for dry-run passes). Stuck `sending` (>30m, e.g. crash mid-send) resets to
+ * Status: queued → sending → sent | retry_queued (+ dry_run terminal
+ * for dry-run passes). Retries never expire (backoff 30m/2h/6h, capped at
+ * the last step). Stuck `sending` (>30m, e.g. crash mid-send) resets to
  * queued on sweep. Sent entities prune after 7 days.
  */
 
 import { logFnCall } from './deployLogger.js';
+import { registerTick, unregisterTick } from './scheduler.js';
 
 export const EMAIL_NODE = 'coroner-email-queue';
-const MAX_ATTEMPTS = 3;
+// Note: MAX_ATTEMPTS was removed — failures retry forever (see processOneEmail).
+// Entities may still carry a legacy maxAttempts field; it is no longer read.
 const BACKOFF_MS = [30 * 60 * 1000, 2 * 60 * 60 * 1000, 6 * 60 * 60 * 1000];
 const STUCK_MS = 30 * 60 * 1000;
 const PRUNE_SENT_MS = 7 * 24 * 60 * 60 * 1000;
@@ -57,7 +60,7 @@ export async function enqueueCoronerEmail(db, {
         await db.ref(`${EMAIL_NODE}/${key}`).set({
             authorId, reportKey, topicId, topicUrl,
             recipient, department, forumLabel, subject, bbCode,
-            status: 'queued', attempts: 0, maxAttempts: MAX_ATTEMPTS,
+            status: 'queued', attempts: 0,
             retryAt: null, lastError: null, pmUrl: null, sentAt: null,
             createdAt: existing?.createdAt || now, updatedAt: now,
         });
@@ -137,7 +140,7 @@ async function processOneEmail(key, entity) {
     if (fresh.status === 'retry_queued' && fresh.retryAt && Date.now() < new Date(fresh.retryAt).getTime()) return;
 
     await _db.ref(`${EMAIL_NODE}/${key}`).update({ status: 'sending', updatedAt: new Date().toISOString() });
-    console.log(`[CORONER-QUEUE] Delivering ${key} → ${fresh.recipient} (${fresh.forumLabel}), attempt ${(fresh.attempts || 0) + 1}/${fresh.maxAttempts || MAX_ATTEMPTS}`);
+    console.log(`[CORONER-QUEUE] Delivering ${key} → ${fresh.recipient} (${fresh.forumLabel}), attempt ${(fresh.attempts || 0) + 1}`);
 
     let result;
     try {
@@ -155,8 +158,17 @@ async function processOneEmail(key, entity) {
     }
 
     const attempts = (fresh.attempts || 0) + 1;
-    const maxAttempts = fresh.maxAttempts || MAX_ATTEMPTS;
-    if (result.ok) {
+    if (result.ok && result.dryRun) {
+        // Dry-run pass: the form was filled but nothing was submitted — record
+        // the documented terminal `dry_run` state, never `sent`, no pmUrl, and
+        // mirror nothing onto the report record (audit must never claim sent).
+        await _db.ref(`${EMAIL_NODE}/${key}`).update({
+            status: 'dry_run', attempts, pmUrl: null,
+            sentTo: null, sentAt: null,
+            lastError: null, updatedAt: new Date().toISOString(),
+        });
+        console.log(`[CORONER-QUEUE] ${key} DRY RUN — form filled, not submitted (terminal dry_run)`);
+    } else if (result.ok) {
         await _db.ref(`${EMAIL_NODE}/${key}`).update({
             status: 'sent', attempts, pmUrl: result.url || null,
             sentTo: result.sentTo || fresh.recipient, sentAt: new Date().toISOString(),
@@ -171,20 +183,18 @@ async function processOneEmail(key, entity) {
             });
         } catch { /* best effort */ }
         console.log(`[CORONER-QUEUE] ${key} SENT → ${result.sentTo || fresh.recipient}${result.url ? ` (${result.url})` : ''}`);
-    } else if (attempts >= maxAttempts) {
-        await _db.ref(`${EMAIL_NODE}/${key}`).update({
-            status: 'failed', attempts, lastError: String(result.reason || 'Unknown').slice(0, 300),
-            updatedAt: new Date().toISOString(),
-        });
-        console.error(`[CORONER-QUEUE] ${key} FAILED permanently after ${attempts} attempts: ${result.reason}`);
     } else {
+        // No exhaustion: failures retry forever on the backoff schedule
+        // (30m/2h/6h, capped at the last step). `failed` is no longer
+        // written by this path — pre-existing failed entities stay visible
+        // and re-queueable via enqueueCoronerEmail.
         const retryAt = new Date(Date.now() + (BACKOFF_MS[attempts - 1] || BACKOFF_MS[BACKOFF_MS.length - 1])).toISOString();
         await _db.ref(`${EMAIL_NODE}/${key}`).update({
             status: 'retry_queued', attempts, retryAt,
             lastError: String(result.reason || 'Unknown').slice(0, 300),
             updatedAt: new Date().toISOString(),
         });
-        console.log(`[CORONER-QUEUE] ${key} failed (attempt ${attempts}/${maxAttempts}) — retry at ${retryAt}: ${result.reason}`);
+        console.log(`[CORONER-QUEUE] ${key} failed (attempt ${attempts}) — retry at ${retryAt}: ${result.reason}`);
     }
 }
 
@@ -193,6 +203,13 @@ export function startCoronerEmailWorker(db) {
     _db = db;
     console.log('[CORONER-QUEUE] Worker started (sweep every 10 min)');
     processEmailQueue().catch(() => {});
-    if (_sweepTimer) clearInterval(_sweepTimer);
-    _sweepTimer = setInterval(() => processEmailQueue().catch(() => {}), SWEEP_MS);
+    unregisterTick('coroner-email-sweep');
+    registerTick('coroner-email-sweep', { intervalMs: SWEEP_MS, fn: () => processEmailQueue().catch(() => {}) });
+    _sweepTimer = true;
+}
+
+/** Stop the worker (cleanup on shutdown). */
+export function stopCoronerEmailWorker() {
+    unregisterTick('coroner-email-sweep');
+    _sweepTimer = null;
 }

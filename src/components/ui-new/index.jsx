@@ -1106,7 +1106,7 @@ const NewUIPrototype = ({ basicMode = false, initialView = null }) => {
                   {showTowReports && (
                   <div onClick={() => { setActiveView('tow'); setSelectedForm(null); setFormValues({}); }}
                     className={`form-item${activeView === 'tow' ? ' active' : ''}`}>
-                    <span className="dot" />Tow Reports <span className="case-tag" style={{ marginLeft: 6 }}>POC</span>
+                    <span className="dot" />Tow Reports
                   </div>
                   )}
                 </div>
@@ -1187,7 +1187,7 @@ const NewUIPrototype = ({ basicMode = false, initialView = null }) => {
           </button>
           <div className="topbar-title">
             <h1>{activeView === 'morgue' ? 'Morgue Records' : activeView === 'ems' ? 'LS County EMS Protocols' : activeView === 'tow' ? 'Tow Reports' : activeForm?.name || 'No Form Selected'}</h1>
-            {activeView === 'morgue' ? <span className="case-tag">Database</span> : activeView === 'ems' ? <span className="case-tag">Protocols</span> : activeView === 'tow' ? <span className="case-tag">POC</span> : activeForm && <span className="case-tag">{activeForm.accessType || 'General'}</span>}
+            {activeView === 'morgue' ? <span className="case-tag">Database</span> : activeView === 'ems' ? <span className="case-tag">Protocols</span> : activeForm && <span className="case-tag">{activeForm.accessType || 'General'}</span>}
           </div>
           <div className="topbar-center">
             <ServiceStatusTicker />

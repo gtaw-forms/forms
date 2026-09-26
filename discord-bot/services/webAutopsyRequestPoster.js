@@ -32,11 +32,15 @@
 import firebase from './firebase.js';
 import { getForumClient } from './forumClient.js';
 import { isDevTestActive, devWebhookUrl } from './devRouting.js';
+import { probeMsForHost } from './postingHealth.js';
 
 const PENDING_PATH = 'autopsy-requests/pending';
 const PHMC_BASE = 'https://phmc.gta.world';
 const PHMC_FORUM_ID = 265;
-const MAX_ATTEMPTS = 3;
+// No attempt cap: entries retry forever (a significant outage can need many
+// attempts). The circuit breaker paces attempts while the path is blocked;
+// statuses other than pending/posted (failed/superseded/deferred) are never
+// picked up.
 const RETRY_BACKOFF_MS = 5 * 60 * 1000;
 const SEND_TIMEOUT_MS = 10000;
 const NOTIFY_WEBHOOK_ENV = 'AUTOPSY_REQUEST_WEBHOOK_URL';
@@ -180,7 +184,24 @@ async function drain() {
                 await postOne(db, id, entry);
             } catch (err) {
                 console.error(`[WEB-REQ] #${id} posting error: ${err.message}`);
-                await markFailed(db, id, entry, err.message);
+                if (err && err.code === 'POSTING_PAUSED') {
+                    // Breaker open: pause without alerting; probe on the
+                    // breaker's escalating schedule (this poster only
+                    // targets PHMC, so its host is fixed). attempts still
+                    // increments (telemetry only, no cap) because the retry
+                    // scheduler requires attempts > 0 to arm its timer.
+                    const waitMs = probeMsForHost(PHMC_BASE);
+                    const attempts = (entry.attempts || 0) + 1;
+                    await db.ref(`${PENDING_PATH}/${id}`).update({
+                        attempts,
+                        nextRetryAt: Date.now() + waitMs,
+                        deployCheckedAt: new Date().toISOString(),
+                        deployMessage: `Paused — PHMC write path blocked, probing again without alerting.`,
+                    }).catch(() => {});
+                    console.log(`[WEB-REQ] #${id} paused (breaker open) — probe in ${Math.round(waitMs / 60000)}m`);
+                } else {
+                    await markFailed(db, id, entry, err.message);
+                }
             }
         }
     } finally {
@@ -257,24 +278,30 @@ async function postOne(db, id, entry) {
     await sendPostedNotification(res.url, title);
 }
 
-async function markFailed(db, id, entry, message) {
+async function markFailed(db, id, entry, message, { paused = false } = {}) {
     const attempts = (entry.attempts || 0) + 1;
-    const done = attempts >= MAX_ATTEMPTS;
     const update = {
-        status: done ? 'failed' : 'pending',
+        status: 'pending',
         attempts,
         lastError: message,
         lastAttemptAt: Date.now(),
+        nextRetryAt: Date.now() + RETRY_BACKOFF_MS,
     };
-    if (!done) update.nextRetryAt = Date.now() + RETRY_BACKOFF_MS;
     await db.ref(`${PENDING_PATH}/${id}`).update(update);
-    console.warn(`[WEB-REQ] #${id} attempt ${attempts}/${MAX_ATTEMPTS} failed${done ? ' — giving up' : `, retry after backoff`}: ${message}`);
-    if (done) {
+    if (paused) {
+        // Circuit breaker open: quiet pause, no alert (the breaker + dashboard
+        // already show it). Next probe is scheduled by the caller.
+        console.log(`[WEB-REQ] #${id} paused (breaker open) — attempt ${attempts} preserved`);
+        return;
+    }
+    console.warn(`[WEB-REQ] #${id} attempt ${attempts} failed, retry after backoff: ${message}`);
+    if (attempts === 1) {
+        // Alert once per entry (further failures are routine retries until posted).
         const url = getNotifyWebhookUrl();
         if (url) {
             await postNotification(url, {
                 username: 'PHMC Autopsy Requests',
-                content: '**Autopsy request auto-post FAILED**',
+                content: '**Autopsy request auto-post FAILED (will keep retrying)**',
                 embeds: [{
                     title: entry.topicTitle || 'Autopsy Request',
                     color: 0xdc3545,

@@ -1,6 +1,8 @@
 /**
- * CCTV Scheduler — runs fetch-all.js every 6 hours and posts results to bot-spam.
+ * CCTV Scheduler — runs fetch-all.js daily and posts results to bot-spam.
  *
+ * Daily cadence (was 6-hourly): footage logs are incremental by ID so nothing
+ * is lost between runs, and manual checks via the frontend API cover gaps.
  * The script runs fetch-all.js --headless, waits for it to complete,
  * then sends a summary message to the bot log channel.
  *
@@ -11,13 +13,16 @@ import { spawn } from 'child_process';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { sendLogMessage } from './logChannel.js';
+import { registerTick, unregisterTick } from './scheduler.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCRIPT_PATH = '/opt/phmc-bot/cctv-script';
-const FETCH_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
+const FETCH_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours (daily)
 
 let _timer = null;
 let _intervalHandle = null;
+let _registerTimer = null;
+let _startupTimeout = null;
 
 /**
  * Start the CCTV fetch scheduler.
@@ -29,12 +34,27 @@ export function startCctvScheduler() {
         return;
     }
 
-    console.log(`[CCTV] Scheduler starting — will fetch every 6 hours.`);
+    console.log(`[CCTV] Scheduler starting — will fetch daily.`);
 
     // Run after 5-minute delay so startup health checks (Playwright) finish first,
-    // then every 6 hours. This avoids 4+ Playwright instances running concurrently.
-    setTimeout(runCctvFetch, 5 * 60 * 1000);
-    _intervalHandle = setInterval(runCctvFetch, FETCH_INTERVAL_MS);
+    // then every 24 hours. This avoids 4+ Playwright instances running concurrently.
+    // (The 5m one-shot below is NOT part of this migration — owned separately.)
+    _startupTimeout = setTimeout(runCctvFetch, 5 * 60 * 1000);
+    // Delayed initial registration: the scheduler fires non-runAtStart ticks at
+    // the first evaluation, so registering now would add an immediate extra
+    // fetch at boot (defeating the 5m settle delay above). Registering after
+    // one full interval preserves the original setInterval phase (first tick
+    // ~24h after start, steady daily cadence after).
+    if (_registerTimer) clearTimeout(_registerTimer);
+    _registerTimer = setTimeout(() => {
+        _registerTimer = null;
+        registerTick('cctv-fetch', {
+            intervalMs: FETCH_INTERVAL_MS,
+            runAtStart: false,
+            fn: () => runCctvFetch(),
+        });
+        _intervalHandle = true;
+    }, FETCH_INTERVAL_MS);
     _timer = true;
 }
 
@@ -42,8 +62,16 @@ export function startCctvScheduler() {
  * Stop the scheduler (cleanup on shutdown).
  */
 export function stopCctvScheduler() {
+    if (_startupTimeout) {
+        clearTimeout(_startupTimeout);
+        _startupTimeout = null;
+    }
+    if (_registerTimer) {
+        clearTimeout(_registerTimer);
+        _registerTimer = null;
+    }
     if (_intervalHandle) {
-        clearInterval(_intervalHandle);
+        unregisterTick('cctv-fetch');
         _intervalHandle = null;
     }
     _timer = null;
@@ -88,10 +116,14 @@ async function runCctvFetch() {
         });
 
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        // Self-diagnosis: keep the tail so a dead/empty run arrives with its
+        // own cause attached instead of a bare "?/? cameras".
+        const outTail = String(stdout || '').trim().split('\n').slice(-15).join('\n') || '(no output captured)';
+        const exitDesc = exitCode === 'TIMEOUT' ? 'TIMEOUT (killed after 150s)' : `exit code ${exitCode}`;
 
         if (exitCode === 'TIMEOUT') {
-            console.warn('[CCTV] Scheduled fetch timed out after 150s');
-            sendLogMessage('[CCTV] Scheduled fetch timed out after 150s.');
+            console.warn(`[CCTV] Scheduled fetch timed out after 150s\n--- output tail ---\n${outTail}`);
+            sendLogMessage(`[CCTV] Scheduled fetch timed out after 150s.\n\`\`\`\n${outTail.slice(0, 1500)}\n\`\`\``);
             return;
         }
 
@@ -114,6 +146,13 @@ async function runCctvFetch() {
 
         // Brief summary for Discord (avoid spam with full camera list)
         let detail = `**CCTV Logs Fetched**\n\`${newEntries}\` new entries | \`${elapsed}s\` | \`${successCount}/${totalCameras}\` cameras`;
+        // Unparseable run (crash / empty output / non-zero exit): attach the
+        // exit code + output tail so the cause is visible without VPS access.
+        if (!successMatch || exitCode !== 0) {
+            const diag = `\n\`exit: ${exitDesc}\`\n\`\`\`\n${outTail.slice(0, 1500)}\n\`\`\``;
+            detail += diag;
+            console.warn(`[CCTV] Unparseable run (${exitDesc})\n--- output tail ---\n${outTail}`);
+        }
         // Only add cameras that got new entries
         if (newEntries > 0) {
             const cameraLines = stdout.split('\n').filter(l => l.includes('#') && l.includes('stored'));

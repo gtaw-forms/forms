@@ -12,6 +12,7 @@ import { getDraftClient, updateDraftFaceField } from './deathRecordDraftUI.js';
 import { generateDraft, baseReportKey, decedentFromReport, buildVirtualReportData } from './deathRecordDraftGenerator.js';
 import { generateFacePostContent, postToFace, isFaceConfigured, isFaceDryRun } from './facePost.js';
 import { firstApiKey } from './apiKeyUtil.js';
+import { registerTick, unregisterTick } from './scheduler.js';
 
 const FACE_TRACK_PATH = 'facePostDrafts';
 const DEATH_RECORD_TRACK_PATH = 'deathRecordDrafts';
@@ -250,19 +251,20 @@ export async function startFacePublishSweep() {
         _faceTrackRef = null;
     }
 
-    // First check shortly after startup, then on the interval.
+    // First check shortly after startup, then on the shared scheduler
+    // (reentrancy guard built in — replaces setInterval). runAtStart is NOT
+    // used: the 10s one-shot above is the startup behavior, not an immediate run.
     setTimeout(() => runFacePublishSweep(db), 10 * 1000);
-    _sweepTimer = setInterval(() => runFacePublishSweep(db), FACE_SWEEP_INTERVAL_MS);
+    registerTick('face-publish-sweep', { intervalMs: FACE_SWEEP_INTERVAL_MS, fn: () => runFacePublishSweep(db) });
+    _sweepTimer = true;
 }
 
 /**
  * Stop the publish sweep (cleanup on shutdown).
  */
 export function stopFacePublishSweep() {
-    if (_sweepTimer) {
-        clearInterval(_sweepTimer);
-        _sweepTimer = null;
-    }
+    unregisterTick('face-publish-sweep');
+    _sweepTimer = null;
     try {
         if (_faceTrackRef) {
             _faceTrackRef.off('child_added', trackFaceChild);

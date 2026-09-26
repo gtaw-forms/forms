@@ -74,19 +74,22 @@ export async function execute(interaction) {
         }
 
         if (buttonInteraction.customId === 'restart_confirm') {
-            console.log('[RESTART] ✅ Confirmed — restarting via systemd...');
+            console.log('[RESTART] ✅ Confirmed — restarting via pm2...');
             await buttonInteraction.update({
-                content: '🔄 **Restarting via systemd...**',
+                content: '🔄 **Restarting via pm2...**',
                 components: [],
             });
 
-            // Use systemd to restart — this works with the service setup
+            // pm2-managed process: ask pm2 to restart (it respawns us).
+            // (Old code shelled `sudo systemctl restart phmc-bot` — no such
+            // unit exists, so it always failed noisily while process.exit
+            // below did the real restart anyway.)
             const { exec } = await import('child_process');
-            exec('sudo systemctl restart phmc-bot', (err) => {
+            exec('pm2 restart phmc-bot', (err) => {
                 if (err) {
-                    console.error('[RESTART] ❌ systemctl restart failed:', err.message);
+                    console.error('[RESTART] ❌ pm2 restart failed:', err.message);
                 } else {
-                    console.log('[RESTART] ✅ systemctl restart issued successfully');
+                    console.log('[RESTART] ✅ pm2 restart issued successfully');
                 }
             });
 

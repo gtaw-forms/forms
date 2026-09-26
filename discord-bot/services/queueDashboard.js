@@ -13,11 +13,10 @@
 
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { getQueuedDeployments } from './autoDeploy.js';
-import { C } from './deployState.js';
+import { registerTick, unregisterTick } from './scheduler.js';
 
 const REFRESH_MS = 30 * 1000; // 30 seconds
 const CONFIG_PATH = 'appMetadata/queueDashboard';
-const MAX_RETRY_ATTEMPTS = C.MAX_RETRIES || 3;
 
 let client = null;
 let refreshTimer = null;
@@ -143,7 +142,7 @@ async function buildQueueEmbed(db, { fresh = false } = {}) {
         const lines = [];
         for (const row of failed.slice(0, 10)) {
             const full = await resolveRetryLabel(db, row);
-            const attempts = `${row.deployRetries || 0}/${MAX_RETRY_ATTEMPTS}`;
+            const attempts = `${row.deployRetries || 0}`;
             const formStr = full.formId ? ` [${full.formId}]` : '';
             const detail = full.detail ? `\n└ ${full.detail.slice(0, 120)}` : '';
             lines.push(`❌ **${full.label || row.reportKey}**${formStr} — attempt ${attempts} — starting <t:${Math.floor(new Date(row.retryAt).getTime() / 1000)}:R>${detail}`);
@@ -242,15 +241,12 @@ export async function startQueueDashboard() {
     firebase.init();
     const db = firebase.db;
 
-    async function tick() {
-        await postOrUpdate(db);
-        refreshTimer = setTimeout(tick, REFRESH_MS);
-    }
-
-    // Check if configured and start
+    // Check if configured and start (runAtStart covers the immediate first tick)
     db.ref(CONFIG_PATH).once('value', (snap) => {
         if (snap.val()) {
-            tick();
+            if (refreshTimer) return;
+            registerTick('queue-dashboard', { intervalMs: REFRESH_MS, runAtStart: true, fn: () => postOrUpdate(db) });
+            refreshTimer = true;
             console.log(`[QUEUE] Dashboard active (${REFRESH_MS / 1000}s cycle)`);
         } else {
             console.log('[QUEUE] Not configured — use /queue-dashboard setup to enable');
@@ -271,13 +267,10 @@ export async function setupQueueDashboard(channelId) {
     cachedConfig = { channelId, messageId: null };
     await postOrUpdate(db);
 
-    // Start the timer if not running
+    // Start the tick if not running (the post above covers the immediate run)
     if (!refreshTimer) {
-        async function tick() {
-            await postOrUpdate(db);
-            refreshTimer = setTimeout(tick, REFRESH_MS);
-        }
-        tick();
+        registerTick('queue-dashboard', { intervalMs: REFRESH_MS, fn: () => postOrUpdate(db) });
+        refreshTimer = true;
     }
 }
 
@@ -301,5 +294,7 @@ export async function destroyQueueDashboard() {
     } catch { /* ignore */ }
     await db.ref(CONFIG_PATH).set(null);
     cachedConfig = null;
+    unregisterTick('queue-dashboard');
+    refreshTimer = null;
     console.log('[QUEUE] Dashboard destroyed');
 }

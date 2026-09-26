@@ -95,10 +95,15 @@ async function registerCommands() {
     const massAutopsy = await import('./commands/mass-autopsy.js');
     const meDiscord = await import('./commands/set-me-discord.js');
     const testNotify = await import('./commands/test-autopsy-notify.js');
+    const testMassPanel = await import('./commands/test-mass-panel.js');
+    const spawnV2Showcase = await import('./commands/spawn-v2-showcase.js');    const demoMassComplete = await import('./commands/demo-mass-complete.js');
+    const repostMassPanel = await import('./commands/repost-mass-panel.js');
+    const outstandingAutopsies = await import('./commands/outstanding-autopsies.js');
     const testPing = await import('./commands/test-ping.js');
     const patientSearch = await import('./commands/patient-search.js');
     const checkBackground = await import('./commands/background.js');
     const pmIntakeDryrun = await import('./commands/pm-intake-dryrun.js');
+    const morgueAdd = await import('./commands/morgue-add.js');
     const fixAutopsy = await import('./commands/fix-autopsy.js');
     const groupMorgueCheck = await import('./commands/group-morgue-check.js');
     const faceRedraft = await import('./commands/face-redraft.js');
@@ -114,7 +119,6 @@ async function registerCommands() {
     const forwardAutopsyComplete = await import('./commands/forward-autopsy-complete.js');
     const debugChannels = await import('./commands/debug-channels.js');
     const infoPanel = await import('./commands/info-panel.js');
-    const phmcDashboard = await import('./commands/phmc-dashboard.js');
     // Personal AGH dashboard — optional. The files are gitignored/not part of a
     // fork; guard so the bot still boots when they're absent.
     let aghDashboard = null;
@@ -147,10 +151,15 @@ async function registerCommands() {
         meDiscord.data.toJSON(),
         fixAutopsy.data.toJSON(),
         testNotify.data.toJSON(),
+        testMassPanel.data.toJSON(),
+        spawnV2Showcase.data.toJSON(),        demoMassComplete.data.toJSON(),
+        repostMassPanel.data.toJSON(),
+        outstandingAutopsies.data.toJSON(),
         testPing.data.toJSON(),
         patientSearch.data.toJSON(),
         checkBackground.data.toJSON(),
         pmIntakeDryrun.data.toJSON(),
+        morgueAdd.data.toJSON(),
         groupMorgueCheck.data.toJSON(),
         faceRedraft.data.toJSON(),
         agencyCreds.data.toJSON(),
@@ -165,14 +174,13 @@ async function registerCommands() {
         forwardAutopsyComplete.data.toJSON(),
         debugChannels.data.toJSON(),
         infoPanel.data.toJSON(),
-        phmcDashboard.data.toJSON(),
         ...(aghDashboard ? [aghDashboard.data.toJSON()] : []),
     ];
 
     // PHMC guild gets a trimmed public set (env-overridable); the primary
     // guild keeps the full arsenal. Guild IDs are committable, not secrets.
     const phmcGuildId = process.env.PHMC_GUILD_ID || '860254678653992992';
-    const phmcCommandNames = (process.env.PHMC_COMMANDS || 'reassign-autopsy,autopsy-loa,card')
+    const phmcCommandNames = (process.env.PHMC_COMMANDS || 'reassign-autopsy,autopsy-loa,card,outstanding-autopsies,repost-mass-panel')
         .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
 
     const rest = new REST({ version: '10' }).setToken(token);
@@ -260,6 +268,32 @@ client.once('clientReady', async () => {
         console.warn('[BOT] ⚠️ PHMC channel client failed to register (non-fatal):', err.message);
     }
 
+    // ── Register bot client for mass-autopsy ME panels (name buttons) ──
+    try {
+        const { setMassPanelClient, startMassPanelWatcher } = await import('./services/massAssignmentPanel.js');
+        setMassPanelClient(client);
+        startMassPanelWatcher(client);
+    } catch (err) {
+        console.warn('[BOT] ⚠️ Mass panel client failed to register (non-fatal):', err.message);
+    }
+
+    // ── Register bot client for mass-autopsy V2 panels (live cutover) ──
+    try {
+        const { setMassPanelV2Client, startMassPanelV2Watcher } = await import('./services/massPanelV2.js');
+        setMassPanelV2Client(client);
+        startMassPanelV2Watcher(client);
+    } catch (err) {
+        console.warn('[BOT] ⚠️ Mass V2 panel client failed to register (non-fatal):', err.message);
+    }
+
+    // ── Register bot client for single-autopsy V2 panels (info/reassign) ──
+    try {
+        const { setSinglePanelClient } = await import('./services/singlePanelV2.js');
+        setSinglePanelClient(client);
+    } catch (err) {
+        console.warn('[BOT] ⚠️ Single V2 panel client failed to register (non-fatal):', err.message);
+    }
+
     // ── Rich presence baseline (idle until a task pushes a label) ──
     try {
         const { setPresenceClient, initPresence } = await import('./services/presence.js');
@@ -293,6 +327,14 @@ client.once('clientReady', async () => {
         startSystemMonitor();
     } catch (err) {
         console.warn('[BOT] ⚠️ System monitor failed to start (non-fatal):', err.message);
+    }
+
+    // ── Start central tick scheduler (single 30s evaluator; ticks register via registerTick) ──
+    try {
+        const { startScheduler } = await import('./services/scheduler.js');
+        startScheduler();
+    } catch (err) {
+        console.warn('[BOT] ⚠️ Scheduler failed to start (non-fatal):', err.message);
     }
 
     // ── Start dashboard manager (live status embed, 5-min refresh) ──
@@ -519,17 +561,32 @@ client.on('interactionCreate', async (interaction) => {
         if (await handleInfoButton(interaction)) return;
     }
 
-    // Handle PHMC dashboard refresh button
-    if (interaction.isButton() && interaction.customId === 'phmc_dashboard_refresh') {
-        const { handlePhmcRefresh } = await import('./services/phmcDashboard.js');
-        if (await handlePhmcRefresh(interaction)) return;
-    }
-
     // Handle Autopsy topic picker buttons (PHMC Case Management + LSSD cross-post)
     const pickPrefixes = ['autopsy_pick_', 'lssd_xp_'];
     if (interaction.isButton() && pickPrefixes.some(p => interaction.customId.startsWith(p))) {
         const { resolveAutopsyTopic } = await import('./services/autoDeploy.js');
         await resolveAutopsyTopic(interaction);
+        return;
+    }
+
+    // Handle Mass Autopsy ME panel buttons (mass_<panelId>_<meIdx> / mass_<panelId>_cancel)
+    if (interaction.isButton() && interaction.customId.startsWith('mass_')) {
+        const { handleMassPanelButton } = await import('./services/massAssignmentPanel.js');
+        await handleMassPanelButton(interaction);
+        return;
+    }
+
+    // Handle Mass Autopsy V2 PROTOTYPE panel buttons (massv2_<panelId>_<slot>)
+    if (interaction.isButton() && interaction.customId.startsWith('massv2_')) {
+        const { handleMassPanelV2Button } = await import('./services/massPanelV2.js');
+        await handleMassPanelV2Button(interaction);
+        return;
+    }
+
+    // Handle Single Autopsy V2 panel buttons (singlev2_<panelId>_<slot>)
+    if (interaction.isButton() && interaction.customId.startsWith('singlev2_')) {
+        const { handleSinglePanelV2Button } = await import('./services/singlePanelV2.js');
+        await handleSinglePanelV2Button(interaction);
         return;
     }
 
@@ -650,7 +707,10 @@ client.on('interactionCreate', async (interaction) => {
             });
 
             // Remove from knownReportKeys so the value listener re-processes it
-            const { getQueuedDeployments } = await import('./services/autoDeploy.js');
+            // (without this the reset above is silently ignored — the key was
+            // primed as seen and the listener skips known keys).
+            const { state } = await import('./services/deployState.js');
+            try { state.knownReportKeys?.delete(reportKey); } catch { /* ignore */ }
 
             const embed = new EmbedBuilder()
                 .setColor(0x28a745)
@@ -716,6 +776,17 @@ client.on('interactionCreate', async (interaction) => {
         const { onMePick } = await import('./commands/reassign-autopsy.js');
         await onMePick(interaction);
         return;
+    }
+
+    // Handle Mass Autopsy V2 PROTOTYPE unified reassign modal submit
+    // (massv2_reasmodal_<panelId>) — opened by the Reassign button above
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('massv2_reasmodal_')) {
+        const { handleMassPanelV2ReassignModal } = await import('./services/massPanelV2.js');
+        if (await handleMassPanelV2ReassignModal(interaction)) return;
+    }
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('singlev2_reasmodal_')) {
+        const { handleSinglePanelV2ReassignModal } = await import('./services/singlePanelV2.js');
+        if (await handleSinglePanelV2ReassignModal(interaction)) return;
     }
 
     // Handle autocomplete for commands that support it
@@ -956,6 +1027,9 @@ async function start() {
     const pmIntakeDryrunCmd = await import('./commands/pm-intake-dryrun.js');
     client.commands.set(pmIntakeDryrunCmd.data.name, { execute: pmIntakeDryrunCmd.execute });
 
+    const morgueAddCmd = await import('./commands/morgue-add.js');
+    client.commands.set(morgueAddCmd.data.name, { execute: morgueAddCmd.execute });
+
     const massAutopsyCmd = await import('./commands/mass-autopsy.js');
     client.commands.set(massAutopsyCmd.data.name, { execute: massAutopsyCmd.execute });
 
@@ -964,6 +1038,21 @@ async function start() {
 
     const testNotifyCmd = await import('./commands/test-autopsy-notify.js');
     client.commands.set(testNotifyCmd.data.name, { execute: testNotifyCmd.execute });
+
+    const testMassPanelCmd = await import('./commands/test-mass-panel.js');
+    client.commands.set(testMassPanelCmd.data.name, { execute: testMassPanelCmd.execute });
+
+    const spawnV2ShowcaseCmd = await import('./commands/spawn-v2-showcase.js');
+    client.commands.set(spawnV2ShowcaseCmd.data.name, { execute: spawnV2ShowcaseCmd.execute });
+
+    const demoMassCompleteCmd = await import('./commands/demo-mass-complete.js');
+    client.commands.set(demoMassCompleteCmd.data.name, { execute: demoMassCompleteCmd.execute });
+
+    const repostMassPanelCmd = await import('./commands/repost-mass-panel.js');
+    client.commands.set(repostMassPanelCmd.data.name, { execute: repostMassPanelCmd.execute });
+
+    const outstandingAutopsiesCmd = await import('./commands/outstanding-autopsies.js');
+    client.commands.set(outstandingAutopsiesCmd.data.name, { execute: outstandingAutopsiesCmd.execute });
 
     const testRequesterCmd = await import('./commands/test-requester-webhook.js');
     client.commands.set(testRequesterCmd.data.name, { execute: testRequesterCmd.execute });
@@ -982,9 +1071,6 @@ async function start() {
 
     const infoPanelCmd = await import('./commands/info-panel.js');
     client.commands.set(infoPanelCmd.data.name, { execute: infoPanelCmd.execute });
-
-    const phmcDashboardCmd = await import('./commands/phmc-dashboard.js');
-    client.commands.set(phmcDashboardCmd.data.name, { execute: phmcDashboardCmd.execute });
 
     const testPingCmd = await import('./commands/test-ping.js');
     client.commands.set(testPingCmd.data.name, { execute: testPingCmd.execute });

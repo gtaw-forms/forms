@@ -25,6 +25,7 @@ import { writeFileSync, renameSync, readFileSync, existsSync, mkdirSync } from '
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { getForumClient } from './forumClient.js';
+import { registerTick, unregisterTick } from './scheduler.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -48,8 +49,8 @@ const BRACKET_TITLE_RE = /^\[(\d{2,})\]\s*(.+)$/i;
 
 let _index = null;               // { version, lastUpdated, lastFullBuild, count, patients: [] }
 let _saveDebounce = null;
-let _sweepTimer = null;
 let _startupRebuildTimer = null;
+let _sweepRegistered = false;
 let _db = null;
 let _rebuildInFlight = false;
 
@@ -363,18 +364,22 @@ export async function fullRebuild() {
 // ── Startup + scheduling ──
 
 function scheduleFullRebuild() {
-    if (_sweepTimer) clearInterval(_sweepTimer);
-    _sweepTimer = setInterval(async () => {
-        const idx = readIndex();
-        const now = Date.now();
-        const d = new Date();
-        const inBuildWindow = d.getUTCHours() === FULL_BUILD_UTC_HOUR && d.getUTCMinutes() < 10;
-        const stale = now - (idx.lastFullBuild || 0) > FULL_BUILD_MS;
-        if (inBuildWindow && stale) {
-            console.log('[PATIENT-INDEX] 03:00 UTC build window + last build stale — running full rebuild');
-            await fullRebuild();
-        }
-    }, 60 * 60 * 1000);
+    registerTick('patient-index-sweep', {
+        intervalMs: 60 * 60 * 1000,
+        runAtStart: false,
+        fn: async () => {
+            const idx = readIndex();
+            const now = Date.now();
+            const d = new Date();
+            const inBuildWindow = d.getUTCHours() === FULL_BUILD_UTC_HOUR && d.getUTCMinutes() < 10;
+            const stale = now - (idx.lastFullBuild || 0) > FULL_BUILD_MS;
+            if (inBuildWindow && stale) {
+                console.log('[PATIENT-INDEX] 03:00 UTC build window + last build stale — running full rebuild');
+                await fullRebuild();
+            }
+        },
+    });
+    _sweepRegistered = true;
 }
 
 /**
@@ -406,6 +411,22 @@ export async function startPatientIndex(db) {
     scheduleFullRebuild();
     console.log(`[PATIENT-INDEX] [OK] Patient index service active — ${idx.patients.length} patients, 3-day full rebuild scheduled (03:00 UTC)`);
     return true;
+}
+
+/**
+ * Stop the patient index scheduler (cleanup on shutdown). Write-through
+ * upserts keep working — only the hourly sweep + pending startup rebuild stop.
+ */
+export function stopPatientIndex() {
+    if (_startupRebuildTimer) {
+        clearTimeout(_startupRebuildTimer);
+        _startupRebuildTimer = null;
+    }
+    if (_sweepRegistered) {
+        unregisterTick('patient-index-sweep');
+        _sweepRegistered = false;
+    }
+    console.log('[PATIENT-INDEX] Scheduler stopped.');
 }
 
 /**

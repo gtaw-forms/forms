@@ -185,26 +185,66 @@ export async function runDeploy(type, data) {
         // ack), so a 1-min tripwire false-alarms on healthy runs.
         const slowWarning = setTimeout(() => {
             console.warn('[AUTO] ' + data.key + ' deploy taking longer than usual (>3 min)');
-            sendWebhook(null, {
-                title: ' Forum Slow to Respond',
-                description: '**Key:** `' + data.key + '`\n**Type:** ' + type + '\n**Report:** ' + label,
-                color: 0xffc107,
-                footer: { text: 'PHMC Bot — Auto Deploy' },
-                timestamp: new Date().toISOString(),
-            });
+            // Cooldown-gated (30 min per report) so a long-stuck deploy doesn't
+            // re-alert every cycle. Message shape unchanged.
+            import('./logChannel.js').then(
+                ({ notifyOnce }) => notifyOnce('slow:' + data.key, 30 * 60 * 1000, () => ({
+                    content: null,
+                    embed: {
+                        title: ' Forum Slow to Respond',
+                        description: '**Key:** `' + data.key + '`\n**Type:** ' + type + '\n**Report:** ' + label,
+                        color: 0xffc107,
+                        footer: { text: 'PHMC Bot — Auto Deploy' },
+                        timestamp: new Date().toISOString(),
+                    },
+                })).catch(() => {}),
+                () => {}
+            );
         }, 3 * 60 * 1000);
 
         const timeout = setTimeout(() => {
-            clearTimeout(slowWarning);
-            console.error('[AUTO] ' + data.key + ' deploy timed out after 10 minutes');
-            sendWebhook(null, {
-                title: ' Forum Unresponsive',
-                description: '**Key:** `' + data.key + '`\n**Type:** ' + type + '\n**Report:** ' + label,
-                color: 0xdc3545,
-                footer: { text: 'PHMC Bot — Auto Deploy' },
-                timestamp: new Date().toISOString(),
-            });
-            state.processing = false;
+            try {
+                clearTimeout(slowWarning);
+                console.error('[AUTO] ' + data.key + ' deploy timed out after 10 minutes');
+                // Cooldown-gated (60 min per report) so a long-stuck deploy
+                // doesn't re-alert every cycle. Message shape unchanged.
+                import('./logChannel.js').then(
+                    ({ notifyOnce }) => notifyOnce('unresponsive:' + data.key, 60 * 60 * 1000, () => ({
+                        content: null,
+                        embed: {
+                            title: ' Forum Unresponsive',
+                            description: '**Key:** `' + data.key + '`\n**Type:** ' + type + '\n**Report:** ' + label,
+                            color: 0xdc3545,
+                            footer: { text: 'PHMC Bot — Auto Deploy' },
+                            timestamp: new Date().toISOString(),
+                        },
+                    })).catch(() => {}),
+                    () => {}
+                );
+                // Real abort: closing the shared browser rejects in-flight
+                // Playwright waits promptly, so the hung handler settles and
+                // the normal catch path below requeues the report instead of
+                // overlapping with the next deploy. Best-effort: failures here
+                // must never strand state.processing.
+                // Daemon-attached browsers are SPARED: destroying shared pages
+                // out from under concurrent flows (the coroner-email worker
+                // shares the default client) breaks them with 'target closed'
+                // — worse than the overlap. Hung daemon ops fail on their own
+                // Playwright timeouts instead.
+                import('./forumClient.js').then(
+                    ({ closeSharedBrowser, isBrowserOwnedByUs }) => {
+                        try {
+                            if (isBrowserOwnedByUs && isBrowserOwnedByUs()) closeSharedBrowser('deploy-timeout').catch(() => {});
+                            else console.log('[AUTO] Daemon-attached browser left alone on deploy timeout');
+                        } catch { /* ignore */ }
+                    },
+                    () => {}
+                );
+            } catch {
+                // Timeout-handler internals must never throw outward.
+            } finally {
+                state.processing = false;
+            }
         }, 10 * 60 * 1000);
 
         try {
@@ -218,42 +258,72 @@ export async function runDeploy(type, data) {
             clearTimeout(timeout);
         }
     } catch (err) {
+        if (err && err.code === 'POSTING_PAUSED') {
+            // Circuit breaker open — pause without burning the retry budget.
+            // The report is rescheduled for a half-open probe; consecutive
+            // failures keep it paused, one success re-opens everything.
+            console.warn(`[AUTO] ${data.key} paused — ${err.message}`);
+            try {
+                const { rescheduleReportProbe } = await import('./deployRetry.js');
+                await rescheduleReportProbe(data.db, data.authorId, data.key, data.report, err.postingHost);
+            } catch (probeErr) {
+                console.error('[AUTO] Probe reschedule error:', probeErr.message);
+            }
+            if (data._progressMessageId && state.discordClient) {
+                try {
+                    const channel = await state.discordClient.channels.fetch(data._progressChannelId);
+                    const msg = await channel.messages.fetch(data._progressMessageId);
+                    await msg.edit({ content: `[PAUSED] ${label} — forum posting blocked, retrying automatically`, embeds: [], components: [] });
+                } catch { /* progress embed is optional */ }
+            }
+            return;
+        }
+        // Typed handler errors: DATA_TERMINAL carries a pre-validated
+        // err.terminalStatus (data problem — settled, never retried).
+        // RETRYABLE and unknown/no-code errors fall through to the requeue
+        // path below (today's behavior).
+        if (err && err.code === 'DATA_TERMINAL') {
+            const terminalStatus = err.terminalStatus || 'failed_permanent';
+            const terminalMessage = err.message || 'Terminal deploy failure';
+            console.error('[AUTO] ' + data.key + ' terminal failure (' + terminalStatus + '):', terminalMessage);
+            await notifyDeployFailure(label, type, data.key, terminalMessage);
+            try {
+                const { markDeployTerminal } = await import('./deployRetry.js');
+                await markDeployTerminal(data.db, data.authorId, data.key, terminalStatus, terminalMessage);
+            } catch (markErr) {
+                console.error('[AUTO] Terminal-mark error:', markErr.message);
+            }
+            return;
+        }
         console.error('[AUTO] ' + data.key + ' Failed:', err.message);
         console.error('[AUTO] Stack:', err.stack);
 
-        // User-facing alert so staff see ANY deploy failure in the log channel.
-        await notifyDeployFailure(label, type, data.key, err.message);
+        // Display-only count: requeueReport owns the single deployRetries
+        // increment, so pass data.report UNCHANGED (pre-incrementing here
+        // would double-count, +2 per failure).
+        const displayRetries = (data.report?.deployRetries || 0) + 1;
 
-        const retries = (data.report?.deployRetries || 0) + 1;
-
+        // No exhaustion: transport failures retry forever (a significant
+        // outage can need many attempts). Terminal states are reserved for
+        // data problems (blocked_empty_employee, trashed_duplicate, consent).
+        // Single failure embed (merged 2026-09-23): one DEPLOY FAILED post
+        // carrying both the error and the retry schedule — previously this
+        // path posted a DEPLOY FAILED embed AND a Re-queued embed per failure.
+        let retryAtText = 'requeue failed — will retry next sweep';
         try {
-            if (retries >= C.MAX_RETRIES) {
-                console.error('[AUTO] ' + data.key + ' failed ' + retries + '/' + C.MAX_RETRIES + ' times, giving up permanently');
-                await data.db.ref('scheduledReports/' + data.authorId + '/' + data.key).update({
-                    hasdeployed: false,
-                    deployStatus: 'failed_permanent',
-                    deployMessage: 'Gave up after ' + retries + ' attempts. Last error: ' + err.message.slice(0, 200),
-                    deployRetries: retries,
-                    deployLastFailedAt: new Date().toISOString(),
-                });
-                await data.db.ref('retry-queue/' + data.authorId + '|' + data.key).remove().catch(() => {});
-            } else {
-                const retryTime = Date.now() + C.RETRY_DELAY_MS;
-                await requeueReport(data.db, data.authorId, data.key, {
-                    ...data.report,
-                    deployRetries: retries,
-                });
-                await sendWebhook(null, {
-                    title: ' Report Re-queued for Retry',
-                    description: '**' + label + '**\n`' + data.key + '`\n**Error:** ' + err.message.slice(0, 300) + '\n\nRetry scheduled **' + new Date(retryTime).toLocaleString() + '** (attempt ' + retries + '/' + C.MAX_RETRIES + ')',
-                    color: 0xffc107,
-                    footer: { text: 'PHMC Bot — Auto Deploy' },
-                    timestamp: new Date().toISOString(),
-                });
-            }
+            const retryTime = Date.now() + C.RETRY_DELAY_MS;
+            await requeueReport(data.db, data.authorId, data.key, data.report);
+            retryAtText = new Date(retryTime).toLocaleString();
         } catch (retryErr) {
             console.error('[AUTO] Retry error:', retryErr.message);
         }
+        await sendWebhook(null, {
+            title: 'DEPLOY FAILED',
+            description: '**Report:** ' + label + '\n**Key:** `' + data.key + '`\n**Type:** ' + type + '\n**Error:** ' + err.message.slice(0, 300) + '\n\nRetry scheduled **' + retryAtText + '** (attempt ' + displayRetries + ' — retrying until posted)',
+            color: 0xdc3545,
+            footer: { text: 'PHMC Bot — Auto Deploy' },
+            timestamp: new Date().toISOString(),
+        });
     } finally {
         if (presenceToken !== null) {
             try {

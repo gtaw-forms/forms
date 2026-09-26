@@ -1,5 +1,86 @@
 # PHMC Discord Bot — Changelog
 
+## 2026-09-26 — Passive CK listener cold-start prime (kills boot fetch storm)
+
+### Fixed
+- **`startCKListener` replayed the entire `unprocessedCKs` backlog on every restart** — each backlog entry cost an RTDB point read + up to 2 VPS API point reads (reportKey, then baseReportKey fallback), re-running morgue matching for long-settled drafts (the 10-call burst at every boot). Now primes the known set from one indexed read; only genuinely new children fall through (same pattern as the scheduledReports cold-load guard). Gap arrivals during priming are buffered and drained, never skipped. The index still has no TTL (deletion unsafe) — backlog growth itself is unchanged, just no longer re-fetched.
+
+### Added
+- **`singlePanelV2.js` `resolveMorgueStatus`**: intake-time match rendered as `🧬 Morgue Record: FOUND (#caseId)` / `POSSIBLY FOUND (low confidence — cannot match date/name)` / `NOT FOUND`, on the summary panel and the full-detail view. Reads VPS-local `morgue-data.json` first (same source as web Load-Case), RTDB fallback, fail-closed omit on error. Verified headless against live data (Ruggiero→83649, Flowers→83687, Stryker→74955, unknown→NOT FOUND). Exposed a real gap: RTDB `morgue-records` is missing cases present locally (e.g. #83649) — sync to investigate separately.
+
+### Fixed
+- **`notifyAssignment` received `parsed.deathType` from the title parse — which never has that field.** Every single/multi intake panel computed `deadlineUnix` with the 48h default and omitted the Type line (Anne Carter's PK Case 528 showed a 2-day countdown). Now prefers `parsedBbFields.deathType` with the old value as fallback. Anne's live message repaired in place (deadline Sep 30 = assigned + 120h, Type: PK added).
+
+### Fixed
+- **`cctvScheduler.js` attaches exit code + output tail** whenever a fetch yields no parseable summary (crash/empty/non-zero exit) or hits the 150s timeout — previously these posted bare `?/? cameras` with the evidence discarded. Success path unchanged.
+
+### Fixed
+- **Any keyless 404 under `/api/*` now bans instantly** (`morgue-api.js` 404 handler). All real endpoints live under `/api/*` and the only keyless 200s are `/api/health` + `/api/version`, so keyless traffic to an unmapped API route is never legitimate. Keyed callers (version drift, bad IDs), loopback/trusted IPs, and non-`/api/*` junk (`/`, favicon — uptime monitors can't self-ban) stay exempt. The 12-distinct-path enumerator remains as backstop.
+
+### Fixed
+- **Version-discovery scanners now banned on first hit.** New `SCAN-api-version-probe` (`/api/vN*`) + `SCAN-api-discovery` (`/api/<status|info|meta|about|system|cluster|vip|environment|hoverfly>`) patterns in `morgue-api.js` — covers the observed 13-path spray (`/api/v2/about`, `/api/v1/check-version`, `/api/vip/…`, …), all keyless 404s. Verified headless: all spray paths match, all 14 real routes (incl. keyless `/api/version`, `/api/health`) clean. Existing guards unchanged: keyed callers + loopback/trusted IPs exempt, bans persist to `data/ban-state.json`, 12-distinct-path enumerator still backstops novel shapes.
+
+### Changed
+- **`C.DEFER_MS` 10 min → 3 min** (`services/deployState.js`). New saves auto-deploy ~3 min after queueing instead of ~10. Queue/progress messages derive their "(X min)" text from the constant, so they update automatically. Consent re-check still runs at deploy-time (2.5-min opt-out window preserved). Restart re-queues in-flight reports on the fresh 3-min timer.
+
+## 2026-09-23 — Full-page dumps on every missing-element failure (diagnostics round)
+
+### Changed
+- **Every "cannot find X" failure now saves full page HTML.** New `dumpPageState()` helper (per-flow overwrite, never throws): `posting-page`, `reply-page`, `reply-retry-page`, `reply-submit-page`, `pm-submit-page`, `edit-title-page`, `edit-content-page` join the existing `pm-page`/`login-page` dumps. Next vague failure ships its own evidence.
+
+## 2026-09-23 — Session checks verify forms, not URLs (login-truth round)
+
+### Fixed
+- **Killed the false "already logged in".** phpBB serves its login form AT `ucp.php` without redirecting, so URL-only checks declared dead sessions valid — then compose rendered its own login page and recipient setup failed deterministically. New `_sessionLooksAlive()` (URL + title + username field), used by `login()` reuse, `ensureLoggedIn()`, and post-submit verify. Proven by manual daemon walkthrough (stored LSSD session dead → force login works → compose + ID-addressing all pass).
+- **Auth events tracked per forum** (`recordAuthEvent` → `monitoring/session`, transition-only) rendered as a `Sessions` dashboard section. Follow-up fix: login successes no longer reset the breaker (reads clear while writes stay walled — that hole let one report reach attempt 49).
+
+## 2026-09-23 — Cross-forum relogin guard (credential round)
+
+### Fixed
+- **Inline re-login no longer submits PHMC credentials to foreign forums.** All 7 relogin sites gated by `_credsMatchDomain()` — foreign expiry throws a clear retryable error instead of guaranteed-fail fills that poisoned logs and sessions.
+
+## 2026-09-23 — Trusted-input submits (fingerprint round 2)
+
+### Changed
+- **`postTopic`/`replyToTopic`/`sendPM` fill via `page.fill()` and click via `page.click()`** (real `isTrusted` events instead of synthetic injections), with injection fallback and exact `No form found` / `No submit button` diagnostics preserved. New helpers `trustedFill`/`trustedFillMessage`/`trustedSubmitClick`.
+
+## 2026-09-23 — UA aligned to real engine (fingerprint round)
+
+### Fixed
+- Announced `Chrome/120` while running headless-shell 149 (TLS/JA3/hints mismatch = first-order bot signal). Now sends genuine frozen-format `Chrome/149.0.0.0` with a comment tying UA to engine version. Deliberately NOT adding a bot token to the UA (would hand Cloudflare a perfect signature).
+
+## 2026-09-23 — Persistent headed browser daemon (restart-resilience round)
+
+### Added
+- **VPS-exclusive Chromium surviving bot restarts**: `browser-daemon.mjs` supervisor launches the Playwright-bundled build (never drifts) with stable profile (`/opt/phmc-bot/browser-profile`) + loopback-only CDP; `phmc-browser.service` (`Restart=always`). Bot attaches via `connectOverCDP` with launch fallback; ownership rules (shutdown/idle never kill what they didn't launch); orphan reaper skips daemon trees; dead-handle guard (`isConnected` probe + `disconnected` event) so daemon swaps never strand the bot.
+- **Headed under Xvfb** (`BROWSER_HEADED=true`): real window system + compositing; screenshot-verified (full GTAW homepage render). Same profile across mode switches.
+
+## 2026-09-23 — Review Phases 0–5 (supervised subagent builds)
+
+### Phase 0 (quick wins)
+- Dead code deleted (disabled PM monitor, `RETRY_CHECK_INTERVAL_MS`, `validateSession`, locked `resolveMemberUserId` wrapper); queue double-tick guard; CCTV stop leak; pick-expiry handles; monitor reentrancy guard. `checkHealth` polls its own page lock-free. VPS updater 5s→60s (~17k→1.4k edits/day). Write churn trimmed (verify-read removed, maintenance cached 60s, atomic patient counter, `unprocessedCKs` warning).
+### Phase 1 (correctness)
+- Stranded reports eliminated (handlers throw `RETRYABLE`/`DATA_TERMINAL`, `runDeploy` decides centrally via `markDeployTerminal`); single retry-counter ownership; real timeout guard; collision-proof entity keys; dry-run honesty; working `/restart` + `/report-retry` (known-key deletion actually performed).
+### Phase 2 (scheduler)
+- New `services/scheduler.js` (30s evaluator, reentrancy guard, status API); 11 systems migrated (dashboard/AGH/email/face/queue/monitor/intake/system-monitor/roster/patient/CCTV) with intervals preserved.
+### Phases 3–5 (data, browser, notify)
+- Event-driven queue pickup (no more full-subtree re-downloads); batched autopsy writes; reads on `domcontentloaded`/60s; single CF gate; quote fusion point; flood pacing; 29 logins to session-reuse; single failure embed; cooldown-gated slow alerts.
+
+## 2026-09-23 — PM recipient field recognized on all themes (compose round)
+
+### Fixed
+- **Recipient setup no longer bypasses the address field on textarea themes.** The state check only looked for `input[name="username_list"]`, but LSSD renders a `<textarea>` — so it always fell through to the roster→ID round-trip (extra navigations, extra challenge exposure, and the fragile present-check). Both detection and fill now accept either element; the ID path remains for genuinely field-less themes. Proven by manual daemon walkthrough (fill + Add verified live, no submit).
+
+## 2026-09-23 — Earlier stability rounds (memory, breaker, retries, mail)
+
+### Changed
+- **VPS memory rescue:** swap 1.65GB→~650MB, RAM free 119MB→~750MB (killed hung one-shots + stale opencode session, removed OpenChamber stack, AdGuard querylog 90d→30d, reference-sync `process.exit` fix). Idle browser shutdown (45m) + renderer media blocking; `waitForCloudflare(120s)` on posting/reply/compose entry.
+- **Posting Status split + write-path circuit breaker** (`postingHealth.js`, mirrored): 3 consecutive wall-signals block a host; half-open probes escalate 30m→4h; pauses preserve retry budget; login outcomes feed it (successes no longer reset it — that hole let one report reach attempt 49). Dashboard split (Website vs Posting vs Sessions) + red accent + open/resume alerts.
+- **Retries never expire** (executor, retry sweeps, bulk PMs, web intake, email queue): transport failures retry forever; only data-terminal states end reports. Cadence: 1h retries, 10-min defer. Listener respects future `retryAt` (fixed ~10-min fail loop at attempt 52). Queue dashboard shows retry-waiting entries.
+- **Agency mail fixes:** login success verified via round-trip (was URL-shape only); PM compose-by-ID waits for Cloudflare; timeout guard spares daemon-attached browsers; shutdown teardown excluded from health tracking; `/restart` uses pm2.
+- **Monitor negative cache honored** (guideline topics no longer re-fetched every 15 min); **CCTV daily cadence** + slowdown-proofed waits (VPS-only script).
+- **Forum verdict (documented):** posting outage was forum-side Turnstile policy (reads pass, writes stuck) — exonerated media blocking (A/B), patience (30-min observation), DNS/proxy/egress; full Chrome + aligned UA + trusted input + headed daemon shipped as fingerprint improvements.
+
 ## 2026-09-14 — Task 3b-6: CK-scan saved-reports VPS cutover (bot)
 
 ### Changed

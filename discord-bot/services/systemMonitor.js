@@ -9,6 +9,7 @@
 import firebase from './firebase.js';
 import { sendLogMessage } from './logChannel.js';
 import { firstApiKey } from './apiKeyUtil.js';
+import { registerTick, unregisterTick } from './scheduler.js';
 
 async function sendWebhook(content, embed) {
     try {
@@ -17,6 +18,9 @@ async function sendWebhook(content, embed) {
         console.error('[MONITOR] ⚠️ Webhook send failed:', err.message);
     }
 }
+
+// Reentrancy guard for the 2h runAll cycle (mirrors autoDeploy's _heartbeatRunning).
+let _runAllRunning = false;
 
 // ── System Resource Check ──
 
@@ -342,8 +346,18 @@ async function checkOverdueAutopsies(db) {
 
         const now = Date.now();
         const FINAL_STATES = new Set(['complete', 'dry_run', 'skipped', 'cancelled', 'denied']);
+        // caseState 'complete' means the INTAKE pipeline finished (case filed,
+        // ME assigned, acks done) — NOT that the examination was performed
+        // (that's completedAt). Only completedAt or a truly terminal state
+        // (skipped/cancelled/denied/…) settles a case; intake-complete rows
+        // with no completedAt are still outstanding examinations.
+        const isSettled = (v) => {
+            if (v.completedAt) return true;
+            const s = String(v.caseState || '').toLowerCase();
+            return FINAL_STATES.has(s) && s !== 'complete';
+        };
         const progressScore = (v) => {
-            if (v.completedAt || FINAL_STATES.has(String(v.caseState || '').toLowerCase())) return 3;
+            if (isSettled(v)) return 3;
             if (v.assignedTo) return 2;
             return 1;
         };
@@ -367,7 +381,7 @@ async function checkOverdueAutopsies(db) {
             const v = child.val() || {};
             if (v.wasMatch === false && !v.name) return;
             if (v.completedAt) return;
-            if (FINAL_STATES.has(String(v.caseState || '').toLowerCase())) return;
+            if (isSettled(v)) return;
             const detected = v.detectedAt ? new Date(v.detectedAt).getTime() : 0;
             if (!detected) return;
             const limitHours = thresholdHoursFor(v);
@@ -383,7 +397,9 @@ async function checkOverdueAutopsies(db) {
                 name: v.name || child.key,
                 oocName: v.oocName || '',
                 assignedTo: v.assignedTo || '',
-                state: v.caseState || 'detected',
+                state: (!v.completedAt && String(v.caseState || '').toLowerCase() === 'complete')
+                    ? 'intake done, exam pending'
+                    : (v.caseState || 'detected'),
                 since: detected,
                 caseNum: v.caseNum || '',
                 type: String(v.parsed?.deathType || '').trim() || '?',
@@ -564,6 +580,12 @@ export function startSystemMonitor() {
     // mean the forums changed, and opening 3 Playwright pages at boot is churn
     // we just reduced. The scheduled cycle re-checks forums every time.
     const runAll = async (opts = {}) => {
+        if (_runAllRunning) {
+            console.log('[MONITOR] Cycle skipped — previous cycle still running');
+            return;
+        }
+        _runAllRunning = true;
+        try {
         try {
             await runHealthCheck(db, opts);
         } catch (err) {
@@ -583,22 +605,45 @@ export function startSystemMonitor() {
         }
 
         try {
+            const { checkSuspectNames } = await import('./nameWatch.js');
+            await checkSuspectNames(db);
+        } catch (err) {
+            console.error('[MONITOR] Name watch error:', err.message);
+        }
+
+        try {
             await cleanupOldData(db);
         } catch (err) {
             console.error('[MONITOR] Cleanup error:', err.message);
         }
+        } finally {
+            _runAllRunning = false;
+        }
     };
 
-    // Run now, then every 2 hours. On the first run, skip forum checks if the
-    // cached monitoring state shows all forums healthy (avoids startup browser churn).
-    (async () => {
-        let skipForums = false;
-        try {
-            const cached = (await db.ref('monitoring/forums').once('value')).val() || {};
-            const statuses = Object.values(cached).map(f => f?.status).filter(Boolean);
-            skipForums = statuses.length > 0 && statuses.every(s => s === 'Good');
-        } catch { /* assume need to check */ }
-        await runAll({ skipForums });
-    })();
-    setInterval(runAll, 2 * 60 * 60 * 1000);
+    // runAtStart preserves the immediate boot run. The skip-forums-if-healthy
+    // check applies to the first tick only (avoids startup browser churn);
+    // the scheduled cycle re-checks forums every time.
+    let _firstTick = true;
+    registerTick('system-monitor', {
+        intervalMs: 2 * 60 * 60 * 1000,
+        runAtStart: true,
+        fn: async () => {
+            let opts = {};
+            if (_firstTick) {
+                _firstTick = false;
+                try {
+                    const cached = (await db.ref('monitoring/forums').once('value')).val() || {};
+                    const statuses = Object.values(cached).map(f => f?.status).filter(Boolean);
+                    if (statuses.length > 0 && statuses.every(s => s === 'Good')) opts.skipForums = true;
+                } catch { /* assume need to check */ }
+            }
+            await runAll(opts);
+        },
+    });
+}
+
+export function stopSystemMonitor() {
+    unregisterTick('system-monitor');
+    console.log('[MONITOR] System monitor stopped.');
 }

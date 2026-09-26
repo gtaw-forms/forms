@@ -42,7 +42,10 @@ export async function execute(interaction) {
             const authorId = authorSnap.key;
             authorSnap.forEach((reportSnap) => {
                 const r = reportSnap.val();
-                if (r.hasdeployed === true) return;
+                // Terminal-but-retryable states stay visible even when settled
+                // (hasdeployed:true) — only truly done reports hide. Without
+                // this, DATA_TERMINAL records can never be manually re-armed.
+                if (r.hasdeployed === true && !RETRYABLE_STATUSES.includes(r.deployStatus)) return;
                 if (r.deployStatus && RETRYABLE_STATUSES.includes(r.deployStatus)) {
                     stuck.push({
                         authorId,

@@ -59,7 +59,7 @@ export async function resolveAutopsyTopic(interaction) {
 
     // LSSD cross-post pick
     if (lssd) {
-        await client.login(process.env.FORUM_LSSD_USERNAME, process.env.FORUM_LSSD_PASSWORD, { force: true, baseUrl: 'https://lssd.gta.world' });
+        await client.login(process.env.FORUM_LSSD_USERNAME, process.env.FORUM_LSSD_PASSWORD, { force: false, baseUrl: 'https://lssd.gta.world' });
         await interaction.editReply({ content: 'Posting to LSSD thread #' + topicId + '...' });
         const r = await client.replyToTopic(topicId, 2263, bbCode, { dryRun: false, baseUrl: 'https://lssd.gta.world' });
         const status = r.ok ? 'completed' : 'failed';
@@ -125,6 +125,32 @@ export async function resolveAutopsyTopic(interaction) {
                     outer:
                     for (const [key, entry] of Object.entries(allReq)) {
                         if (String(entry.caseState || '') === 'multi' && entry.cases && typeof entry.cases === 'object') {
+                            // Shared-thread mass collections carry no per-case
+                            // topics — match the BODY by OOC (then usable name)
+                            // right here so the collection never falls through
+                            // to the top-level single hit below (which would
+                            // complete the whole collection on one report).
+                            if (entry.isMassSingleThread === true) {
+                                const oocL = ooc.toLowerCase();
+                                for (const [ci, c] of Object.entries(entry.cases)) {
+                                    if (!c || !/^\d+$/.test(ci)) continue;
+                                    if (ooc && String(c.oocName || '').trim().toLowerCase() === oocL) {
+                                        matched = { key, entry, ci: parseInt(ci, 10), caseRec: c };
+                                        break outer;
+                                    }
+                                }
+                                if (!matched && name && !/^john\s*doe$/i.test(name)) {
+                                    const nameL = name.toLowerCase();
+                                    for (const [ci, c] of Object.entries(entry.cases)) {
+                                        if (!c || !/^\d+$/.test(ci)) continue;
+                                        if (String(c.name || '').trim().toLowerCase() === nameL) {
+                                            matched = { key, entry, ci: parseInt(ci, 10), caseRec: c };
+                                            break outer;
+                                        }
+                                    }
+                                }
+                                continue;
+                            }
                             for (const [ci, c] of Object.entries(entry.cases)) {
                                 if (String(c.caseTopicId) === topicKey) {
                                     matched = { key, entry, ci: parseInt(ci, 10), caseRec: c };
@@ -190,6 +216,10 @@ export async function resolveAutopsyTopic(interaction) {
                                 const completingMe = caseRec?.assignedTo || entry.assignedTo;
                                 if (completingMe) clearAssignment(db, completingMe, key).catch(err => console.warn(`[AUTO-COMPLETE] rotation tracking error: ${err.message}`));
                                 console.log('[AUTO] Marked private autopsy-requested #' + key + ' as completed');
+                                try {
+                                    const { completeSinglePanel } = await import('./singlePanelV2.js');
+                                    await completeSinglePanel(db, (interaction && interaction.client) || state.discordClient, { requestTopicId: key, caseIdx: ci }).catch(() => {});
+                                } catch {}
                             } else {
                                 console.log('[AUTO-COMPLETE] Marking autopsy request as completed in Firebase');
                                 const requesterName = entry.parsed?.requesterName || 'Requesting Party';
@@ -265,6 +295,13 @@ export async function resolveAutopsyTopic(interaction) {
                                 } else {
                                     console.log('[AUTO-COMPLETE] Deferring DM until all decedents complete');
                                 }
+                                // Flip the single-V2 assignment panel (if one was
+                                // posted) to its basic completed summary — same
+                                // best-effort hook as the private branch above.
+                                try {
+                                    const { completeSinglePanel } = await import('./singlePanelV2.js');
+                                    await completeSinglePanel(db, (interaction && interaction.client) || state.discordClient, { requestTopicId: key, caseIdx: ci }).catch(() => {});
+                                } catch {}
                             }
                         }
                     }

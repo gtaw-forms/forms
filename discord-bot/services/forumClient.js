@@ -49,6 +49,7 @@ import { writeFileSync, readFileSync, existsSync, mkdirSync, readdirSync } from 
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { logActivity, describeActivity, markActivityDone } from './activityLog.js';
+import { recordPostingOutcome, throwIfPostingPaused, markShuttingDown, recordAuthEvent } from './postingHealth.js';
 
 chromium.use(StealthPlugin());
 
@@ -62,6 +63,150 @@ const DEFAULT_SESSION_FILE = resolve(__dirname, '..', 'forum-session.json');
  */
 let _sharedBrowser = null;
 let _browserInitPromise = null;
+// Ownership of the shared browser: true when WE launched it via
+// chromium.launch() (safe to close), false when attached to the
+// systemd-managed persistent Chromium over CDP (never close it — the
+// daemon owns its lifecycle; we only drop our local handle).
+let _browserOwnedByUs = true;
+
+/**
+ * Single Cloudflare gate per navigation chain: timestamp (ms) of the last
+ * waitForCloudflare() call that observed a clean (challenge-free) page. A
+ * challenge that just passed doesn't need re-polling 3× in one cold
+ * postTopic-after-login flow — waitForCloudflare() returns true immediately
+ * when this is fresher than 60s. The 120s cap behavior is otherwise identical.
+ */
+let _lastCfPassAt = 0;
+
+/**
+ * Proactive flood pacing: last submit timestamp (ms) per forum account,
+ * keyed by `<baseUrl-ish>|<username>`. phpBB rejects rapid consecutive posts
+ * from the same account, so postTopic/replyToTopic/sendPM wait out the
+ * remainder of a 30s gap (capped at 35s) BEFORE clicking submit. The existing
+ * reactive 25s×3 retry loops stay untouched as backstop.
+ */
+const _lastSubmitAtByAccount = new Map();
+
+async function _paceSubmitBeforeClick(accountKey) {
+    const MIN_GAP_MS = 30000;
+    const MAX_WAIT_MS = 35000;
+    const now = Date.now();
+    const last = _lastSubmitAtByAccount.get(accountKey) || 0;
+    const elapsed = now - last;
+    if (elapsed < MIN_GAP_MS) {
+        const waitMs = Math.min(MIN_GAP_MS - elapsed, MAX_WAIT_MS);
+        console.log(`[FORUM] ⏳ Flood pacing: last submit ${(elapsed / 1000).toFixed(1)}s ago on ${accountKey} — waiting ${(waitMs / 1000).toFixed(1)}s before submit`);
+        await new Promise((r) => setTimeout(r, waitMs));
+    }
+    _lastSubmitAtByAccount.set(accountKey, Date.now());
+}
+
+/**
+ * Trusted-input form fill: page.fill() produces isTrusted input events like
+ * a real user typing; raw evaluate() fills are isTrusted=false and visible
+ * to bot-detection. Falls back to DOM injection when the element isn't
+ * actionable, preserving old behavior. Returns true when a value was set.
+ */
+async function trustedFill(page, selector, value, { timeout = 10000 } = {}) {
+    try {
+        await page.fill(selector, String(value ?? ''), { timeout });
+        return true;
+    } catch {
+        /* fall through to injection */
+    }
+    try {
+        const ok = await page.evaluate(([sel, v]) => {
+            const el = document.querySelector(sel);
+            if (!el) return false;
+            if ('value' in el) el.value = v; else el.textContent = v;
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            return true;
+        }, [selector, String(value ?? '')]).catch(() => false);
+        if (!ok) console.log(`[FORUM] ⚠️ Fill fallback also missed ${selector}`);
+        return !!ok;
+    } catch {
+        return false;
+    }
+}
+
+/** Message fill across phpBB editor variants (textarea, then contenteditable). */
+async function trustedFillMessage(page, bbCode, { timeout = 10000 } = {}) {
+    if (await trustedFill(page, 'textarea[name="message"]', bbCode, { timeout })) return true;
+    return trustedFill(page, 'div[contenteditable="true"]', bbCode, { timeout });
+}
+
+/**
+ * Trusted submit click across phpBB button variants. Probes form/button
+ * presence FIRST (fast fail) so callers keep their exact 'No form found' /
+ * 'No submit button' diagnostics (the breaker keys off them), then clicks
+ * via page.click (trusted). Falls back to a synthetic click as last resort.
+ */
+async function trustedSubmitClick(page, formActionSubstr, buttonSelectors, { timeout = 10000 } = {}) {
+    let probe;
+    try {
+        probe = await page.evaluate(([fsub, sels]) => {
+            const form = document.querySelector(`form[action*="${fsub}"]`);
+            if (!form) return { ok: false, reason: 'No form found' };
+            const btn = form.querySelector(sels.join(', '));
+            if (!btn) return { ok: false, reason: 'No submit button' };
+            return { ok: true };
+        }, [formActionSubstr, buttonSelectors]);
+    } catch {
+        return { ok: false, reason: 'Submit check failed' };
+    }
+    if (!probe.ok) return probe;
+    for (const sel of buttonSelectors) {
+        try {
+            await page.click(`form[action*="${formActionSubstr}"] ${sel}`, { timeout });
+            return { ok: true };
+        } catch {
+            /* try next variant */
+        }
+    }
+    try {
+        const clicked = await page.evaluate(([fsub, sels]) => {
+            const form = document.querySelector(`form[action*="${fsub}"]`);
+            const btn = form && form.querySelector(sels.join(', '));
+            if (btn) { btn.click(); return true; }
+            return false;
+        }, [formActionSubstr, buttonSelectors]).catch(() => false);
+        return clicked ? { ok: true } : { ok: false, reason: 'No submit button' };
+    } catch {
+        return { ok: false, reason: 'No submit button' };
+    }
+}
+
+/**
+ * Whether this instance's env credentials belong to the given forum URL.
+ * Inline re-login must never submit (e.g.) PHMC credentials to a foreign
+ * forum — guaranteed failure that also poisons logs, wastes minutes, and
+ * overwrites the session file. The caller must login() with that forum's
+ * credentials first. Unparseable URLs preserve legacy behavior.
+ */
+function _credsMatchDomain(inst, url) {
+    try {
+        const want = new URL(String(url)).hostname.toLowerCase();
+        const have = new URL(inst.baseUrl).hostname.toLowerCase();
+        return want === have;
+    } catch {
+        return true;
+    }
+}
+
+/**
+ * Failure dump: save the FULL page HTML for post-mortem debugging whenever
+ * an expected element (form, button, field) is missing. Overwrites per flow
+ * (no accumulation): debug/debug-<name>.html. Best-effort, never throws.
+ */
+async function dumpPageState(page, name) {
+    try {
+        const html = await page.content().catch(() => '(unable to capture page content)');
+        const debugPath = resolve(__dirname, '..', 'debug', `debug-${name}.html`);
+        mkdirSync(dirname(debugPath), { recursive: true });
+        writeFileSync(debugPath, html, 'utf-8');
+        console.log(`[FORUM] 💾 Full page HTML saved to ${debugPath} (${html.length}b)`);
+    } catch { /* diagnostics must never break flows */ }
+}
 
 /**
  * Global forum gate: max concurrent forum operations across ALL client
@@ -96,6 +241,51 @@ function _releaseGlobal() {
 }
 
 /**
+ * Idle-shutdown bookkeeping — frees the ~350MB Chromium footprint when the
+ * forum goes quiet. Only REAL navigations (page.goto) reset the timer, not
+ * mere ensureBrowser() calls, so hourly scans that skip browser work still
+ * let the browser shut down. Relaunch is transparent: session cookies live
+ * in the per-instance session files, so the next op logs back in cheaply.
+ * Tune via FORUM_BROWSER_IDLE_MS (default 45min; 0 or negative = disabled).
+ */
+const _liveInstances = new Set();
+let _lastBrowserActivity = Date.now();
+let _idleSweepTimer = null;
+
+function _idleTimeoutMs() {
+    const v = parseInt(process.env.FORUM_BROWSER_IDLE_MS || '', 10);
+    if (Number.isFinite(v)) return v;
+    return 45 * 60 * 1000;
+}
+
+function _touchBrowserActivity() {
+    _lastBrowserActivity = Date.now();
+}
+
+function _ensureIdleSweeper() {
+    if (_idleSweepTimer) return;
+    _idleSweepTimer = setInterval(() => {
+        (async () => {
+            try {
+                const idleMs = _idleTimeoutMs();
+                if (idleMs <= 0) return;
+                if (!_sharedBrowser) return;
+                // Daemon-attached browsers ARE the persistence mechanism —
+                // idle contexts are cheap, so the sweeper leaves them alone.
+                if (!_browserOwnedByUs) { console.debug('[FORUM] Idle sweep skipped — attached to persistent browser (CDP)'); return; }
+                if (_globalActive > 0) return; // forum work in flight — don't pull the rug
+                if (Date.now() - _lastBrowserActivity < idleMs) return;
+                console.log(`[FORUM] Idle ${Math.round((Date.now() - _lastBrowserActivity) / 60000)}m with no forum work — closing shared browser to free memory`);
+                await closeSharedBrowser('idle-timeout');
+            } catch (err) {
+                console.error(`[FORUM] Idle sweep error: ${err.message}`);
+            }
+        })();
+    }, 5 * 60 * 1000);
+    if (_idleSweepTimer.unref) _idleSweepTimer.unref();
+}
+
+/**
  * Kill any chrome-headless-shell processes that have been orphaned — i.e. their
  * parent is dead (reparented to PID 1). This happens when a previous bot run
  * died abruptly (uncaughtException → exit(1), SIGKILL), leaving its Chromium
@@ -114,6 +304,13 @@ function reapOrphanBrowsers() {
             const m = status.match(/^PPid:\s+(\d+)/m);
             const ppid = m ? parseInt(m[1], 10) : 0;
             if (ppid === 1) {
+                // Never reap the systemd-managed persistent browser daemon —
+                // it may also appear with PPid=1. It listens on
+                // --remote-debugging-port and uses the browser-profile dir.
+                try {
+                    const cmdline = readFileSync(`/proc/${entry}/cmdline`, 'utf8');
+                    if (cmdline.includes('remote-debugging-port') || cmdline.includes('browser-profile')) continue;
+                } catch { /* unreadable cmdline — fall through to reap as before */ }
                 try {
                     process.kill(parseInt(entry, 10), 'SIGKILL');
                     console.log(`[FORUM] 🧹 Reaped orphaned browser process ${entry}`);
@@ -206,23 +403,125 @@ function spawnReason() {
 }
 
 /**
+ * Drop a dead shared-browser handle (browser died underneath us): clears the
+ * singleton + init promise + all instance page/context refs so the next
+ * ensureBrowser() re-attaches (daemon) or relaunches. Never closes anything
+ * (there is nothing left to close) and never throws.
+ */
+function _dropBrowserHandle(reason) {
+    try {
+        console.log(`[FORUM] Dropping shared browser handle (${reason})`);
+        _sharedBrowser = null;
+        _browserInitPromise = null;
+        for (const inst of _liveInstances) {
+            inst.page = null;
+            inst.context = null;
+        }
+    } catch { /* never break callers */ }
+}
+
+/** Watch a live browser so an unexpected death resets the singleton promptly. */
+function _watchBrowserDisconnect(browser) {
+    try {
+        browser.on('disconnected', () => {
+            if (_sharedBrowser === browser) _dropBrowserHandle('event:disconnected');
+        });
+    } catch { /* older builds may lack .on — liveness probe covers it */ }
+}
+
+/**
+ * Whether the shared browser was launched by this process (false when
+ * attached to the persistent daemon). Callers that destroy browsers/pages
+ * on timeouts must check this first: tearing down pages out from under
+ * concurrent flows (e.g. the email worker sharing the default client)
+ * breaks them with 'target closed' errors.
+ */
+export function isBrowserOwnedByUs() {
+    return _browserOwnedByUs;
+}
+
+/**
  * Close the shared browser (if any) and reset the singleton, so a later call
  * can relaunch. Used on graceful shutdown so pm2 restarts don't orphan Chromium.
  */
-export async function closeSharedBrowser(reason = 'shutdown') {
+export async function closeSharedBrowser(reason = 'shutdown', opts = {}) {
     const browser = _sharedBrowser;
     if (!browser) return;
-    console.log(`[LOG] Destroying browser for ${reason}`);
-    try { await browser.close(); } catch { /* already closed */ }
+    if (reason === 'shutdown') {
+        // Process is exiting: failures from this point are teardown noise.
+        // Tell the health tracker to stop recording outcomes.
+        try { markShuttingDown(); } catch { /* tracker optional */ }
+    }
+    if (!_browserOwnedByUs && !opts.force) {
+        // Attached to the persistent daemon — leave it running; only drop
+        // our local handle. The stale-handle reset below is identical.
+        console.log(`[FORUM] Persistent browser (CDP) left running for ${reason} — dropping local handle only`);
+    } else {
+        console.log(`[LOG] Destroying browser for ${reason}`);
+        try { await browser.close(); } catch { /* already closed */ }
+    }
     _sharedBrowser = null;
     _browserInitPromise = null;
+    // Drop stale page/context handles on every live instance so the next
+    // ensureBrowser() rebuilds them instead of reusing dead objects.
+    for (const inst of _liveInstances) {
+        try { if (inst.page) await inst.page.close().catch(() => {}); } catch {}
+        try { if (inst.context) await inst.context.close().catch(() => {}); } catch {}
+        inst.page = null;
+        inst.context = null;
+    }
 }
 
 async function getSharedBrowser() {
-    if (_sharedBrowser) return _sharedBrowser;
+    if (_sharedBrowser) {
+        // Liveness probe: the handle may outlive the browser (daemon swapped
+        // or crashed underneath us). A dead handle must be dropped so the
+        // CDP-first path below re-attaches (or relaunches) instead of failing
+        // every op with 'browser/context closed' forever.
+        let alive = false;
+        try {
+            alive = typeof _sharedBrowser.isConnected !== 'function' || _sharedBrowser.isConnected();
+        } catch {
+            alive = false;
+        }
+        if (!alive) {
+            console.log('[FORUM] Shared browser disconnected — dropping handle, will re-attach or relaunch');
+            _dropBrowserHandle('disconnected');
+        } else {
+            return _sharedBrowser;
+        }
+    }
     if (_browserInitPromise) return _browserInitPromise;
     _browserInitPromise = (async () => {
         reapOrphanBrowsers();
+        // Prefer the systemd-managed persistent Chromium over CDP; fall back
+        // to launching our own browser when absent. Empty-string
+        // BROWSER_CDP_URL disables CDP entirely (legacy launch-only).
+        const cdpEnv = process.env.BROWSER_CDP_URL;
+        const cdpUrl = cdpEnv === '' ? null : (cdpEnv || 'http://127.0.0.1:9222');
+        if (cdpUrl && typeof chromium.connectOverCDP === 'function') {
+            let cdpTimer = null;
+            try {
+                const attempt = chromium.connectOverCDP(cdpUrl);
+                attempt.catch(() => {}); // avoid unhandled rejection if the race times out first
+                const cdpTimeout = new Promise((_, reject) => {
+                    cdpTimer = setTimeout(() => reject(new Error('CDP connect timeout (10s)')), 10000);
+                    if (cdpTimer.unref) cdpTimer.unref();
+                });
+                const attached = await Promise.race([attempt, cdpTimeout]);
+                _sharedBrowser = attached;
+                _browserOwnedByUs = false;
+                _watchBrowserDisconnect(attached);
+                console.log('[FORUM] Attached to persistent browser (CDP)');
+                _touchBrowserActivity();
+                _ensureIdleSweeper();
+                return attached;
+            } catch (err) {
+                console.log(`[FORUM] No persistent browser at ${cdpUrl} (${err?.message || err}) — launching own browser`);
+            } finally {
+                if (cdpTimer) clearTimeout(cdpTimer);
+            }
+        }
         console.log(`[LOG] Spawning BROWSER for ${spawnReason()}`);
         const browser = await chromium.launch({
             headless: process.env.HEADLESS !== 'false',
@@ -238,6 +537,10 @@ async function getSharedBrowser() {
             ],
         });
         _sharedBrowser = browser;
+        _browserOwnedByUs = true;
+        _watchBrowserDisconnect(browser);
+        _touchBrowserActivity();
+        _ensureIdleSweeper();
         return browser;
     })();
     return _browserInitPromise;
@@ -288,6 +591,7 @@ class ForumClient {
         this.sessionFile = opts.sessionFile || DEFAULT_SESSION_FILE;
         this.isIsolated = opts.isIsolated || false;
         this._sessionDir = opts.sessionDir || __dirname;
+        _liveInstances.add(this);
     }
 
     /**
@@ -339,12 +643,17 @@ class ForumClient {
 
     async ensureBrowser() {
         if (this.context && this.page) return;
+        _liveInstances.add(this); // re-register after close()
 
         const browser = await getSharedBrowser();
 
         const opts = {
             viewport: { width: 1280, height: 900 },
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            // Must match the headless-shell major version (149.0.7827.55 at
+            // last check): a stale UA against a newer engine (TLS/JA3, Client
+            // Hints) is a first-order bot signal to Cloudflare. The .0.0.0
+            // suffix is literal — real Chrome sends a frozen UA since reduction.
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36',
             locale: 'en-US',
             timezoneId: 'America/New_York',
             ignoreHTTPSErrors: true,
@@ -355,13 +664,28 @@ class ForumClient {
             opts.storageState = this.sessionFile;
         }
 
+        // CDP-attached (persistent daemon) browsers serve browser.newContext()
+        // identically — each instance still gets an isolated incognito context.
         this.context = await browser.newContext(opts);
         this.page = await this.context.newPage();
+
+        // Slim the renderer: forum posts/replies need HTML+JS only. Images,
+        // fonts, and media burn renderer RAM and slow loads (worse when the
+        // box is swapping) without affecting phpBB form fills or the
+        // Cloudflare JS challenge. Disable via FORUM_BLOCK_MEDIA=false.
+        if (process.env.FORUM_BLOCK_MEDIA !== 'false') {
+            await this.page.route('**/*', (route) => {
+                const t = route.request().resourceType();
+                if (t === 'image' || t === 'media' || t === 'font') return route.abort();
+                return route.continue();
+            }).catch(() => {});
+        }
 
         // Activity hook — record every navigation so the dashboard can show
         // what the browser is currently doing (scanning, posting, etc).
         const rawGoto = this.page.goto.bind(this.page);
         this.page.goto = async (url, opts) => {
+            _touchBrowserActivity(); // real navigation = real forum work
             const act = describeActivity(url);
             logActivity(act.label, act.detail);
             try {
@@ -392,6 +716,9 @@ class ForumClient {
      * Polls until the page no longer shows Cloudflare challenge HTML.
      */
     async waitForCloudflare(timeoutMs = 45000) {
+        // Single gate per navigation chain — a challenge that passed <60s ago
+        // (earlier in this same login→post flow) doesn't need re-polling.
+        if (Date.now() - _lastCfPassAt < 60000) return true;
         const start = Date.now();
         console.log('[FORUM] ☁️ Waiting for Cloudflare challenge to resolve...');
         while (Date.now() - start < timeoutMs) {
@@ -403,6 +730,7 @@ class ForumClient {
 
             if (!isCloudflare) {
                 console.log(`[FORUM] ✅ Cloudflare challenge passed (${Date.now() - start}ms)`);
+                _lastCfPassAt = Date.now();
                 return true;
             }
             await this.page.waitForTimeout(1500);
@@ -426,6 +754,7 @@ class ForumClient {
         } catch { /* best effort */ }
         this.page = null;
         this.context = null;
+        _liveInstances.delete(this);
     }
 
     // ── Session ──
@@ -450,12 +779,32 @@ class ForumClient {
         const domain = process.env.FORUM_BASE_URL || 'https://phmc.gta.world';
         await this.page.goto(`${domain}/ucp.php`, { waitUntil: 'networkidle', timeout: 120000 }).catch(() => {});
         await this.page.waitForTimeout(2000);
-        const stillValid = !this.page.url().includes('mode=login');
+        const stillValid = await this._sessionLooksAlive();
         if (!stillValid) {
             console.log('[FORUM] ⚠️ Session expired — forcing re-login before deploy...');
             await this.login(null, null, { force: true, baseUrl: domain });
         } else {
             console.log('[FORUM] ✅ Session valid');
+        }
+    }
+
+    /**
+     * True session check: phpBB can serve the login form AT ucp.php WITHOUT
+     * redirecting, so URL-only checks false-positive (proven live — downstream
+     * compose then renders its own login page and everything fails). Check
+     * the URL, the title, AND the actual username field.
+     */
+    async _sessionLooksAlive() {
+        try {
+            if (this.page.url().includes('mode=login')) return false;
+            const title = await this.page.title().catch(() => '');
+            if (title.toLowerCase().includes('login')) return false;
+            const hasLoginForm = await this.page.evaluate(
+                () => !!document.querySelector('input[name="username"]')
+            ).catch(() => false);
+            return !hasLoginForm;
+        } catch {
+            return false;
         }
     }
 
@@ -484,15 +833,20 @@ class ForumClient {
         await this.page.waitForTimeout(3000);
         await this.waitForCloudflare(120000);
 
-        // If not forcing, check if already logged in via stored session
+        // If not forcing, check if already logged in via stored session.
+        // (URL + title + form check — see _sessionLooksAlive. URL alone lies
+        // when phpBB serves the login form without redirecting.)
+        let fellThroughSessionCheck = false;
         if (!force) {
             await this.page.goto(`${domain}/ucp.php`, { waitUntil: 'networkidle', timeout: 180000 });
             await this.page.waitForTimeout(2000);
 
-            if (!this.page.url().includes('mode=login')) {
+            if (await this._sessionLooksAlive()) {
                 console.log('[FORUM] ✅ Already logged in via stored session');
                 return { ok: true, method: 'session' };
             }
+            console.log('[FORUM] ⚠️ Stored session invalid — logging in...');
+            fellThroughSessionCheck = true;
         }
 
         // Fill login form
@@ -593,17 +947,30 @@ class ForumClient {
             throw new Error(`Login failed: ${errText}`);
         }
 
+        console.log('[FORUM] ✅ Login response OK — verifying the session actually established...');
+        // A challenge interstitial or odd redirect can pass the URL check
+        // above without logging in — the next op would then fail mysteriously
+        // on a login page. Verify like ensureLoggedIn does before declaring OK.
+        await this.page.goto(`${domain}/ucp.php`, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
+        await this.page.waitForTimeout(2000);
+        if (!(await this._sessionLooksAlive())) {
+            throw new Error('Login failed: session did not establish (verify shows login form)');
+        }
+
         console.log('[FORUM] ✅ Login successful');
         await this.saveSession();
+        // Fell through from a dead stored session: record the refresh so
+        // session churn is visible (dashboard) before it causes failures.
+        // Routine session reuse and explicit force-logins stay quiet.
+        if (fellThroughSessionCheck) {
+            await recordAuthEvent(domain, 'refreshed').catch(() => {});
+        }
+        } catch (err) {
+            // Login failures feed the auth tracker (dashboard-visible churn).
+            await recordAuthEvent(baseUrlOverride || this.baseUrl, 'failed').catch(() => {});
+            throw err;
         } finally { lock.release(); }
         return { ok: true, method: 'credentials' };
-    }
-
-    async validateSession() {
-        if (!this.hasSession()) return false;
-        await this.ensureBrowser();
-        await this.page.goto(`${this.baseUrl}/ucp.php`, { waitUntil: 'networkidle', timeout: 180000 });
-        return !this.page.url().includes('mode=login');
     }
 
     // ── Topic Posting ──
@@ -620,12 +987,19 @@ class ForumClient {
         console.log(`[FORUM] 🌐 Navigating to ${postUrl}`);
         await this.page.goto(postUrl, { waitUntil: 'networkidle', timeout: 180000 });
         await this.page.waitForTimeout(2000);
+        // Cloudflare can challenge ANY navigation (not just login) — the
+        // posting form doesn't exist until it resolves. Without this wait a
+        // challenged load fails fast with "No form found".
+        await this.waitForCloudflare(120000);
 
         // Check if we got redirected to a login page (session expired) BEFORE filling form
         const pageUrl = this.page.url();
         let pageTitle = await this.page.title().catch(() => '(no title)');
         if (pageUrl.includes('mode=login') || pageTitle.toLowerCase().includes('login')) {
             console.log(`[FORUM] ⚠️ Login page detected — session expired, logging in directly...`);
+            if (!_credsMatchDomain(this, postUrl)) {
+                throw new Error(`Session expired on ${postUrl} — caller must login() with that forum's credentials first (this client holds ${this.baseUrl} credentials)`);
+            }
             // Fill and submit the login form directly on this page (no lock re-entry)
             await this.page.fill('input[name="username"]', this.username, { timeout: 10000 });
             await this.page.fill('input[name="password"]', this.password, { timeout: 10000 });
@@ -647,17 +1021,9 @@ class ForumClient {
 
         await this.page.waitForTimeout(1000);
 
-        // Fill subject and message (now we're definitely on the posting page, not login)
-        await this.page.evaluate((s) => {
-            const el = document.querySelector('input[name="subject"]');
-            if (el) { el.value = s; el.dispatchEvent(new Event('input', { bubbles: true })); }
-        }, subject);
-        await this.page.evaluate((msg) => {
-            const ta = document.querySelector('textarea[name="message"]');
-            if (ta) { ta.value = msg; ta.dispatchEvent(new Event('input', { bubbles: true })); return; }
-            const ed = document.querySelector('div[contenteditable="true"]');
-            if (ed) { ed.textContent = msg; ed.dispatchEvent(new Event('input', { bubbles: true })); }
-        }, bbCode);
+        // Fill subject and message with TRUSTED input (now we're definitely on the posting page, not login)
+        await trustedFill(this.page, 'input[name="subject"]', subject);
+        await trustedFillMessage(this.page, bbCode);
         await this.page.waitForTimeout(500);
 
         // Debug: dump page state
@@ -665,20 +1031,15 @@ class ForumClient {
         console.log(`[FORUM] 🔍 Page URL: ${this.page.url()}`);
         console.log(`[FORUM] 🔍 Page title: ${pageTitle}`);
 
-        // Submit
-        const result = await this.page.evaluate(() => {
-            const form = document.querySelector('form[action*="posting.php"]');
-            if (!form) return { ok: false, reason: 'No form found' };
-            // Try various submit button selectors — phpBB uses <input> or <button>
-            const btn = form.querySelector(
-                'input[type="submit"][name="post"], ' +
-                'input[type="submit"][value="Submit"], ' +
-                'button[type="submit"][name="post"]'
-            );
-            if (!btn) return { ok: false, reason: 'No submit button' };
-            btn.click();
-            return { ok: true };
-        });
+        // Submit (trusted click)
+        // Proactive flood pacing: per-account 30s gap before clicking submit.
+        // The reactive 25s×3 retry loop below stays untouched as backstop.
+        await _paceSubmitBeforeClick(`${postUrl.split('/posting.php')[0]}|${this.username}`);
+        const result = await trustedSubmitClick(this.page, 'posting.php', [
+            'input[type="submit"][name="post"]',
+            'input[type="submit"][value="Submit"]',
+            'button[type="submit"][name="post"]',
+        ]);
 
         if (!result.ok) {
             console.log(`[FORUM] ❌ ${result.reason} — dumping page state`);
@@ -693,6 +1054,7 @@ class ForumClient {
                 }))
             ).catch(() => []);
             console.log(`[FORUM] 🔍 All forms on page (${allForms.length}):`, JSON.stringify(allForms, null, 2));
+            await dumpPageState(this.page, 'posting-page');
             throw new Error(result.reason);
         }
 
@@ -724,29 +1086,14 @@ class ForumClient {
         const reloadAndResubmit = async () => {
             try { await this.page.goto(postUrl, { waitUntil: 'networkidle', timeout: 180000 }); } catch {}
             await this.page.waitForTimeout(2000);
-            await this.page.evaluate((s) => {
-                const el = document.querySelector('input[name="subject"]');
-                if (el) { el.value = s; el.dispatchEvent(new Event('input', { bubbles: true })); }
-            }, subject);
-            await this.page.evaluate((msg) => {
-                const ta = document.querySelector('textarea[name="message"]');
-                if (ta) { ta.value = msg; ta.dispatchEvent(new Event('input', { bubbles: true })); return; }
-                const ed = document.querySelector('div[contenteditable="true"]');
-                if (ed) { ed.textContent = msg; ed.dispatchEvent(new Event('input', { bubbles: true })); }
-            }, bbCode);
+            await trustedFill(this.page, 'input[name="subject"]', subject);
+            await trustedFillMessage(this.page, bbCode);
             await this.page.waitForTimeout(500);
-            await this.page.evaluate(() => {
-                const form = document.querySelector('form[action*="posting.php"]');
-                if (!form) return false;
-                const btn = form.querySelector(
-                    'input[type="submit"][name="post"], ' +
-                    'input[type="submit"][value="Submit"], ' +
-                    'button[type="submit"][name="post"]'
-                );
-                if (!btn) return false;
-                btn.click();
-                return true;
-            });
+            await trustedSubmitClick(this.page, 'posting.php', [
+                'input[type="submit"][name="post"]',
+                'input[type="submit"][value="Submit"]',
+                'button[type="submit"][name="post"]',
+            ]);
             await this.page.waitForTimeout(3000);
             try { await this.page.waitForLoadState('networkidle', { timeout: 25000 }); } catch {}
             await this.page.waitForTimeout(2000);
@@ -864,6 +1211,9 @@ class ForumClient {
         console.log(`[FORUM] 🌐 Navigating to ${composeUrl}`);
         await this.page.goto(composeUrl, { waitUntil: 'networkidle', timeout: 180000 });
         await this.page.waitForTimeout(3000);
+        // Same as postTopic: a challenged compose page has no PM form until
+        // Cloudflare resolves.
+        await this.waitForCloudflare(120000);
 
         // Debug: log page state
         const pageUrl = this.page.url();
@@ -877,7 +1227,10 @@ class ForumClient {
         //    user ID via memberlist search and re-open compose with &u=<id>.
         // This runs BEFORE subject/message fill (Add / re-navigate reloads).
         const recipientState = await this.page.evaluate((name) => {
-            const input = document.querySelector('input[name="username_list"]');
+            // phpBB themes vary: username_list is an <input> on some forums,
+            // a <textarea> on others (e.g. LSSD) — check both, else the field
+            // is wrongly reported missing and we take the ID round-trip.
+            const input = document.querySelector('input[name="username_list"]') || document.querySelector('textarea[name="username_list"]');
             if (input && input.value && input.value.trim()) return 'preset';
             const addr = document.querySelector('input[name^="address_list"], input[name="to"], .to-field, .address-list');
             if (addr) {
@@ -891,7 +1244,7 @@ class ForumClient {
             console.log(`[FORUM] ✅ Recipient preset: ${recipient}`);
         } else if (recipientState === 'needs-add') {
             await this.page.evaluate((name) => {
-                const input = document.querySelector('input[name="username_list"]');
+                const input = document.querySelector('input[name="username_list"]') || document.querySelector('textarea[name="username_list"]');
                 if (input) { input.value = name; input.dispatchEvent(new Event('input', { bubbles: true })); }
                 const addBtn = document.querySelector('input[type="submit"][name="add_to"], button[type="submit"][name="add_to"]');
                 if (addBtn) addBtn.click();
@@ -934,6 +1287,9 @@ class ForumClient {
             console.log(`[FORUM] 🔄 Re-opening compose addressed by user ID ${resolved.userId}`);
             await this.page.goto(`${domain}/ucp.php?i=pm&mode=compose&u=${resolved.userId}`, { waitUntil: 'networkidle', timeout: 180000 }).catch(() => {});
             await this.page.waitForTimeout(2000);
+            // Same as the first compose load: a challenge here means no
+            // addressee box until it resolves (present-check would false-fail).
+            await this.waitForCloudflare(120000);
             const present = await this.page.evaluate((name) => {
                 const t = document.body?.innerText || '';
                 return t.includes(name);
@@ -948,20 +1304,11 @@ class ForumClient {
             throw new Error(reason);
         }
 
-        // Fill subject
-        await this.page.evaluate((s) => {
-            const el = document.querySelector('input[name="subject"]');
-            if (el) { el.value = s; el.dispatchEvent(new Event('input', { bubbles: true })); }
-        }, subject);
+        // Fill subject (trusted input)
+        await trustedFill(this.page, 'input[name="subject"]', subject);
 
-        // Fill message
-        const msgOk = await this.page.evaluate((msg) => {
-            const ta = document.querySelector('textarea[name=\"message\"]');
-            if (ta) { ta.value = msg; ta.dispatchEvent(new Event('input', { bubbles: true })); return true; }
-            const ed = document.querySelector('div[contenteditable="true"]');
-            if (ed) { ed.textContent = msg; ed.dispatchEvent(new Event('input', { bubbles: true })); return true; }
-            return false;
-        }, bbCode);
+        // Fill message (trusted input)
+        const msgOk = await trustedFillMessage(this.page, bbCode);
 
         if (!msgOk) {
             console.error(`[FORUM] ❌ No message textarea or editor found — dumping full page HTML`);
@@ -986,28 +1333,23 @@ class ForumClient {
             return { ok: true, url: composeUrl, dryRun: true };
         }
 
-        // Submit
+        // Submit (trusted click)
         console.log(`[FORUM] 📤 Submitting PM form...`);
-        const result = await this.page.evaluate(() => {
-            const form = document.querySelector('form[action*="ucp.php"]');
-            if (!form) return { ok: false, reason: 'No form found' };
-            // Try multiple button patterns — some phpBB forums use <input>, others use <button>
-            const btn = form.querySelector(
-                'input[type="submit"][name="submit"], ' +
-                'input[type="submit"][value="Submit"], ' +
-                'button[type="submit"][name="post"], ' +
-                'button[type="submit"][value="Submit"]'
-            );
-            if (!btn) return { ok: false, reason: 'No submit button' };
-            btn.click();
-            return { ok: true };
-        });
+        // Proactive flood pacing: per-account 30s gap before clicking submit.
+        await _paceSubmitBeforeClick(`${domain}|${this.username}`);
+        const result = await trustedSubmitClick(this.page, 'ucp.php', [
+            'input[type="submit"][name="submit"]',
+            'input[type="submit"][value="Submit"]',
+            'button[type="submit"][name="post"]',
+            'button[type="submit"][value="Submit"]',
+        ]);
 
         if (!result.ok) {
             const pageHtml = await this.page.evaluate(() => document.body?.innerHTML?.slice(0, 3000) || '(no body)').catch(() => '(error reading HTML)');
             console.error(`[FORUM] ❌ ${result.reason} — dumping page state`);
             console.log(`[FORUM] 🔍 HTML snippet (first 2000 chars):`);
             console.log(pageHtml.slice(0, 2000));
+            await dumpPageState(this.page, 'pm-submit-page');
             throw new Error(result.reason);
         }
 
@@ -1148,7 +1490,7 @@ class ForumClient {
         console.log(`[FORUM] 🔍 Searching for patientID "${patientID}"...`);
         console.log(`[FORUM] 🌐 ${searchUrl}`);
 
-        await this.page.goto(searchUrl, { waitUntil: 'networkidle', timeout: 180000 });
+        await this.page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
         await this.page.waitForTimeout(2000);
 
         const pageUrl = this.page.url();
@@ -1248,10 +1590,10 @@ class ForumClient {
             console.log(`[FORUM] 🔍 Searching ${forumId ? `forum f=${forumId}` : 'all forums'} for "${searchTerm}"...`);
             console.log(`[FORUM] 🌐 URL: ${searchUrl}`);
             try {
-                await this.page.goto(searchUrl, { waitUntil: 'networkidle', timeout: 180000 });
+                await this.page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
             } catch (navErr) {
                 console.log(`[FORUM] ⚠️ Navigation error (${navErr.message}), retrying with lenient wait...`);
-                await this.page.goto(searchUrl, { waitUntil: 'load', timeout: 180000 });
+                await this.page.goto(searchUrl, { waitUntil: 'load', timeout: 60000 });
             }
             await this.page.waitForTimeout(2000);
 
@@ -1342,10 +1684,10 @@ class ForumClient {
             console.log(`[FORUM] 🌐 ${searchUrl}`);
 
             try {
-                await this.page.goto(searchUrl, { waitUntil: 'networkidle', timeout: 180000 });
+                await this.page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
             } catch (navErr) {
                 console.log(`[FORUM] ⚠️ Navigate error (${navErr.message}), retrying with lenient wait...`);
-                await this.page.goto(searchUrl, { waitUntil: 'load', timeout: 180000 });
+                await this.page.goto(searchUrl, { waitUntil: 'load', timeout: 60000 });
             }
             await this.page.waitForTimeout(2000);
 
@@ -1367,10 +1709,10 @@ class ForumClient {
                 lock = await this._acquire('searchCaseManagement');
                 await this.ensureBrowser();
                 try {
-                    await this.page.goto(searchUrl, { waitUntil: 'networkidle', timeout: 180000 });
+                    await this.page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
                 } catch (navErr) {
                     console.log(`[FORUM] ⚠️ Retry navigate error (${navErr.message}), using lenient wait...`);
-                    await this.page.goto(searchUrl, { waitUntil: 'load', timeout: 180000 });
+                    await this.page.goto(searchUrl, { waitUntil: 'load', timeout: 60000 });
                 }
                 await this.page.waitForTimeout(2000);
                 const pageUrl2 = this.page.url();
@@ -1476,6 +1818,9 @@ class ForumClient {
             await this.page.waitForTimeout(3000);
         }
         await this.page.waitForTimeout(2000);
+        // Same as postTopic: a Cloudflare challenge on the reply page means
+        // no reply form until it resolves.
+        await this.waitForCloudflare(120000);
 
         const pageUrl = this.page.url();
         let pageTitle = await this.page.title().catch(() => '(no title)');
@@ -1495,6 +1840,9 @@ class ForumClient {
         // form on the same reply URL without redirecting, so check title too.
         if (pageUrl.includes('mode=login') || pageUrl.includes('mode=post') || pageTitle.toLowerCase().includes('login')) {
             console.log(`[FORUM] ⚠️ Login page detected — session expired, logging in directly...`);
+            if (!_credsMatchDomain(this, replyUrl)) {
+                throw new Error(`Session expired on ${replyUrl} — caller must login() with that forum's credentials first (this client holds ${this.baseUrl} credentials)`);
+            }
             await this.page.fill('input[name="username"]', this.username, { timeout: 10000 });
             await this.page.fill('input[name="password"]', this.password, { timeout: 10000 });
             await this.page.evaluate(() => {
@@ -1509,6 +1857,7 @@ class ForumClient {
             console.log(`[FORUM] 🔄 Re-navigating to reply page after re-login...`);
             await this.page.goto(replyUrl, { waitUntil: 'networkidle', timeout: 180000 });
             await this.page.waitForTimeout(3000);
+            await this.waitForCloudflare(120000);
             pageTitle = await this.page.title().catch(() => '(no title)');
             console.log(`[FORUM] 🔍 After re-login — page title: "${pageTitle}", URL: ${this.page.url()}`);
 
@@ -1520,17 +1869,12 @@ class ForumClient {
             }
         }
 
-        // Fill the message body
-        const msgOk = await this.page.evaluate((msg) => {
-            const ta = document.querySelector('textarea[name=\"message\"]');
-            if (ta) { ta.value = msg; ta.dispatchEvent(new Event('input', { bubbles: true })); return true; }
-            const ed = document.querySelector('div[contenteditable="true"]');
-            if (ed) { ed.textContent = msg; ed.dispatchEvent(new Event('input', { bubbles: true })); return true; }
-            return false;
-        }, bbCode);
+        // Fill the message body (trusted input)
+        const msgOk = await trustedFillMessage(this.page, bbCode);
 
         if (!msgOk) {
             console.error('[FORUM] ❌ No message textarea found on reply page');
+            await dumpPageState(this.page, 'reply-page');
             return { ok: false, url: pageUrl, reason: 'No message textarea' };
         }
 
@@ -1541,23 +1885,20 @@ class ForumClient {
             return { ok: true, url: replyUrl, dryRun: true };
         }
 
-        // Submit the reply
+        // Submit the reply (trusted click)
         console.log(`[FORUM] 📤 Submitting reply...`);
-        const result = await this.page.evaluate(() => {
-            const form = document.querySelector('form[action*="posting.php"]');
-            if (!form) return { ok: false, reason: 'No form found' };
-            const btn = form.querySelector(
-                'input[type="submit"][name="post"], ' +
-                'input[type="submit"][value="Submit"], ' +
-                'button[type="submit"][name="post"]'
-            );
-            if (!btn) return { ok: false, reason: 'No submit button' };
-            btn.click();
-            return { ok: true };
-        });
+        // Proactive flood pacing: per-account 30s gap before clicking submit.
+        // The reactive 25s×3 retry loop below stays untouched as backstop.
+        await _paceSubmitBeforeClick(`${domain}|${this.username}`);
+        const result = await trustedSubmitClick(this.page, 'posting.php', [
+            'input[type="submit"][name="post"]',
+            'input[type="submit"][value="Submit"]',
+            'button[type="submit"][name="post"]',
+        ]);
 
         if (!result.ok) {
             console.error(`[FORUM] ❌ ${result.reason}`);
+            await dumpPageState(this.page, 'reply-submit-page');
             return { ok: false, url: pageUrl, reason: result.reason };
         }
 
@@ -1580,30 +1921,20 @@ class ForumClient {
         const MAX_FLOOD_RETRIES = 3;
 
         const fillMessage = async () => {
-            const filled = await this.page.evaluate((msg) => {
-                const ta = document.querySelector('textarea[name="message"]');
-                if (ta) { ta.value = msg; ta.dispatchEvent(new Event('input', { bubbles: true })); return true; }
-                const ed = document.querySelector('div[contenteditable="true"]');
-                if (ed) { ed.textContent = msg; ed.dispatchEvent(new Event('input', { bubbles: true })); return true; }
-                return false;
-            }, bbCode);
-            if (!filled) console.error('[FORUM] ❌ No message textarea found on retry form');
+            const filled = await trustedFillMessage(this.page, bbCode);
+            if (!filled) {
+                console.error('[FORUM] ❌ No message textarea found on retry form');
+                await dumpPageState(this.page, 'reply-retry-page');
+            }
             return filled;
         };
 
         const clickSubmit = async () => {
-            const r = await this.page.evaluate(() => {
-                const form = document.querySelector('form[action*="posting.php"]');
-                if (!form) return { ok: false, reason: 'No form found' };
-                const btn = form.querySelector(
-                    'input[type="submit"][name="post"], ' +
-                    'input[type="submit"][value="Submit"], ' +
-                    'button[type="submit"][name="post"]'
-                );
-                if (!btn) return { ok: false, reason: 'No submit button' };
-                btn.click();
-                return { ok: true };
-            });
+            const r = await trustedSubmitClick(this.page, 'posting.php', [
+                'input[type="submit"][name="post"]',
+                'input[type="submit"][value="Submit"]',
+                'button[type="submit"][name="post"]',
+            ]);
             return r.ok ? true : r.reason;
         };
 
@@ -1741,7 +2072,7 @@ class ForumClient {
             const domain = baseUrl || this.baseUrl;
             // Step 1: Navigate to the topic to get the post ID
             const topicPage = `${domain}/viewtopic.php?t=${topicId}`;
-            await this.page.goto(topicPage, { waitUntil: 'domcontentloaded', timeout: 180000 });
+            await this.page.goto(topicPage, { waitUntil: 'domcontentloaded', timeout: 60000 });
             await this.page.waitForTimeout(2000);
             const postId = await this.page.evaluate(() => {
                 const links = document.querySelectorAll('a[href*="#p"]');
@@ -1753,7 +2084,7 @@ class ForumClient {
                 return null;
             }).catch(() => null);
             const qUrl = `${domain}/posting.php?mode=quote&f=${forumId}&p=${postId || topicId}`;
-            await this.page.goto(qUrl, { waitUntil: 'networkidle', timeout: 180000 });
+            await this.page.goto(qUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
             await this.page.waitForTimeout(2000);
 
             // Handle login redirect
@@ -1761,6 +2092,9 @@ class ForumClient {
             let pTitle = await this.page.title().catch(() => '');
             if (pUrl.includes('mode=login') || pTitle.toLowerCase().includes('login')) {
                 console.log('[FORUM] ⚠️ Login on quote fetch — re-authenticating');
+                if (!_credsMatchDomain(this, qUrl)) {
+                    throw new Error(`Session expired on ${qUrl} — caller must login() with that forum's credentials first`);
+                }
                 await this.page.fill('input[name="username"]', this.username, { timeout: 10000 });
                 await this.page.fill('input[name="password"]', this.password, { timeout: 10000 });
                 await this.page.evaluate(() => {
@@ -1770,7 +2104,7 @@ class ForumClient {
                 await this.page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
                 await this.page.waitForTimeout(3000);
                 await this.saveSession();
-                await this.page.goto(qUrl, { waitUntil: 'networkidle', timeout: 180000 });
+                await this.page.goto(qUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
                 await this.page.waitForTimeout(2000);
             }
 
@@ -1831,6 +2165,9 @@ class ForumClient {
             let eTitle = await this.page.title().catch(() => '');
             if (eUrl.includes('mode=login') || eTitle.toLowerCase().includes('login')) {
                 console.log('[FORUM] ⚠️ Login on edit — re-authenticating');
+                if (!_credsMatchDomain(this, editUrl)) {
+                    throw new Error(`Session expired on ${editUrl} — caller must login() with that forum's credentials first`);
+                }
                 await this.page.fill('input[name="username"]', this.username, { timeout: 10000 });
                 await this.page.fill('input[name="password"]', this.password, { timeout: 10000 });
                 await this.page.evaluate(() => {
@@ -1868,6 +2205,7 @@ class ForumClient {
 
             if (!result.ok) {
                 console.log(`[FORUM] ❌ ${result.reason}`);
+                await dumpPageState(this.page, 'edit-title-page');
                 return { ok: false };
             }
 
@@ -1929,6 +2267,9 @@ class ForumClient {
             let eTitle = await this.page.title().catch(() => '');
             if (eUrl.includes('mode=login') || eTitle.toLowerCase().includes('login')) {
                 console.log('[FORUM] ⚠️ Login on edit — re-authenticating');
+                if (!_credsMatchDomain(this, editUrl)) {
+                    throw new Error(`Session expired on ${editUrl} — caller must login() with that forum's credentials first`);
+                }
                 await this.page.fill('input[name="username"]', this.username, { timeout: 10000 });
                 await this.page.fill('input[name="password"]', this.password, { timeout: 10000 });
                 await this.page.evaluate(() => {
@@ -1973,6 +2314,7 @@ class ForumClient {
 
             if (!result.ok) {
                 console.log(`[FORUM] ❌ ${result.reason}`);
+                await dumpPageState(this.page, 'edit-content-page');
                 return { ok: false, reason: result.reason };
             }
 
@@ -1999,7 +2341,7 @@ class ForumClient {
             await this.ensureBrowser();
             const domain = baseUrl || this.baseUrl;
             const url = `${domain}/viewtopic.php?t=${topicId}`;
-            await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 180000 });
+            await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
             await this.page.waitForTimeout(2000);
 
             const username = await this.page.evaluate(() => {
@@ -2030,7 +2372,7 @@ class ForumClient {
         const lock = await this._acquire('resolveProfileUsername');
         try {
             await this.ensureBrowser();
-            await this.page.goto(profileUrl, { waitUntil: 'domcontentloaded', timeout: 120000 }).catch(() => {});
+            await this.page.goto(profileUrl, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
             await this.page.waitForTimeout(2000);
 
             const username = await this.page.evaluate(() => {
@@ -2211,7 +2553,7 @@ class ForumClient {
             await this.ensureBrowser();
             const domain = baseUrl || this.baseUrl;
             const url = `${domain}/ucp.php?i=pm&mode=view&f=${folder}&p=${msgId}`;
-            await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 120000 }).catch(() => {});
+            await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
             await this.page.waitForTimeout(2500);
 
             // Expand in-message spoiler toggles (LSPD addenda render as
@@ -2289,7 +2631,7 @@ class ForumClient {
                 seen.add(name.toLowerCase());
                 await this.page.goto(
                     `${domain}/memberlist.php?mode=searchuser&username=${encodeURIComponent(name)}&submit=Search`,
-                    { waitUntil: 'domcontentloaded', timeout: 120000 }).catch(() => {});
+                    { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
                 await this.page.waitForTimeout(2000);
                 const hit = await this.page.evaluate((want) => {
                     const wl = want.toLowerCase();
@@ -2306,26 +2648,6 @@ class ForumClient {
             }
             console.log(`[FORUM] 👤 No account resolved for [${(candidates || []).join('|')}]`);
             return null;
-        } finally {
-            lock.release();
-        }
-    }
-
-    /**
-     * Resolve a display name to a forum user ID via memberlist search.
-     * Needed for PM compose flows that address recipients by ID (`&u=`),
-     * e.g. themes with no username_list input (SADCR). Exact match
-     * (case-insensitive); first resolvable candidate wins.
-     *
-     * @param {string[]} candidates - names to try
-     * @param {object} [options]
-     * @param {string} [options.baseUrl] - Forum base URL
-     * @returns {Promise<{userId: string, username: string}|null>}
-     */
-    async resolveMemberUserId(candidates, { baseUrl } = {}) {
-        const lock = await this._acquire('resolveMemberUserId');
-        try {
-            return await this._resolveMemberUserIdInner(candidates, { baseUrl });
         } finally {
             lock.release();
         }
@@ -2442,19 +2764,32 @@ class ForumClient {
      * @param {number} sourceForumId - Forum the source topic is in
      * @param {number} targetForumId - Forum to post the new topic in
      * @param {string} title - Title for the new topic
-     * @param {object} [options]
-     * @param {string} [options.baseUrl] - Forum base URL
-     * @returns {Promise<{ok: boolean, url?: string}>}
-     */
-            async quoteAndPost(sourceTopicId, sourceForumId, targetForumId, title, { baseUrl } = {}) {
+      * @param {object} [options]
+      * @param {string} [options.baseUrl] - Forum base URL
+      * @param {string} [options.quotedBbCode] - FUSION POINT: caller-supplied
+      *   quoted BBCode (e.g. just read via getTopicBbcode). When provided, the
+      *   viewtopic fetch + quote-page extraction below are skipped and the
+      *   flow goes straight to the target posting page. All current callers
+      *   omit it, so behavior is identical until a caller passes it.
+      * @param {string|number} [options.quotePostId] - post id the supplied
+      *   quote came from (logging only)
+      * @returns {Promise<{ok: boolean, url?: string}>}
+      */
+            async quoteAndPost(sourceTopicId, sourceForumId, targetForumId, title, { baseUrl, quotedBbCode = null, quotePostId = null } = {}) {
         const lock = await this._acquire("quoteAndPost");
         try {
             await this.ensureBrowser();
             const domain = baseUrl || "https://phmc.gta.world";
 
+            // FUSION POINT: when the caller already holds the quoted BBCode it
+            // skips the viewtopic fetch + quote-page extraction entirely.
+            let quotedBBCode = quotedBbCode || null;
+            if (quotedBBCode) {
+                console.log("[FORUM] ♻️ Using caller-supplied quote (p=" + (quotePostId || "?") + ", " + quotedBBCode.length + " chars) — skipping viewtopic/quote re-read");
+            } else {
             const topicPage = domain + "/viewtopic.php?t=" + sourceTopicId;
             console.log("[FORUM] Fetching post ID from topic #" + sourceTopicId);
-            await this.page.goto(topicPage, { waitUntil: "domcontentloaded", timeout: 180000 });
+            await this.page.goto(topicPage, { waitUntil: "domcontentloaded", timeout: 60000 });
             await this.page.waitForTimeout(2000);
 
             const postId = await this.page.evaluate(() => {
@@ -2471,13 +2806,16 @@ class ForumClient {
             const quoteTarget = postId ? "p=" + postId : "t=" + sourceTopicId;
             const quoteUrl = domain + "/posting.php?mode=quote&" + quoteTarget;
             console.log("[FORUM] Opening quote page...");
-            await this.page.goto(quoteUrl, { waitUntil: "networkidle", timeout: 180000 });
+            await this.page.goto(quoteUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
             await this.page.waitForTimeout(2000);
 
             let qUrl = this.page.url();
             let qTitle = await this.page.title().catch(() => "");
             if (qUrl.includes("mode=login") || qTitle.toLowerCase().includes("login")) {
                 console.log("[FORUM] Login on quote, re-authing");
+                if (!_credsMatchDomain(this, quoteUrl)) {
+                    throw new Error(`Session expired on ${quoteUrl} — caller must login() with that forum's credentials first`);
+                }
                 await this.page.fill('input[name="username"]', this.username, { timeout: 10000 });
                 await this.page.fill('input[name="password"]', this.password, { timeout: 10000 });
                 await this.page.evaluate(() => {
@@ -2487,11 +2825,11 @@ class ForumClient {
                 await this.page.waitForLoadState("networkidle", { timeout: 30000 }).catch(() => {});
                 await this.page.waitForTimeout(3000);
                 await this.saveSession();
-                await this.page.goto(quoteUrl, { waitUntil: "networkidle", timeout: 180000 });
+                await this.page.goto(quoteUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
                 await this.page.waitForTimeout(2000);
             }
 
-            const quotedBBCode = await this.page.evaluate(() => {
+            quotedBBCode = await this.page.evaluate(() => {
                 const ta = document.querySelector('textarea[name="message"]');
                 if (ta && ta.value.trim()) return ta.value;
                 const allTas = document.querySelectorAll("textarea");
@@ -2504,6 +2842,7 @@ class ForumClient {
                 return { ok: false };
             }
             console.log("[FORUM] Got quote (" + quotedBBCode.length + " chars)");
+            }
 
             const postUrl = domain + "/posting.php?mode=post&f=" + targetForumId;
             console.log("[FORUM] Posting to f=" + targetForumId + " - " + title);
@@ -2514,6 +2853,9 @@ class ForumClient {
             let pTitle = await this.page.title().catch(() => "");
             if (pUrl.includes("mode=login") || pTitle.toLowerCase().includes("login")) {
                 console.log("[FORUM] Login on post, re-authing");
+                if (!_credsMatchDomain(this, postUrl)) {
+                    throw new Error(`Session expired on ${postUrl} — caller must login() with that forum's credentials first`);
+                }
                 await this.page.fill('input[name="username"]', this.username, { timeout: 10000 });
                 await this.page.fill('input[name="password"]', this.password, { timeout: 10000 });
                 await this.page.evaluate(() => {
@@ -2651,14 +2993,13 @@ class ForumClient {
 
     /**
      * Health-check a forum URL using the browser. Follows the same proven flow as login:
-     * navigate → waitForCloudflare → check result. Reuses any existing login session.
+     * navigate → Cloudflare poll → check result. Reuses any existing login session.
      *
      * @param {string} url - Forum base URL to check (e.g. https://phmc.gta.world)
      * @returns {Promise<{status: string, latency: number|null, details: string}>}
      */
     async checkHealth(url) {
-        const lock = await this._acquire('checkHealth');
-        try {
+        // No lock — creates a disposable page so it won't block deploy operations
         await this.ensureBrowser();
         const page = await this.context.newPage();
         const start = Date.now();
@@ -2667,8 +3008,16 @@ class ForumClient {
             await page.goto(`${url}/index.php`, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
             await page.waitForTimeout(2000);
 
-            // Quick Cloudflare challenge poll (30s max)
-            await this.waitForCloudflare(30000);
+            // Quick Cloudflare poll (30s max — don't hold up deploys)
+            const cfStart = Date.now();
+            while (Date.now() - cfStart < 30000) {
+                const isCf = await page.evaluate(() =>
+                    document.body?.innerHTML?.includes('cf-wrapper') ||
+                    document.title?.includes('Just a moment')
+                ).catch(() => false);
+                if (!isCf) break;
+                await page.waitForTimeout(1500);
+            }
 
             const latency = Date.now() - start;
             const finalUrl = page.url();
@@ -2718,7 +3067,6 @@ class ForumClient {
         } finally {
             await page.close().catch(() => {});
         }
-        } finally { lock.release(); }
     }
 }
 
@@ -2749,6 +3097,67 @@ export function createIsolatedClient(name = 'isolated') {
         isIsolated: true,
         sessionDir: __dirname,
     });
+}
+
+// ── Posting circuit-breaker wiring ──
+// Every forum WRITE goes through one of these five methods, so wrapping them
+// covers all callers (deploys, monitors, sweeps, retries) with outcome
+// recording + fail-fast pausing. Reads are untouched. Dry runs never record.
+// The gate runs BEFORE lock acquisition so paused ops fail fast instead of
+// queueing behind the global forum lock.
+function _writeTargetUrl(name, args, inst) {
+    try {
+        if (name === 'postTopic') return args[3] || inst.baseUrl;
+        if (name === 'ensureLoggedIn') return inst.baseUrl;
+        const opts = args[args.length - 1];
+        const optUrl = (opts && typeof opts === 'object' && opts.baseUrl) || null;
+        if (optUrl) return optUrl;
+        if (name === 'replyToTopic' || name === 'quoteAndPost') return 'https://phmc.gta.world';
+        return inst.baseUrl;
+    } catch {
+        return null;
+    }
+}
+
+function _writeIsDryRun(name, args) {
+    try {
+        const opts = args[args.length - 1];
+        if (opts && typeof opts === 'object' && opts.dryRun) return true;
+    } catch { /* ignore */ }
+    return false;
+}
+
+const _WRITE_METHODS = ['postTopic', 'replyToTopic', 'sendPM', 'editPostContent', 'quoteAndPost'];
+// login feeds the breaker (a login that can't pass Cloudflare predicts a
+// posting failure) but is never gated — monitors need it for reads.
+// ensureLoggedIn is only ever called by runDeploy, so it is gated (fail fast)
+// but never recorded (its inner login call records on its own — recording
+// both would double-count every incident).
+const _RECORD_METHODS = ['login'];
+const _GATE_METHODS = ['ensureLoggedIn'];
+for (const _m of [..._WRITE_METHODS, ..._RECORD_METHODS, ..._GATE_METHODS]) {
+    const _orig = ForumClient.prototype[_m];
+    if (typeof _orig !== 'function') continue;
+    const _gate = _WRITE_METHODS.includes(_m) || _GATE_METHODS.includes(_m);
+    const _record = _WRITE_METHODS.includes(_m) || _RECORD_METHODS.includes(_m);
+    ForumClient.prototype[_m] = async function (..._args) {
+        const _url = _writeTargetUrl(_m, _args, this);
+        if (_gate) await throwIfPostingPaused(_url, _m);
+        const _dry = _writeIsDryRun(_m, _args);
+        const _kind = _m === 'login' ? 'login' : 'write';
+        try {
+            const _res = await _orig.apply(this, _args);
+            if (_record && !_dry && _res && _res.ok === true) {
+                await recordPostingOutcome(_url, true, '', _kind).catch(() => {});
+            } else if (_record && !_dry && _res && _res.ok === false) {
+                await recordPostingOutcome(_url, false, _res.reason || '', _kind).catch(() => {});
+            }
+            return _res;
+        } catch (_err) {
+            if (_record && !_dry) await recordPostingOutcome(_url, false, (_err && _err.message) || '', _kind).catch(() => {});
+            throw _err;
+        }
+    };
 }
 
 export default ForumClient;

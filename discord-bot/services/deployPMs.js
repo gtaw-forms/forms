@@ -250,7 +250,7 @@ export async function deployPendingPMs(options = {}) {
         }
 
         console.log(`[DEPLOY] 🔑 Logging into ${forumUrl}${forumLabel ? ` (${forumLabel} credentials)` : ''}...`);
-        await client.login(loginUser, loginPass, { force: true, baseUrl: forumUrl });
+        await client.login(loginUser, loginPass, { force: false, baseUrl: forumUrl });
         console.log('[DEPLOY] ✅ Logged in');
     } else {
         console.log('[DEPLOY] 🏜️ DRY RUN — skipping login');
@@ -285,36 +285,25 @@ export async function deployPendingPMs(options = {}) {
         } catch (err) {
             console.error(`[DEPLOY] ❌ Error deploying ${report.key}:`, err.message);
 
-            // Write retry queue metadata so autoDeploy's checkRetryQueue can pick it up
+            // Write retry queue metadata so autoDeploy's checkRetryQueue can pick it up.
+            // No exhaustion: transport failures retry forever (see deployRetry).
             try {
                 const retries = (report.report?.deployRetries || 0) + 1;
-                const MAX_RETRIES = 3;
-                const RETRY_DELAY_MS = 6 * 60 * 60 * 1000;
+                const RETRY_DELAY_MS = 1 * 60 * 60 * 1000;
 
-                if (retries >= MAX_RETRIES) {
-                    await db.ref(`scheduledReports/${report.authorId}/${report.key}`).update({
-                        hasdeployed: false,
-                        deployStatus: 'failed_permanent',
-                        deployMessage: `Gave up after ${retries} attempts. Error: ${err.message.slice(0, 200)}`,
-                        deployRetries: retries,
-                        deployLastFailedAt: new Date().toISOString(),
-                    });
-                    console.log(`[DEPLOY] 🛑 ${report.key} — failed ${retries}/${MAX_RETRIES} times, giving up permanently`);
-                } else {
-                    const retryTime = Date.now() + RETRY_DELAY_MS;
-                    const retryAtISO = new Date(retryTime).toISOString();
+                const retryTime = Date.now() + RETRY_DELAY_MS;
+                const retryAtISO = new Date(retryTime).toISOString();
 
-                    await db.ref(`scheduledReports/${report.authorId}/${report.key}`).update({
-                        hasdeployed: false,
-                        deployStatus: 'retry_queued',
-                        deployMessage: `Re-queued (attempt ${retries}/${MAX_RETRIES}) — next retry at ${retryAtISO}. Error: ${err.message.slice(0, 200)}`,
-                        retryAt: retryAtISO,
-                        deployRetries: retries,
-                        deployLastFailedAt: new Date().toISOString(),
-                    });
+                await db.ref(`scheduledReports/${report.authorId}/${report.key}`).update({
+                    hasdeployed: false,
+                    deployStatus: 'retry_queued',
+                    deployMessage: `Re-queued (attempt ${retries}) — next retry at ${retryAtISO} (retrying until posted). Error: ${err.message.slice(0, 200)}`,
+                    retryAt: retryAtISO,
+                    deployRetries: retries,
+                    deployLastFailedAt: new Date().toISOString(),
+                });
 
-                    console.log(`[DEPLOY] 🔄 ${report.key} — re-queued for retry at ${retryAtISO} (attempt ${retries}/${MAX_RETRIES})`);
-                }
+                console.log(`[DEPLOY] 🔄 ${report.key} — re-queued for retry at ${retryAtISO} (attempt ${retries}, retrying until posted)`);
             } catch { /* best effort */ }
 
             results.push({ key: report.key, ok: false, error: err.message });

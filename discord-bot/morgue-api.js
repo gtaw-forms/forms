@@ -882,6 +882,14 @@ const SUSPICIOUS_PATTERNS = [
     { pattern: /%252e|%252f|%255c|%\t\.|\.\x09\./i, label: 'SCAN-traversal-encoded' },
     { pattern: /phpmyadmin/i,             label: 'SCAN-phpmyadmin' },
     { pattern: /\.git\/config/i,          label: 'SCAN-git-config' },
+    // Version-discovery spray observed in the wild (2026-09): scanners cycle
+    // /api/v1/*, /api/v2/*, /api/<status|info|meta|about|system|...> — none
+    // of these are real routes (ours are /api/version + /api/health, matched
+    // by nothing here). Keyed callers are exempt upstream, so a keyless hit
+    // on these shapes is never legit → instant ban via SCAN- prefix.
+    { pattern: /\/api\/v\d/i,              label: 'SCAN-api-version-probe' },
+    { pattern: /\/api\/(status|info|meta|about|system|cluster|vip|environment|hoverfly)\b/i,
+                                           label: 'SCAN-api-discovery' },
     { pattern: /\.git\/HEAD/i,            label: 'SCAN-git-head' },
     { pattern: /composer\.json/i,         label: 'SCAN-composer' },
     { pattern: /laravel/i,                label: 'SCAN-laravel' },
@@ -2587,6 +2595,13 @@ app.post('/api/reports/restore', validateApiKey, rateLimiter, (req, res) => {
 // catches. Cycling N DISTINCT unknown paths inside the window is a scanner
 // signature -> instant permanent ban. Repeat-hammering ONE missing path is a
 // buggy client, not an attacker, so only distinct paths count.
+//
+// On top of that: ANY keyless hit on an unmapped /api/* route bans instantly.
+// All real endpoints live under /api/* and the only keyless 200s are
+// /api/health + /api/version — so a keyless /api/* 404 is never legitimate
+// traffic. Keyed callers (version drift, bad caseIds) and trusted IPs stay
+// exempt, and non-/api/* junk (/, /favicon.ico) is ignored so uptime monitors
+// and stray browsers can't self-ban.
 const UNKNOWN_PATH_WINDOW_MS = 10 * 60 * 1000;
 const UNKNOWN_PATH_BAN_COUNT = 12;
 const unknownPathMap = new Map(); // ip -> { start: ts, paths: Set(path) }
@@ -2594,6 +2609,13 @@ const unknownPathMap = new Map(); // ip -> { start: ts, paths: Set(path) }
 app.use((req, res) => {
     const ip = req.clientIp || req.ip || 'unknown';
     if (!req.hasValidApiKey && !isIpBanned(ip) && !isTrustedIp(ip)) {
+        // Instant ban: keyless 404 on an unmapped /api/* route.
+        if (req.path.startsWith('/api/')) {
+            console.warn(
+                `[MORGUE-API] [WARN] UNKNOWN-ROUTE ip=${ip} hit unmapped ${req.method} ${req.path} keyless — banning permanently`
+            );
+            registerSuspiciousRequest(ip, 'unknown-api-route', true);
+        }
         const now = Date.now();
         let entry = unknownPathMap.get(ip);
         if (!entry || now - entry.start > UNKNOWN_PATH_WINDOW_MS) {

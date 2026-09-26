@@ -320,7 +320,7 @@ export async function deliverCoronerEmail({ recipient, subject, bbCode, departme
     await progress.addStep(`Logging in (${forum.forumLabel})`, 'pending');
     console.log(`[CORONER-EMAIL] Logging into ${forum.forumLabel} (${forum.forumUrl})...`);
     const client = getForumClient();
-    await client.login(forum.username, forum.password, { force: true, baseUrl: forum.forumUrl });
+    await client.login(forum.username, forum.password, { force: false, baseUrl: forum.forumUrl });
     await progress.addStep(`Logging in (${forum.forumLabel})`, 'ok');
 
     // ── Dry run: fill the form but don't submit ──
@@ -335,8 +335,12 @@ export async function deliverCoronerEmail({ recipient, subject, bbCode, departme
             console.warn(`[CORONER-EMAIL] ⚠️ DRY RUN — form fill issue: ${dryResult.reason || 'Unknown'}`);
             await progress.addStep('Filling PM Form', 'fail', dryResult.reason || 'Form fill failed');
         }
-        await progress.finalize('complete');
-        try { client.close(); } catch (e) { /* ignore */ }
+        await progress.finalize(dryResult.ok ? 'complete' : 'failed');
+        try { await client.close(); } catch (e) { /* ignore */ }
+        // A failed form fill is NOT ok — returning ok:true here used to make the
+        // queue worker record the email `sent`. The worker maps ok+dryRun to the
+        // terminal `dry_run` state; !ok flows to its normal retry path.
+        if (!dryResult.ok) return { ok: false, dryRun: true, reason: dryResult.reason || 'Dry-run form fill failed' };
         return { ok: true, dryRun: true };
     }
 
@@ -345,7 +349,7 @@ export async function deliverCoronerEmail({ recipient, subject, bbCode, departme
         console.warn(`[CORONER-EMAIL] BLOCKED — ${forum.forumUrl} not in CORONER_EMAIL_ALLOWED`);
         await progress.addStep('Blocked', 'fail', `${forum.forumLabel} not in ALLOWED list`);
         await progress.finalize('failed');
-        try { client.close(); } catch (e) { /* ignore */ }
+        try { await client.close(); } catch (e) { /* ignore */ }
         return { ok: false, reason: `${forum.forumLabel} not in ALLOWED list` };
     }
 
@@ -397,6 +401,6 @@ export async function deliverCoronerEmail({ recipient, subject, bbCode, departme
         await progress.addStep('Retry Scheduled', 'warn', 'Worker will retry with backoff');
         await progress.finalize('failed');
     }
-    try { client.close(); } catch (e) { /* ignore */ }
+    try { await client.close(); } catch (e) { /* ignore */ }
     return { ok: result.ok, url: result.url || null, reason: result.reason || null, sentTo: sendTo };
 }

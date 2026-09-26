@@ -53,14 +53,32 @@ async function getNextPatientId(client, db, patientName) {
     } catch (e) { /* fall through */ }
 
     let counter = 0;
+    let next = 0;
+    let claimed = false;
     try {
-        const cacheSnap = await db.ref('appMetadata/nextPatientId').once('value').catch(() => null);
-        if (cacheSnap?.exists()) counter = parseInt(cacheSnap.val(), 10) || 0;
+        // Atomic claim via transaction: concurrent creates serialize here, so
+        // two reports can't draw the same number (the old read-then-set raced).
+        // Aborts (claims nothing) when both index and counter are empty — the
+        // forum scan below handles that case as before.
+        const txnResult = await db.ref('appMetadata/nextPatientId').transaction((current) => {
+            const cur = parseInt(current, 10) || 0;
+            counter = cur;
+            if (indexMax === 0 && cur === 0) return undefined;
+            return Math.max(indexMax, cur) + 1;
+        });
+        const committed = parseInt(txnResult?.snapshot?.val(), 10);
+        if (txnResult?.committed && !isNaN(committed)) {
+            next = committed;
+            claimed = true;
+        }
     } catch (e) { /* fall through */ }
 
     if (indexMax > 0 || counter > 0) {
-        const next = Math.max(indexMax, counter) + 1;
-        await db.ref('appMetadata/nextPatientId').set(next).catch(() => {});
+        if (!claimed) {
+            // Transaction unavailable — blind write, same racy behavior as before.
+            next = Math.max(indexMax, counter) + 1;
+            await db.ref('appMetadata/nextPatientId').set(next).catch(() => {});
+        }
         if (patientName) {
             upsertPatient({ name: patientName, id: String(next), threadId: null, lastSeen: Date.now(), source: 'deploy:medical-record' });
         }
@@ -101,7 +119,6 @@ export async function handleMedicalRecord(report) {
         return;
     }
 
-    const DRY_REPLY = process.env.DRY_REPLY !== 'false';
     const isDryRun = MEDICAL_RECORD_DRY_RUN;
 
     // ── Progress embed ──
@@ -126,8 +143,10 @@ export async function handleMedicalRecord(report) {
         console.log(`[AUTO]  ${key}  no patientID or patientName`);
         await progress.addStep('Missing Fields', 'fail', 'No patient ID or name');
         await progress.finalize('failed');
-        await setDeployStatus(db, authorId, key, 'error', 'Missing patient ID or name. Please add one and save again.');
-        return;
+        const e = new Error('Missing patient ID or name. Please add one and save again.');
+        e.code = 'DATA_TERMINAL';
+        e.terminalStatus = 'error';
+        throw e;
     }
 
     // Try production BBCode path first, then dev-reports-bbcode (for localhost testing)
@@ -142,8 +161,10 @@ export async function handleMedicalRecord(report) {
         console.log(`[AUTO]  ${key}  no BBCode, marking as deployed`);
         await progress.addStep('No BBCode', 'skip', 'No BBCode content found');
         await progress.finalize('complete');
-        await setDeployStatus(db, authorId, key, 'error', 'No BBCode content found in report. Please regenerate and save again.');
-        return;
+        const e = new Error('No BBCode content found in report. Please regenerate and save again.');
+        e.code = 'DATA_TERMINAL';
+        e.terminalStatus = 'error';
+        throw e;
     }
 
     // ── BBCode validation logging (dry-run or live, always write for inspection) ──
@@ -354,9 +375,11 @@ export async function handleMedicalRecord(report) {
                 source: 'deploy:medical-record',
             });
             if (!topicId) {
-                await setDeployStatus(db, authorId, key, "error", "Created topic but could not parse ID");
-                await progress.finalize("failed");
-                return;
+                // The topic WAS created — never retry this (would double-post).
+                const e = new Error('Created topic but could not parse ID');
+                e.code = 'DATA_TERMINAL';
+                e.terminalStatus = 'error';
+                throw e;
             }
             // Topic was created with the report content — no reply needed, that would be a duplicate.
             const label = reportData.originalKey || key;
@@ -365,9 +388,11 @@ export async function handleMedicalRecord(report) {
             await progress.finalize(completed ? 'complete' : 'failed');
             return;
         } else {
-            await setDeployStatus(db, authorId, key, "topic_not_found", `No thread found for ${searchTerm}. Please create one manually.`);
+            const e = new Error(`No thread found for ${searchTerm}. Please create one manually.`);
+            e.code = 'DATA_TERMINAL';
+            e.terminalStatus = 'topic_not_found';
             await progress.finalize("failed");
-            return;
+            throw e;
         }
     }
 
@@ -421,11 +446,11 @@ export async function handleMedicalRecord(report) {
                 result = await client.replyToTopic(topicId, 97, workingBbCode, { dryRun: isDryRun });
             } else {
                 removePatientIndexEntry(searchTerm);
-                await setDeployStatus(db, authorId, key, 'reply_failed',
-                    `Indexed thread #${topicId} for "${searchTerm}" no longer exists and no replacement was found. Re-save to create a new thread.`);
                 await progress.addStep('Posting Reply', 'fail', 'Thread no longer exists');
                 await progress.finalize('failed');
-                return;
+                const e = new Error(`Indexed thread #${topicId} for "${searchTerm}" no longer exists and no replacement was found`);
+                e.code = 'RETRYABLE';
+                throw e;
             }
         }
     } catch (e) {
@@ -440,10 +465,11 @@ export async function handleMedicalRecord(report) {
                     result = await client.replyToTopic(topicId, 97, workingBbCode, { dryRun: isDryRun });
                 } else {
                     removePatientIndexEntry(searchTerm);
-                    await setDeployStatus(db, authorId, key, 'reply_failed', `Indexed thread no longer exists: ${e.message}`);
                     await progress.addStep('Posting Reply', 'fail', 'Thread no longer exists');
                     await progress.finalize('failed');
-                    return;
+                    const e = new Error(`Indexed thread no longer exists and no replacement was found: ${e.message}`);
+                    e.code = 'RETRYABLE';
+                    throw e;
                 }
             } catch (e2) {
                 console.error(`[MEDICAL-RECORD] Fallback search/reply also failed: ${e2.message}`);
@@ -451,11 +477,12 @@ export async function handleMedicalRecord(report) {
             }
         } else {
             console.error(`[MEDICAL-RECORD] replyToTopic threw: ${e.message}`);
-            await notifyDeployFailure(reportData.originalKey || key, 'medical-record', key, 'Forum error: ' + e.message);
+            // No notifyDeployFailure here — runDeploy's catch owns the alert now.
             await progress.addStep('Posting Reply', 'fail', `Forum error: ${e.message}`);
             await progress.finalize('failed');
-            await setDeployStatus(db, authorId, key, 'reply_failed', `Forum error: ${e.message}`);
-            return;
+            const retryErr = new Error(`Forum error: ${e.message}`);
+            retryErr.code = 'RETRYABLE';
+            throw retryErr;
         }
     }
 
@@ -474,10 +501,12 @@ export async function handleMedicalRecord(report) {
         await progress.finalize('complete');
     } else {
         const reason = result.reason || 'Unknown error replying to topic';
-        await setDeployStatus(db, authorId, key, 'reply_failed', reason);
         console.error(`[MEDICAL-RECORD]  Failed to reply to topic #${topicId}: ${reason}`);
-        await notifyDeployFailure(reportData.originalKey || key, 'medical-record', key, reason);
+        // No notifyDeployFailure here — runDeploy's catch owns the alert now.
         await progress.addStep('Posting Reply', 'fail', reason);
         await progress.finalize('failed');
+        const e = new Error(`Failed to reply to topic #${topicId}: ${reason}`);
+        e.code = 'RETRYABLE';
+        throw e;
     }
 }

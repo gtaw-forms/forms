@@ -22,6 +22,13 @@ async function getRunDeploy() {
     return _runDeploy;
 }
 
+// ── Maintenance-mode cache ──
+// isMaintenanceMode() runs on every enqueue + sweep consumer; cache the RTDB
+// value for 60s so hot paths don't re-read per call. state.maintenanceMode is
+// the store (RTDB remains boot seed/fallback on cache miss).
+let _maintenanceCacheAt = 0;
+const MAINTENANCE_CACHE_TTL_MS = 60 * 1000;
+
 // ── Consent-Gated Enqueue ──
 
 export async function consentGateAndEnqueue(type, item, formId) {
@@ -39,9 +46,12 @@ export async function consentGateAndEnqueue(type, item, formId) {
 export async function isMaintenanceMode() {
     logFnCall('deployQueue', 'isMaintenanceMode', 'Checking maintenance mode');
     if (!state.dbRef) return false;
+    if (Date.now() - _maintenanceCacheAt < MAINTENANCE_CACHE_TTL_MS) return state.maintenanceMode;
     try {
         const snap = await state.dbRef.child(C.MAINTENANCE_PATH).once('value');
-        return snap.val() === true;
+        state.maintenanceMode = snap.val() === true;
+        _maintenanceCacheAt = Date.now();
+        return state.maintenanceMode;
     } catch {
         return state.maintenanceMode;
     }
@@ -50,6 +60,7 @@ export async function isMaintenanceMode() {
 export async function setMaintenanceMode(enabled, db) {
     logFnCall('deployQueue', 'setMaintenanceMode', 'Setting maintenance mode', { enabled });
     state.maintenanceMode = enabled;
+    _maintenanceCacheAt = Date.now();
     try {
         await db.ref(C.MAINTENANCE_PATH).set(enabled);
     } catch (err) {
@@ -75,6 +86,13 @@ export async function setMaintenanceMode(enabled, db) {
                     const reportKey = reportSnap.key;
                     const reportData = reportSnap.val();
                     if (reportData.hasdeployed !== false) return;
+                    // 'blocked_empty_employee' is settled (see autoDeploy.js
+                    // cold-load): the handbrake never retries it, so the
+                    // maintenance-off rescan must not re-queue it either —
+                    // otherwise every maintenance cycle re-blocks it and
+                    // re-pings the developer webhook. Manual repair
+                    // (deployStatus:'pending') re-arms it.
+                    if (reportData.deployStatus === 'blocked_empty_employee') return;
                     if (!state.knownReportKeys) return;
                     // A report may have been marked seen while maintenance was
                     // enabled. Pending reports must be reconsidered on resume.
@@ -100,11 +118,25 @@ export async function setMaintenanceMode(enabled, db) {
 
 function getEntityKey(data) {
     logFnCall('deployQueue', 'getEntityKey', 'Getting entity key');
-    const d = data.report?.data || {};
+    const r = data.report || {};
+    const d = r.data || {};
     const recipient = d.requestingOfficer || d.requesting_officer || d.officerName || d.recipient || '';
-    const dept = d.department || '';
-    const decedent = [d.decedentName, d.decedentOOC, d.dateTime || d.dateOfDeath].filter(Boolean).join('|');
-    const raw = `${decedent}|${recipient}|${dept}` || data.key;
+    const deptRaw = d.department;
+    const dept = (deptRaw && typeof deptRaw === 'object' ? (deptRaw.label || deptRaw.value || '') : (deptRaw || ''));
+    const parts = [
+        r.formId || '',
+        d.decedentName || d.patientName || '',
+        d.decedentOOC || d.decendentOOC || d.decedent_ooc || '',
+        d.dateTime || d.dateOfDeath || '',
+        recipient,
+        dept,
+        d.caseNumber || d.caseId || d.caseNum || d.morgueCaseId || d.morgueId || '',
+    ].map((p) => String(p ?? '').trim());
+    // The old `|| data.key` fallback never fired (a pipe-joined string is always
+    // truthy, so all-empty reports collided on `"||"`). Only fall back when
+    // EVERY field is empty; same content still yields the same key.
+    if (!parts.some(Boolean)) return data.key;
+    const raw = parts.join('|');
     if (raw.length > 90) {
         let hash = 0;
         for (let i = 0; i < raw.length; i++) { hash = ((hash << 5) - hash) + raw.charCodeAt(i); hash |= 0; }

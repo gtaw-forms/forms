@@ -1,0 +1,35 @@
+# PHMC persistent Chromium (forum automation) — systemd unit.
+#
+# INSTALL (on the VPS, as root):
+#   cp phmc-browser.service /etc/systemd/system/phmc-browser.service
+#   # optional tuning without editing the unit (missing file is OK):
+#   printf 'BROWSER_DEBUG_PORT=9222\nBROWSER_PROFILE_DIR=/opt/phmc-bot/browser-profile\n' > /opt/phmc-bot/discord-bot/.browser.env
+#   systemctl daemon-reload
+#   systemctl enable --now phmc-browser.service
+#
+# VERIFY:
+#   systemctl status phmc-browser.service
+#   journalctl -u phmc-browser.service -f   # expect: [browser-daemon] READY cdp=http://127.0.0.1:9222 ...
+#   ss -ltn | grep 9222                     # must show 127.0.0.1:9222 ONLY, never 0.0.0.0
+#
+# STOP: systemctl stop phmc-browser.service (supervisor forwards SIGTERM to Chromium)
+
+[Unit]
+Description=PHMC persistent Chromium (forum automation)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/phmc-bot/discord-bot
+Environment=BROWSER_DEBUG_PORT=9222
+Environment=BROWSER_PROFILE_DIR=/opt/phmc-bot/browser-profile
+EnvironmentFile=-/opt/phmc-bot/discord-bot/.browser.env
+ExecStart=/usr/bin/node /opt/phmc-bot/discord-bot/browser-daemon.mjs
+ExecStartPost=-/bin/sh -c 'sleep 8; ss -ltn | grep -F "127.0.0.1:$BROWSER_DEBUG_PORT" || echo "[phmc-browser] bind-check: 127.0.0.1:$BROWSER_DEBUG_PORT not listening yet (see browser-daemon logs)"'
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

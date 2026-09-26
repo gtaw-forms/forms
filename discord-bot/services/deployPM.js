@@ -93,8 +93,10 @@ export async function handlePM(report) {
     if (!username || !password) {
         console.log(`[AUTO]  ${key}  no credentials for ${forumUrl}, leaving for manual deploy`);
         await progress.addStep('No Credentials', 'skip', `${forumLabel} credentials not configured`);
-        await progress.finalize('complete');
-        return;
+        await progress.finalize('failed');
+        const e = new Error(`${forumLabel} forum credentials not configured — set them, then the deploy will retry`);
+        e.code = 'RETRYABLE';
+        throw e;
     }
 
     await progress.addStep(`Logging in (${forumLabel})`, 'pending');
@@ -115,7 +117,7 @@ export async function handlePM(report) {
         const reason = result.reason || 'Unknown error sending PM';
         console.log(`[AUTO]  ${key}  PM send returned failure`);
         await notifyDeployFailure(reportData.originalKey || key, 'pm', key, reason);
-        await requeueReport(db, authorId, key, 'PM send failed: ' + reason).catch(err =>
+        await requeueReport(db, authorId, key, { ...reportData, deployMessage: 'PM send failed: ' + reason }).catch(err =>
             console.warn(`[AUTO]  ${key}  Failed to requeue PM: ${err.message}`)
         );
         await progress.addStep('Sending PM', 'fail', reason);

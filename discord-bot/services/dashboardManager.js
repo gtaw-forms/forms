@@ -7,13 +7,17 @@
  */
 
 import firebase from './firebase.js';
-import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from 'discord.js';
 import { getVpsStats } from './vpsStats.js';
 import { lastActivity, isBrowserActive } from './activityLog.js';
 import { firstApiKey } from './apiKeyUtil.js';
+import { formatTimeSuffix, TERMINAL_STATES } from './outstandingAutopsies.js';
+import { buildDashboardV2, isV2DashboardMessage } from './dashboardV2.js';
+import { formatPostingLines, formatSessionLines } from './postingHealth.js';
+import { registerTick, unregisterTick } from './scheduler.js';
 
 const DASHBOARD_REFRESH_MS = 10 * 60 * 1000; // 10 minutes — was 5m, 412k×12/hr=4.9 MB/hr → now 2.4 MB/hr pending VPS move
-const VPS_STATS_REFRESH_MS = 5000; // VPS CPU/MEM/activity field refreshes every 5s. Discord's message-endpoint bucket allows 5 edits/5s per channel — 1/5s uses ~20%.
+const VPS_STATS_REFRESH_MS = 60000; // VPS CPU/MEM/activity field refreshes every 60s. Discord's message-endpoint bucket allows 5 edits/5s per channel — 1/60s uses ~2%.
 const DASHBOARD_CONFIG_PATH = 'appMetadata/dashboard';
 
 let client = null;
@@ -22,7 +26,7 @@ let statsInterval = null;
 let cachedConfig = null;
 let editInProgress = false;
 // VPS-stats updater resilience: consecutive Discord REST failures trip a
-// cooldown so a transient egress blip doesn't log an error every 5s.
+// cooldown so a transient egress blip doesn't log an error every 60s.
 let vpsStatsFails = 0;
 let vpsStatsPausedUntil = 0;
 const VPS_STATS_FAIL_PAUSE_MS = 5 * 60 * 1000;
@@ -31,6 +35,9 @@ let assignWatcherRef = null;
 let assignWatcherPrimed = false;
 let assignRefreshTimer = null;
 let eventRefreshRunning = false;
+// Last gathered dashboard data — the 60s VPS updater rebuilds the V2 payload
+// from this + fresh VPS stats (V2 messages carry no embed to patch in place).
+let lastDashboardData = null;
 
 /**
  * Register the bot client instance (called from index.js on ready).
@@ -146,6 +153,12 @@ export async function gatherDashboardData(db, force = false) {
         }
     }
 
+    // 2b. Posting Status (write-path circuit breaker state — Website Online
+    // and Posting Status are different things behind Cloudflare).
+    data.posting = monitoringData.posting || {};
+    // 2c. Session churn (forced logins / login failures per forum).
+    data.sessions = monitoringData.session || {};
+
     // 3. Cloudflare status (from already-fetched monitoring data)
     const cf = monitoringData.cloudflare || {};
     data.cloudflare = cf.indicator === 'none'
@@ -214,12 +227,43 @@ export async function gatherDashboardData(db, force = false) {
         data.queue = [];
     }
 
+    // 5b. Retry-queue entries (reports waiting out 6h/probe delays). Without
+    // these the Deploy Queue reads empty for hours while work is actually
+    // pending — with inexhaustible retries that's the normal state, not an
+    // empty queue. The index is tiny by design (label/formId/retryAt only).
+    try {
+        const rqSnap = await db.ref('retry-queue').once('value').catch(() => null);
+        if (rqSnap && rqSnap.exists()) {
+            rqSnap.forEach((child) => {
+                const r = child.val() || {};
+                if (!r.retryAt) return;
+                data.queue.push({
+                    label: String(r.label || r.reportKey || child.key).slice(0, 80),
+                    type: r.formId ? String(r.formId) : 'retry',
+                    forum: '',
+                    status: 'retry',
+                    fireTime: new Date(r.retryAt).getTime() || 0,
+                });
+            });
+            data.queue.sort((a, b) => {
+                if (a.status === 'processing') return -1;
+                if (b.status === 'processing') return 1;
+                return (a.fireTime || 0) - (b.fireTime || 0);
+            });
+        }
+    } catch (err) {
+        console.warn(`[DASHBOARD] retry-queue read failed: ${err.message}`);
+    }
+
     // 6. Scheduled tasks (periodic monitors)
     try {
         const { getMonitorStatus } = await import('./autopsyRequestMonitor.js');
         data.autopsyMonitor = getMonitorStatus();
-    } catch {
-        data.autopsyMonitor = { active: false };
+    } catch (err) {
+        // Never silent: a failed status import previously rendered as
+        // "Autopsy Monitor — inactive" with zero trace. Surface it instead.
+        console.warn(`[DASHBOARD] autopsyMonitor status import failed: ${err.message}`);
+        data.autopsyMonitor = { active: false, statusError: err.message };
     }
 
     // 7. Roster sync status
@@ -235,23 +279,71 @@ export async function gatherDashboardData(db, force = false) {
     // bounded by the actual active-case set rather than recent history.
     try {
         const assignSnap = await db.ref('autopsy-requested').orderByChild('completedAt').equalTo(null).once('value');
+        // Assignment timestamps (rotation tracker, keyed by REQUEST topic id)
+        // for per-row waiting times. Best-effort — rows fall back to detectedAt.
+        let assignTimes = {};
+        try {
+            const trackSnap = await db.ref('autopsy-requests/assignments').once('value');
+            const trackData = trackSnap.val() || {};
+            for (const [meKey, rec] of Object.entries(trackData)) {
+                const rCases = (rec && rec.cases) || {};
+                for (const [reqId, meta] of Object.entries(rCases)) {
+                    if (meta && meta.assignedAt) assignTimes[`${String(meKey).toLowerCase()}|${reqId}`] = meta.assignedAt;
+                }
+            }
+        } catch { /* timing falls back to detectedAt */ }
         const meList = [];
         if (assignSnap.exists()) {
             assignSnap.forEach((child) => {
                 const c = child.val();
+                // Parity with getOutstandingCases: terminal states (skipped /
+                // cancelled / denied / dry_run) are never outstanding, even
+                // with no completedAt (e.g. superseded pre-mass duplicates).
+                if (TERMINAL_STATES.has(String(c.caseState || '').toLowerCase())) return;
+                const deathType = String(c.parsed?.deathType || '').trim();
                 const multi = String(c.caseState || '') === 'multi';
                 const cases = multi && c.cases && typeof c.cases === 'object' ? Object.values(c.cases) : [];
                 if (multi && cases.length > 0) {
-                    // Multi-decedent: one row per assigned ME + their decedent so
-                    // names are never comma-merged (top-level assignedTo is the
-                    // dashboard aggregate).
-                    cases.forEach((cc) => {
+                    // Multi-decedent / mass collection: one row per assigned ME
+                    // + their decedent so names are never comma-merged (top-level
+                    // assignedTo is the dashboard aggregate). Mass collections
+                    // share ONE case topic (OP index post) — every row links to
+                    // it and carries its Body i/N slot: `Case N (Body i/N)`.
+                    const indexed = Object.entries(c.cases)
+                        .map(([k, cc]) => ({ idx: k, cc }))
+                        .sort((a, b) => Number(a.idx) - Number(b.idx));
+                    const total = indexed.length;
+                    // Shared OP topic: explicit top-level caseTopicId/caseUrl wins;
+                    // otherwise adopt it when every sub-case points at one topic.
+                    let sharedTopicId = c.caseTopicId || null;
+                    let sharedUrl = c.caseUrl || null;
+                    if (!sharedTopicId) {
+                        const ids = new Set(indexed.map(({ cc }) => cc && cc.caseTopicId).filter(Boolean));
+                        if (ids.size === 1) {
+                            sharedTopicId = [...ids][0];
+                            sharedUrl = indexed.map(({ cc }) => cc.caseUrl).find(Boolean) || null;
+                        }
+                    }
+                    indexed.forEach(({ idx, cc }, slot) => {
                         if (cc && cc.assignedTo && !cc.completedAt) {
+                            // Shared-thread mass bodies carry no caseNum/title of
+                            // their own — fall back to the parent collection
+                            // (else every row renders `Case ? (Body i/N)`).
+                            const numM = String(cc.caseNum || cc.caseTitle || '').match(/Case\s*(\w+)/i)
+                                || String(c.caseNum || c.caseTitle || c.title || '').match(/Case\s*(\w+)/i);
+                            const num = cc.caseNum || (numM ? numM[1] : null) || c.caseNum || '?';
+                            const decedent = cc.oocName || cc.name || cc.caseTitle || '';
                             meList.push({
                                 name: cc.assignedTo,
                                 caseNum: cc.caseTitle || cc.oocName || cc.name || 'Case',
-                                caseUrl: cc.caseUrl || null,
-                                topicId: cc.caseTopicId || null,
+                                label: `Case ${num} (Body ${slot + 1}/${total})`,
+                                decedent,
+                                caseUrl: sharedUrl || cc.caseUrl || null,
+                                topicId: sharedTopicId || cc.caseTopicId || null,
+                                requestId: child.key,
+                                detectedAt: c.detectedAt || null,
+                                deathType,
+                                assignedAt: assignTimes[`${String(cc.assignedTo).toLowerCase()}|${child.key}`] || null,
                             });
                         }
                     });
@@ -263,6 +355,10 @@ export async function gatherDashboardData(db, force = false) {
                         caseNum: c.title || '?',
                         caseUrl: c.caseUrl || null,
                         topicId: c.topicId,
+                        requestId: child.key,
+                        detectedAt: c.detectedAt || null,
+                        deathType,
+                        assignedAt: assignTimes[`${String(c.assignedTo).toLowerCase()}|${child.key}`] || null,
                     });
                 }
             });
@@ -413,7 +509,9 @@ function buildVpsField(vps) {
 }
 
 function buildDashboardEmbed(data) {
-    const color = data.forums.some(f => f.status === 'Unresponsive')
+    const posting = formatPostingLines(data.posting);
+    const color = posting.blocked ? 0xdc3545
+        : data.forums.some(f => f.status === 'Unresponsive')
         ? 0xdc3545 : data.forums.some(f => f.status === 'Bad')
         ? 0xffc107 : data.cloudflare.emoji === '⚠️'
         ? 0xffc107 : 0x28a745;
@@ -422,7 +520,7 @@ function buildDashboardEmbed(data) {
         .setColor(color)
         .setTitle('🖥️ PHMC System Dashboard')
         .setDescription(`Last refreshed: <t:${Math.floor(Date.now() / 1000)}:R>\nData checked: ${data.lastCheckTime ? `<t:${Math.floor(data.lastCheckTime / 1000)}:R>` : 'awaiting first health check...'}`)
-        .setFooter({ text: 'VPS stats live • full refresh every 5 minutes' });
+        .setFooter({ text: 'VPS stats every 60s • full refresh every 5 minutes' });
 
     // Forum Status (uses custom server emojis where available)
     const forumLines = data.forums.map(f => {
@@ -437,6 +535,23 @@ function buildDashboardEmbed(data) {
         value: forumLines || 'No data',
         inline: false,
     });
+
+    // Posting Status (write path — split from Website Online above)
+    embed.addFields({
+        name: '📝 Posting Status',
+        value: posting.lines || 'No data',
+        inline: false,
+    });
+
+    // Sessions (forced-login churn — leading indicator before post failures)
+    const sessions = formatSessionLines(data.sessions);
+    if (sessions) {
+        embed.addFields({
+            name: '🔑 Sessions',
+            value: sessions,
+            inline: false,
+        });
+    }
 
     // Services summary
     embed.addFields({
@@ -461,10 +576,11 @@ function buildDashboardEmbed(data) {
     // Deploy Queue
     if (data.queue.length > 0) {
         const queueLines = data.queue.slice(0, 5).map(e => {
+            const icon = e.status === 'processing' ? '🔄 ' : e.status === 'retry' ? '🔁 ' : '';
             const timeStr = e.status === 'processing'
-                ? '🔄 Processing now'
+                ? 'Processing now'
                 : `<t:${Math.floor(e.fireTime / 1000)}:R>`;
-            return `**${e.label}** — ${timeStr}`;
+            return `${icon}**${e.label}** — ${timeStr}`;
         }).join('\n');
         embed.addFields({
             name: `📦 Deploy Queue (${data.queue.length})`,
@@ -527,6 +643,8 @@ function buildDashboardEmbed(data) {
             `${statusIcon} **Autopsy Monitor** — every ${intervalMin}min (f=265)\n` +
             `└ last check: ${lastCheck}`
         );
+    } else if (am.statusError) {
+        taskLines.push(`⚠️ **Autopsy Monitor** — status unavailable (${am.statusError})`);
     } else {
         taskLines.push('⏹️ **Autopsy Monitor** — inactive');
     }
@@ -546,11 +664,19 @@ function buildDashboardEmbed(data) {
     if (assignments.length > 0) {
         assignments.forEach((a) => {
             const loaTag = loaLower.includes(a.name.toLowerCase()) ? ' [LOA]' : '';
-            // Extract OOC name from request title for a cleaner link label
-            const oocM = (a.caseNum || '').match(/\(\(\s*(.*?)\s*\)\)/);
-            const oocLabel = oocM ? oocM[1] : a.caseNum || 'Case';
-            const caseLink = a.caseUrl ? `[${oocLabel}](<${a.caseUrl}>)` : `*${oocLabel}*`;
-            meLines.push(`**${a.name}**${loaTag} — ${caseLink}`);
+            // Mass/multi rows carry an explicit `Case N (Body i/N)` label;
+            // legacy rows fall back to the OOC name extracted from the title.
+            let linkLabel;
+            if (a.label) {
+                linkLabel = a.label;
+            } else {
+                const oocM = (a.caseNum || '').match(/\(\(\s*(.*?)\s*\)\)/);
+                linkLabel = oocM ? oocM[1] : a.caseNum || 'Case';
+            }
+            const caseLink = a.caseUrl ? `[${linkLabel}](<${a.caseUrl}>)` : `*${linkLabel}*`;
+            const decedentSuffix = a.label && a.decedent ? ` (${a.decedent})` : '';
+            const timeSuffix = formatTimeSuffix(a);
+            meLines.push(`**${a.name}**${loaTag} — ${caseLink}${decedentSuffix}${timeSuffix ? ` ${timeSuffix}` : ''}`);
         });
     }
     if (loaList.length > 0) {
@@ -616,6 +742,34 @@ async function patchDashboardEmbed(msg, newEmbed, components) {
 }
 
 /**
+ * Rendered V2 payload for sends/edits. Conversion edits (legacy embed
+ * message -> V2) explicitly clear embeds; content is always '' on our
+ * messages so it needs no clearing. NOTE: never include a `stickers` key —
+ * the API rejects edits carrying it at all (403/50080 "Cannot edit stickers
+ * within a message"), even as an empty array.
+ */
+function v2EditPayload(built) {
+    return { embeds: [], flags: built.flags, components: built.components };
+}
+
+function v2Opts(extra = {}) {
+    return { emojiFor: forumEmoji, lastActivity, isBrowserActive, ...extra };
+}
+
+/**
+ * err.message alone ("Received one or more errors") hides everything — always
+ * log code/status/raw validation errors with it so the next failure is
+ * diagnosable from the log alone.
+ */
+function logDiscordErr(tag, err) {
+    let raw = '';
+    try {
+        raw = JSON.stringify(err?.rawError ?? err?.errors ?? null)?.slice(0, 2000) || '';
+    } catch { /* non-serializable */ }
+    console.error(`[DASHBOARD] ${tag}: code=${err?.code} status=${err?.status} msg=${err?.message}${raw ? ` raw=${raw}` : ''}`);
+}
+
+/**
  * Delete any other PHMC System Dashboard embeds in the channel that aren't the
  * managed message. Called each refresh cycle so stale duplicates self-heal.
  */
@@ -625,8 +779,8 @@ async function cleanupOrphanDashboards(channel, activeMessageId) {
         const messages = await channel.messages.fetch({ limit: 20 });
         for (const msg of messages.values()) {
             if (msg.id === activeMessageId) continue;
-            const isDashboard = (msg.embeds || []).some(e => e.title === '🖥️ PHMC System Dashboard');
-            if (isDashboard && msg.deletable) {
+            const isLegacy = (msg.embeds || []).some(e => e.title === '🖥️ PHMC System Dashboard');
+            if ((isLegacy || isV2DashboardMessage(msg)) && msg.deletable) {
                 await msg.delete().catch(() => {});
                 console.log(`[DASHBOARD] 🧹 Deleted orphan dashboard message ${msg.id}`);
             }
@@ -661,15 +815,15 @@ async function postOrUpdateDashboard(db) {
 
         console.log('[DASHBOARD] 🔄 Running auto-refresh cycle...');
 
-        // Show a transient "REFRESHING" state on the VPS Resources field while we
-        // gather cached data, so it's obvious the field is updating (not stale).
-        // The `refreshing` flag also makes the 5s VPS updater render REFRESHING
-        // instead of clobbering this with stale data mid-gather.
+        // Show a transient "REFRESHING" state while we gather cached data.
+        // Rendered from the last gathered data (V2) so the VPS block reads
+        // refreshing instead of stale. Skipped on first boot (no cache yet).
         refreshing = true;
-        if (config.messageId) {
+        if (config.messageId && lastDashboardData) {
             try {
                 const msg = await channel.messages.fetch(config.messageId);
-                await patchDashboardEmbed(msg, buildRefreshingEmbed(msg), row);
+                const rBuilt = buildDashboardV2(lastDashboardData, v2Opts({ refreshing: true }));
+                await msg.edit(v2EditPayload(rBuilt));
             } catch { /* old message gone — will post new below */ }
         }
 
@@ -686,38 +840,60 @@ async function postOrUpdateDashboard(db) {
             refreshing = false;
         }
         data.lastCheckTime = Date.now();
-        const embed = buildDashboardEmbed(data);
+        lastDashboardData = data;
+        const built = buildDashboardV2(data, v2Opts());
+        if (built.metrics.textChars > 4000 || built.metrics.componentCount > 40 || built.metrics.topLevel > 10) {
+            // Over budget (shouldn't happen — the builder trims assignments):
+            // frozen legacy embed path as emergency fallback.
+            console.warn(`[DASHBOARD] V2 over budget (text ${built.metrics.textChars}, comps ${built.metrics.componentCount}) — legacy fallback`);
+            const embed = buildDashboardEmbed(data);
+            if (config.messageId) {
+                try {
+                    const msg = await channel.messages.fetch(config.messageId);
+                    await patchDashboardEmbed(msg, embed, row);
+                    cachedConfig = { ...config };
+                    return data;
+                } catch (err) {
+                    logDiscordErr(`Legacy patch failed for ${config.messageId} — will post new`, err);
+                }
+            }
+            const msg = await channel.send({ embeds: [embed], components: [row] });
+            await db.ref(DASHBOARD_CONFIG_PATH).update({ messageId: msg.id });
+            cachedConfig = { ...config, messageId: msg.id };
+            console.log(`[DASHBOARD] 📋 Dashboard posted (legacy fallback) in #${channel.name}`);
+            return data;
+        }
 
         if (config.messageId) {
             try {
                 const msg = await channel.messages.fetch(config.messageId);
-                // Smooth in-place update — patch the existing embed's fields
-                // rather than flashing a pending state and rebuilding wholesale.
-                await patchDashboardEmbed(msg, embed, row);
+                // In-place conversion on first V2 cycle (legacy embed -> V2);
+                // smooth V2->V2 update afterwards.
+                await msg.edit(v2EditPayload(built));
                 cachedConfig = { ...config };
                 return data;
             } catch (err) {
-                console.error(`[DASHBOARD] ⚠️ Patch failed for ${config.messageId}: ${err.message} — will post new`);
+                logDiscordErr(`Patch failed for ${config.messageId} — will post new`, err);
             }
         }
 
         // No existing message — post a new one
-        const msg = await channel.send({ embeds: [embed], components: [row] });
+        const msg = await channel.send({ flags: built.flags, components: built.components });
         await db.ref(DASHBOARD_CONFIG_PATH).update({ messageId: msg.id });
         cachedConfig = { ...config, messageId: msg.id };
         console.log(`[DASHBOARD] 📋 Dashboard posted in #${channel.name}`);
         return data;
     } catch (err) {
-        console.error('[DASHBOARD] ⚠️ Update error:', err.message);
+        logDiscordErr('Update error', err);
         return null;
     }
 }
 
 // ── VPS Stats Lightweight Updater ──
-// Refreshes only the VPS Resources field every 5s by patching the existing
+// Refreshes only the VPS Resources field every 60s by patching the existing
 // dashboard message in place (same technique as patchDashboardEmbed). Does NOT
 // re-gather forums/queue — those stay on the 5-min cycle. Discord allows ~5
-// edits per 5s per channel; one edit per 5s is within budget.
+// edits per 5s per channel; one edit per 60s is well within budget.
 
 async function updateVpsStatsField() {
     if (!client || editInProgress) return;
@@ -730,44 +906,26 @@ async function updateVpsStatsField() {
         if (!channel) return;
 
         const msg = await channel.messages.fetch(cachedConfig.messageId).catch(() => null);
-        if (!msg || msg.embeds.length === 0) return;
+        if (!msg) return;
+        // V2 messages carry no embed to patch — rebuild from the last gathered
+        // data + fresh VPS stats (same numbers, new timestamp). No cache yet
+        // (first boot) means the full cycle hasn't run: skip, don't clobber.
+        if (!lastDashboardData) return;
 
         const vps = await getVpsStats();
-        const oldEmbed = msg.embeds[0];
-
-        // Rebuild the embed, swapping in fresh VPS stats while keeping everything else.
-        const embed = EmbedBuilder.from(oldEmbed);
-        const fields = (oldEmbed.fields || []).map(f => ({
-            name: f.name,
-            value: f.value,
-            inline: f.inline === true,
-        }));
-
-        const vpsIdx = fields.findIndex(f => f.name === '🖥️ VPS Resources');
-        if (vpsIdx !== -1) {
-            fields[vpsIdx] = { name: '🖥️ VPS Resources', value: buildVpsField(vps), inline: false };
-        } else {
-            fields.push({ name: '🖥️ VPS Resources', value: buildVpsField(vps), inline: false });
-        }
-
-        embed.spliceFields(0, fields.length, ...fields.map(f => ({
-            name: f.name,
-            value: f.value,
-            inline: f.inline,
-        })));
-
-        await msg.edit({ embeds: [embed] });
+        const built = buildDashboardV2({ ...lastDashboardData, vps }, v2Opts({ refreshing }));
+        await msg.edit(v2EditPayload(built));
         vpsStatsFails = 0;
     } catch (err) {
         vpsStatsFails++;
         if (vpsStatsFails >= 6) {
-            // ~30s of consecutive failures — pause the 5s loop for 5 min and
+            // ~6 min of consecutive failures — pause the 60s loop for 5 min and
             // log once instead of once per cycle.
             vpsStatsPausedUntil = Date.now() + VPS_STATS_FAIL_PAUSE_MS;
             vpsStatsFails = 0;
             console.warn('[DASHBOARD] VPS stats updater paused 5m after repeated failures:', err.message);
         } else if (vpsStatsFails === 1) {
-            console.error('[DASHBOARD] VPS stats update error:', err.message);
+            logDiscordErr('VPS stats update error', err);
         }
     } finally {
         editInProgress = false;
@@ -779,7 +937,7 @@ async function updateVpsStatsField() {
 export async function handleDashboardRefresh(interaction) {
     if (!interaction.isButton() || interaction.customId !== 'dashboard_refresh') return false;
 
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     try {
         const db = firebase.db;
@@ -788,28 +946,26 @@ export async function handleDashboardRefresh(interaction) {
             return true;
         }
 
-        // Helper to build a partial embed with mix of live + pending results
-        const buildPartial = (results) => {
-            const order = ['PHMC', 'LSPD', 'LSSD'];
-            const lines = order.map(name => {
-                const r = results.find(x => x.name === name);
-                if (!r) return `⏳ **${name}** — Pending...`;
-                const emoji = r.status === 'Good' ? '✅' : r.status === 'Bad' ? '⚠️' : '🔴';
-                const latency = r.latency != null ? ` ${r.latency}ms` : '';
-                return `${emoji} **${name}**${latency} — ${r.status}`;
-            }).join('\n');
-
-            return new EmbedBuilder()
-                .setColor(0xffc107)
-                .setTitle('🖥️ PHMC System Dashboard')
-                .setDescription('⏳ Forum checks in progress...')
-                .addFields({ name: '🌐 Forum Status', value: lines, inline: false })
-                .setFooter({ text: 'Checking forums one at a time...' });
-        };
+        // V2 progress payload: header + single forum-status container (no
+        // stickers key — edits carrying it are rejected outright, see helper).
+        const v2Progress = (lines) => ({
+            embeds: [], flags: MessageFlags.IsComponentsV2,
+            components: [
+                { type: 10, content: '# PHMC System Dashboard\n⏳ Forum checks in progress...' },
+                { type: 17, components: [{ type: 10, content: `## Forum Status\n${lines}` }] },
+                buildRefreshRow(),
+            ],
+        });
+        const progressLines = (results) => ['PHMC', 'LSPD', 'LSSD'].map((name) => {
+            const r = results.find((x) => x.name === name);
+            if (!r) return `⏳ **${name}** — Pending...`;
+            const emoji = r.status === 'Good' ? '✅' : r.status === 'Bad' ? '⚠️' : '🔴';
+            const latency = r.latency != null ? ` ${r.latency}ms` : '';
+            return `${emoji} **${name}**${latency} — ${r.status}`;
+        }).join('\n');
 
         // Step 1: Show all pending
-        const row = buildRefreshRow();
-        await interaction.message.edit({ embeds: [buildPartial([])], components: [row] });
+        await interaction.message.edit(v2Progress(progressLines([])));
 
         // Step 2: Check forums one by one, updating as we go
         const { getForumClient } = await import('./forumClient.js');
@@ -828,11 +984,11 @@ export async function handleDashboardRefresh(interaction) {
             } catch {
                 liveResults.push({ name: forum.name, latency: null, status: 'Unresponsive' });
             }
-            // Update embed after each forum completes
-            await interaction.message.edit({ embeds: [buildPartial(liveResults)], components: [row] });
+            // Update after each forum completes
+            await interaction.message.edit(v2Progress(progressLines(liveResults)));
         }
 
-        // Step 3: Gather non-forum data and build final embed
+        // Step 3: Gather non-forum data and build the final V2 payload
         const data = await gatherDashboardData(db, false);
         data.forums = liveResults.map(f => ({
             ...f,
@@ -840,12 +996,13 @@ export async function handleDashboardRefresh(interaction) {
             lastChecked: Date.now(),
         }));
         data.lastCheckTime = Date.now();
+        lastDashboardData = data;
 
-        const finalEmbed = buildDashboardEmbed(data);
-        await interaction.message.edit({ embeds: [finalEmbed], components: [row] });
+        const built = buildDashboardV2(data, v2Opts());
+        await interaction.message.edit(v2EditPayload(built));
         await interaction.editReply({ content: '✅ Dashboard refreshed! (live data)' });
     } catch (err) {
-        console.error('[DASHBOARD] Refresh error:', err.message);
+        logDiscordErr('Refresh error', err);
         await interaction.editReply({ content: '⏳ Refresh triggered, please wait for the next auto-refresh cycle.' });
     }
 
@@ -859,7 +1016,7 @@ export async function handleDashboardRefresh(interaction) {
 export async function handleDashboardRestart(interaction) {
     if (!interaction.isButton() || interaction.customId !== 'dashboard_restart') return false;
 
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     try {
         const db = firebase.db;
@@ -890,49 +1047,21 @@ export async function handleDashboardRestart(interaction) {
 // ── Startup / Teardown ──
 
 /**
- * One dashboard cycle: main dashboard first, then the dedicated PHMC
- * dashboard reusing the same gathered data (zero extra RTDB reads). The PHMC
- * post is independently gated by PHMC_CHANNEL_SEND_ENABLED (read-only until
- * the VPS .env authorizes it).
+ * One dashboard cycle: main (dev) dashboard only. The dedicated PHMC board
+ * was removed (unused) — its renderer (phmcDashboard.js) and command are gone.
  */
 async function runDashboardCycle(db) {
-    const data = await postOrUpdateDashboard(db);
-    let shared = data;
-    if (!shared) {
-        // Main dashboard not configured — only gather when the PHMC board is
-        // actually authorized to post (otherwise the reads serve no audience).
-        try {
-            const { channelSendEnabled } = await import('./phmcChannels.js');
-            if (!channelSendEnabled()) return;
-            shared = await gatherDashboardData(db, false);
-            shared.lastCheckTime = Date.now();
-        } catch {
-            shared = null;
-        }
-    }
-    if (shared) {
-        try {
-            const { postPhmcDashboard } = await import('./phmcDashboard.js');
-            await postPhmcDashboard(client, db, shared);
-        } catch (err) {
-            console.warn(`[PHMC-DASH] Cycle error: ${err.message}`);
-        }
-    }
+    await postOrUpdateDashboard(db);
 }
 
 export function startDashboardManager() {
     firebase.init();
     const db = firebase.db;
 
-    // Recursive timer — next cycle starts after current one finishes (no overlap)
-    async function scheduleNext() {
-        await runDashboardCycle(db);
-        refreshInterval = setTimeout(scheduleNext, DASHBOARD_REFRESH_MS);
-    }
-
-    // Check if a dashboard is configured and start the cycle
+    // First cycle runs immediately (first boot); subsequent cycles fire on the
+    // shared scheduler (reentrancy guard built in — replaces recursive setTimeout).
     runDashboardCycle(db).then(() => {
-        refreshInterval = setTimeout(scheduleNext, DASHBOARD_REFRESH_MS);
+        registerTick('dashboard-refresh', { intervalMs: DASHBOARD_REFRESH_MS, fn: () => runDashboardCycle(db) });
         statsInterval = setInterval(updateVpsStatsField, VPS_STATS_REFRESH_MS);
     });
 
@@ -942,8 +1071,9 @@ export function startDashboardManager() {
 }
 
 export function stopDashboardManager() {
+    unregisterTick('dashboard-refresh');
     if (refreshInterval) {
-        clearInterval(refreshInterval);
+        clearTimeout(refreshInterval);
         refreshInterval = null;
     }
     if (statsInterval) {

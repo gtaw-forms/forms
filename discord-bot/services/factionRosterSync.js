@@ -14,6 +14,7 @@ import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { getForumClient, createIsolatedClient } from './forumClient.js';
 import { sendLogMessage } from './logChannel.js';
+import { registerTick, unregisterTick } from './scheduler.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -55,7 +56,8 @@ const FACTION_CONFIG = {
 
 // ── State ──
 
-let _syncTimer = null;
+let _rosterRegistered = false;
+let _registerTimer = null;
 
 // ── Helpers ──
 
@@ -94,18 +96,42 @@ async function scrapeFaction(config) {
     console.log(`[ROSTER-SYNC] Scraping ${config.label} (g=${config.groupId})...`);
     const client = createIsolatedClient(`roster-${config.label.toLowerCase()}`);
     try {
-        // Reuse-first: login() falls back to the credential form when the
-        // stored session is dead, so this skips redundant full logins.
+        // Group-details pages bounce stale stored sessions to the login wall
+        // (parses as zero rows), so roster scrapes always force a fresh
+        // credential login. Infrequent (12h) — cost is irrelevant.
         await client.login(
             process.env[config.usernameEnv],
             process.env[config.passwordEnv],
-            { force: false, baseUrl: config.baseUrl }
+            { force: true, baseUrl: config.baseUrl }
         );
 
         const members = await client.getGroupMembers(config.groupId, {
             baseUrl: config.baseUrl,
             paginate: true,
         });
+
+        // Never overwrite a healthy roster with an empty scrape. Login walls,
+        // Cloudflare challenges and parser misses all surface as zero rows —
+        // writing that out destroys the last good data (seen live: LSPD file
+        // wiped to 0 members). Keep the previous file and shout instead.
+        if (!Array.isArray(members) || members.length === 0) {
+            let prevCount = 0;
+            try {
+                const prevPath = getDataPath(config.file);
+                if (existsSync(prevPath)) {
+                    const prev = JSON.parse(readFileSync(prevPath, 'utf-8'));
+                    prevCount = prev?.members?.length || 0;
+                }
+            } catch { /* treat as no previous file */ }
+            if (prevCount > 0) {
+                console.error(`[ROSTER-SYNC] ${config.label} scrape returned 0 members — keeping previous file (${prevCount} members). NOT overwriting. Check forum creds/group.`);
+                try {
+                    await sendLogMessage(`[ROSTER-SYNC] ${config.label} scrape came back empty — kept last good file (${prevCount} members). Check forum creds/group.`);
+                } catch { /* non-fatal */ }
+                return null;
+            }
+            console.warn(`[ROSTER-SYNC] ${config.label} scrape returned 0 members and no previous file exists — writing empty.`);
+        }
 
         const data = {
             members,
@@ -154,27 +180,32 @@ export async function syncFactionRosters() {
 }
 
 /**
- * Schedule the next sync at a random time within the window.
- */
-function scheduleNextSync() {
-    const delay = COOLDOWN_MS + Math.floor(Math.random() * SYNC_WINDOW_MS);
-    const next = new Date(Date.now() + delay);
-    console.log(`[ROSTER-SYNC] Next sync scheduled at ${next.toLocaleString()} (in ${Math.round(delay / 3600000)}h)`);
-
-    if (_syncTimer) clearTimeout(_syncTimer);
-    _syncTimer = setTimeout(async () => {
-        await syncFactionRosters();
-        scheduleNextSync();
-    }, delay);
-}
-
-/**
  * Start the roster sync system. Called once on bot startup.
  * Syncs immediately if the last sync was longer ago than COOLDOWN_MS,
- * otherwise schedules the next sync at the COOLDOWN_MS mark.
+ * otherwise the ~12h scheduler tick covers the next sync.
+ * The immediate run stays a direct call (not runAtStart) so the phased boot
+ * queue can await the real work; the steady tick is armed either way.
  */
 export function startFactionRosterSync() {
     console.log('[ROSTER-SYNC] Starting faction roster sync service...');
+
+    // Delayed initial registration: the scheduler fires non-runAtStart ticks at
+    // the first evaluation (spread by jitter), so registering now would re-sync
+    // within ~30m of boot. Registering after one full COOLDOWN preserves the
+    // original chain's phase; steady ticks then run COOLDOWN_MS +
+    // rand(0..SYNC_WINDOW_MS) per cycle (same delay shape as the old recursive
+    // setTimeout chain).
+    if (_registerTimer) clearTimeout(_registerTimer);
+    _registerTimer = setTimeout(() => {
+        _registerTimer = null;
+        registerTick('faction-roster-sync', {
+            intervalMs: COOLDOWN_MS,
+            jitterMs: SYNC_WINDOW_MS,
+            runAtStart: false,
+            fn: () => syncFactionRosters(),
+        });
+        _rosterRegistered = true;
+    }, COOLDOWN_MS);
 
     const lastSync = getLastSyncTime();
     const elapsed = Date.now() - lastSync;
@@ -183,12 +214,26 @@ export function startFactionRosterSync() {
         console.log(`[ROSTER-SYNC] Last sync was ${Math.round(elapsed / 3600000)}h ago — running now`);
         // Return the in-flight sync so the phased boot queue can await the
         // real work (not just the scheduler kickoff).
-        return syncFactionRosters().then(() => scheduleNextSync());
+        return syncFactionRosters();
     } else {
         const remaining = COOLDOWN_MS - elapsed;
         console.log(`[ROSTER-SYNC] Last sync was ${Math.round(elapsed / 3600000)}h ago — next in ${Math.round(remaining / 3600000)}h`);
-        scheduleNextSync();
         return Promise.resolve();
+    }
+}
+
+/**
+ * Stop the roster sync tick (cleanup on shutdown).
+ */
+export function stopFactionRosterSync() {
+    if (_registerTimer) {
+        clearTimeout(_registerTimer);
+        _registerTimer = null;
+    }
+    if (_rosterRegistered) {
+        unregisterTick('faction-roster-sync');
+        _rosterRegistered = false;
+        console.log('[ROSTER-SYNC] Sync scheduler stopped.');
     }
 }
 

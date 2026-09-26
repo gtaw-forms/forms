@@ -54,7 +54,7 @@ export async function crosspostAutopsyToLspd(reportData, bbCode, phmcTopicId, db
         const client = getForumClient();
 
         // Login to LSPD forum
-        await client.login(process.env.FORUM_LSPD_USERNAME, process.env.FORUM_LSPD_PASSWORD, { force: true, baseUrl: LSPD_BASE });
+        await client.login(process.env.FORUM_LSPD_USERNAME, process.env.FORUM_LSPD_PASSWORD, { force: false, baseUrl: LSPD_BASE });
 
         const decedentName = reportData?.data?.decedentName || 'Unknown';
         const decedentOOC = reportData?.data?.decedentOOC || '';

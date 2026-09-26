@@ -751,10 +751,10 @@ function requireSignedIn(request) {
 // into request.auth.token by processGtaWorldAuth
 // (functions/src/auth/index.js:387-397): gtawUsername + oauthName (both = the
 // UCP account username) and characterName (highest-rank PHMC roster character
-// name, null for non-members). refreshGtawUser (functions/src/auth/index.js:
-// 650-656) sets gtawUsername ONLY — no characterName/oauthName — so refreshed
-// sessions would lose their identity under a characterName-only check. The
-// gate therefore matches the requested author against ALL THREE sanitized
+// name, null for non-members). refreshGtawUser used to mint gtawUsername ONLY
+// (fixed 2026-09-26: it now mirrors the full claim set), so pre-fix refreshed
+// sessions carry the thin identity — the gate still matches all three to
+// cover them. The gate matches the requested author against ALL THREE sanitized
 // claim values (same comprehensiveSanitize rule as the client,
 // src/utils/textUtils.js:161-167) and never trusts the client string alone.
 // Superadmin (isSuperAdmin claim or accessLevel 'superadmin', same convention

@@ -102,7 +102,7 @@ export async function crosspostAutopsyToLssd(reportData, bbCode, phmcTopicId, db
 
     try {
         const client = getForumClient();
-        await client.login(process.env.FORUM_LSSD_USERNAME, process.env.FORUM_LSSD_PASSWORD, { force: true, baseUrl: 'https://lssd.gta.world' });
+        await client.login(process.env.FORUM_LSSD_USERNAME, process.env.FORUM_LSSD_PASSWORD, { force: false, baseUrl: 'https://lssd.gta.world' });
 
         const r = await client.replyToTopic(lssdTopicId, 2263, bbCode, { dryRun: false, baseUrl: 'https://lssd.gta.world' });
         const status = r.ok ? 'completed' : 'failed';
@@ -211,7 +211,7 @@ export async function retryFailedLssdCrossposts(db) {
                 console.log('[AUTO-CROSSPOST] No saved LSSD topic for ' + phmcTopicId + ' — searching LSSD autopsy forum...');
                 try {
                     const client = getForumClient();
-                    await client.login(process.env.FORUM_LSSD_USERNAME, process.env.FORUM_LSSD_PASSWORD, { force: true, baseUrl: LSSD_BASE });
+                    await client.login(process.env.FORUM_LSSD_USERNAME, process.env.FORUM_LSSD_PASSWORD, { force: false, baseUrl: LSSD_BASE });
                     const found = await searchLssdRequestTopic(client, { oocName: oocSearch, name: nameSearch });
                     if (found) {
                         console.log('[AUTO-CROSSPOST] Found LSSD topic #' + found.topicId + ' for ' + phmcTopicId);

@@ -3,7 +3,7 @@
  * Uses the bot's own client (not a webhook) so the messages appear as the bot.
  */
 
-import { EmbedBuilder } from 'discord.js';
+import { EmbedBuilder, MessageFlags } from 'discord.js';
 import { isDevTestActive, devLogChannelId } from './devRouting.js';
 
 let _client = null;
@@ -88,6 +88,32 @@ async function deliverTo(channelId, payload, withTimeout) {
 }
 
 /**
+ * Send Components-V2 payload to the log channel (same routing/timeout as
+ * sendLogMessage). No pings — status posts must never notify anyone.
+ * Returns true on success, false otherwise (callers fall back as needed).
+ */
+export async function sendLogV2(components) {
+    const channelId = isDevTestActive() ? devLogChannelId() : _channelId;
+    if (!channelId || !_client) return false;
+
+    const SEND_TIMEOUT_MS = 10000;
+    const withTimeout = (promise, label) => Promise.race([
+        promise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${SEND_TIMEOUT_MS}ms`)), SEND_TIMEOUT_MS)),
+    ]);
+
+    const ok = await deliverTo(channelId, {
+        flags: MessageFlags.IsComponentsV2,
+        components: components || [],
+        allowedMentions: { parse: [] },
+    }, withTimeout);
+    if (!ok) {
+        console.warn(`[LOG] [WARN] Failed to send log V2 message: delivery failed`);
+    }
+    return ok;
+}
+
+/**
  * Send plain text to an explicit channel (used by the audit batch sender for
  * the dedicated audit channel). No dev-routing redirect, no pings — audit
  * lines must never notify anyone. Returns true on success.
@@ -132,5 +158,35 @@ export async function notifySelfHeal(topicId, reason, info) {
         await sendLogMessage(`SELF HEALING - ${topicId} / ${reason} / ${info}`);
     } catch (err) {
         console.warn(`[LOG] ⚠️ Self-heal notify failed for ${topicId}: ${err.message}`);
+    }
+}
+
+/**
+ * Cooldown-gated send: at most one post per `key` per `cooldownMs`.
+ * If `Date.now() - lastSent < cooldownMs`, skips silently (returns false).
+ * Otherwise builds the payload via `payloadBuilder` (called ONLY on send, so
+ * timestamps stay fresh), sends it through sendLogMessage, records the
+ * timestamp, and returns true. Never throws outward.
+ *
+ * @param {string} key — dedupe key (e.g. `slow:<reportKey>`)
+ * @param {number} cooldownMs — minimum ms between sends for this key
+ * @param {Function} payloadBuilder — () => ({ content?, embed?, options? }) or promise thereof
+ * @returns {Promise<boolean>} true if sent, false if skipped/failed
+ */
+const _notifyOnceLastSent = new Map();
+
+export async function notifyOnce(key, cooldownMs, payloadBuilder) {
+    try {
+        const now = Date.now();
+        const last = _notifyOnceLastSent.get(key) || 0;
+        if (now - last < cooldownMs) return false;
+        const payload = await payloadBuilder();
+        if (!payload) return false;
+        await sendLogMessage(payload.content ?? null, payload.embed ?? null, payload.options ?? {});
+        _notifyOnceLastSent.set(key, Date.now());
+        return true;
+    } catch (err) {
+        console.warn(`[LOG] ⚠️ notifyOnce failed for ${key}: ${err.message}`);
+        return false;
     }
 }

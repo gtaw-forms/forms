@@ -28,6 +28,10 @@ export const CASE_MGMT_FORUM_ID = 266;
 export const AUTOPSY_DRY_RUN = process.env.AUTOPSY_DRY_RUN !== 'false'; // default dry-run
 export const AUTOPSY_REQUEST_FORUM_ID = 265;
 
+// Per-pick expiry timers, keyed by pickId — cleared when the pick resolves
+// so a resolved pick never fires a stale re-queue.
+const pickExpiryTimers = new Map();
+
 // Re-export for backwards compatibility (moved to services/completionTemplate.js)
 export { COMPLETION_TEMPLATE };
 
@@ -38,6 +42,136 @@ export { COMPLETION_TEMPLATE };
  */
 export function extractReplyPostId(url) {
     return (String(url || '').match(/[?&]p=(\d+)/) || [])[1] || null;
+}
+
+// ── Mass-collection (shared-thread) completion helpers ──
+//
+// Mass Autopsy Rework model: one shared f=266 thread holds one reply PER BODY
+// (each ME's report), tracked under cases/<idx>/{replyPostId,replyUrl,
+// completedAt,completedBbCode}. The collection-level steps (f=265 PHMC reply,
+// agency combined reply, LSPD crosspost, requester DM, CASELINK webhook) fire
+// ONCE per collection with ONE batched payload when every body is done —
+// partials never emit premature singles.
+//
+// Per-topic multi records (each case owns its own f=266 topic via
+// cases/<idx>/caseTopicId) keep the legacy per-case behaviour below.
+
+/** phpBB post-size fallback threshold for batched mass payloads. */
+export const MASS_BATCH_BODY_CAP = 55000;
+
+/**
+ * True when the record is a shared-thread mass collection: 2+ per-case
+ * records under cases/<idx> with NO distinct per-case f=266 topics (every ME
+ * reports into the one collection-level thread).
+ * Per-topic multis (distinct cases/<idx>/caseTopicId values) return false.
+ * @param {object} entry — autopsy-requested record
+ */
+export function isSharedThreadCollection(entry) {
+    if (!entry || typeof entry !== 'object') return false;
+    const cases = entry.cases;
+    if (!cases || typeof cases !== 'object') return false;
+    const idxs = Object.keys(cases).filter((k) => /^\d+$/.test(k));
+    if (idxs.length < 2) return false;
+    const topics = new Set(idxs.map((i) => String(cases[i]?.caseTopicId || '').trim()).filter(Boolean));
+    if (topics.size === 0) return true;
+    const top = String(entry.caseTopicId || entry.topicId || '').trim();
+    return !!top && topics.size === 1 && topics.has(top);
+}
+
+/**
+ * Match a report to one cases/<idx> member, OOC-exact-first, never a generic
+ * "John Doe" name match. Mirrors the 553-607 lookup semantics (same pass
+ * order, same prefer-uncompleted-then-highest-caseNum tie-break) but also
+ * matches shared-thread members that carry no individual caseTopicId.
+ * @param {object} allReq — autopsy-requested node value
+ * @param {string} ooc — report decedentOOC
+ * @param {string} name — report decedentName
+ * @returns {{rkey: string, ci: number, caseRec: object, entry: object}|null}
+ */
+export function matchCollectionCase(allReq, ooc, name) {
+    if (!allReq || typeof allReq !== 'object') return null;
+    const oocL = String(ooc || '').trim().toLowerCase();
+    const nameL = String(name || '').trim().toLowerCase();
+    const nameUsable = !!nameL && !/^john\s*doe$/i.test(String(name || '').trim());
+    const pickBest = (cur, cand) => {
+        if (!cur) return cand;
+        if (!!cur.caseRec.completedAt && !cand.caseRec.completedAt) return cand;
+        if (!!cur.caseRec.completedAt === !!cand.caseRec.completedAt) {
+            const cNum = parseInt(cand.caseRec.caseNum, 10) || 0;
+            const bNum = parseInt(cur.caseRec.caseNum, 10) || 0;
+            if (cNum > bNum) return cand;
+        }
+        return cur;
+    };
+    let best = null;
+    if (oocL) {
+        for (const [rkey, entry] of Object.entries(allReq)) {
+            if (!entry || !entry.cases || typeof entry.cases !== 'object') continue;
+            for (const [ci, c] of Object.entries(entry.cases)) {
+                if (!c || !/^\d+$/.test(ci)) continue;
+                if (String(c.oocName || '').trim().toLowerCase() !== oocL) continue;
+                best = pickBest(best, { rkey, ci: parseInt(ci, 10), caseRec: c, entry });
+            }
+        }
+    }
+    if (!best && nameUsable) {
+        for (const [rkey, entry] of Object.entries(allReq)) {
+            if (!entry || !entry.cases || typeof entry.cases !== 'object') continue;
+            for (const [ci, c] of Object.entries(entry.cases)) {
+                if (!c || !/^\d+$/.test(ci)) continue;
+                if (String(c.name || '').trim().toLowerCase() !== nameL) continue;
+                best = pickBest(best, { rkey, ci: parseInt(ci, 10), caseRec: c, entry });
+            }
+        }
+    }
+    return best;
+}
+
+export function buildBatchedBodiesPayload(casesObj) {
+    const idxs = Object.keys(casesObj || {}).filter((k) => /^\d+$/.test(k)).map(Number).sort((a, b) => a - b);
+    const N = idxs.length;
+    const parts = idxs.map((i, pos) => {
+        const c = casesObj[i] || {};
+        const who = [String(c.name || '').trim(), c.oocName ? `(( ${String(c.oocName).trim()} ))` : ''].filter(Boolean).join(' ').trim();
+        const head = `--- BODY ${pos + 1}/${N}${who ? `: ${who}` : ''} ---`;
+        return `${head}\n${c.completedBbCode || '(report pending)'}`;
+    });
+    return { text: parts.join('\n\n'), count: N };
+}
+
+/**
+ * True when a collection has every body completed (or when the record is not
+ * a multi-case collection at all). Retry gating keys off this so partials
+ * never emit premature singles.
+ * @param {object} entry — autopsy-requested record
+ */
+export function collectionCasesDone(entry) {
+    const cases = entry?.cases;
+    if (!cases || typeof cases !== 'object') return true;
+    const idxs = Object.keys(cases).filter((k) => /^\d+$/.test(k));
+    if (idxs.length === 0) return true;
+    return idxs.every((i) => !!(cases[i] || {}).completedAt);
+}
+
+/**
+ * Split an over-cap batched payload via the mass-post chunker when that
+ * worker's module is present. Optional import — resolves to a single-element
+ * array when massPostChunker.js is absent (this checkout) or unusable.
+ * @param {string} text — batched payload
+ * @returns {Promise<string[]>}
+ */
+export async function chunkMassPayloadIfNeeded(text) {
+    const body = String(text || '');
+    if (!body || body.length <= MASS_BATCH_BODY_CAP) return [body];
+    try {
+        const mod = await import('./massPostChunker.js');
+        const fn = mod?.chunkBbCode || mod?.chunkMassPost || mod?.default;
+        if (typeof fn === 'function') {
+            const out = await fn(body);
+            if (Array.isArray(out) && out.length && out.every((p) => typeof p === 'string')) return out;
+        }
+    } catch { /* massPostChunker.js not present — fall through to whole post */ }
+    return [body];
 }
 
 /**
@@ -57,12 +191,25 @@ export function extractReplyPostId(url) {
  * @param {string} [opts.baseUrl]
  * @param {string} [opts.title] — subject for edits
  * @param {string} [opts.existingPostId] — reply post id from a prior run
+ * @param {Array<string>|object} [opts.existingPostIds] — per-body reply post ids
+ *   for a shared-thread mass collection (array or {index: postId} map). When
+ *   opts.bodyIndex selects an entry, that id wins over opts.existingPostId.
+ * @param {number} [opts.bodyIndex] — body index into opts.existingPostIds
  * @param {boolean} [opts.dryRun=false]
  * @param {string} [opts.logTag='REPLY']
  * @returns {Promise<{ok: boolean, url: string|null, postId: string|null, edited: boolean, reason?: string, topicMissing?: boolean}>}
  */
-export async function postOrEditReply(client, { topicId, forumId, bbCode, baseUrl, title, existingPostId, dryRun = false, logTag = 'REPLY' }) {
-    const pid = String(existingPostId || '').trim();
+export async function postOrEditReply(client, { topicId, forumId, bbCode, baseUrl, title, existingPostId, existingPostIds = null, bodyIndex = null, dryRun = false, logTag = 'REPLY' }) {
+    // Per-body resolution for shared-thread mass collections: each ME's report
+    // owns its own reply inside the one shared f=266 thread, so re-runs must
+    // edit that body's reply (not post a duplicate, not edit another body's).
+    // Single-post callers pass only existingPostId — behaviour unchanged.
+    let pid = '';
+    if (bodyIndex !== null && bodyIndex !== undefined && existingPostIds) {
+        const raw = Array.isArray(existingPostIds) ? existingPostIds[bodyIndex] : existingPostIds[bodyIndex];
+        pid = String(raw || '').trim();
+    }
+    if (!pid) pid = String(existingPostId || '').trim();
     if (pid && /^\d+$/.test(pid) && !dryRun) {
         console.log(`[AUTO] ${logTag} already posted (p=${pid}) — editing in place instead of duplicating`);
         const editRes = await client.editPostContent(topicId, forumId, pid, bbCode, { title, baseUrl });
@@ -90,12 +237,17 @@ export async function postOrEditReply(client, { topicId, forumId, bbCode, baseUr
  * @param {object} opts.entry — autopsy-requested entry
  * @param {object} opts.reportData — the submitted report data
  * @param {string} opts.completionBb — rendered completion template (no URL)
- * @param {string} opts.bbCode — full autopsy report BBCode
+ * @param {string} opts.bbCode — full autopsy report BBCode (single-body path)
+ * @param {Array<{name?: string, oocName?: string, bbCode?: string}>} [opts.bodies] — array
+ *   input for a completed mass collection: one combined reply carries every
+ *   body with `--- BODY i/N ---` headers, one completion URL set per collection
+ * @param {string} [opts.batchedBbCode] — prebuilt batched bodies block (alternative
+ *   to opts.bodies; opts.bodies wins when both are given)
  * @param {object} opts.progress — DeployProgressEmbed instance
  * @param {object} opts.stepFailed — shared step-failure tracker
  * @returns {Promise<{ok: boolean, url: string|null, skipped?: boolean}>}
  */
-async function postLssdCombinedReply({ key, entry, reportData, completionBb, bbCode, progress, stepFailed }) {
+async function postLssdCombinedReply({ key, entry, reportData, completionBb, bbCode, bodies = null, batchedBbCode = null, progress, stepFailed }) {
     // ── Faction resolution FIRST so status/failure writers key per faction ──
     // The REQUEST record is authoritative for faction — the report's department
     // field is only a hint (MEs sometimes leave it on the wrong agency mid-batch).
@@ -167,8 +319,16 @@ async function postLssdCombinedReply({ key, entry, reportData, completionBb, bbC
         return { ok: false, url: null };
     }
 
-    // Combined reply: completion notice + full autopsy report in one post.
-    const lssdCombinedBb = completionBb + '\n\n[hr][/hr]\n\n' + bbCode;
+    // Combined reply: completion notice + full autopsy report(s) in one post.
+    // Array input (completed mass collection) concatenates every body with
+    // `--- BODY i/N ---` headers; the single-body path below is unchanged.
+    const batchedBodies = Array.isArray(bodies) && bodies.length
+        ? bodies.map((b, idx) => {
+            const who = [String(b?.name || '').trim(), b?.oocName ? `(( ${String(b.oocName).trim()} ))` : ''].filter(Boolean).join(' ').trim();
+            return `--- BODY ${idx + 1}/${bodies.length}${who ? `: ${who}` : ''} ---\n${b?.bbCode || ''}`;
+        }).join('\n\n')
+        : (batchedBbCode || null);
+    const lssdCombinedBb = completionBb + '\n\n[hr][/hr]\n\n' + (batchedBodies || bbCode);
     const agencyBaseUrl = cfgA.baseUrl;
     const agencyForumId = cfgA.forumId;
 
@@ -178,32 +338,44 @@ async function postLssdCombinedReply({ key, entry, reportData, completionBb, bbC
         try {
             // Registry factions share the same forum account (all subforums of
             // lssd.gta.world) — creds are picked per faction prefix (FORUM_LSSD_*).
-            await lssdClient.login(process.env[`FORUM_${cfgA.credPrefix}_USERNAME`], process.env[`FORUM_${cfgA.credPrefix}_PASSWORD`], { force: true, baseUrl: agencyBaseUrl });
+            await lssdClient.login(process.env[`FORUM_${cfgA.credPrefix}_USERNAME`], process.env[`FORUM_${cfgA.credPrefix}_PASSWORD`], { force: false, baseUrl: agencyBaseUrl });
 
             console.log(`[AUTO-COMPLETE] ${effFaction} combined reply — posting completion + report to #${lssdRequestTopicId}`);
             // Edit-in-place when this crosspost reply already exists (re-run after
             // a successful post) — the reply post id is persisted below on success.
+            // Over-cap batched payloads split via the optional 55k chunk fallback.
             const existingCrosspostPostId = entry[`${fx}CrosspostReplyPostId`] || null;
-            const r = await postOrEditReply(lssdClient, {
-                topicId: lssdRequestTopicId,
-                forumId: agencyForumId,
-                bbCode: lssdCombinedBb,
-                baseUrl: agencyBaseUrl,
-                existingPostId: existingCrosspostPostId,
-                logTag: `${effFaction}-CROSSPOST`,
-            });
+            const crosspostParts = await chunkMassPayloadIfNeeded(lssdCombinedBb);
+            if (crosspostParts.length > 1) console.log(`[AUTO-COMPLETE] ${effFaction} combined reply — ${crosspostParts.length} part(s) (55k chunk fallback)`);
+            let r = null;
+            let rFirst = null;
+            for (let pi = 0; pi < crosspostParts.length; pi++) {
+                r = await postOrEditReply(lssdClient, {
+                    topicId: lssdRequestTopicId,
+                    forumId: agencyForumId,
+                    bbCode: crosspostParts[pi],
+                    baseUrl: agencyBaseUrl,
+                    // Edit-in-place only for the single-part case.
+                    existingPostId: crosspostParts.length === 1 ? existingCrosspostPostId : null,
+                    logTag: `${effFaction}-CROSSPOST${crosspostParts.length > 1 ? `-P${pi + 1}` : ''}`,
+                });
+                if (!rFirst) rFirst = r;
+                if (!r.ok) break;
+            }
+            r = r || { ok: false, reason: 'No payload' };
             console.log(`[AUTO-COMPLETE] ${effFaction} combined reply — ` + (r.ok ? (r.edited ? 'EDITED #' : 'OK #') + lssdRequestTopicId : 'FAILED: ' + (r.reason || 'Unknown')));
             await finishCompletionStep(key, 'lssdCombinedReply', r.ok, r.ok ? `${r.edited ? 'Edited' : 'Completion + report to'} ${effFaction} #` + lssdRequestTopicId : (r.reason || 'Unknown'));
             await progress.addStep(`${effFaction} Completion + Report`, r.ok ? 'ok' : 'fail', r.ok ? '#' + lssdRequestTopicId : (r.reason || 'Failed'));
             if (!r.ok) stepFailed.LSSD = true;
             // Persist the reply post id so future re-runs edit instead of duplicating.
-            if (r.ok && r.postId && state.dbRef) {
+            // One completion URL set per collection (first part of a chunked batch).
+            if (r.ok && (rFirst || r).postId && state.dbRef) {
                 await state.dbRef.child(`autopsy-requested/${key}`).update({
-                    [`${fx}CrosspostReplyPostId`]: r.postId,
-                    [`${fx}CrosspostReplyUrl`]: r.url || null,
+                    [`${fx}CrosspostReplyPostId`]: (rFirst || r).postId,
+                    [`${fx}CrosspostReplyUrl`]: (rFirst || r).url || null,
                 }).catch(() => {});
             }
-            return { ok: r.ok, url: r.ok ? (r.url || null) : null };
+            return { ok: r.ok, url: r.ok ? ((rFirst || r).url || null) : null };
         } catch (e) {
             console.error(`[AUTO-COMPLETE] ${effFaction} operation error: ` + e.message);
             await finishCompletionStep(key, 'lssdCombinedReply', false, e.message);
@@ -225,7 +397,7 @@ async function postLssdCombinedReply({ key, entry, reportData, completionBb, bbC
     const lssdClient = createIsolatedClient('lssd-complete');
     try {
         console.log(`[AUTO-COMPLETE] ${effFaction} fallback — searching ${effFaction} autopsy forum (f=${agencyForumId})...`);
-        await lssdClient.login(process.env[`FORUM_${cfgA.credPrefix}_USERNAME`], process.env[`FORUM_${cfgA.credPrefix}_PASSWORD`], { force: true, baseUrl: agencyBaseUrl });
+        await lssdClient.login(process.env[`FORUM_${cfgA.credPrefix}_USERNAME`], process.env[`FORUM_${cfgA.credPrefix}_PASSWORD`], { force: false, baseUrl: agencyBaseUrl });
         const foundTopic = await searchLssdRequestTopic(lssdClient, { oocName, name: decedentName }, { forumId: agencyForumId, baseUrl: agencyBaseUrl });
         const fallbackTopicId = foundTopic?.topicId || null;
 
@@ -235,14 +407,23 @@ async function postLssdCombinedReply({ key, entry, reportData, completionBb, bbC
                 state.dbRef.child(`autopsy-requested/${key}/${savedKeyField()}`).set(String(fallbackTopicId)).catch(() => {});
             }
             const existingFallbackPostId = entry[`${fx}CrosspostReplyPostId`] || null;
-            const r = await postOrEditReply(lssdClient, {
-                topicId: fallbackTopicId,
-                forumId: agencyForumId,
-                bbCode: lssdCombinedBb,
-                baseUrl: agencyBaseUrl,
-                existingPostId: existingFallbackPostId,
-                logTag: `${effFaction}-CROSSPOST-FALLBACK`,
-            });
+            const fallbackParts = await chunkMassPayloadIfNeeded(lssdCombinedBb);
+            let r = null;
+            let rFirst = null;
+            for (let pi = 0; pi < fallbackParts.length; pi++) {
+                r = await postOrEditReply(lssdClient, {
+                    topicId: fallbackTopicId,
+                    forumId: agencyForumId,
+                    bbCode: fallbackParts[pi],
+                    baseUrl: agencyBaseUrl,
+                    // Edit-in-place only for the single-part case.
+                    existingPostId: fallbackParts.length === 1 ? existingFallbackPostId : null,
+                    logTag: `${effFaction}-CROSSPOST-FALLBACK${fallbackParts.length > 1 ? `-P${pi + 1}` : ''}`,
+                });
+                if (!rFirst) rFirst = r;
+                if (!r.ok) break;
+            }
+            r = r || { ok: false, reason: 'No payload' };
             await finishCompletionStep(key, 'lssdCombinedReply', r.ok, r.ok ? `${r.edited ? 'Edited fallback' : 'Fallback'} completion + report to #${fallbackTopicId}` : (r.reason || 'Unknown'));
             await progress.addStep(`${effFaction} Completion + Report`, r.ok ? 'ok' : 'fail', r.ok ? '#' + fallbackTopicId : (r.reason || 'Failed'));
             if (!r.ok) { stepFailed.LSSD = true; await markLssdFailure('Completion + report reply failed: ' + (r.reason || 'Unknown')); }
@@ -252,10 +433,10 @@ async function postLssdCombinedReply({ key, entry, reportData, completionBb, bbC
                     [`${fx}CrosspostError`]: null,
                     [savedKeyField()]: String(fallbackTopicId),
                     [`${fx}CrosspostedAt`]: new Date().toISOString(),
-                    ...(r.postId ? { [`${fx}CrosspostReplyPostId`]: r.postId, [`${fx}CrosspostReplyUrl`]: r.url || null } : {}),
+                    ...((rFirst || r).postId ? { [`${fx}CrosspostReplyPostId`]: (rFirst || r).postId, [`${fx}CrosspostReplyUrl`]: (rFirst || r).url || null } : {}),
                 }).catch(() => {});
             }
-            return { ok: r.ok, url: r.ok ? (r.url || null) : null };
+            return { ok: r.ok, url: r.ok ? ((rFirst || r).url || null) : null };
         } else {
             console.log(`[AUTO-COMPLETE] ${effFaction} fallback — no topic found for ` + (oocName || decedentName));
             await markLssdFailure(`${effFaction} request topic not found via search`);
@@ -430,40 +611,65 @@ export async function handleAutopsyReply(report) {
 
     if (!searchTerm) {
         console.log(`[AUTO]  ${key}  no decedent name to search for`);
-        await setDeployStatus(db, authorId, key, 'error', 'Missing decedent name. Add a name to the report and save again.');
         await logStep(' Cannot Process', 'Add a **Decedent Name** to the autopsy report, then save again.', { color: 0xdc3545, isFinal: true });
-        return;
+        const e = new Error('Missing decedent name. Add a name to the report and save again.');
+        e.code = 'DATA_TERMINAL';
+        e.terminalStatus = 'error';
+        throw e;
     }
 
     // Guard: skip reply if ALL matching autopsy-requested entries for this OOC+name are
     // already completed (prevents duplicate on retry for a fully-processed case).
     // If even one matching entry is still pending (no completedAt), proceed — there is still
     // an active request to reply to.
+    // MASS EXEMPTION FIRST: a report belonging to an OPEN mass-collection body
+    // must never trip this guard on a HISTORICAL entry reusing the same OOC+name
+    // (seen live: body "Jane Doe ((Autopsy Test))" skipped because an August entry
+    // "Jane Doe ((Autopsy Test))" was completed). An open body proceeds; a body
+    // whose match is already completed falls through to the normal guard below.
+    // Per-body dedup still applies downstream ("already completed — skipping").
     const oocGuard = (reportData.data?.decedentOOC || "").trim();
     const nameGuard = (reportData.data?.decedentName || "").trim();
     if (oocGuard && nameGuard) {
         try {
-            const guardSnap = await db.ref("autopsy-requested").orderByChild("oocName").equalTo(oocGuard).once("value");
-            let anyPending = false;
-            let matched = 0;
-            if (guardSnap.exists()) guardSnap.forEach(c => {
-                const entry = c.val();
-                if (entry.name === nameGuard) {
-                    matched++;
-                    if (!entry.completedAt) anyPending = true;
+            const massSnap = await db.ref("autopsy-requested").once("value");
+            const massHit = matchCollectionCase(massSnap.val() || {}, oocGuard, nameGuard);
+            if (massHit && !massHit.caseRec.completedAt) {
+                console.log(`[AUTO] ${key} belongs to open mass body #${massHit.rkey}/${massHit.ci} — bypassing duplicate guard`);
+            } else {
+                const guardSnap = await db.ref("autopsy-requested").orderByChild("oocName").equalTo(oocGuard).once("value");
+                let anyPending = false;
+                let matched = 0;
+                if (guardSnap.exists()) guardSnap.forEach(c => {
+                    const entry = c.val();
+                    if (entry.caseState === 'multi' && entry.cases && typeof entry.cases === 'object') {
+                        // Mass collections complete per body — a top-level match
+                        // says nothing; evaluate the matching bodies instead.
+                        for (const cc of Object.values(entry.cases)) {
+                            if (!cc || String(cc.oocName || '').trim() !== oocGuard) continue;
+                            if (String(cc.name || '').trim() !== nameGuard) continue;
+                            matched++;
+                            if (!cc.completedAt) anyPending = true;
+                        }
+                        return;
+                    }
+                    if (entry.name === nameGuard) {
+                        matched++;
+                        if (!entry.completedAt) anyPending = true;
+                    }
+                });
+                // Only skip when at least one entry actually matched this OOC+name
+                // AND all matched entries are completed. A bare oocName hit with a
+                // different decedent name (or no match at all) must NOT skip —
+                // otherwise a live case never gets its reply (false positive seen
+                // 2026-09-10: report "John Doe ((Gabriel Ontiveros))" skipped while
+                // case 10103 was still open).
+                if (matched > 0 && !anyPending) {
+                    console.log(`[AUTO] ${key} all requests for this OOC+name are already completed — skipping duplicate reply`);
+                    await setDeployStatus(db, authorId, key, "already_completed", "Skipped duplicate reply.");
+                    await markReportComplete(db, authorId, key, reportData.originalKey || key, "autopsy-reply-skip", null);
+                    return;
                 }
-            });
-            // Only skip when at least one entry actually matched this OOC+name
-            // AND all matched entries are completed. A bare oocName hit with a
-            // different decedent name (or no match at all) must NOT skip —
-            // otherwise a live case never gets its reply (false positive seen
-            // 2026-09-10: report "John Doe ((Gabriel Ontiveros))" skipped while
-            // case 10103 was still open).
-            if (matched > 0 && !anyPending) {
-                console.log(`[AUTO] ${key} all requests for this OOC+name are already completed — skipping duplicate reply`);
-                await setDeployStatus(db, authorId, key, "already_completed", "Skipped duplicate reply.");
-                await markReportComplete(db, authorId, key, reportData.originalKey || key, "autopsy-reply-skip", null);
-                return;
             }
         } catch (e) { console.warn(`[AUTO] completion guard error: ${e.message}`); }
     }
@@ -472,9 +678,11 @@ export async function handleAutopsyReply(report) {
     const bbCode = bbSnap.val()?.bbCode;
     if (!bbCode) {
         console.log(`[AUTO]  ${key}  no BBCode, marking as deployed`);
-        await setDeployStatus(db, authorId, key, 'error', 'No BBCode content found in report. Regenerate and save again.');
         await logStep(' No BBCode', 'The report has no BBCode content. Regenerate and save again.', { color: 0xdc3545, isFinal: true });
-        return;
+        const e = new Error('No BBCode content found in report. Regenerate and save again.');
+        e.code = 'DATA_TERMINAL';
+        e.terminalStatus = 'error';
+        throw e;
     }
 
     const client = getForumClient();
@@ -502,24 +710,49 @@ export async function handleAutopsyReply(report) {
         const name = (reportData.data?.decedentName || "").trim();
         const searchKey = ooc || name;
         if (searchKey) {
+            // ── Shared-thread fast path ──
+            // A report belonging to a mass-collection body resolves straight
+            // to the shared thread HERE — ahead of the saved caseTopicId
+            // lookup below (the webapp may carry a stale binding from a
+            // long-completed case, e.g. entry 9736) and ahead of the forum
+            // search (whose title match can hit the wrong thread). Once set,
+            // topicId skips every later resolution stage automatically.
+            // matchCollectionCase prefers incomplete bodies, then highest
+            // caseNum. Requires a known collection topic — otherwise fall
+            // through to normal resolution.
+            let sharedHit = null;
+            try {
+                const allSharedSnap = await db.ref("autopsy-requested").once("value");
+                const hit = matchCollectionCase(allSharedSnap.val() || {}, ooc, name);
+                if (hit && isSharedThreadCollection(hit.entry) && hit.entry.caseTopicId) sharedHit = hit;
+            } catch (e) {
+                console.warn('[AUTO] Shared-thread fast path lookup failed:', e.message);
+            }
+            if (sharedHit) {
+                topicId = String(sharedHit.entry.caseTopicId);
+                foundTitle = sharedHit.entry.caseTitle || 'Case #' + topicId;
+                console.log(`[AUTO] Shared collection #${sharedHit.rkey} body ${sharedHit.ci} ("${sharedHit.caseRec.name || ''}" ((${sharedHit.caseRec.oocName || ''}))) — using shared thread #${topicId}, skipping saved binding + forum search`);
+                await progress.addStep('Case Found', 'ok', '#' + topicId + ' ' + foundTitle + ` (mass body ${sharedHit.ci + 1})`);
+            }
             let arSnap = null;
             // Prefer matching the real decedent OOC name (stored in oocName OR name)
-            if (ooc) {
+            if (!sharedHit && ooc) {
                 arSnap = await db.ref("autopsy-requested").orderByChild("oocName").equalTo(ooc).once("value");
                 if (!arSnap.exists()) {
                     const byName = await db.ref("autopsy-requested").orderByChild("name").equalTo(ooc).once("value");
                     if (byName.exists()) arSnap = byName;
                 }
             }
-            // Fallback: decedent name field — but NEVER a generic "John Doe" placeholder
-            if ((!arSnap || !arSnap.exists()) && name && !/^john\s*doe$/i.test(name)) {
+            // Fallback: decedent name field — but NEVER a generic "John Doe" placeholder.
+            // Skipped entirely on a shared-thread hit (topic already resolved).
+            if (!sharedHit && (!arSnap || !arSnap.exists()) && name && !/^john\s*doe$/i.test(name)) {
                 arSnap = await db.ref("autopsy-requested").orderByChild("name").equalTo(name).once("value");
                 if (!arSnap.exists()) {
                     const byOoc = await db.ref("autopsy-requested").orderByChild("oocName").equalTo(name).once("value");
                     if (byOoc.exists()) arSnap = byOoc;
                 }
             }
-            if (arSnap && arSnap.exists()) {
+            if (!sharedHit && arSnap && arSnap.exists()) {
                 // If multiple entries share the OOC/name (same player, several cases),
                 // prefer the active (not yet completed) one, then the most recent.
                 let best = null;
@@ -630,10 +863,12 @@ export async function handleAutopsyReply(report) {
                 }
             }
 
-            await setDeployStatus(db, authorId, key, 'topic_not_found', `No case thread found for "${searchTerm}". Create one manually, then re-save.`);
             await progress.addStep('Case Not Found', 'fail', 'No matching PHMC or LSSD thread exists');
             await progress.finalize('failed');
-            return;
+            const e = new Error(`No case thread found for "${searchTerm}". Create one manually, then re-save.`);
+            e.code = 'DATA_TERMINAL';
+            e.terminalStatus = 'topic_not_found';
+            throw e;
         }
 
         if (caseThreads.length > 1 && state.discordClient) {
@@ -696,7 +931,8 @@ export async function handleAutopsyReply(report) {
             await channel.send({ embeds: [embed], components: rows });
 
             // Cancel pending pick after 5 minutes and re-queue the report
-            setTimeout(async () => {
+            pickExpiryTimers.set(pickId, setTimeout(async () => {
+                pickExpiryTimers.delete(pickId);
                 const expired = state.pendingAutopsyPicks.get(pickId);
                 if (expired) {
                     state.pendingAutopsyPicks.delete(pickId);
@@ -716,13 +952,17 @@ export async function handleAutopsyReply(report) {
                         console.error(`[AUTO]  Failed to update timeout status: ${err.message}`);
                     }
                 }
-            }, 5 * 60 * 1000);
+            }, 5 * 60 * 1000));
 
             console.log(`[AUTO]  Waiting for staff to pick a thread for "${searchTerm}"`);
             return;
         } catch (err) {
             console.error(`[AUTO]  Failed to prompt staff for topic pick: ${err.message}`);
             // Fall through to auto-pick the first result
+        }
+        if (pickExpiryTimers.has(pickId)) {
+            clearTimeout(pickExpiryTimers.get(pickId));
+            pickExpiryTimers.delete(pickId);
         }
         state.pendingAutopsyPicks.delete(pickId);
     }
@@ -741,19 +981,51 @@ export async function handleAutopsyReply(report) {
     await progress.addStep('Case Found', 'ok', `#${topicId} ${foundTitle}`);
     await progress.addStep('Posting Reply', 'pending');
 
+    // ── Mass-collection per-body reply target (best-effort, never fatal) ──
+    // Shared-thread collections hold one reply PER BODY inside the one f=266
+    // thread: resolve this report's cases/<idx> member (OOC-exact-first, never
+    // generic John Doe) so the post below edits that body's own reply, and
+    // point the reply at the shared thread when the members carry no
+    // individual caseTopicId. Per-topic records skip the override entirely.
+    let massBodyCtx = null; // { rkey, ci, caseRec, entry }
+    let massReplyTopicId = topicId;
+    try {
+        const mOoc = (reportData.data?.decedentOOC || '').trim();
+        const mName = (reportData.data?.decedentName || '').trim();
+        if (mOoc || (mName && !/^john\s*doe$/i.test(mName))) {
+            const mSnap = await db.ref('autopsy-requested').once('value');
+            const hit = matchCollectionCase(mSnap.val() || {}, mOoc, mName);
+            if (hit && isSharedThreadCollection(hit.entry)) {
+                massBodyCtx = hit;
+                massReplyTopicId = String(hit.entry.caseTopicId || hit.entry.topicId || topicId);
+                console.log(`[AUTO] Mass collection #${hit.rkey} body ${hit.ci} — per-body reply in shared thread #${massReplyTopicId}`);
+            } else if (hit && hit.caseRec && hit.caseRec.replyPostId) {
+                // Per-topic multi whose case already tracked its own reply —
+                // reuse it for edit-in-place on re-runs.
+                massBodyCtx = hit;
+            }
+        }
+    } catch (e) { console.warn('[AUTO] Mass per-body reply lookup failed:', e.message); }
+
     // ── Edit-in-place when this entry already posted ──
     // A re-queued / retried / restarted entry that already has a live reply
     // edits it instead of posting a duplicate (e.g. post succeeded but marking
     // failed, or manual re-queue). deployPostId is captured by markReportComplete.
+    // Mass collections pass the body's own reply id (per-body, shared thread).
+    const massBodyPostId = massBodyCtx ? String(massBodyCtx.caseRec?.replyPostId || '').trim() : '';
     const result = await postOrEditReply(client, {
-        topicId,
+        topicId: massReplyTopicId,
         forumId: CASE_MGMT_FORUM_ID,
         bbCode,
         title: reportData.originalKey || undefined,
-        existingPostId: reportData.deployPostId,
+        existingPostId: massBodyPostId || reportData.deployPostId,
+        ...(massBodyCtx ? { existingPostIds: { [massBodyCtx.ci]: massBodyPostId }, bodyIndex: massBodyCtx.ci } : {}),
         dryRun: DRY,
         logTag: 'CASE-REPLY',
     });
+    // This body's f=266 reply identity — persisted to cases/<idx> below.
+    const f266ReplyPostId = result.postId || massBodyPostId || null;
+    const f266ReplyUrl = result.url || massBodyCtx?.caseRec?.replyUrl || null;
 
     if (result.ok && !result.dryRun) {
         await progress.addStep('Autopsy Posted', 'ok', (result.edited ? 'Edited ' : '') + (result.url || ''));
@@ -776,9 +1048,14 @@ export async function handleAutopsyReply(report) {
                 //    caseTopicId is unique per entry, so this can only match the real case —
                 //    avoids the old name-based fallback cross-matching unrelated entries
                 //    that share a generic decedent name (e.g. "John Doe").
-                if (topicId) {
-                    arSnap = await db.ref("autopsy-requested").orderByChild("caseTopicId").equalTo(String(topicId)).once("value");
-                    if (arSnap.exists()) console.log('[AUTO-COMPLETE] Matched by caseTopicId #' + topicId);
+                //    MUST use massReplyTopicId (the effective reply target after the
+                //    per-body override), never the pre-override topicId: the report
+                //    may carry a stale saved caseTopicId (e.g. loaded from a long-
+                //    completed case in the webapp modal) while the reply itself
+                //    correctly landed in the shared thread.
+                if (massReplyTopicId) {
+                    arSnap = await db.ref("autopsy-requested").orderByChild("caseTopicId").equalTo(String(massReplyTopicId)).once("value");
+                    if (arSnap.exists()) console.log('[AUTO-COMPLETE] Matched by caseTopicId #' + massReplyTopicId);
                 }
 
                 // 2. Fallback: match by the decedent OOC name against oocName OR name fields
@@ -807,14 +1084,14 @@ export async function handleAutopsyReply(report) {
                 //    cases/<idx> (the top-level record has no caseTopicId) —
                 //    scan them so completion crossposts work per case.
                 let multiMatch = null;
-                if ((!arSnap || !arSnap.exists()) && topicId) {
+                if ((!arSnap || !arSnap.exists()) && massReplyTopicId) {
                     const allReqSnap = await db.ref("autopsy-requested").once("value");
                     const allReq = allReqSnap.val() || {};
                     outer:
                     for (const [key, entry] of Object.entries(allReq)) {
                         if (entry.caseState !== 'multi' || !entry.cases) continue;
                         for (const [ci, c] of Object.entries(entry.cases)) {
-                            if (String(c.caseTopicId) === String(topicId)) {
+                            if (String(c.caseTopicId) === String(massReplyTopicId)) {
                                 console.log(`[AUTO-COMPLETE] Matched multi-decedent record #${key} case ${ci} by caseTopicId #${topicId}`);
                                 multiMatch = { key, entry, ci: parseInt(ci, 10), caseRec: c };
                                 break outer;
@@ -823,7 +1100,38 @@ export async function handleAutopsyReply(report) {
                     }
                 }
 
+                // 1b. Shared-thread mass collections carry the COLLECTION topic
+                // at top level, so a step-1 hit must NOT complete the whole
+                // collection. Resolve the matching BODY via OOC/name and route
+                // it down the multi path instead. Hits that resolve to nothing
+                // are quarantined (skipped, never completed) — completing a
+                // collection on an ambiguous match is worse than deferring it.
+                const sharedResolved = [];
+                const sharedQuarantined = new Set();
+                if (arSnap && arSnap.exists()) {
+                    arSnap.forEach((child) => {
+                        const e = child.val();
+                        if (!(e && e.isMassSingleThread === true && e.cases && typeof e.cases === 'object')) return;
+                        sharedQuarantined.add(child.key);
+                        if (e.completedAt) return;
+                        const hit = matchCollectionCase({ [child.key]: e }, ooc, name);
+                        if (hit && !hit.caseRec.completedAt) {
+                            console.log(`[AUTO-COMPLETE] Shared collection #${child.key}: report belongs to body ${hit.ci} ("${hit.caseRec.name || ''}" ((${hit.caseRec.oocName || ''}))) — per-body completion`);
+                            sharedResolved.push({
+                                key: child.key,
+                                entry: { ...e, _caseIdx: hit.ci, _caseRec: hit.caseRec },
+                                ref: child.ref,
+                            });
+                        } else if (hit) {
+                            console.log(`[AUTO-COMPLETE] Shared collection #${child.key}: body ${hit.ci} already completed — skipping`);
+                        } else {
+                            console.warn(`[AUTO-COMPLETE] Shared collection #${child.key}: report OOC="${ooc}" name="${name}" matches no body — quarantined, needs supervisor triage (NOT completing collection)`);
+                        }
+                    });
+                }
+
                 const entries = [];
+                for (const s of sharedResolved) entries.push(s);
                 if (multiMatch) {
                     const { key, entry, ci, caseRec } = multiMatch;
                     if (caseRec.completedAt) {
@@ -834,8 +1142,11 @@ export async function handleAutopsyReply(report) {
                         entries.push({ key, entry: ctx, ref: db.ref(`autopsy-requested/${key}`) });
                     }
                 } else if (arSnap && arSnap.exists()) {
-                    // Convert to array for async iteration (forEach doesn't await)
+                    // Convert to array for async iteration (forEach doesn't await).
+                    // Shared-thread hits are excluded here — quarantined above
+                    // (resolved ones already pushed as multi entries).
                     arSnap.forEach((child) => {
+                        if (sharedQuarantined.has(child.key)) return;
                         const entry = child.val();
                         if (entry.completedAt) return;
                         entries.push({ key: child.key, entry, ref: child.ref });
@@ -858,22 +1169,48 @@ export async function handleAutopsyReply(report) {
                         console.log('[AUTO-COMPLETE] Marking autopsy request as completed in Firebase');
                         const isMulti = caseRec != null;
                         let allCasesDone = true;
+                        let massCasesVal = null; // fresh cases/<idx> map for batched payloads below
                         if (isMulti) {
                             // Per-case completion — the request stays open until
                             // every decedent's case has completed.
-                            await ref.child(`cases/${caseIdx}`).update({ completedAt: new Date().toISOString(), completedBbCode: bbCode });
+                            // This body's own f=266 reply identity lands here too
+                            // (per-body replyPostId/replyUrl inside the shared
+                            // thread); other bodies' rows are never touched.
+                            const ownBody = massBodyCtx && massBodyCtx.rkey === key && massBodyCtx.ci === caseIdx;
+                            await ref.child(`cases/${caseIdx}`).update({
+                                completedAt: new Date().toISOString(),
+                                completedBbCode: bbCode,
+                                ...(ownBody && f266ReplyPostId ? { replyPostId: f266ReplyPostId } : {}),
+                                ...(ownBody && f266ReplyUrl ? { replyUrl: f266ReplyUrl } : {}),
+                            });
                             const casesSnap = await ref.child('cases').once('value');
-                            allCasesDone = Object.values(casesSnap.val() || {}).every(c => c.completedAt);
+                            massCasesVal = casesSnap.val() || {};
+                            allCasesDone = Object.values(massCasesVal).every(c => c.completedAt);
+                            const doneCount = Object.values(massCasesVal).filter(c => c.completedAt).length;
+                            const totalCount = Object.values(massCasesVal).length;
+                            console.log(`[MASS] #${key} BODY ${Number(caseIdx) + 1}/${totalCount} DONE: ${caseRec?.name || '?'} ((${caseRec?.oocName || '?'})) by ${caseRec?.assignedTo || entry.assignedTo || '?'} — collection ${doneCount}/${totalCount}${allCasesDone ? ' — ALL COMPLETE, batched send follows' : ' (external sends deferred)'}`);
                             if (allCasesDone) {
                                 await ref.update({ completedAt: new Date().toISOString(), completedBbCode: bbCode });
                                 console.log('[AUTO-COMPLETE] All decedent cases complete — request marked completed');
+                                // Retire the mass panel(s) now that there is
+                                // nothing left to press them for (best-effort —
+                                // rows disable, Firebase refs cleared). Both
+                                // generations retire; only the posted one hits.
+                                try {
+                                    const { retireMassPanel } = await import('./massAssignmentPanel.js');
+                                    await retireMassPanel(db, state.discordClient, key).catch(() => {});
+                                    const { retireMassPanelV2 } = await import('./massPanelV2.js');
+                                    await retireMassPanelV2(db, state.discordClient, key).catch(() => {});
+                                } catch {}
                             }
                         } else {
                             await ref.update({ completedAt: new Date().toISOString(), completedBbCode: bbCode });
                         }
                         console.log("[AUTO] [OK] Marked autopsy-requested #" + key + " as completed");
 
-                        // Decrement the ME's active case count in the rotation tracker
+                        // Decrement the ME's active case count in the rotation tracker.
+                        // Per-body ME only (caseRec.assignedTo) — other bodies'
+                        // assignments in a shared-thread collection are untouched.
                         const completingMe = caseRec?.assignedTo || entry.assignedTo;
                         if (completingMe) {
                             clearAssignment(db, completingMe, key).catch(err => {
@@ -918,10 +1255,29 @@ export async function handleAutopsyReply(report) {
                             ? `https://lspd.gta.world/viewtopic.php?t=${completedLspdTopicId}`
                             : null;
                         let completionBb = buildCompletionBb(caseTitle, requesterName, { faction: completionFaction, lspdUrl: completionLspdUrl, formsAutopsy: entry.formsAutopsy });
+                        // Shared-thread mass collection: the agency combined reply
+                        // fires ONCE with every body (array input) when the last
+                        // body completes; partials defer so no premature singles
+                        // go out. One completion URL set per collection (top level).
+                        const sharedBatch = isMulti && isSharedThreadCollection(entry);
+                        let agencyBodies = null;
+                        if (sharedBatch && allCasesDone) {
+                            const batch = buildBatchedBodiesPayload(massCasesVal || {});
+                            agencyBodies = Object.keys(massCasesVal || {}).filter((k) => /^\d+$/.test(k)).map(Number).sort((a, b) => a - b).map((i) => ({
+                                name: massCasesVal[i]?.name || '',
+                                oocName: massCasesVal[i]?.oocName || '',
+                                bbCode: massCasesVal[i]?.completedBbCode || '',
+                            }));
+                            console.log(`[AUTO-COMPLETE] Shared collection — batched agency reply (${batch.count} bodies)`);
+                        }
                         let agencyCompletionUrl = null;
-                        if (!isPrivateEntry) {
+                        if (!isPrivateEntry && sharedBatch && !allCasesDone) {
+                            await startCompletionStep(key, 'lssdCombinedReply', 'Deferred — collection has pending bodies');
+                            await finishCompletionStep(key, 'lssdCombinedReply', true, 'Deferred — not all bodies complete');
+                            await progress.addStep('Agency Completion + Report', 'ok', 'Deferred until all bodies complete');
+                        } else if (!isPrivateEntry) {
                             const lssdRes = await postLssdCombinedReply({
-                                key, entry, reportData, completionBb, bbCode, progress, stepFailed,
+                                key, entry, reportData, completionBb, bbCode, bodies: agencyBodies, progress, stepFailed,
                             });
                             agencyCompletionUrl = lssdRes.url;
                             if (lssdRes.ok && agencyCompletionUrl && state.dbRef) {
@@ -953,16 +1309,41 @@ export async function handleAutopsyReply(report) {
                             }
                             await startCompletionStep(key, stepName, 'Reply to #' + entry.topicId);
                             try {
-                                const r = await client.replyToTopic(entry.topicId, AUTOPSY_REQUEST_FORUM_ID, completionBb, { dryRun: false });
+                                // Shared-thread collection: the public request-thread
+                                // reply is the SINGLE default completion notice —
+                                // no per-body repetition, no report links. Full
+                                // reports travel via DM + case thread.
+                                let payloads = [completionBb];
+                                if (sharedBatch && allCasesDone) {
+                                    console.log(`[AUTO-COMPLETE] Shared collection — single completion notice`);
+                                }
+                                let r = null;
+                                let firstR = null;
+                                for (let pi = 0; pi < payloads.length; pi++) {
+                                    // Edit-in-place only for the single-part case;
+                                    // multi-part batches post fresh parts.
+                                    r = payloads.length === 1
+                                        ? await postOrEditReply(client, {
+                                            topicId: entry.topicId,
+                                            forumId: AUTOPSY_REQUEST_FORUM_ID,
+                                            bbCode: payloads[pi],
+                                            existingPostId: entry.phmcCompletionReplyPostId || null,
+                                            logTag: 'PHMC-COMPLETION',
+                                        })
+                                        : await client.replyToTopic(entry.topicId, AUTOPSY_REQUEST_FORUM_ID, payloads[pi], { dryRun: false });
+                                    if (!firstR) firstR = r;
+                                    if (!r.ok) break;
+                                }
+                                r = r || { ok: false, reason: 'No payload' };
                                 const skipped = r.topicMissing === true;
                                 // Persist the reply post id so a future retry edits
                                 // instead of posting a duplicate completion notice.
                                 if (r.ok && state.dbRef) {
-                                    const replyPostId = extractReplyPostId(r.url);
+                                    const replyPostId = extractReplyPostId((firstR || r).url);
                                     if (replyPostId) {
                                         await state.dbRef.child(`autopsy-requested/${key}`).update({
                                             phmcCompletionReplyPostId: replyPostId,
-                                            phmcCompletionReplyUrl: r.url || null,
+                                            phmcCompletionReplyUrl: (firstR || r).url || null,
                                         }).catch(() => {});
                                     }
                                 }
@@ -995,6 +1376,10 @@ export async function handleAutopsyReply(report) {
                         if (isPrivateEntry) {
                             await finishCompletionStep(completedTopicId, 'lspdCrosspost', true, 'Private case — LSPD crosspost skipped');
                             await progress.addStep('LSPD Crosspost', 'ok', 'Skipped (private case)');
+                        } else if (sharedBatch && !allCasesDone) {
+                            await startCompletionStep(completedTopicId, 'lspdCrosspost', 'Deferred — collection has pending bodies');
+                            await finishCompletionStep(completedTopicId, 'lspdCrosspost', true, 'Deferred — not all bodies complete');
+                            await progress.addStep('LSPD Crosspost', 'ok', 'Deferred until all bodies complete');
                         } else if (lspdTopicId || isLspdCase) {
                             await progress.addStep('LSPD Crosspost', 'pending');
                             stepPromises.push((async () => {
@@ -1002,23 +1387,47 @@ export async function handleAutopsyReply(report) {
                                 const label = lspdTopicId ? 'Reply to LSPD #' + lspdTopicId : 'Create LSPD topic';
                                 await startCompletionStep(completedTopicId, stepName, label);
                                 try {
+                                    // crosspostAutopsyToLspd re-gates on the report's
+                                    // department text — but demo/fill-in reports may
+                                    // carry a non-LSPD department while the REQUEST
+                                    // is unambiguously LSPD. Fall back to the
+                                    // request's own department line (real request
+                                    // data, not fabricated) so LSPD cases are never
+                                    // skipped on a report-field technicality.
+                                    const reqDeptFallback = entry.parsed?.requesterDept || 'Los Santos Police Department';
                                     const lspdReportData = {
                                         data: {
                                             ...(reportData?.data || {}),
-                                            department: reportData?.data?.department || 'Los Santos Police Department',
+                                            department: (!lspdDept.includes('lspd') && !lspdDept.includes('police') && isLspdCase)
+                                                ? reqDeptFallback
+                                                : (reportData?.data?.department || 'Los Santos Police Department'),
                                             decedentName: reportData?.data?.decedentName || caseRec?.name || entry.name || '',
                                             decedentOOC: reportData?.data?.decedentOOC || caseRec?.oocName || entry.oocName || '',
                                         }
                                     };
                                     // Pass null lspdTopicId when missing — crosspostAutopsyToLspd
                                     // will create a new topic on the LSPD forum as fallback.
+                                    // Shared-thread collection: ONE crosspost carrying
+                                    // every body (array joined with BODY headers).
+                                    // crosspostAutopsyToLspd takes a single bbCode
+                                    // string, so the batch is joined at this call
+                                    // site — no change needed in deployLspd.js.
+                                    let lspdBbCode = bbCode;
+                                    let lspdCaseTitle = completedCaseTitle;
+                                    if (sharedBatch && allCasesDone) {
+                                        const batch = buildBatchedBodiesPayload(massCasesVal || {});
+                                        lspdBbCode = batch.text;
+                                        const caseNums = Object.keys(massCasesVal || {}).filter((k) => /^\d+$/.test(k)).map(Number).sort((a, b) => a - b).map((i) => massCasesVal[i]?.caseNum).filter(Boolean);
+                                        lspdCaseTitle = `Mass Autopsy — ${batch.count} bodies${caseNums.length ? ` (Cases ${caseNums.join(', ')})` : ''}`;
+                                        console.log(`[AUTO-COMPLETE] Shared collection — batched LSPD crosspost (${batch.count} bodies)`);
+                                    }
                                     const lspdResult = await crosspostAutopsyToLspd(
                                         lspdReportData,
-                                        bbCode,
+                                        lspdBbCode,
                                         completedTopicId,
                                         state.dbRef,
                                         lspdTopicId || null,
-                                        { caseTitle: completedCaseTitle, caseTopicId: caseRec?.caseTopicId || entry.caseTopicId }
+                                        { caseTitle: lspdCaseTitle, caseTopicId: caseRec?.caseTopicId || entry.caseTopicId }
                                     );
                                     const ok = lspdResult.ok && !lspdResult.skipped;
                                     const detail = lspdTopicId ? '#' + lspdTopicId : (lspdResult.url || '');
@@ -1085,9 +1494,9 @@ export async function handleAutopsyReply(report) {
                                 // The isolated client starts with no session cookies,
                                 // so it must authenticate or phpBB will show the login page.
                                 if (isPmForumDelivery || isFormsDelivery) {
-                                    await dmClient.login(pmForumUser, pmForumPass, { force: true, baseUrl: pmForumBaseUrl });
+                                    await dmClient.login(pmForumUser, pmForumPass, { force: false, baseUrl: pmForumBaseUrl });
                                 } else {
-                                    await dmClient.login(null, null, { force: true, baseUrl: process.env.FORUM_BASE_URL });
+                                    await dmClient.login(null, null, { force: false, baseUrl: process.env.FORUM_BASE_URL });
                                 }
 
                                 let dmTarget = '';
@@ -1140,8 +1549,23 @@ export async function handleAutopsyReply(report) {
                                     return;
                                 }
                                 const dmSubject = buildDmSubject(entry);
-                                console.log("[AUTO-COMPLETE] Sending DM to " + dmTarget + " (isolated client)");
-                                const r = await dmClient.sendPM(dmTarget, dmSubject, bbCode, { baseUrl: dmBaseUrl });
+                                // Shared-thread collection: ONE batched DM — every body
+                                // with `--- BODY i/N ---` headers (chunked when over
+                                // the 55k cap). Single-body path sends bbCode as before.
+                                let dmPayloads = [bbCode];
+                                if (sharedBatch && allCasesDone) {
+                                    const batch = buildBatchedBodiesPayload(massCasesVal || {});
+                                    dmPayloads = await chunkMassPayloadIfNeeded(batch.text);
+                                    console.log("[AUTO-COMPLETE] Shared collection — batched DM (" + batch.count + " bodies, " + dmPayloads.length + " part(s)) to " + dmTarget + " (isolated client)");
+                                } else {
+                                    console.log("[AUTO-COMPLETE] Sending DM to " + dmTarget + " (isolated client)");
+                                }
+                                let r = { ok: false, reason: 'No payload' };
+                                for (let pi = 0; pi < dmPayloads.length; pi++) {
+                                    const partSubject = dmPayloads.length > 1 ? `${dmSubject} (${pi + 1}/${dmPayloads.length})` : dmSubject;
+                                    r = await dmClient.sendPM(dmTarget, partSubject, dmPayloads[pi], { baseUrl: dmBaseUrl });
+                                    if (!r.ok) break;
+                                }
                                 await finishCompletionStep(key, 'dmSent', r.ok, r.ok ? 'DM sent to ' + dmTarget : (r.reason || 'Unknown'));
                                 await progress.addStep('DM Requester', r.ok ? 'ok' : 'fail', r.ok ? dmTarget : (r.reason || 'Failed'));
                                 if (!r.ok) stepFailed.DM = true;
@@ -1178,15 +1602,31 @@ export async function handleAutopsyReply(report) {
                                         const tid = entry[completionAgencyCfg.topicField];
                                         if (tid) agencyTopicUrlForButton = `${completionAgencyCfg.baseUrl}/viewtopic.php?t=${tid}`;
                                     }
+                                    // Shared-thread collection: ONE webhook call per
+                                    // collection with the combined case list (no
+                                    // change needed in requesterWebhook.js — the
+                                    // batch is expressed via caseNumber/caseTitle).
+                                    let hookCaseNumber = caseRec?.caseNum ?? entry.caseNum ?? '';
+                                    let hookCaseTitle = completedCaseTitle;
+                                    let hookMeName = completingMe || '';
+                                    if (sharedBatch && allCasesDone) {
+                                        const sIdxs = Object.keys(massCasesVal || {}).filter((k) => /^\d+$/.test(k)).map(Number).sort((a, b) => a - b);
+                                        const caseNums = sIdxs.map((i) => massCasesVal[i]?.caseNum).filter(Boolean);
+                                        const meNames = [...new Set(sIdxs.map((i) => massCasesVal[i]?.assignedTo).filter(Boolean))];
+                                        hookCaseNumber = caseNums.join(', ');
+                                        hookCaseTitle = `Mass Autopsy — ${sIdxs.length} bodies${caseNums.length ? ` (Cases ${caseNums.join(', ')})` : ''}`;
+                                        if (meNames.length) hookMeName = meNames.join(', ');
+                                        console.log(`[AUTO-COMPLETE] Shared collection — batched requester webhook (${sIdxs.length} bodies)`);
+                                    }
                                     const res = await notifyRequesterOfCompletion(db, {
                                         ...entry,
-                                        assignedTo: completingMe || entry.assignedTo || '',
+                                        assignedTo: hookMeName || entry.assignedTo || '',
                                     }, {
-                                        caseNumber: caseRec?.caseNum ?? entry.caseNum ?? '',
-                                        caseTitle: completedCaseTitle,
+                                        caseNumber: hookCaseNumber,
+                                        caseTitle: hookCaseTitle,
                                         faction: completionFaction ? String(completionFaction).toUpperCase() : '',
                                         agencyTopicUrl: agencyTopicUrlForButton,
-                                        meName: completingMe || '',
+                                        meName: hookMeName || '',
                                     });
                                     const detail = res.ok
                                         ? (res.testMode ? `Sent [TEST -> ${res.target}]` : `Sent -> ${res.target}`)
@@ -1217,6 +1657,14 @@ export async function handleAutopsyReply(report) {
                             await progress.addStep('Retry Scheduled', 'warn', `${failedList} — will auto-retry on next cycle`);
                         }
                         await progress.finalize(anyFailed ? 'failed' : 'complete');
+                        // Flip the single-V2 assignment panel (if one was posted)
+                        // to its basic completed summary — best-effort, never
+                        // disturbs the completion itself. Reads Firebase truth
+                        // so undelivered sends render as pending, not asserted.
+                        try {
+                            const { completeSinglePanel } = await import('./singlePanelV2.js');
+                            await completeSinglePanel(db, state.discordClient, { requestTopicId: key, caseIdx }).catch(() => {});
+                        } catch {}
                     }
 
             } catch (e) { console.warn("[AUTO] Completion marker error:", e.message); }
@@ -1232,10 +1680,12 @@ export async function handleAutopsyReply(report) {
             await progress.addStep('Dry Run Complete', 'ok', `#${topicId} ${foundTitle}`);
             await progress.finalize('complete');
         } else {
-            await setDeployStatus(db, authorId, key, 'reply_failed', result.reason || 'Unknown error replying to case thread');
             console.error(`[AUTO]  Failed to reply to case #${topicId}: ${result.reason || 'Unknown'}`);
             await progress.addStep('Reply Failed', 'fail', result.reason || 'Unknown');
             await progress.finalize('failed');
+            const e = new Error(`Failed to reply to case #${topicId}: ${result.reason || 'Unknown error replying to case thread'}`);
+            e.code = 'RETRYABLE';
+            throw e;
         }
     }
 
@@ -1262,17 +1712,19 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
 
     const COOLDOWN_MS = 30 * 60 * 1000; // skip steps retried within the last 30 min
     try {
+        // Single shared marker read: the tiny completionStepRetries index names
+        // every known failed step, so fetch ONLY those entries — never the full
+        // node. Both the scan below and the merge reuse this one read.
+        // (Startup reseeds markers from the monitor snapshot; finishCompletionStep
+        // + the retry tail below keep them live. A missing marker with a failed
+        // step self-heals on the next restart reseed.)
+        let markers = {};
+        try {
+            const mSnap = await db.ref(STEP_RETRY_PATH).once('value');
+            markers = mSnap.exists() ? mSnap.val() || {} : {};
+        } catch { markers = {}; }
         if (entries === undefined) {
-            // Marker-driven scan: the tiny completionStepRetries index names every
-            // known failed step, so fetch ONLY those entries — never the full node.
-            // (Startup reseeds markers from the monitor snapshot; finishCompletionStep
-            // + the retry tail below keep them live. A missing marker with a failed
-            // step self-heals on the next restart reseed.)
-            let markers = {};
-            try {
-                const mSnap = await db.ref(STEP_RETRY_PATH).once('value');
-                markers = mSnap.exists() ? mSnap.val() || {} : {};
-            } catch { markers = {}; }
+            // Marker-driven scan: fetch ONLY the marker-listed entries.
             const markerKeys = Object.keys(markers);
             if (markerKeys.length === 0) return; // nothing failed — zero entry reads
             entries = {};
@@ -1300,9 +1752,8 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
         // passes an INCOMPLETE-only snapshot, so failed steps on completed
         // cases (e.g. a DM send that failed after the case was marked
         // completed) would otherwise never be retried despite having markers.
+        // Reuses the shared marker read above (best-effort).
         try {
-            const mSnap = await db.ref(STEP_RETRY_PATH).once('value');
-            const markers = mSnap.exists() ? mSnap.val() || {} : {};
             entries = entries || {};
             for (const topicId of Object.keys(markers)) {
                 if (entries[topicId]) continue;
@@ -1379,6 +1830,18 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
         for (const { key, entry, stepName, stepData, caseLabel } of failedEntries) {
             console.log(`[AUTO-COMPLETE] Retrying ${stepName} for ${caseLabel}...`);
 
+            // Mass-collection gating: partial collections never emit premature
+            // singles — collection-level steps retry only when every body is
+            // done. Markers are kept so the next sweep picks them up.
+            const retryShared = isSharedThreadCollection(entry);
+            const retryAllDone = collectionCasesDone(entry);
+            if (retryShared && !retryAllDone && (stepName === 'phmcCompletionReply' || stepName === 'dmSent' || stepName === 'requesterWebhook' || stepName === 'lssdCombinedReply' || stepName === 'lspdCrosspost')) {
+                console.log(`[AUTO-COMPLETE] ${stepName} for ${caseLabel} — collection partial, deferring (no premature single)`);
+                continue;
+            }
+            // ONE batched payload source for completed-collection retries.
+            const retryBatch = (retryShared && retryAllDone) ? buildBatchedBodiesPayload(entry.cases || {}) : null;
+
             // Private cases never crosspost to LSPD/LSSD — mark crosspost steps as resolved.
             if (entry.isPrivate === true && (stepName === 'lssdCombinedReply' || stepName === 'lssdCompletionReply'
                 || stepName === 'lssdAutopsyReport' || stepName === 'lspdCrosspost')) {
@@ -1410,24 +1873,40 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
                         stillFailed++;
                         continue;
                     }
+                    // Shared-thread collection: single default completion notice
+                    // on retry (no per-body repetition, no report links).
+                    // Edit-in-place only for the single-part case.
+                    let retryPhmcPayloads = [completionBb];
+                    if (retryBatch) {
+                        console.log(`[AUTO-COMPLETE] Shared collection — single completion notice retry`);
+                    }
                     // Edit-in-place when this completion reply already exists
                     // (prior run posted but the step stayed failed).
-                    const r = await postOrEditReply(retryClient, {
-                        topicId: entry.topicId,
-                        forumId: AUTOPSY_REQUEST_FORUM_ID,
-                        bbCode: completionBb,
-                        existingPostId: entry.phmcCompletionReplyPostId || null,
-                        logTag: 'PHMC-COMPLETION-RETRY',
-                    });
+                    let r = null;
+                    let rFirst = null;
+                    for (let pi = 0; pi < retryPhmcPayloads.length; pi++) {
+                        r = retryPhmcPayloads.length === 1
+                            ? await postOrEditReply(retryClient, {
+                                topicId: entry.topicId,
+                                forumId: AUTOPSY_REQUEST_FORUM_ID,
+                                bbCode: retryPhmcPayloads[pi],
+                                existingPostId: entry.phmcCompletionReplyPostId || null,
+                                logTag: 'PHMC-COMPLETION-RETRY',
+                            })
+                            : await retryClient.replyToTopic(entry.topicId, AUTOPSY_REQUEST_FORUM_ID, retryPhmcPayloads[pi], { dryRun: false });
+                        if (!rFirst) rFirst = r;
+                        if (!r.ok) break;
+                    }
+                    r = r || { ok: false, reason: 'No payload' };
                     success = r.ok || r.topicMissing === true;
                     if (success) {
                         console.log(r.topicMissing
                             ? `[AUTO-COMPLETE] [OK] Retry OK — ${stepName} for ${caseLabel}: request topic no longer exists (nothing to reply to)`
                             : `[AUTO-COMPLETE] [OK] Retry OK — ${stepName} for ${caseLabel} → ${r.edited ? 'edited reply' : 'reply'} to #${entry.topicId}`);
-                        if (r.ok && r.postId && state.dbRef) {
+                        if (r.ok && (rFirst || r).postId && state.dbRef) {
                             await state.dbRef.child(`autopsy-requested/${key}`).update({
-                                phmcCompletionReplyPostId: r.postId,
-                                phmcCompletionReplyUrl: r.url || null,
+                                phmcCompletionReplyPostId: (rFirst || r).postId,
+                                phmcCompletionReplyUrl: (rFirst || r).url || null,
                             }).catch(() => {});
                         }
                     } else {
@@ -1445,29 +1924,38 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
                         console.log(`[AUTO-COMPLETE] [OK] Retry OK — ${stepName} for ${caseLabel}: not a registry-agency case`);
                         success = true;
                     } else {
-                        const reportBb = entry.completedBbCode || '';
+                        // Shared-thread collection: ONE batched payload on retry.
+                        const reportBb = retryBatch ? retryBatch.text : (entry.completedBbCode || '');
                         if (!reportBb) {
                             console.warn(`[AUTO-COMPLETE] Cannot retry ${stepName} for ${caseLabel}: no completedBbCode`);
                             // Mark as resolved — can't retry without the report content
                             success = true;
                         } else {
-                            await retryClient.login(process.env[`FORUM_${rCfg.credPrefix}_USERNAME`], process.env[`FORUM_${rCfg.credPrefix}_PASSWORD`], { force: true, baseUrl: rCfg.baseUrl });
+                            await retryClient.login(process.env[`FORUM_${rCfg.credPrefix}_USERNAME`], process.env[`FORUM_${rCfg.credPrefix}_PASSWORD`], { force: false, baseUrl: rCfg.baseUrl });
                             const content = completionBb + '\n\n[hr][/hr]\n\n' + reportBb;
                             console.log(`[AUTO-COMPLETE] Retrying ${rCfg === getAgencyForum('LSSD') ? 'LSSD' : String(retryFaction).toUpperCase()} completion + report to #${lssdTopicId}...`);
-                            const r = await postOrEditReply(retryClient, {
-                                topicId: lssdTopicId,
-                                forumId: rCfg.forumId,
-                                bbCode: content,
-                                baseUrl: rCfg.baseUrl,
-                                existingPostId: entry[`${rFx}CrosspostReplyPostId`] || null,
-                                logTag: `${String(retryFaction).toUpperCase()}-CROSSPOST-RETRY`,
-                            });
+                            const agencyRetryParts = await chunkMassPayloadIfNeeded(content);
+                            let r = null;
+                            let rFirst = null;
+                            for (let pi = 0; pi < agencyRetryParts.length; pi++) {
+                                r = await postOrEditReply(retryClient, {
+                                    topicId: lssdTopicId,
+                                    forumId: rCfg.forumId,
+                                    bbCode: agencyRetryParts[pi],
+                                    baseUrl: rCfg.baseUrl,
+                                    existingPostId: agencyRetryParts.length === 1 ? (entry[`${rFx}CrosspostReplyPostId`] || null) : null,
+                                    logTag: `${String(retryFaction).toUpperCase()}-CROSSPOST-RETRY${agencyRetryParts.length > 1 ? `-P${pi + 1}` : ''}`,
+                                });
+                                if (!rFirst) rFirst = r;
+                                if (!r.ok) break;
+                            }
+                            r = r || { ok: false, reason: 'No payload' };
                             success = r.ok;
                             console.log(`[AUTO-COMPLETE] Agency completion + report retry — ${r.ok ? (r.edited ? 'EDITED' : 'OK') : 'FAILED: ' + (r.reason || 'Unknown')}`);
-                            if (r.ok && r.url && state.dbRef) {
+                            if (r.ok && (rFirst || r).url && state.dbRef) {
                                 await state.dbRef.child(`autopsy-requested/${key}`).update({
-                                    [`${rFx}CompletionUrl`]: r.url,
-                                    ...(r.postId ? { [`${rFx}CrosspostReplyPostId`]: r.postId, [`${rFx}CrosspostReplyUrl`]: r.url } : {}),
+                                    [`${rFx}CompletionUrl`]: (rFirst || r).url,
+                                    ...((rFirst || r).postId ? { [`${rFx}CrosspostReplyPostId`]: (rFirst || r).postId, [`${rFx}CrosspostReplyUrl`]: (rFirst || r).url } : {}),
                                 }).catch(() => {});
                             }
                         }
@@ -1479,11 +1967,24 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
                     // Worst case (crash after send) is one duplicate message, the same
                     // accepted trade-off as every other completion-step retry.
                     try {
+                        // Shared-thread collection: ONE webhook call per
+                        // collection with the combined case list.
+                        let hookCaseNumber = entry.caseNum ?? '';
+                        let hookCaseTitle = entry.caseTitle || entry.title || '';
+                        let hookMeName = entry.assignedTo || '';
+                        if (retryBatch) {
+                            const sIdxs = Object.keys(entry.cases || {}).filter((k) => /^\d+$/.test(k)).map(Number).sort((a, b) => a - b);
+                            const caseNums = sIdxs.map((i) => entry.cases[i]?.caseNum).filter(Boolean);
+                            const meNames = [...new Set(sIdxs.map((i) => entry.cases[i]?.assignedTo).filter(Boolean))];
+                            hookCaseNumber = caseNums.join(', ');
+                            hookCaseTitle = `Mass Autopsy — ${sIdxs.length} bodies${caseNums.length ? ` (Cases ${caseNums.join(', ')})` : ''}`;
+                            if (meNames.length) hookMeName = meNames.join(', ');
+                        }
                         const res = await notifyRequesterOfCompletion(db, entry, {
-                            caseNumber: entry.caseNum ?? '',
-                            caseTitle: entry.caseTitle || entry.title || '',
+                            caseNumber: hookCaseNumber,
+                            caseTitle: hookCaseTitle,
                             faction: entry.faction ? String(entry.faction).toUpperCase() : '',
-                            meName: entry.assignedTo || '',
+                            meName: hookMeName,
                         });
                         success = !!res.ok || !!res.skipped;
                         if (!success) console.warn(`[AUTO-COMPLETE] Requester webhook retry failed: ${res.reason || 'Send failed'}`);
@@ -1500,7 +2001,7 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
                         console.log(`[AUTO-COMPLETE] [OK] Retry OK — ${stepName} for ${caseLabel}: not an LSSD case`);
                         success = true;
                     } else {
-                        await retryClient.login(process.env.FORUM_LSSD_USERNAME, process.env.FORUM_LSSD_PASSWORD, { force: true, baseUrl: 'https://lssd.gta.world' });
+                        await retryClient.login(process.env.FORUM_LSSD_USERNAME, process.env.FORUM_LSSD_PASSWORD, { force: false, baseUrl: 'https://lssd.gta.world' });
                         const isReport = stepName === 'lssdAutopsyReport';
                         const content = isReport ? (entry.completedBbCode || '') : completionBb;
                         const label = isReport ? 'autopsy report' : 'confirmation reply';
@@ -1522,21 +2023,23 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
                         console.log(`[AUTO-COMPLETE] [OK] Retry OK — ${stepName} for ${caseLabel}: not an LSPD case`);
                         success = true;
                     } else {
-                        const bbCodeToSend = entry.completedBbCode || '';
+                        // Shared-thread collection: ONE batched payload on retry.
+                        const bbCodeToSend = retryBatch ? retryBatch.text : (entry.completedBbCode || '');
                         if (!bbCodeToSend) {
                             console.warn(`[AUTO-COMPLETE] Cannot retry ${stepName} for ${caseLabel}: no completedBbCode`);
                             stillFailed++;
                             continue;
                         }
                         console.log(`[AUTO-COMPLETE] Retrying LSPD crosspost to #${lspdTopicId}...`);
-                        await retryClient.login(process.env.FORUM_LSPD_USERNAME, process.env.FORUM_LSPD_PASSWORD, { force: true, baseUrl: 'https://lspd.gta.world' });
+                        await retryClient.login(process.env.FORUM_LSPD_USERNAME, process.env.FORUM_LSPD_PASSWORD, { force: false, baseUrl: 'https://lspd.gta.world' });
                         const r = await retryClient.replyToTopic(lspdTopicId, 1361, bbCodeToSend, { dryRun: false, baseUrl: 'https://lspd.gta.world' });
                         success = r.ok;
                         console.log(`[AUTO-COMPLETE] LSPD crosspost retry — ${r.ok ? 'OK' : 'FAILED: ' + (r.reason || 'Unknown')}`);
                     }
 
                 } else if (stepName === 'dmSent') {
-                    const bbCodeToSend = entry.completedBbCode;
+                    // Shared-thread collection: ONE batched DM on retry.
+                    const bbCodeToSend = retryBatch ? retryBatch.text : entry.completedBbCode;
                     if (!bbCodeToSend) {
                         console.warn(`[AUTO-COMPLETE] Cannot retry ${stepName} for ${caseLabel}: no completedBbCode stored`);
                         stillFailed++;
@@ -1550,12 +2053,12 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
                         const forumKey = String(entry.pmForum).toLowerCase();
                         if (forumKey === 'lssd') {
                             dmBaseUrl = 'https://lssd.gta.world';
-                            await retryClient.login(process.env.FORUM_LSSD_USERNAME, process.env.FORUM_LSSD_PASSWORD, { force: true, baseUrl: dmBaseUrl });
+                            await retryClient.login(process.env.FORUM_LSSD_USERNAME, process.env.FORUM_LSSD_PASSWORD, { force: false, baseUrl: dmBaseUrl });
                         } else if (forumKey === 'lspd') {
                             dmBaseUrl = 'https://lspd.gta.world';
-                            await retryClient.login(process.env.FORUM_LSPD_USERNAME, process.env.FORUM_LSPD_PASSWORD, { force: true, baseUrl: dmBaseUrl });
+                            await retryClient.login(process.env.FORUM_LSPD_USERNAME, process.env.FORUM_LSPD_PASSWORD, { force: false, baseUrl: dmBaseUrl });
                         } else {
-                            await retryClient.login(null, null, { force: true, baseUrl: dmBaseUrl });
+                            await retryClient.login(null, null, { force: false, baseUrl: dmBaseUrl });
                         }
                         console.log(`[AUTO-COMPLETE] Private case retry DM target: ${dmTarget} via ${dmBaseUrl}`);
                     } else if (entry.formsAutopsy === true && entry.forumAccountUrl) {
@@ -1564,12 +2067,12 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
                         const fKey = String(entry.agencyForum || 'phmc').toLowerCase();
                         if (fKey === 'lssd' || fKey === 'sadcr' || fKey === 'dao') {
                             dmBaseUrl = 'https://lssd.gta.world';
-                            await retryClient.login(process.env.FORUM_LSSD_USERNAME, process.env.FORUM_LSSD_PASSWORD, { force: true, baseUrl: dmBaseUrl });
+                            await retryClient.login(process.env.FORUM_LSSD_USERNAME, process.env.FORUM_LSSD_PASSWORD, { force: false, baseUrl: dmBaseUrl });
                         } else if (fKey === 'lspd') {
                             dmBaseUrl = 'https://lspd.gta.world';
-                            await retryClient.login(process.env.FORUM_LSPD_USERNAME, process.env.FORUM_LSPD_PASSWORD, { force: true, baseUrl: dmBaseUrl });
+                            await retryClient.login(process.env.FORUM_LSPD_USERNAME, process.env.FORUM_LSPD_PASSWORD, { force: false, baseUrl: dmBaseUrl });
                         } else {
-                            await retryClient.login(null, null, { force: true, baseUrl: dmBaseUrl });
+                            await retryClient.login(null, null, { force: false, baseUrl: dmBaseUrl });
                         }
                         const profUser = await retryClient.resolveProfileUsername(entry.forumAccountUrl).catch(() => null);
                         dmTarget = profUser || '';
@@ -1596,7 +2099,13 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
                         success = true;
                     } else {
                         const dmSubject = buildDmSubject(entry);
-                        const r = await retryClient.sendPM(dmTarget, dmSubject, bbCodeToSend, { baseUrl: dmBaseUrl });
+                        const dmRetryParts = retryBatch ? await chunkMassPayloadIfNeeded(bbCodeToSend) : [bbCodeToSend];
+                        let r = { ok: false, reason: 'No payload' };
+                        for (let pi = 0; pi < dmRetryParts.length; pi++) {
+                            const partSubject = dmRetryParts.length > 1 ? `${dmSubject} (${pi + 1}/${dmRetryParts.length})` : dmSubject;
+                            r = await retryClient.sendPM(dmTarget, partSubject, dmRetryParts[pi], { baseUrl: dmBaseUrl });
+                            if (!r.ok) break;
+                        }
                         success = r.ok;
                         if (success) console.log(`[AUTO-COMPLETE] [OK] Retry OK — ${stepName} for ${caseLabel} → DM to ${dmTarget}`);
                         else console.warn(`[AUTO-COMPLETE] [ERR] Retry failed — ${stepName} for ${caseLabel}: ${r.reason || 'Unknown'}`);
@@ -1640,7 +2149,7 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
         }
 
         // Cleanup
-        try { retryClient.close(); } catch (e) { /* ignore */ }
+        try { await retryClient.close(); } catch (e) { /* ignore */ }
 
         // ── Summary webhook ──
         if (stillFailed === 0) {

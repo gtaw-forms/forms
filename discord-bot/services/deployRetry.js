@@ -5,6 +5,7 @@
 import { logFnCall } from './deployLogger.js';
 import { state, C } from './deployState.js';
 import { isMaintenanceMode } from './deployQueue.js';
+import { probeMsForHost } from './postingHealth.js';
 
 //  Retry Queue Backfill
 
@@ -104,11 +105,10 @@ export async function checkRetryQueue() {
 
         const now = Date.now();
         let requeued = 0;
-        let failed = 0;
 
         snap.forEach((child) => {
             const entry = child.val();
-            const { authorId, reportKey, retryAt, deployRetries = 0 } = entry || {};
+            const { authorId, reportKey, retryAt } = entry || {};
             if (!authorId || !reportKey || !retryAt) {
                 // Clean up malformed entries
                 child.ref.remove().catch(() => {});
@@ -116,17 +116,9 @@ export async function checkRetryQueue() {
             }
 
             if (now >= new Date(retryAt).getTime()) {
-                // Retry is due — check max retries
-                if (deployRetries >= C.MAX_RETRIES) {
-                    // Mark as permanently failed
-                    db.child(`scheduledReports/${authorId}/${reportKey}`).update({
-                        deployStatus: 'failed_permanent',
-                        deployMessage: `Failed after ${C.MAX_RETRIES} retries. Manual intervention required.`,
-                    }).catch(() => {});
-                    child.ref.remove().catch(() => {});
-                    failed++;
-                    return;
-                }
+                // No exhaustion: due retries always re-enqueue (outages can
+                // need any number of attempts; data-terminal states are
+                // marked explicitly elsewhere, never by count).
                 // Re-enqueue (hasdeployed=false is load-bearing: the cold-load
                 // and value listener both skip anything not strictly false,
                 // which would strand the report across restarts)
@@ -143,7 +135,7 @@ export async function checkRetryQueue() {
             }
         });
 
-        if (requeued > 0) console.log(`[AUTO] Retry queue: ${requeued} re-queued, ${failed} failed permanently`);
+        if (requeued > 0) console.log(`[AUTO] Retry queue: ${requeued} re-queued (retries never expire)`);
     } catch (err) {
         console.error(`[AUTO] Retry queue check error: ${err.message}`);
     }
@@ -155,21 +147,12 @@ export async function checkRetryQueue() {
  */
 export async function requeueReport(db, authorId, reportKey, reportData) {
     logFnCall('deployRetry', 'requeueReport', 'Re-queuing report', { reportKey });
+    // No exhaustion: the count is telemetry only. Transport failures retry
+    // forever; data-terminal states are marked explicitly elsewhere.
     const retries = (reportData.deployRetries || 0) + 1;
     const retryAt = new Date(Date.now() + C.RETRY_DELAY_MS).toISOString();
 
-    if (retries >= C.MAX_RETRIES) {
-        console.log(`[AUTO] ${reportKey} failed permanently after ${C.MAX_RETRIES} retries`);
-        await db.ref(`scheduledReports/${authorId}/${reportKey}`).update({
-            hasdeployed: true,
-            deployStatus: 'failed_permanent',
-            deployMessage: `Failed after ${C.MAX_RETRIES} retries. Manual intervention required.`,
-            deployRetries: retries,
-        });
-        return;
-    }
-
-    console.log(`[AUTO] ${reportKey} re-queued for retry at ${retryAt} (attempt ${retries}/${C.MAX_RETRIES})`);
+    console.log(`[AUTO] ${reportKey} re-queued for retry at ${retryAt} (attempt ${retries} — retrying until posted)`);
     await db.ref(`scheduledReports/${authorId}/${reportKey}`).update({
         deployStatus: 'retry_queued',
         // Load-bearing (see checkRetryQueue): a requeued report must read as
@@ -178,7 +161,7 @@ export async function requeueReport(db, authorId, reportKey, reportData) {
         deployRetries: retries,
         retryAt,
         deployCheckedAt: new Date().toISOString(),
-        deployMessage: `Retry queued — attempt ${retries}/${C.MAX_RETRIES} at ${new Date(retryAt).toLocaleString()}`,
+        deployMessage: `Retry queued — attempt ${retries} at ${new Date(retryAt).toLocaleString()} (retrying until posted)`,
     });
 
     // Update retry queue index (with display labels for the dashboard)
@@ -187,4 +170,53 @@ export async function requeueReport(db, authorId, reportKey, reportData) {
     ).catch(() => {});
 
     if (state.knownReportKeys) state.knownReportKeys.delete(reportKey);
+}
+
+/**
+ * Mark a report as terminally settled (data problem — never retried).
+ * Mirrors the settled-terminal semantics used elsewhere (trashed_duplicate,
+ * skipped_no_consent): hasdeployed=true so the cold-load/listener skip it,
+ * the given deployStatus is recorded verbatim, and any retry-queue index
+ * entry is removed. Counterpart to requeueReport (RETRYABLE path).
+ */
+export async function markDeployTerminal(db, authorId, reportKey, status, message) {
+    logFnCall('deployRetry', 'markDeployTerminal', 'Marking report terminal', { reportKey, status });
+    await db.ref(`scheduledReports/${authorId}/${reportKey}`).update({
+        hasdeployed: true,
+        deployStatus: status || 'failed_permanent',
+        deployMessage: message || 'Terminal deploy failure',
+        deployedAt: new Date().toISOString(),
+        deployedBy: 'autoDeploy',
+        retryAt: null,
+        deployCheckedAt: new Date().toISOString(),
+    });
+
+    // Remove any retry-queue index entry — a terminal report must never be
+    // picked up by checkRetryQueue.
+    await db.ref(`retry-queue/${authorId}|${reportKey}`).remove().catch(() => {});
+}
+
+/**
+ * Pause a report while the forum write path is blocked (circuit breaker
+ * open) WITHOUT consuming retry budget: deployRetries is preserved, and the
+ * next probe fires after the breaker's probe interval instead of the normal
+ * retry delay. checkRetryQueue picks it up like any due retry.
+ */
+export async function rescheduleReportProbe(db, authorId, reportKey, reportData, host) {
+    const waitMs = probeMsForHost(host);
+    const retryAt = new Date(Date.now() + waitMs).toISOString();
+    const retries = (reportData && reportData.deployRetries) || 0;
+    await db.ref(`scheduledReports/${authorId}/${reportKey}`).update({
+        deployStatus: 'retry_queued',
+        // Load-bearing (see checkRetryQueue): must read as not-deployed.
+        hasdeployed: false,
+        retryAt,
+        deployCheckedAt: new Date().toISOString(),
+        deployMessage: `Paused — forum write path blocked (circuit breaker open). Probing again ${new Date(retryAt).toLocaleString()} without using retry budget.`,
+    });
+    await db.ref(`retry-queue/${authorId}|${reportKey}`).set(
+        retryIndexEntry(authorId, reportKey, reportData, retryAt, retries)
+    ).catch(() => {});
+    if (state.knownReportKeys) state.knownReportKeys.delete(reportKey);
+    console.log(`[AUTO] ${reportKey} paused (breaker open) — probe at ${retryAt}, retries preserved at ${retries}`);
 }

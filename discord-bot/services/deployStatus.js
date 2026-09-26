@@ -27,13 +27,20 @@ export async function markDeployed(db, authorId, key, success, extra = {}) {
 /**
  * Write a deploy status message to the report in Firebase.
  * The web app reads this to show feedback in the UI.
+ *
+ * NOTE: no `deployCheckedAt` here on purpose. Routine touches (queued /
+ * progress) used to bump it unconditionally, churning a write + listener
+ * event on every deploy with zero readers depending on per-touch freshness
+ * (verified: no deployCheckedAt reads in discord-bot, src/, or functions/;
+ * getStuckReports keys off deployStatus). Real transitions still stamp it
+ * explicitly at their call sites (deployRetry requeue/reschedule/terminal,
+ * consent skip, executor handbrake, pick timeout, /report-retry).
  */
 export async function setDeployStatus(db, authorId, key, status, message) {
     logFnCall('deployStatus', 'setDeployStatus', 'Setting deploy status', { key, status });
     await db.ref(`scheduledReports/${authorId}/${key}`).update({
         deployStatus: status,
         deployMessage: message,
-        deployCheckedAt: new Date().toISOString(),
     });
 }
 
@@ -55,7 +62,7 @@ function parseDeployUrl(url) {
 
 /**
  * Mark a report as completed and send a clear completion webhook.
- * Verifies the write succeeded and logs the outcome.
+ * Logs the outcome (update() resolution confirms persistence).
  *
  * @param {object}  db       - Firebase ref
  * @param {string}  authorId
@@ -70,18 +77,9 @@ export async function markReportComplete(db, authorId, key, label, type, resultU
     try {
         await markDeployed(db, authorId, key, true, { ...parseDeployUrl(resultUrl), deployType: type });
 
-        // Verify the write persisted
-        const verifySnap = await db.ref(`scheduledReports/${authorId}/${key}/hasdeployed`).once('value');
-        const hasdeployed = verifySnap.val();
-
-        if (hasdeployed !== true) {
-            console.error(`[AUTO] ${key} markDeployed verification FAILED: hasdeployed=${hasdeployed}`);
-            return false;
-        }
-
         await setDeployStatus(db, authorId, key, 'deployed', `Successfully deployed to ${type}.`);
 
-        console.log(`[AUTO] ${key} marked as COMPLETED (hasdeployed=${hasdeployed}), removing from queue.`);
+        console.log(`[AUTO] ${key} marked as COMPLETED, removing from queue.`);
 
         return true;
     } catch (err) {

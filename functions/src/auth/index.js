@@ -647,8 +647,17 @@ export const refreshGtawUser = onCall({
         let tokenGenerationError = null;
         try {
             const firebaseUid = `gtaw:${finalUser.id}`;
+            // Mirror processGtaWorldAuth's claim set (characterName/oauthName
+            // included): refresh previously minted gtawUsername ONLY, so any
+            // session refresh silently dropped the character identity and the
+            // saved-report author gate started denying with "You can only
+            // access your own saved reports" whenever the UCP username differs
+            // from the character name. Names only here — never IDs (the
+            // account-id-as-characterId regression stays fixed).
             const additionalClaims = {
                 gtawUsername: finalUser.username,
+                oauthName: finalUser.username,
+                characterName: factionResult.character?.characterName || null,
                 isFactionMember: factionResult.isMember,
                 accessLevel: factionResult.accessLevel,
                 isSuperAdmin: isElevated,
