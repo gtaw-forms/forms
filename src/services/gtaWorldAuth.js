@@ -94,7 +94,7 @@ const getRedirectUri = () => {
     return `${window.location.origin}/#/auth/gta/callback`;
 };
 
-const sendLoginWebhook = (userData, role) => {
+const sendLoginWebhook = async (userData, role) => {
     try {
         const roleLabel = role === 'employee' ? 'PHMC Employee' : 'Non Employee';
         const embed = {
@@ -108,6 +108,27 @@ const sendLoginWebhook = (userData, role) => {
             timestamp: new Date().toISOString(),
             footer: { text: 'PHMC Forms Login' }
         };
+
+        // Tow Reports access (best-effort — omitted when the allowlist can't
+        // be read, e.g. Firebase Auth not ready yet on this client).
+        try {
+            const towSnap = await Promise.race([
+                get(ref(database, 'tow-access')),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('tow-access read timeout')), 5000)),
+            ]);
+            const towList = Object.values(towSnap?.val() || {});
+            const names = [
+                userData.username,
+                userData.faction?.characterName,
+                ...(Array.isArray(userData.allFactionCharacters) ? userData.allFactionCharacters.map(fc => (fc.character || fc).characterName) : []),
+                ...(Array.isArray(userData.character) ? userData.character.map(c => c.name) : []),
+            ].map(n => String(n || '').trim().toLowerCase()).filter(Boolean);
+            const grant = towList.find(e => names.includes(String(e?.ucpName || '').trim().toLowerCase()));
+            const basis = userData.isFactionMember ? 'PHMC Employee' : (grant ? `Contractor grant${grant.supervisor === true ? ' (supervisor)' : ''}` : null);
+            embed.fields.push({ name: 'Tow Access', value: basis || 'No', inline: true });
+        } catch (e) {
+            console.warn('Tow access lookup skipped:', e?.message || e);
+        }
 
         if (userData.isFactionMember) {
             const factionChars = userData.allFactionCharacters || [];

@@ -883,3 +883,289 @@ export const restoreSavedReportsBackup = onCall({ region: 'europe-west2', memory
         body: JSON.stringify({ backupId, confirm: true }),
     });
 });
+
+/**
+ * Tow Reports — list + save (create/update) via RTDB, access via UCP grants.
+ *
+ * Access model:
+ *   - Viewers: PHMC faction members (token.isFactionMember) auto-pass;
+ *     contractors pass via UCP-name grant in `tow-access` (grant list only,
+ *     no membership needed).
+ *   - Managers (grant/revoke): tow-supervisor-flagged grantees, or PHMC
+ *     leadership (accessLevel admin/management) / superadmin.
+ *   - Localhost PoC callers carry no Firebase Auth (repo-wide convention —
+ *     the web API key is referrer-locked off localhost), so an explicit
+ *     Origin-based dev bypass applies to http://localhost:* only. Browsers
+ *     enforce Origin (curl can spoof it — accepted PoC risk, logged loudly).
+ *     Everything else must authenticate.
+ */
+const TOW_NODE = 'tow-reports';
+const TOW_ACCESS_NODE = 'tow-access';
+const TOW_LOCAL_ORIGINS = new Set([
+    'http://localhost:3000', 'http://127.0.0.1:3000',
+    'http://localhost:5173', 'http://127.0.0.1:5173',
+]);
+
+function isLocalDevCaller(request) {
+    const origin = String(request.rawRequest?.headers?.origin || '').toLowerCase();
+    return TOW_LOCAL_ORIGINS.has(origin);
+}
+
+function towCallerNames(request) {
+    const token = request.auth?.token || {};
+    return [token.characterName, token.oauthName || token.gtawUsername]
+        .map(v => String(v || '').trim().toLowerCase())
+        .filter(Boolean);
+}
+
+async function readTowAccess() {
+    const snap = await adminDb.ref(TOW_ACCESS_NODE).once('value');
+    return snap.val() || {};
+}
+
+function towFindGrant(list, names) {
+    return Object.entries(list || {}).find(([, e]) =>
+        names.includes(String(e?.ucpName || '').trim().toLowerCase()));
+}
+
+/** Viewer gate: faction member auto-passes, else contractor UCP grant. */
+async function requireTowViewer(request) {
+    if (!request.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'Authentication required.');
+    }
+    const token = request.auth.token || {};
+    const names = towCallerNames(request);
+    if (token.isFactionMember === true) return { via: 'phmc', names };
+    const list = await readTowAccess();
+    if (towFindGrant(list, names)) return { via: 'contractor', names };
+    throw new functions.https.HttpsError('permission-denied', 'Tow Reports access required (PHMC staff or contractor grant).');
+}
+
+/** Manager gate: tow-supervisor flag, PHMC leadership, or superadmin. */
+async function requireTowManager(request) {
+    const base = await requireTowViewer(request);
+    const token = request.auth?.token || {};
+    const level = String(token.accessLevel || '').toLowerCase();
+    if (token.isSuperAdmin === true || ['superadmin', 'admin', 'management'].includes(level)) {
+        return { ...base, managerVia: 'leadership' };
+    }
+    const list = await readTowAccess();
+    const me = towFindGrant(list, base.names);
+    if (me && me[1]?.supervisor === true) return { ...base, managerVia: 'supervisor' };
+    throw new functions.https.HttpsError('permission-denied', 'Tow Supervisor or PHMC leadership required.');
+}
+
+/** Shared entry: dev bypass (logged) or viewer/manager gate. */
+async function towGate(request, opts = {}) {
+    if (isLocalDevCaller(request) && !request.auth) {
+        console.warn('[tow] dev bypass — localhost origin, no Firebase Auth (PoC)');
+        return opts.manager
+            ? { dev: true, names: [], managerVia: 'dev' }
+            : { dev: true, names: [], via: 'dev' };
+    }
+    if (opts.manager) return { dev: false, ...(await requireTowManager(request)) };
+    const base = await requireTowViewer(request);
+    return { dev: false, ...base };
+}
+const cleanTowStr = (v, max) => String(v ?? '').replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, max);
+const cleanTowPhotos = (v) => {
+    if (!Array.isArray(v)) return [];
+    return v
+        .filter(u => typeof u === 'string' && /^https?:\/\//i.test(u.trim()))
+        .map(u => u.trim().slice(0, 500))
+        .slice(0, 6);
+};
+
+export const getTowReports = onCall({
+    region: "europe-west2",
+    memory: "256MiB",
+    cors: [
+        'https://gtaw-forms.github.io',
+        'https://phmc-tools.gta.world',
+        'http://localhost:3000'
+    ]
+}, async (request) => {
+    await towGate(request);
+    const snap = await adminDb.ref(TOW_NODE).once('value');
+    const data = snap.val() || {};
+    const list = Object.entries(data).map(([id, v]) => ({ id, ...(v || {}) }));
+    list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    return { success: true, count: list.length, reports: list };
+});
+
+export const saveTowReport = onCall({
+    region: "europe-west2",
+    memory: "256MiB",
+    cors: [
+        'https://gtaw-forms.github.io',
+        'https://phmc-tools.gta.world',
+        'http://localhost:3000'
+    ]
+}, async (request) => {
+    const gate = await towGate(request);
+    const d = request.data || {};
+    const plate = cleanTowStr(d.plate, 12);
+    if (!plate) throw new functions.https.HttpsError('invalid-argument', 'plate is required.');
+    const id = cleanTowStr(d.id, 60);
+    const now = Date.now();
+    // Authed callers are identified by token (not client-claimed); dev
+    // callers by their submitted officer name.
+    const tokenNames = towCallerNames(request);
+    const actor = gate.dev
+        ? (cleanTowStr(d.officerName || d.createdBy, 80) || 'Localhost User')
+        : (tokenNames[0] || cleanTowStr(d.officerName || d.createdBy, 80) || 'Unknown');
+    const record = {
+        plate: plate.toUpperCase(),
+        make: cleanTowStr(d.make, 40),
+        model: cleanTowStr(d.model, 40),
+        authorizingEmployee: cleanTowStr(d.authorizingEmployee, 80),
+        location: cleanTowStr(d.location, 120),
+        reason: cleanTowStr(d.reason, 500),
+        photos: cleanTowPhotos(d.photos),
+        officerName: actor,
+        updatedAt: now,
+    };
+    // Soft delete is a flag, never a removal (audit trail stays intact).
+    if (d.deleted === true || d.deleted === false) {
+        record.deleted = d.deleted === true;
+        record.deletedBy = cleanTowStr(d.deletedBy || actor, 80);
+        record.deletedAt = record.deleted ? now : null;
+    }
+    if (id) {
+        const existing = (await adminDb.ref(`${TOW_NODE}/${id}`).once('value')).val();
+        if (!existing) throw new functions.https.HttpsError('not-found', 'Tow report not found.');
+        record.createdBy = existing.createdBy || actor;
+        record.createdAt = existing.createdAt || now;
+        // Preserve an existing soft-delete unless this write explicitly changes it.
+        if (record.deleted === undefined && existing.deleted === true) {
+            record.deleted = true;
+            record.deletedBy = existing.deletedBy || null;
+            record.deletedAt = existing.deletedAt || null;
+        }
+        await adminDb.ref(`${TOW_NODE}/${id}`).update(record);
+        const action = record.deleted === true && !existing.deleted ? 'delete'
+            : (!record.deleted && existing.deleted === true) ? 'restore' : 'update';
+        await logTowAuditEntry({ action, reportId: id, plate: record.plate, actor, detail: action === 'delete' ? 'soft-deleted' : null });
+        return { success: true, id, updated: true };
+    }
+    record.createdBy = actor;
+    record.createdAt = now;
+    const pushed = await adminDb.ref(TOW_NODE).push(record);
+    await logTowAuditEntry({ action: 'create', reportId: pushed.key, plate: record.plate, actor });
+    return { success: true, id: pushed.key, updated: false };
+});
+
+/**
+ * logTowAudit — append one audit entry (RTDB `tow-audit` + Discord).
+ * Used for access-list changes (grant/revoke); report mutations audit
+ * themselves inside saveTowReport. Best-effort Discord: audit write wins.
+ */
+export const logTowAudit = onCall({
+    region: "europe-west2",
+    memory: "256MiB",
+    cors: [
+        'https://gtaw-forms.github.io',
+        'https://phmc-tools.gta.world',
+        'http://localhost:3000'
+    ]
+}, async (request) => {
+    const gate = await towGate(request);
+    const d = request.data || {};
+    const action = cleanTowStr(d.action, 20);
+    if (!action) throw new functions.https.HttpsError('invalid-argument', 'action is required.');
+    const tokenNames = towCallerNames(request);
+    const actor = gate.dev
+        ? (cleanTowStr(d.actor, 80) || 'Localhost User')
+        : (tokenNames[0] || cleanTowStr(d.actor, 80) || 'Unknown');
+    await logTowAuditEntry({
+        action,
+        reportId: cleanTowStr(d.reportId, 60) || null,
+        plate: cleanTowStr(d.plate, 12) || null,
+        actor,
+        detail: cleanTowStr(d.detail, 200) || null,
+    });
+    return { success: true };
+});
+
+/**
+ * addTowAccess / removeTowAccess — manage the contractor/supervisor
+ * allowlist. Manager gate: tow-supervisor flag, PHMC leadership, superadmin.
+ */
+export const addTowAccess = onCall({
+    region: "europe-west2",
+    memory: "256MiB",
+    cors: [
+        'https://gtaw-forms.github.io',
+        'https://phmc-tools.gta.world',
+        'http://localhost:3000'
+    ]
+}, async (request) => {
+    const gate = await towGate(request, { manager: true });
+    const d = request.data || {};
+    const ucpName = cleanTowStr(d.ucpName, 80);
+    if (!ucpName) throw new functions.https.HttpsError('invalid-argument', 'ucpName is required.');
+    const list = await readTowAccess();
+    const dup = towFindGrant(list, [ucpName.toLowerCase()]);
+    if (dup) throw new functions.https.HttpsError('already-exists', 'That UCP name already has access.');
+    const tokenNames = towCallerNames(request);
+    const actor = gate.dev ? (cleanTowStr(d.actor, 80) || 'Localhost User') : (tokenNames[0] || 'Unknown');
+    const pushed = await adminDb.ref(TOW_ACCESS_NODE).push({
+        ucpName, supervisor: d.supervisor === true,
+        addedBy: actor, addedAt: Date.now(),
+    });
+    await logTowAuditEntry({
+        action: 'grant', reportId: null, plate: null, actor,
+        detail: `${ucpName}${d.supervisor === true ? ' (supervisor)' : ''}`,
+    });
+    return { success: true, id: pushed.key };
+});
+
+export const removeTowAccess = onCall({
+    region: "europe-west2",
+    memory: "256MiB",
+    cors: [
+        'https://gtaw-forms.github.io',
+        'https://phmc-tools.gta.world',
+        'http://localhost:3000'
+    ]
+}, async (request) => {
+    const gate = await towGate(request, { manager: true });
+    const d = request.data || {};
+    const id = cleanTowStr(d.id, 60);
+    if (!id) throw new functions.https.HttpsError('invalid-argument', 'id is required.');
+    const existing = (await adminDb.ref(`${TOW_ACCESS_NODE}/${id}`).once('value')).val();
+    if (!existing) throw new functions.https.HttpsError('not-found', 'Grant not found.');
+    await adminDb.ref(`${TOW_ACCESS_NODE}/${id}`).remove();
+    const tokenNames = towCallerNames(request);
+    const actor = gate.dev ? (cleanTowStr(d.actor, 80) || 'Localhost User') : (tokenNames[0] || 'Unknown');
+    await logTowAuditEntry({
+        action: 'revoke', reportId: null, plate: null, actor,
+        detail: String(existing.ucpName || id),
+    });
+    return { success: true };
+});
+
+/** Shared tow-audit writer: RTDB append + bot-native Discord post. */
+async function logTowAuditEntry({ action, reportId, plate, actor, detail }) {
+    const entry = {
+        action, reportId: reportId || null, plate: plate || null, actor,
+        detail: detail || null, at: Date.now(),
+    };
+    try {
+        await adminDb.ref('tow-audit').push(entry);
+    } catch (err) {
+        console.warn('[tow-audit] RTDB append failed:', err.message);
+    }
+    if (!MORGUE_API_KEY) return;
+    const line = `**[Tow Reports] ${action}**${plate ? ` — \`${plate}\`` : ''} by \`${actor}\`${detail ? ` (${detail})` : ''}`;
+    try {
+        await fetch(`${MORGUE_API_URL}/api/notify`, {
+            method: 'POST',
+            headers: { 'x-api-key': MORGUE_API_KEY, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ channel: 'admin', content: line.slice(0, 1900) }),
+            signal: AbortSignal.timeout(15000),
+        });
+    } catch (err) {
+        console.warn('[tow-audit] Discord post failed:', err.message);
+    }
+}

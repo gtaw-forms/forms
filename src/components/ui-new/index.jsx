@@ -21,6 +21,8 @@ import PrototypeFieldRenderer from './PrototypeFieldRenderer';
 import SurgicalDiagramModal from './SurgicalDiagramModal';
 import PatientSearch from './PatientSearch';
 import MorgueBrowser from './MorgueBrowser';
+import VehicleImpound from './VehicleImpound';
+import { useTowAccess } from '../../hooks/useTowAccess';
 import EmsPanel from './EmsPanel';
 import TimeDisplay from './TimeDisplay';
 import ServiceStatusTicker from './ServiceStatusTicker';
@@ -44,7 +46,10 @@ const NewUIPrototype = ({ basicMode = false }) => {
   const [selectedForm, setSelectedForm] = useState(null);
   const [formValues, setFormValues] = useState({});
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeView, setActiveView] = useState('forms'); // 'forms' | 'morgue' | 'ems'
+  const [activeView, setActiveView] = useState('forms'); // 'forms' | 'morgue' | 'ems' | 'tow'
+  // Tow Reports: dev-open on localhost; in prod, PHMC members auto-pass
+  // and contractors pass via UCP grant (shared useTowAccess hook).
+  const showImpoundPoc = typeof window !== 'undefined' && window.location.hostname === 'localhost';
 
   // ── Collapsible left sidebar (collapse to the left / expand back) ──
   // Persisted so a refresh keeps the user's preferred layout.
@@ -76,6 +81,16 @@ const NewUIPrototype = ({ basicMode = false }) => {
 
   const { formsData, morgueRecords, isLoadingData, morgueLoading, morgueRecordsError, loadMorgueRecords, factionsData, agencyDataStore, selectOptions: dataContextSelectOptions, factionListData, lsccData } = useData();
   const { user: realUser, isAuthenticated: realIsAuthenticated, characterName, swappableCharacters, factionData, isPhmcMember: realIsPhmcMember, accessLevel: realAccessLevel, login, logout, swapCharacter, canSwapCharacters, isLoading: authLoading, error: authError, credentialsLoading, identityRefreshStatus } = useGtaWorldAuth();
+
+  // Tow Reports sidebar visibility: dev-open on localhost, otherwise PHMC
+  // members auto-pass and contractors pass via UCP grant (shared hook).
+  const towAccess = useTowAccess({
+    isAuthenticated: realIsAuthenticated,
+    characterName,
+    ucpName: realUser?.username || '',
+    isPhmcMember: realIsPhmcMember,
+  });
+  const showTowReports = showImpoundPoc || (realIsAuthenticated && towAccess.hasAccess);
 
   // ── Initial auth check — show loader until auth is fully resolved ──
   const [authChecking, setAuthChecking] = useState(true);
@@ -1086,6 +1101,12 @@ const NewUIPrototype = ({ basicMode = false }) => {
                     className={`form-item${activeView === 'morgue' ? ' active' : ''}`}>
                     <span className="dot" />Morgue Records
                   </div>
+                  {showTowReports && (
+                  <div onClick={() => { setActiveView('tow'); setSelectedForm(null); setFormValues({}); }}
+                    className={`form-item${activeView === 'tow' ? ' active' : ''}`}>
+                    <span className="dot" />Tow Reports <span className="case-tag" style={{ marginLeft: 6 }}>POC</span>
+                  </div>
+                  )}
                 </div>
               </div>
 
@@ -1163,8 +1184,8 @@ const NewUIPrototype = ({ basicMode = false }) => {
             <i className={`fas ${sidebarCollapsed ? 'fa-chevron-right' : 'fa-chevron-left'}`} />
           </button>
           <div className="topbar-title">
-            <h1>{activeView === 'morgue' ? 'Morgue Records' : activeView === 'ems' ? 'LS County EMS Protocols' : activeForm?.name || 'No Form Selected'}</h1>
-            {activeView === 'morgue' ? <span className="case-tag">Database</span> : activeView === 'ems' ? <span className="case-tag">Protocols</span> : activeForm && <span className="case-tag">{activeForm.accessType || 'General'}</span>}
+            <h1>{activeView === 'morgue' ? 'Morgue Records' : activeView === 'ems' ? 'LS County EMS Protocols' : activeView === 'tow' ? 'Tow Reports' : activeForm?.name || 'No Form Selected'}</h1>
+            {activeView === 'morgue' ? <span className="case-tag">Database</span> : activeView === 'ems' ? <span className="case-tag">Protocols</span> : activeView === 'tow' ? <span className="case-tag">POC</span> : activeForm && <span className="case-tag">{activeForm.accessType || 'General'}</span>}
           </div>
           <div className="topbar-center">
             <ServiceStatusTicker />
@@ -1253,10 +1274,12 @@ const NewUIPrototype = ({ basicMode = false }) => {
         <div className="content-row">
 
           {/* ─── MAIN CONTENT ─── */}
-          <div className="main-content" key={activeView === 'morgue' ? 'morgue' : activeView === 'ems' ? 'ems' : activeForm?.firebaseKey || 'empty'}>
+          <div className="main-content" key={activeView === 'morgue' ? 'morgue' : activeView === 'ems' ? 'ems' : activeView === 'tow' ? 'tow' : activeForm?.firebaseKey || 'empty'}>
             {activeView === 'ems' ? (
-              <EmsPanel protocol={selectedEmsProtocol} injuries={emsInjuries} selectedInjury={selectedEmsInjury}
+              <EmsPanel protocol={selectedEmsProtocol} injuries={emsInjuries} selectedInjury={selectedInjury}
                 onSelectInjury={setSelectedEmsInjury} onClearInjury={() => setSelectedEmsInjury(null)} />
+            ) : activeView === 'tow' ? (
+              <VehicleImpound showNotification={showNotification} isAuthenticated={isAuthenticated} characterName={characterName} ucpName={realUser?.username || ''} isPhmcMember={isPhmcMember} accessLevel={realAccessLevel} />
             ) : activeView === 'morgue' ? (
               <MorgueBrowser records={morgueRecords || []} isLoading={morgueLoading || isLoadingData} loadRecords={loadMorgueRecords} showNotification={showNotification}
                 isAuthenticated={isAuthenticated} characterName={characterName} user={realUser} />

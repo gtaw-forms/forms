@@ -40,3 +40,8 @@ export const triggerDeleteSavedReport = (data) => triggerFunction('deleteSavedRe
 export const triggerGetSavedReportStats = () => triggerFunction('getSavedReportStats');
 export const triggerCreateSavedReportsBackup = () => triggerFunction('createSavedReportsBackup');
 export const triggerRestoreSavedReportsBackup = (data) => triggerFunction('restoreSavedReportsBackup', data);
+export const triggerGetTowReports = () => triggerFunction('getTowReports', {});
+export const triggerSaveTowReport = (data) => triggerFunction('saveTowReport', data);
+export const triggerLogTowAudit = (data) => triggerFunction('logTowAudit', data);
+export const triggerAddTowAccess = (data) => triggerFunction('addTowAccess', data);
+export const triggerRemoveTowAccess = (data) => triggerFunction('removeTowAccess', data);
