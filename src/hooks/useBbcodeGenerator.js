@@ -554,7 +554,7 @@ const formatToNorthAmericanDate = (isoDateTime) => {
             const oocMatches = icSection.match(/(?:\(\((.*?)\)\)|\[(.*?)\])/g);
             if (oocMatches) {
               oocMatches.forEach(match => {
-                const oocContent = match.replace(/[\[\]()]/g, ''); // Remove brackets
+                const oocContent = match.replace(/[[\]()]/g, ''); // Remove brackets
                 const names = oocContent.split(',').map(n => cleanOocString(n.trim())).filter(Boolean);
                 oocNames.push(...names);
               });
@@ -778,7 +778,7 @@ const formatToNorthAmericanDate = (isoDateTime) => {
         const additionalReportsBBCodes = processedFormValues.additionalReports.map(report => {
             const sanitizeSpoilerTitle = (title) => {
               if (!title) return 'Spoiler';
-              return title.replace(/[\[\]()/]/g, '').trim();
+              return title.replace(/[[\]()/]/g, '').trim();
             };
 
             const originalKey = typeof report === 'string' ? 'Additional Report' : (report.originalKey || 'Additional Report');

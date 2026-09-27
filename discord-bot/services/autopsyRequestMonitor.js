@@ -2258,7 +2258,7 @@ function parseDecedentNameLine(raw) {
         marker = markerMatch[1] || markerMatch[2] || '';
         rest = rest.replace(markerMatch[0], '').trim();
     }
-    const name = rest.replace(/[\[\]()]/g, '').trim();
+    const name = rest.replace(/[[\]()]/g, '').trim();
     if (!name) return null;
     return { raw: String(raw).trim(), name, marker, oocName };
 }
@@ -2613,7 +2613,7 @@ export function parseAutopsyRequestBbcode(bbcode) {
             // Forum Account line ("[*]Forum Account: <url>"). Prefer the raw
             // [url=...] href when the poster linked it — tag-stripping keeps
             // only the link text, which may be "My Profile" instead of the URL.
-            const mForumHref = line.match(/Forum\s*Account\s*:[^\[]*\[url=([^\]]+)\]/i);
+            const mForumHref = line.match(/Forum\s*Account\s*:[^[]*\[url=([^\]]+)\]/i);
             if (mForumHref && !fields.forumAccountUrl) {
                 fields.forumAccountUrl = dna(mForumHref[1]);
             }

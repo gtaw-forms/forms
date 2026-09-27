@@ -271,11 +271,13 @@ app.use((req, res, next) => {
 function sanitizeInputs(req, _res, next) {
     if (req.query) {
         for (const [k, v] of Object.entries(req.query)) {
+            // eslint-disable-next-line no-control-regex -- strips control chars from untrusted query input (ban-evasion + log-injection defense)
             if (typeof v === 'string') req.query[k] = v.replace(/[\x00-\x1f\x7f]/g, '');
         }
     }
     if (req.body && typeof req.body === 'object' && !Array.isArray(req.body)) {
         for (const [k, v] of Object.entries(req.body)) {
+            // eslint-disable-next-line no-control-regex -- strips control chars from untrusted body input (ban-evasion + log-injection defense)
             if (typeof v === 'string') req.body[k] = v.replace(/[\x00-\x1f\x7f]/g, '').trim();
         }
     }
@@ -483,6 +485,7 @@ app.use((req, res, next) => {
 app.use((req, res, next) => {
     if (req.method === 'PUT' || req.method === 'DELETE') {
         const ip = req.clientIp || 'unknown';
+        // eslint-disable-next-line no-control-regex -- sanitizes User-Agent before audit logging (log-injection defense)
         const ua = (req.headers['user-agent'] || '').replace(/[\x00-\x1f]/g, '').slice(0, 120);
         const key = req.headers['x-api-key'] || '';
 
@@ -841,6 +844,7 @@ async function flushWebhookBatch() {
 
 /** Strip control characters from string inputs (prevents log injection, etc.) */
 function sanitize(val) {
+    // eslint-disable-next-line no-control-regex -- sanitize helper strips control chars from untrusted input (ban-evasion + log-injection defense)
     if (typeof val === 'string') return val.replace(/[\x00-\x1f\x7f]/g, '').trim();
     if (Array.isArray(val)) return val.map(sanitize);
     if (val && typeof val === 'object') {
@@ -895,6 +899,7 @@ const SUSPICIOUS_PATTERNS = [
     { pattern: /supervisor\/info/i,        label: 'SCAN-supervisor' },
     { pattern: /router\/mesh\/status/i,    label: 'SCAN-mesh-probe' },
     // Encoded-traversal variants missed by the earlier traversal rules
+    // eslint-disable-next-line no-control-regex -- intentional tab char in scanner signature matching tab-based encoded traversal evasion (%\t. / .\x09.)
     { pattern: /%252e|%252f|%255c|%\t\.|\.\x09\./i, label: 'SCAN-traversal-encoded' },
     { pattern: /phpmyadmin/i,             label: 'SCAN-phpmyadmin' },
     { pattern: /\.git\/config/i,          label: 'SCAN-git-config' },
@@ -986,6 +991,7 @@ function getClientIp(req) {
 // Set only by the Firebase callable proxy after Auth verification. These are
 // used for abuse/audit attribution; direct API callers remain external/unknown.
 function getRequesterIdentity(req) {
+    // eslint-disable-next-line no-control-regex -- strips control chars from requester identity headers for abuse/audit attribution (log-injection defense)
     const clean = (value, max = 120) => String(value || '').replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, max);
     const characterName = clean(req.headers['x-phmc-requester-character']);
     const oauthName = clean(req.headers['x-phmc-requester-oauth']);
@@ -1058,6 +1064,7 @@ app.use((req, res, next) => {
             `BANNED_IP ip=${ip}`
         );
         recordActivity(req, 403, 0, ip,
+            // eslint-disable-next-line no-control-regex -- sanitizes User-Agent before activity-log write (log-injection defense)
             (req.headers['user-agent'] || '').replace(/[\x00-\x1f]/g, '').slice(0, 120),
             `BANNED:${banReason}`
         );
@@ -1099,6 +1106,7 @@ app.use((req, res, next) => {
         );
         // Record the blocked attempt in activity log
         recordActivity(req, 403, 0, ip,
+            // eslint-disable-next-line no-control-regex -- sanitizes User-Agent before activity-log write (log-injection defense)
             (req.headers['user-agent'] || '').replace(/[\x00-\x1f]/g, '').slice(0, 120),
             `BLOCKED:${suspiciousFinding.label}`
         );
@@ -1117,6 +1125,7 @@ app.use((req, res, next) => {
         const ms = Date.now() - start;
 
         const source = req.query.source ? ` src="${sanitize(req.query.source)}"` : '';
+        // eslint-disable-next-line no-control-regex -- sanitizes User-Agent before request logging (log-injection defense)
         const ua = (req.headers['user-agent'] || '').replace(/[\x00-\x1f]/g, '').slice(0, 120);
         const label = suspiciousFinding
             ? ` [SUSPICIOUS:${suspiciousFinding.label}]`
@@ -1828,6 +1837,7 @@ const TELEMETRY_NUM_FIELDS = ['events', 'cacheHits', 'network', 'errors', 'inact
 const TELEMETRY_STR_ARRAYS = ['routes', 'users', 'errorSamples'];
 
 function sanitizeTelemetryStr(value, max = 200) {
+    // eslint-disable-next-line no-control-regex -- strips control chars from untrusted telemetry strings (ban-evasion + log-injection defense)
     return String(value ?? '').replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, max);
 }
 

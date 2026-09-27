@@ -2379,8 +2379,8 @@ class ForumClient {
                 // Prefer an author link on the page; fall back to the profile title.
                 const link = document.querySelector('a.username, a.username-coloured');
                 if (link && link.textContent?.trim()) return link.textContent.trim();
-                const m = document.title.match(/Viewing profile[^|]*[:\-]\s*(.+)/i)
-                    || document.title.match(/Profile[:\-]\s*(.+)/i);
+                const m = document.title.match(/Viewing profile[^|]*[:-]\s*(.+)/i)
+                    || document.title.match(/Profile[:-]\s*(.+)/i);
                 return m ? m[1].trim() : null;
             }).catch(() => null);
 

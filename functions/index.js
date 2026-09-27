@@ -15,6 +15,7 @@ const MORGUE_WRITE_API_KEY = process.env.MORGUE_WRITE_API_KEY || null;
 // cannot spoof these values when the callable function proxies to morgue-api.
 function morgueRequesterHeaders(request) {
     const token = request.auth?.token || {};
+    // eslint-disable-next-line no-control-regex -- strips control chars from Auth-derived requester headers proxied to morgue-api (log-injection defense)
     const clean = (value, max = 120) => String(value || '').replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, max);
     return {
         'x-api-key': MORGUE_API_KEY,
@@ -1054,6 +1055,7 @@ async function towGate(request, opts = {}) {
     const base = await requireTowViewer(request);
     return { dev: false, ...base };
 }
+// eslint-disable-next-line no-control-regex -- strips control chars from untrusted tow-report strings (ban-evasion + log-injection defense)
 const cleanTowStr = (v, max) => String(v ?? '').replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, max);
 const cleanTowPhotos = (v) => {
     if (!Array.isArray(v)) return [];

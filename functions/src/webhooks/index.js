@@ -202,6 +202,7 @@ const cleanTelemetryNum = (value) => {
 
 const cleanTelemetryStr = (value, max = 200) => {
   if (typeof value !== 'string') return null;
+  // eslint-disable-next-line no-control-regex -- strips control chars from untrusted telemetry strings (ban-evasion + log-injection defense)
   const clean = value.replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, max);
   return clean || null;
 };

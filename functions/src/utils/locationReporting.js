@@ -20,7 +20,7 @@ export async function processUntrackedLocation(place, street = null, area = null
     }
 
     // Sanitize place for DB key
-    const safePlaceKey = lookupKey.replace(/[.#$[\\\]\/]/g, "_");
+    const safePlaceKey = lookupKey.replace(/[.#$[\\\]/]/g, "_");
     const logRef = db.ref(`untracked_locations_log/${safePlaceKey}`);
     
     try {
