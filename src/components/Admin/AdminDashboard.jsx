@@ -1,15 +1,14 @@
-import React, { useState, useEffect, lazy, Suspense } from 'react';
-import { Button, Spinner, Alert, Form, Table } from 'react-bootstrap';
+import React, { useState, useEffect } from 'react';
+import { Spinner } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import './AdminDashboard.css';
 import { formatAccessLevel } from '../../utils/textUtils';
-import GtaWorldLoginButton from '../Auth/GtaWorldLoginButton';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import useFactionPermissions from '../../hooks/useFactionPermissions';
 import { getDatabase, ref, get, set } from 'firebase/database';
 import { isGoogleAuthenticated, getGoogleUser } from '../../services/gtaWorldAuth';
 // P2 (g): firebaseDebug imports removed with their dead handlers.
-import { triggerFetchExternalUrl, triggerWebhookProxy } from '../../services/firebaseFunctions';
+import { triggerFetchExternalUrl } from '../../services/firebaseFunctions';
 import { logAdminAction, getUserContext } from '../../utils/logging';
 import LoginSplash from '../Auth/LoginSplash';
 

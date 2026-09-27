@@ -1,6 +1,6 @@
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
-import { db, admin } from '../utils/firebase.js';
+import { db } from '../utils/firebase.js';
 import { sendWebhook } from '../utils/helpers.js';
 import { runWeeklyCoronerSummary, runMonthlyCoronerSummary, runYearlyCoronerSummary } from '../reports/coroner.js';
 // import { syncFactionMembers } from './factionSync.js';  // Commented out: sync now runs on auth recovery only, not scheduled

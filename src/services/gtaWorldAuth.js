@@ -3,7 +3,6 @@ import { signInWithCustomToken, signOut } from 'firebase/auth';
 import { ref, get } from 'firebase/database';
 import { functions, auth, database } from '../firebase';
 import * as Sentry from "@sentry/react";
-import { getCharacterID, getCharacterName } from '../utils/identityUtils';
 import { logAuthErrorToDiscord } from '../utils/logging';
 import { withRetry, isRetryableAuthError } from '../utils/retry';
 import { triggerValidateGtaWorldToken, triggerCheckFactionMembership, triggerRefreshGtawUser, triggerWebhookProxy, triggerGetPublicConfig } from './firebaseFunctions';

@@ -1,4 +1,3 @@
-import { db } from './firebase.js';
 import { getConfigValue } from './config.js';
 
 // P2 (i) cost plan: secretsExist + sendWebhookWithFile removed — zero callers

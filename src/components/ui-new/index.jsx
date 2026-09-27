@@ -1,5 +1,4 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import * as Sentry from "@sentry/react";
 import { useData } from '../../contexts/DataContext';
 import { useModal } from '../../contexts/ModalProvider';
 import { useNotification } from '../../contexts/NotificationContext';
@@ -32,7 +31,6 @@ import { triggerGetPatientNames } from '../../services/firebaseFunctions';
 import { ref, onValue, query, orderByChild, equalTo } from 'firebase/database';
 import { database } from '../../firebase';
 import './styles.css';
-import moduleStyles from './index.module.css';
 import phmcLogo from '../../assets/phmc.png';
 /**
  * New UI Prototype — grid-based form layout with

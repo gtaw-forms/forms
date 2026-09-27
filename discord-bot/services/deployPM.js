@@ -6,7 +6,7 @@
  */
 
 import { getForumClient } from './forumClient.js';
-import { logFnCall, DeployProgressEmbed, notifyDeployFailure } from './deployLogger.js';
+import { DeployProgressEmbed, notifyDeployFailure } from './deployLogger.js';
 import { state } from './deployState.js';
 import { markDeployed, markReportComplete } from './deployStatus.js';
 import { requeueReport } from './deployRetry.js';

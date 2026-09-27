@@ -1,6 +1,5 @@
 import { SlashCommandBuilder, EmbedBuilder, MessageFlags } from 'discord.js';
 import { isOwnerOrWhitelisted } from '../services/permissions.js';
-import firebase from '../services/firebase.js';
 import { isDevTestActive, getDevTestME } from '../services/autopsyRotation.js';
 import { readEnvValue, upsertEnvValues, ENV_PATH } from '../services/envFile.js';
 

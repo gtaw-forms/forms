@@ -1,5 +1,4 @@
 import { db } from './firebase.js';
-import { sendWebhook } from './helpers.js';
 
 // In-memory cache to prevent spam during a single function execution (e.g., a loop)
 const reportedThisExecution = new Set();

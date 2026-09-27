@@ -17,7 +17,6 @@
  * queued on sweep. Sent entities prune after 7 days.
  */
 
-import { logFnCall } from './deployLogger.js';
 import { registerTick, unregisterTick } from './scheduler.js';
 
 export const EMAIL_NODE = 'coroner-email-queue';

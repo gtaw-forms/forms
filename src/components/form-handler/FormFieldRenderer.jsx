@@ -2,9 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import Select from 'react-select';
 import ImageUploader from './ImageUploader'; // Assuming ImageUploader is in the same directory or adjust path
 import { getUtcFormattedDateTime, getUtcFormattedTime } from '../../utils/dateTimeUtils';
-import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
-import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import { triggerWebhookProxy, triggerCheckOfficerName } from '../../services/firebaseFunctions';
 import DecedentItemRenderer from './DecedentItemRenderer'; // Import the new component
 import CharacterSelector from '../Modals/CharacterSelector';

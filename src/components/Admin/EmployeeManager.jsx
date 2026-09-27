@@ -3,7 +3,7 @@ import { database } from '../../firebase';
 import { ref, get } from 'firebase/database';
 import { useData } from '../../contexts/DataContext';
 import { triggerGetSavedReportStats } from '../../services/firebaseFunctions';
-import { Table, Button, Spinner, Alert, Card, Row, Col, Form, Tabs, Tab, InputGroup  } from 'react-bootstrap';
+import { Table, Button, Spinner, Alert, Form, Tabs, Tab, InputGroup  } from 'react-bootstrap';
 import './AdminDashboard.css'; // Reusing some styles
 
 const EmployeeManager = () => {

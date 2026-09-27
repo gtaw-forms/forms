@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { database } from '../../firebase';
 import { ref, onValue, remove, update, get } from 'firebase/database';
-import { Spinner, Table, Button, Badge, Modal, Image, Alert } from 'react-bootstrap';
+import { Spinner, Table, Button, Badge, Image, Alert } from 'react-bootstrap';
 import { useNotification } from '../../contexts/NotificationContext';
 import { useModal } from '../../contexts/ModalProvider';
 import { useData } from '../../contexts/DataContext';

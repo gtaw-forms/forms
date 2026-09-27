@@ -15,7 +15,7 @@
  */
 
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
-import { PHMC_CHANNELS, getChannelId, channelSendEnabled } from './phmcChannels.js';
+import { getChannelId, channelSendEnabled } from './phmcChannels.js';
 
 export const PHMC_DASHBOARD_CONFIG_PATH = 'appMetadata/phmcDashboard';
 

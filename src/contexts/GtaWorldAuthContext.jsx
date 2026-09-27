@@ -1,9 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import * as Sentry from "@sentry/react";
 import { httpsCallable } from 'firebase/functions';
 import { database, functions } from '../firebase';
 import { auth } from '../firebase';
-import { ref, onValue, get } from 'firebase/database';
+import { ref, onValue } from 'firebase/database';
 import { useAuth } from './AuthContext';
 import { triggerRefreshGtawUser } from '../services/firebaseFunctions';
 import { hasSyncedFactionThisSession, markFactionSyncedThisSession, clearFactionSyncSessionFlag } from '../services/factionSyncGuard';
@@ -17,7 +16,6 @@ import {
     getAccessToken,
     isAuthenticated,
     logout,
-    makeAuthenticatedRequest,
     isFactionMember as checkIsFactionMember,
     isGtawStaff,
     storeUser,

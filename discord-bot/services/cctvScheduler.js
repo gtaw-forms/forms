@@ -10,7 +10,7 @@
  */
 
 import { spawn } from 'child_process';
-import { resolve, dirname } from 'path';
+import { dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { sendLogMessage } from './logChannel.js';
 import { registerTick, unregisterTick } from './scheduler.js';

@@ -1,6 +1,4 @@
 import { useState, useRef, useCallback } from 'react';
-import * as Sentry from "@sentry/react";
-import { transformReportTitle } from '../utils/bbcodeHelpers';
 
 export const useReportAttachment = (
     loadReportForUser,

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Form, Button, Badge } from 'react-bootstrap';
+import { Button, Badge } from 'react-bootstrap';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import { STORAGE_KEYS } from '../../services/gtaWorldAuth';
 import { cleanRankText } from '../../utils/textUtils';

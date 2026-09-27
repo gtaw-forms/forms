@@ -13,8 +13,8 @@ import { readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
-import { logFnCall, sendWebhook, DeployProgressEmbed } from './deployLogger.js';
-import { state, C } from './deployState.js';
+import { logFnCall, DeployProgressEmbed } from './deployLogger.js';
+import { state } from './deployState.js';
 import { getForumClient } from './forumClient.js';
 import { isMaintenanceMode } from './deployQueue.js';
 

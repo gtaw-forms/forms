@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { Form as BootstrapForm, Button, Spinner } from 'react-bootstrap';
+import { useState, useEffect, useRef } from 'react';
+import { Form as BootstrapForm, Button } from 'react-bootstrap';
 import { auth, database } from '../../firebase';
 import { signInWithEmailAndPassword, signOut } from "firebase/auth";
-import { ref, get, update, remove, set, serverTimestamp, push } from "firebase/database";
+import { ref, get, remove, set, push } from "firebase/database";
 
 
 import * as Sentry from "@sentry/react";

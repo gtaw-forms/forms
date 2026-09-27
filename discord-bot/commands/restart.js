@@ -5,10 +5,9 @@ import {
     ButtonStyle,
     ActionRowBuilder,
 } from 'discord.js';
-import { spawn } from 'child_process';
 import { isOwnerOrWhitelisted } from '../services/permissions.js';
 import { fileURLToPath } from 'url';
-import { dirname, resolve } from 'path';
+import { dirname } from 'path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 

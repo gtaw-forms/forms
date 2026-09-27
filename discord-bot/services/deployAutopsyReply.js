@@ -12,14 +12,14 @@ import { getForumClient, createIsolatedClient } from './forumClient.js';
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { logFnCall, sendWebhook, logStep, DeployProgressEmbed } from './deployLogger.js';
 import { notifySelfHeal, sendLogMessage } from './logChannel.js';
-import { state, C } from './deployState.js';
+import { state } from './deployState.js';
 import { isMaintenanceMode } from './deployQueue.js';
 import { setDeployStatus, markReportComplete } from './deployStatus.js';
-import { crosspostAutopsyToLssd, retryFailedLssdCrossposts, searchLssdRequestTopic } from './deployLssd.js';
+import { crosspostAutopsyToLssd, searchLssdRequestTopic } from './deployLssd.js';
 import { crosspostAutopsyToLspd } from './deployLspd.js';
 import { getAgencyForum, isAgencyFaction } from './agencyForums.js';
 import { notifyRequesterOfCompletion } from './requesterWebhook.js';
-import { clearAssignment, getRotationStatus } from './autopsyRotation.js';
+import { clearAssignment } from './autopsyRotation.js';
 
 import { COMPLETION_TEMPLATE, buildCompletionBb } from './completionTemplate.js';
 

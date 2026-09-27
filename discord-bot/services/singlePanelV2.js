@@ -35,7 +35,7 @@ import { MessageFlags, ModalBuilder, LabelBuilder, RadioGroupBuilder, TextDispla
 import { readFileSync, statSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { isDevTestActive, devLogChannelId } from './devRouting.js';
+import { isDevTestActive } from './devRouting.js';
 import { getChannelId, channelSendEnabled } from './phmcChannels.js';
 import { deathTypeWindow } from './assignmentWebhook.js';
 import { measureV2Text, countV2Components, V2_TEXT_BUDGET, V2_COMPONENT_BUDGET } from './massPanelV2.js';

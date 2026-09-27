@@ -2,7 +2,7 @@ import { logAdminAction, getUserContext, logDataVersionBump } from '../../utils/
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import useFactionPermissions from '../../hooks/useFactionPermissions';
 import React, { useState, useCallback, useEffect } from 'react';
-import { Card, Button, Alert, Table, Badge, Spinner, Tabs, Tab, Form } from 'react-bootstrap';
+import { Card, Button, Alert, Table, Badge, Spinner, Tabs, Tab } from 'react-bootstrap';
 import { useDropzone } from 'react-dropzone';
 import { httpsCallable } from 'firebase/functions';
 import { ref, get, set, remove, update } from 'firebase/database';

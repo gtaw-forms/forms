@@ -1,7 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import * as Sentry from '@sentry/react';
 import { useNotification } from '../../contexts/NotificationContext';
-import LoadingSpinner from '../UI/LoadingSpinner';
 import { uploadImageWithFallback } from '../../utils/imageUploadUtils';
 import ImagePreviewModal from '../Modals/ImagePreviewModal';
 

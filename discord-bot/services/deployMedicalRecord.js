@@ -10,7 +10,7 @@
  */
 
 import { getForumClient } from './forumClient.js';
-import { logFnCall, DeployProgressEmbed, notifyDeployFailure } from './deployLogger.js';
+import { DeployProgressEmbed } from './deployLogger.js';
 import { state } from './deployState.js';
 import { setDeployStatus, markReportComplete } from './deployStatus.js';
 import { upsertPatient, findPatientIndexEntry, removePatientIndexEntry, readIndex } from './patientIndex.js';

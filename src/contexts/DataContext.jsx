@@ -7,7 +7,7 @@ import { useInactivityReload } from '../hooks/useInactivityReload';
 import useGtaWorldAuth from '../hooks/useGtaWorldAuth';
 import { triggerGetMorgueRecords, triggerGetProtocolsDev } from '../services/firebaseFunctions';
 import { isStagingMode, resolveStagingPath, resolveVersionRef, resolveVersionKey } from '../utils/stagingPath';
-import { idbGet, idbSet, idbRemove } from '../utils/idbCache';
+import { idbGet, idbSet } from '../utils/idbCache';
 
 // Cache versions below this threshold are considered dead/broken and force a fresh fetch.
 // Bump this after fixing cache-corruption bugs to invalidate all stale client caches.

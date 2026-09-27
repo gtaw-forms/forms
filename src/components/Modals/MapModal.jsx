@@ -1,13 +1,12 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Button, Form, ListGroup, InputGroup, Badge, Spinner } from 'react-bootstrap';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, Rectangle, Polygon, useMapEvents, useMap } from 'react-leaflet';
+import { Button, Form, ListGroup, InputGroup, Spinner } from 'react-bootstrap';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { captureMapScreenshot } from '../../utils/mapImageUploadUtils';
 import { useImageUpload } from '../../hooks/useImageUpload';
 import 'leaflet/dist/leaflet.css';
-import { ref, set, get, onValue } from 'firebase/database';
+import { ref, set, get } from 'firebase/database';
 import { useGtaWorldAuth } from '../../hooks/useGtaWorldAuth';
-import { isGoogleAuthenticated, getGoogleUser } from '../../services/gtaWorldAuth';
 
 import { useAuth } from '../../contexts/AuthContext';
 import { database } from '../../firebase';

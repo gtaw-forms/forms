@@ -6,20 +6,15 @@
  */
 
 import firebase from './firebase.js';
-import { getForumClient } from './forumClient.js';
-import { sendLogMessage, notifySelfHeal } from './logChannel.js';
-import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { notifySelfHeal } from './logChannel.js';
 
-import { logFnCall, sendWebhook, logStep, DeployProgressEmbed } from './deployLogger.js';
+import { logFnCall, sendWebhook } from './deployLogger.js';
 import { state, C } from './deployState.js';
-import { markDeployed, setDeployStatus, markReportComplete } from './deployStatus.js';
-import { checkUserConsent, skipDueToConsent } from './deployConsent.js';
-import { consentGateAndEnqueue, enqueue, skipReport, getQueuedDeployments, getStuckReports, isMaintenanceMode, setMaintenanceMode } from './deployQueue.js';
-import { backfillRetryQueue, cleanupOldDeployed, checkRetryQueue, requeueReport } from './deployRetry.js';
-import { resolveAutopsyTopic } from './deployInteraction.js';
-import { crosspostAutopsyToLssd, retryFailedLssdCrossposts } from './deployLssd.js';
-import { crosspostAutopsyToLspd, retryFailedLspdCrossposts } from './deployLspd.js';
-import { clearAssignment, getRotationStatus } from './autopsyRotation.js';
+import { consentGateAndEnqueue } from './deployQueue.js';
+import { backfillRetryQueue, cleanupOldDeployed, checkRetryQueue } from './deployRetry.js';
+import { retryFailedLssdCrossposts } from './deployLssd.js';
+import { retryFailedLspdCrossposts } from './deployLspd.js';
+import { getRotationStatus } from './autopsyRotation.js';
 import { TERMINAL_STATES } from './outstandingAutopsies.js';
 
 

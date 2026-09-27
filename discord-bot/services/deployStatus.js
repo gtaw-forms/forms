@@ -4,7 +4,7 @@
  * Zero state dependencies — imports only from deployLogger.js.
  */
 
-import { logFnCall, sendWebhook } from './deployLogger.js';
+import { logFnCall } from './deployLogger.js';
 
 /**
  * Mark a report as deployed (or failed) in Firebase.

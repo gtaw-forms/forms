@@ -36,9 +36,8 @@
  */
 
 import { MessageFlags, ModalBuilder, LabelBuilder, RadioGroupBuilder, TextDisplayBuilder } from 'discord.js';
-import { isDevTestActive, devLogChannelId } from './devRouting.js';
+import { isDevTestActive } from './devRouting.js';
 import { getChannelId, channelSendEnabled } from './phmcChannels.js';
-import { sendToChannel } from './logChannel.js';
 import { buildMeSliceEmbed, buildMeSliceText, resolveMassPanelChannelId } from './massAssignmentPanel.js';
 
 export const MASS_V2_PREFIX = 'massv2_';

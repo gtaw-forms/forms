@@ -1,9 +1,6 @@
 import {
     SlashCommandBuilder,
     EmbedBuilder,
-    ActionRowBuilder,
-    ButtonBuilder,
-    ButtonStyle,
     MessageFlags,
 } from 'discord.js';
 import { isOwnerOrWhitelisted } from '../services/permissions.js';

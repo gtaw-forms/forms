@@ -14,7 +14,7 @@
 import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { getForumClient, createIsolatedClient } from './forumClient.js';
+import { createIsolatedClient } from './forumClient.js';
 import { sendLogMessage } from './logChannel.js';
 import { registerTick, unregisterTick } from './scheduler.js';
 
