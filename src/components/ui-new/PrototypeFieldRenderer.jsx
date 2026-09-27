@@ -25,7 +25,7 @@ const PrototypeFieldRenderer = ({
   factionsData, morgueRecords, isLoadingData, loadMorgueRecords,
   showNotification, setShowMapModal, setMapTargetField,
   isUploadingMapImage, currentUtcTime, finalSelectOptions, agencyDataStore,
-  toggleSavedReports, openImagePreview, isUploading,
+  toggleSavedReports, openImagePreview: _openImagePreview, isUploading: _isUploading,
 }) => {
 
   /* ─── Helpers (defined before memoized options that use them) ─── */

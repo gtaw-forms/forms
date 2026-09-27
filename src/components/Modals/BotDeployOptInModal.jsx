@@ -13,7 +13,7 @@ import BaseModal from './BaseModal';
 const SECTION_NAMES = Object.keys(FORM_SECTIONS);
 
 const BotDeployOptInModal = ({
-    show, onClose, consent, saveAllConsent, setConsent, isLoading, displayName = 'Unknown',
+    show, onClose, consent, saveAllConsent, setConsent: _setConsent, isLoading, displayName = 'Unknown',
 }) => {
     const [local, setLocal] = useState({});
     const [step, setStep] = useState(0);

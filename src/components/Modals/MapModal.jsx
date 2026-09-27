@@ -119,7 +119,7 @@ const Info = () => {
     return null;
 }
 
-const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapImage, mapTargetField, selectedForm }) => {
+const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapImage: _setIsUploadingMapImage, mapTargetField: _mapTargetField, selectedForm }) => {
     const { user: gtawUser, isAuthenticated, characterName } = useGtaWorldAuth();
     const { currentUser } = useAuth();
     const [debugMode, setDebugMode] = useState(false);
@@ -358,7 +358,7 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
         setMarkers(prev => prev.filter(m => m.id !== id));
     };
 
-    const handleMapRightClick = (e) => {
+    const handleMapRightClick = (_e) => {
         if (isDrawing) {
             setTempPath(p => p.slice(0, -1));
         }

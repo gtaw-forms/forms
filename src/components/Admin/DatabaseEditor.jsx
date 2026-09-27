@@ -14,7 +14,7 @@ const versionToNameMap = new Map([
     [11, 'Mass Fatality Report (v11)']
 ]);
 
-const DatabaseEditor = ({ showNotification, currentUser: propCurrentUser, gtawUser: propGtawUser }) => {
+const DatabaseEditor = ({ showNotification, currentUser: propCurrentUser, gtawUser: _propGtawUser }) => {
     const { user: gtawUser, username: gtawUsername } = useGtaWorldAuth();
     const currentUser = propCurrentUser || gtawUser;
     const [path, setPath] = useState('/agencies');

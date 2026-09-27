@@ -13,7 +13,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { isGoogleAuthenticated, logout as gtaLogout } from '../../services/gtaWorldAuth';
 import { getUserContext, logAdminAction } from '../../utils/logging';
 
-const AdminAuthAndActions = ({ formData, setFormData, showNotification: showInAppNotification, commitInfo }) => {
+const AdminAuthAndActions = ({ formData: _formData, setFormData, showNotification: showInAppNotification, commitInfo }) => {
     // --- Custom Webhook Panel State (must be first, before any logic or return) ---
     const [customWebhookChannel, setCustomWebhookChannel] = useState('');
     const [customWebhookTitle, setCustomWebhookTitle] = useState('');

@@ -618,7 +618,7 @@ const formatToNorthAmericanDate = (isoDateTime) => {
 
         // Step 6: Count unique IC names and their frequencies
         const nameCounts = {};
-        collectedDecedents.forEach(({ ic, ooc }) => {
+        collectedDecedents.forEach(({ ic, ooc: _ooc }) => {
           if (ic && ic !== 'N/A' && ic !== 'NO_NAME') {
             nameCounts[ic] = (nameCounts[ic] || 0) + 1;
           }

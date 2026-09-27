@@ -21,7 +21,7 @@ export const useReportAttachment = (
         return formData.phmcEmployee || formData.coronerEmployee || null;
     }, [formData]);
 
-    const handleReportSelectedForAttachment = useCallback(async (reportData, loadedFormData, loadedVersion, loadedBbCode) => {
+    const handleReportSelectedForAttachment = useCallback(async (reportData, loadedFormData, loadedVersion, _loadedBbCode) => {
         const targetFieldName = currentAttachmentTargetFieldRef.current;
         
         setFormData(prev => {

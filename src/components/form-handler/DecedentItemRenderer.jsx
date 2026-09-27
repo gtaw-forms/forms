@@ -13,12 +13,12 @@ const DecedentItemRenderer = ({
   index, // Index of the current decedent item in the list
   parentFieldName,
   finalSelectOptions, // Passed from FormHandler
-  currentUtcTime,     // Passed from FormHandler
-  agencyDataStore,    // Passed from FormHandler
-  showNotification,    // Passed from FormHandler
-  setShowMapModal,
-  setMapTargetField,
-  isUploadingMapImage = {},
+  currentUtcTime: _currentUtcTime,     // Passed from FormHandler
+  agencyDataStore: _agencyDataStore,    // Passed from FormHandler
+  showNotification: _showNotification,    // Passed from FormHandler
+  setShowMapModal: _setShowMapModal,
+  setMapTargetField: _setMapTargetField,
+  isUploadingMapImage: _isUploadingMapImage = {},
 }) => {
   // [OK] Hooks must run unconditionally — the null guard lives below the hook calls.
   const handleSubFieldChange = useCallback((subFieldName, value) => {

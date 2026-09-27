@@ -33,7 +33,7 @@ const frequentlyUsedIcons = [
   { class: 'fas fa-microscope', label: 'Laboratory' },
 ];
 
-const BulkAddFieldsModal = ({ show, onBulkAdd, onClose, existingFields = [], bbcodeTemplate = "" }) => {
+const BulkAddFieldsModal = ({ show, onBulkAdd, onClose, existingFields: _existingFields = [], bbcodeTemplate = "" }) => {
     const createDefaultNewField = () => ({
         type: "input", label: "", name: "", placeholder: "", layout: "full", rows: 4, maxImages: 6,
         optionsKey: "", timerType: "", buttonLabel: "", buttonAction: "", displayCurrentTime: false,
@@ -100,7 +100,7 @@ const BulkAddFieldsModal = ({ show, onBulkAdd, onClose, existingFields = [], bbc
                     </div>
                     <div style={{ flex: 1, overflowY: 'auto' }}>
                         <h5 style={{ color: '#60a5fa' }}>Queued Fields ({queuedFields.length})</h5>
-                        {queuedFields.map((f, i) => (
+                        {queuedFields.map((f, _i) => (
                             <div key={f.id} style={{ backgroundColor: '#1e293b', padding: '10px', borderRadius: '6px', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <span><strong>{f.label}</strong> ({f.type})</span>
                                 <Button variant="danger" size="sm" onClick={() => setQueuedFields(prev => prev.filter(q => q.id !== f.id))}>Remove</Button>

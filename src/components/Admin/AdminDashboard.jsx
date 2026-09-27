@@ -25,16 +25,16 @@ import CctvViewer from './CctvViewer';
 const AdminDashboard = ({
 
     currentUser,
-    Sentry,
+    Sentry: _Sentry,
     showInAppNotification,
-    webhooks,
-    newWebhook,
-    setNewWebhook,
-    handleAddWebhook,
-    handleDeleteWebhook,
-    isUpdatingWebhooks,
-    logRefreshTrigger,
-    setLogRefreshTrigger,
+    webhooks: _webhooks,
+    newWebhook: _newWebhook,
+    setNewWebhook: _setNewWebhook,
+    handleAddWebhook: _handleAddWebhook,
+    handleDeleteWebhook: _handleDeleteWebhook,
+    isUpdatingWebhooks: _isUpdatingWebhooks,
+    logRefreshTrigger: _logRefreshTrigger,
+    setLogRefreshTrigger: _setLogRefreshTrigger,
 }) => {
 
     const [selectedSection, setSelectedSection] = useState('serviceStatus');

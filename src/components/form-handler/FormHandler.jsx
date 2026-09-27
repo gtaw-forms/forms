@@ -293,7 +293,7 @@ export const FormHandler = () => {
       }
 
       // Helper to enrich employee data with firstname and lastname from OAuth if available
-      const enrichEmployeeData = (employeeList, type) => { // Added type for clearer logs
+      const enrichEmployeeData = (employeeList, _type) => { // Added type for clearer logs
           return employeeList.map(emp => {
               const matchingChar = swappableCharacters.find(char => 
                   char.characterName === emp.name || 
@@ -593,7 +593,7 @@ export const FormHandler = () => {
   }, [selectedForm, formValues]);
 
 
-  const handleSelectChange = useCallback((selectedOption, actionMeta) => {
+  const handleSelectChange = useCallback((selectedOption, _actionMeta) => {
     const name = selectedOption ? selectedOption.value : '';
     const updates = { [`${employeeType}Employee`]: name || '' };
 

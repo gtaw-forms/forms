@@ -51,7 +51,7 @@ export async function execute(interaction) {
     }
 
     // Build dropdown options (Discord limits: 25 options, label max 100 chars)
-    const options = skippable.slice(0, 25).map((entry, i) => {
+    const options = skippable.slice(0, 25).map((entry, _i) => {
         const label = (entry.label || 'Untitled').slice(0, 100);
         const value = entry.entityKey || `${entry.authorId}|${entry.key}`;
         // Stuck reports (from Firebase) may not have in-memory fields

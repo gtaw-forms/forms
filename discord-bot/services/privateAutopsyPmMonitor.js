@@ -170,7 +170,7 @@ export function parsePrivateAutopsyPm(bodyText) {
 // delivery target) lives in the Firebase entry + Discord embeds, not in the
 // forum post. This is EXACTLY what the future live path will post.
 
-export function buildIntakeCaseBbcode(pm, body, cfNo) {
+export function buildIntakeCaseBbcode(pm, body, _cfNo) {
     const d = body.decedent;
     const r = body.requester;
     const ooc = d.oocName ? `((${d.oocName}))` : '';

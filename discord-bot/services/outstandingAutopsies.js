@@ -82,7 +82,7 @@ export async function getOutstandingCases(db) {
                 .filter(([k]) => /^\d+$/.test(k))
                 .sort((a, b) => Number(a[0]) - Number(b[0]));
             const total = indexed.length;
-            indexed.forEach(([idx, cc], slot) => {
+            indexed.forEach(([_idx, cc], slot) => {
                 if (!cc || !cc.assignedTo || cc.completedAt) return;
                 // Shared-thread mass bodies carry no caseNum/title of their
                 // own — fall back to the parent collection (parity with the

@@ -45,7 +45,7 @@ const MetricsDashboard = () => {
             let lastActive = 0;
             let actions = 0;
 
-            Object.entries(categories).forEach(([category, subCategories]) => {
+            Object.entries(categories).forEach(([_category, subCategories]) => {
                 Object.values(subCategories).forEach(metric => {
                     totalVisits += metric.visit_count || 0;
                     if (metric.last_visited > lastActive) lastActive = metric.last_visited;

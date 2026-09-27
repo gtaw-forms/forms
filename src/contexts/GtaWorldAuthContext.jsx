@@ -360,7 +360,7 @@ export const GtaWorldAuthProvider = ({ children }) => {
             const newUrl = window.location.pathname + cleanHash;
             window.history.replaceState({}, document.title, newUrl);
             
-            processCallback(code, state).then(async ({ userData, returnPath }) => {
+            processCallback(code, state).then(async ({ userData: _userData, returnPath }) => {
 
                 const storedData = JSON.parse(storedOAuthData || '{}');
                 const userRole = storedData.role || 'employee';

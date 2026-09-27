@@ -192,7 +192,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
     }, [isAuthenticated, user, webhooks]);
 
     const updateStateWithData = (data) => {
-        Object.entries(CACHE_SEGMENTS).forEach(([key, segment]) => {
+        Object.entries(CACHE_SEGMENTS).forEach(([_key, segment]) => {
             if (data[segment]) {
                 updateCacheSegment(segment, data[segment]);
             }

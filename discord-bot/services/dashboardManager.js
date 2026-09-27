@@ -324,7 +324,7 @@ export async function gatherDashboardData(db, force = false) {
                             sharedUrl = indexed.map(({ cc }) => cc.caseUrl).find(Boolean) || null;
                         }
                     }
-                    indexed.forEach(({ idx, cc }, slot) => {
+                    indexed.forEach(({ idx: _idx, cc }, slot) => {
                         if (cc && cc.assignedTo && !cc.completedAt) {
                             // Shared-thread mass bodies carry no caseNum/title of
                             // their own — fall back to the parent collection

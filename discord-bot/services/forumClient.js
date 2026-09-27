@@ -1376,7 +1376,7 @@ class ForumClient {
             if (errorText) {
                 console.warn(`[FORUM] ⚠️ PM form has error: "${errorText}" — will retry submit`);
                 // Playwright evaluate only accepts ONE argument. Pass object for multiple values.
-                await this.page.evaluate(({ subj }) => {
+                await this.page.evaluate(({ subj: _subj }) => {
                     const subjEl = document.querySelector('input[name="subject"]');
                     if (subjEl) { subjEl.dispatchEvent(new Event('input', { bubbles: true })); }
                 }, { subj: subject });
@@ -1511,7 +1511,7 @@ class ForumClient {
         // Use a[href*="viewtopic.php"] (no topictitle class in this phpBB version),
         // then filter to only keep links that reference a topic (t=) and not a specific post (p=).
         // This avoids matching "Re:" replies, "Jump to post" links, or post body references.
-        _candidates = await this.page.evaluate((searchId) => {
+        _candidates = await this.page.evaluate((_searchId) => {
             const links = document.querySelectorAll('a[href*="viewtopic.php"]');
             const results = [];
             for (const link of links) {
@@ -1626,7 +1626,7 @@ class ForumClient {
             }).catch(() => []);
             console.log(`[FORUM] 📋 Raw results (${allTitles.length}): ${allTitles.map(t => `"${t.text}"`).join(', ') || 'none'}`);
 
-            const results = await this.page.evaluate((term) => {
+            const results = await this.page.evaluate((_term) => {
                 const found = [];
                 const selectors = 'a.topictitle, a.topictitle2, a[href*="viewtopic.php"], .topictitle a';
                 const links = document.querySelectorAll(selectors);

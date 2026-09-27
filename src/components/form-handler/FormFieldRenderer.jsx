@@ -13,7 +13,7 @@ import { evaluateFieldVisibility } from '../../utils/formValidation';
 import { sanitizeMorgueText } from '../../utils/textUtils';
 import { parseDnaProfile } from '../../utils/morgue';
 
-const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, finalSelectOptions, currentUtcTime, agencyDataStore, toggleSavedReports, showNotification, isUploading, setShowMapModal, setMapTargetField, isUploadingMapImage = {} }) => {
+const FormFieldRenderer = ({ field, selectedForm: _selectedForm, formValues, handleChange, finalSelectOptions, currentUtcTime, agencyDataStore, toggleSavedReports, showNotification, isUploading: _isUploading, setShowMapModal, setMapTargetField, isUploadingMapImage = {} }) => {
   const { factionsData, morgueRecords, isLoadingData, loadMorgueRecords } = useData();
   const { openImagePreview } = useModal();
 

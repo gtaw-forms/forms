@@ -15,14 +15,14 @@ import { GtaAuthLoading } from '../Auth/GtaCallback';
  * - Fixed innerText crash by using state-based image fallback
  */
 const EmployeeCredentialsSection = ({
-  formData,
-  setFormData,
+  formData: _formData,
+  setFormData: _setFormData,
   selectedEmployee,
   setSelectedEmployee,
-  groupedOptions,
-  handleSelectChange,
-  setShowEmployeeModal,
-  employeeType = 'coroner',
+  groupedOptions: _groupedOptions,
+  handleSelectChange: _handleSelectChange,
+  setShowEmployeeModal: _setShowEmployeeModal,
+  employeeType: _employeeType = 'coroner',
   showNotification,
   context,
   persistEnabled: propPersistEnabled,
@@ -30,13 +30,13 @@ const EmployeeCredentialsSection = ({
   // Auth props passed from parent
   user: propUser,
   isAuthenticated: propIsAuthenticated,
-  isPhmcMember: propIsPhmcMember,
+  isPhmcMember: _propIsPhmcMember,
   canSwapCharacters: propCanSwapCharacters,
   swapCharacter: propSwapCharacter,
   swappableCharacters: propSwappableCharacters,
   factionData: propFactionData,
-  updateFactionData: propUpdateFactionData,
-  triggerFactionSync: propTriggerFactionSync,
+  updateFactionData: _propUpdateFactionData,
+  triggerFactionSync: _propTriggerFactionSync,
   login: propLogin,
   logout: propLogout
 }) => {

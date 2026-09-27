@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 
-const CharacterSelector = ({ onCharacterSelect, selectedCharacterId, label = "Select Character", forceDropdown = false }) => {
+const CharacterSelector = ({ onCharacterSelect, selectedCharacterId, label = "Select Character", forceDropdown: _forceDropdown = false }) => {
     const { user: authUser } = useAuth();
     const { user: gtawUser, isAuthenticated: isGtawAuthenticated } = useGtaWorldAuth();
     const [user, setUser] = useState(null);

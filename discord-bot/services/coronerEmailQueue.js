@@ -131,7 +131,7 @@ export async function processEmailQueue() {
     } catch { /* best effort */ }
 }
 
-async function processOneEmail(key, entity) {
+async function processOneEmail(key, _entity) {
     // Re-read + claim under the in-flight guard (single process).
     const fresh = await getEntity(key);
     if (!fresh || _inFlight.has(key + ':claimed')) return;

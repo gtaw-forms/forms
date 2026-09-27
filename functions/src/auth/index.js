@@ -132,7 +132,7 @@ function getPermissionsForRank(scriptRank, isElevated = false) {
 /**
  * Helper function to get a simplified access level string
  */
-function getAccessLevel(scriptRank, username = '', isSuperAdmin = false) {
+function getAccessLevel(scriptRank, _username = '', isSuperAdmin = false) {
     if (isSuperAdmin) return 'superadmin';
     if (scriptRank >= 14) return 'admin';
     if (scriptRank >= 12) return 'management';

@@ -82,7 +82,7 @@ export const getCurrentFormType = () => {
 // Admin Action Logger
 // ---------------------------------------------------------------------------
 
-export const logAdminAction = async (adminEmail, action, details, context = null, userAgent = null, timeZone = null, gtaAuthUsername = null, characterData = null) => {
+export const logAdminAction = async (adminEmail, action, details, context = null, _userAgent = null, timeZone = null, gtaAuthUsername = null, characterData = null) => {
     const userIdentifier = gtaAuthUsername ? `${gtaAuthUsername} (${adminEmail})` : (adminEmail || "Unknown");
 
     let description = context

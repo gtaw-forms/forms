@@ -46,7 +46,7 @@ export const useWebhooks = (formData, commitInfo, showNotification, getIsInactiv
         }
     };
 
-    const flushTelemetry = useCallback(async (reason) => {
+    const flushTelemetry = useCallback(async (_reason) => {
         const bucket = telemetryRef.current;
         if (!bucket || !bucket.events) return;
         // Guests produce no beacon (callable requires auth) — drop silently.
