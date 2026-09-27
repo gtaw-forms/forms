@@ -75,8 +75,15 @@ const PrototypeFieldRenderer = ({
 
   const agencyOptions = useMemo(() => {
     if (!agencyDataStore) return [];
-    return Object.values(agencyDataStore).map(a => ({
-      value: a.shortCode,
+    // RTDB agency records carry fullName/logo/url but NO shortCode field, so
+    // `value: a.shortCode` produced `undefined` for every option (the select
+    // then fell back to label text as the value). Fall back to the record KEY
+    // (LSPD/LSSD/SADCR/DAO/…) so options are always code-valued — matching the
+    // hardcoded fallback list and the roster-check department codes. Without
+    // this, roster auto-select storing 'dao' matched no option and the field
+    // looked unfilled.
+    return Object.entries(agencyDataStore).map(([key, a]) => ({
+      value: (a.shortCode || key).toLowerCase(),
       label: a.fullName,
     }));
   }, [agencyDataStore]);
@@ -1216,11 +1223,19 @@ const OfficerSearch = ({ field, value, onChange, allValues, onFieldChange = () =
             <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10, background: 'var(--bg-elevated)', border: '1px solid var(--border-accent)', borderRadius: 6, maxHeight: 180, overflow: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
               {searchResults.map((m, i) => (
                 <div key={i} onClick={() => {
-                  const deptMap = { lspd: 'Los Santos Police Department', lssd: 'Los Santos County Sheriffs Department', sadcr: 'San Andreas Department of Corrections and Rehabilitation', dao: 'District Attorney Office' };
-                  const fullDept = deptMap[m.department?.toLowerCase()] || m.department;
-                  devLog(`[OfficerSearch] Selected: "${m.name}" — setting department to "${fullDept}"`);
+                  // Store the roster CODE in both department fields — the
+                  // dropdown options are code-valued ('dao', not the display
+                  // name), matching the manual-select path below. Previously
+                  // stored the full display name in `department` only, which
+                  // matched no option (dropdown looked unfilled) and left
+                  // requestingOfficerDepartment empty.
+                  const deptCode = String(m.department || '').toLowerCase();
+                  devLog(`[OfficerSearch] Selected: "${m.name}" — setting department to "${deptCode}"`);
                   onChange(m.name);
-                  if (fullDept && onFieldChange) onFieldChange('department', fullDept);
+                  if (deptCode && onFieldChange) {
+                    onFieldChange('department', deptCode);
+                    onFieldChange('requestingOfficerDepartment', deptCode);
+                  }
                   setSearchResults([]); setWaiting(false); setSearching(false); setNoMatch(false); lastSearched.current = m.name;
                 }}
                   style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 12.5, borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between' }}

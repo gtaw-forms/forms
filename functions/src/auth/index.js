@@ -324,26 +324,48 @@ export const processGtaWorldAuth = onCall({
 
         if (characterArray.length > 0) {
             const factionId = 364; // PHMC Faction ID
-            const membersRef = db.ref(`factions/${factionId}/members`);
-            const membersSnapshot = await membersRef.once('value');
-            const allMembers = membersSnapshot.val() || {};
-            logPerf('faction_db_read');
+            const matchRosterCharacters = async () => {
+                const membersSnapshot = await db.ref(`factions/${factionId}/members`).once('value');
+                const allMembers = membersSnapshot.val() || {};
+                logPerf('faction_db_read');
+                const matched = [];
+                for (const character of characterArray) {
+                    const resolved = resolveRosterCharacter(character, allMembers);
+                    if (!resolved) continue;
+                    const memberData = resolved.memberData;
+                    matched.push({
+                        character: { // Nest the character data
+                            characterId: resolved.key,
+                            characterName: memberData.characterName,
+                            rank: memberData.rank,
+                            scriptRank: memberData.scriptRank
+                        },
+                        permissions: getPermissionsForRank(memberData.scriptRank, isElevated),
+                        accessLevel: getAccessLevel(memberData.scriptRank, finalUser.username, isElevated)
+                    });
+                }
+                return matched;
+            };
 
-            const factionMembers = [];
-            for (const character of characterArray) {
-                const resolved = resolveRosterCharacter(character, allMembers);
-                if (!resolved) continue;
-                const memberData = resolved.memberData;
-                factionMembers.push({
-                    character: { // Nest the character data
-                        characterId: resolved.key,
-                        characterName: memberData.characterName,
-                        rank: memberData.rank,
-                        scriptRank: memberData.scriptRank
-                    },
-                    permissions: getPermissionsForRank(memberData.scriptRank, isElevated),
-                    accessLevel: getAccessLevel(memberData.scriptRank, finalUser.username, isElevated)
-                });
+            let factionMembers = await matchRosterCharacters();
+
+            // Onboarding self-heal: a NEW employee exists in UCP but the roster
+            // snapshot predates them, so the first read misses. Run one throttled
+            // sync (1h throttle inside syncFactionMembers — at most one UCP
+            // scrape per hour no matter how many new members log in) and re-match
+            // before concluding non-membership. Without this, new members could
+            // never onboard: manual sync requires the membership it grants.
+            if (factionMembers.length === 0 && !isElevated) {
+                try {
+                    const { syncFactionMembers } = await import('../maintenance/factionSync.js');
+                    const syncResult = await syncFactionMembers('login_miss');
+                    console.log(`[UnifiedAuth] Login-miss sync for ${finalUser.username}:`, syncResult.throttled ? 'throttled' : `synced ${syncResult.count} members`);
+                    if (!syncResult.throttled) {
+                        factionMembers = await matchRosterCharacters();
+                    }
+                } catch (syncErr) {
+                    console.warn('[UnifiedAuth] Login-miss sync failed (non-fatal):', syncErr.message);
+                }
             }
 
             if (factionMembers.length > 0) {

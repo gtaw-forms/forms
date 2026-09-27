@@ -172,6 +172,14 @@ const sendLoginWebhook = async (userData, role) => {
         const payload = { username: 'Login Bot', embeds: [embed] };
 
         triggerWebhookProxy('auth', payload).catch(error => {
+            // The proxy requires Firebase auth (P0 (c) lockdown), but this
+            // fires during the OAuth callback before custom-token sign-in
+            // completes — unauthenticated here is timing, not failure. Skip
+            // silently instead of feeding the error channel + Sentry.
+            if (error?.code === 'unauthenticated') {
+                console.warn('Login webhook skipped (pre-auth session).');
+                return;
+            }
             console.error('Failed to send login webhook:', error);
             Sentry.captureException(error);
         });

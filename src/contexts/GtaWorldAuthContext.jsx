@@ -259,6 +259,13 @@ export const GtaWorldAuthProvider = ({ children }) => {
             markFactionSyncedThisSession();
             return result;
         } catch (err) {
+            // Non-members (and pre-auth callers) are rejected by the server
+            // gate by design — that is a skip, not an error. Downgrade so a
+            // non-member login doesn't fan out into the error channel.
+            if (err?.code === 'permission-denied' || err?.code === 'unauthenticated') {
+                console.warn('[GtaWorldAuthContext] Faction sync not permitted (non-member or pre-auth) — skipping.');
+                return { skipped: true, reason: err.code };
+            }
             console.error('[GtaWorldAuthContext] triggerFactionSync failed:', err);
             throw err;
         }

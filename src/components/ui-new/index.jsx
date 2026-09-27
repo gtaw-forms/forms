@@ -1278,7 +1278,7 @@ const NewUIPrototype = ({ basicMode = false, initialView = null }) => {
           {/* ─── MAIN CONTENT ─── */}
           <div className="main-content" key={activeView === 'morgue' ? 'morgue' : activeView === 'ems' ? 'ems' : activeView === 'tow' ? 'tow' : activeForm?.firebaseKey || 'empty'}>
             {activeView === 'ems' ? (
-              <EmsPanel protocol={selectedEmsProtocol} injuries={emsInjuries} selectedInjury={selectedInjury}
+              <EmsPanel protocol={selectedEmsProtocol} injuries={emsInjuries} selectedInjury={selectedEmsInjury}
                 onSelectInjury={setSelectedEmsInjury} onClearInjury={() => setSelectedEmsInjury(null)} />
             ) : activeView === 'tow' ? (
               <VehicleImpound showNotification={showNotification} isAuthenticated={isAuthenticated} characterName={characterName} ucpName={realUser?.username || ''} isPhmcMember={isPhmcMember} accessLevel={realAccessLevel} />
