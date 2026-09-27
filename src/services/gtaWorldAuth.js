@@ -23,12 +23,27 @@ const GTA_WORLD_CONFIG = {
 
 let cachedClientId = null;
 
+// P2 (k) cost plan: persist the client ID (rotates rarely) so a hard reload
+// between login-click and OAuth callback doesn't cost a 2nd getPublicConfig call.
+const CLIENT_ID_CACHE_KEY = 'phmc_gtaw_client_id';
+const CLIENT_ID_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
 const getClientId = async () => {
     if (cachedClientId) return cachedClientId;
+    try {
+        const stored = JSON.parse(localStorage.getItem(CLIENT_ID_CACHE_KEY) || 'null');
+        if (stored?.value && (Date.now() - (stored.at || 0)) < CLIENT_ID_CACHE_TTL_MS) {
+            cachedClientId = stored.value;
+            return cachedClientId;
+        }
+    } catch { /* fall through to network */ }
     try {
         const config = await triggerGetPublicConfig();
         cachedClientId = config.gtaWorldClientId;
         if (!cachedClientId) throw new Error('Server returned no client ID');
+        try {
+            localStorage.setItem(CLIENT_ID_CACHE_KEY, JSON.stringify({ value: cachedClientId, at: Date.now() }));
+        } catch { /* best effort */ }
         return cachedClientId;
     } catch (error) {
         console.warn('[GTA Auth] Failed to fetch client config from server, using fallback:', error.message);

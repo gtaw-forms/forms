@@ -7,7 +7,10 @@ const triggerFunction = async (functionName, data) => {
         const result = await callable(data);
         return result.data;
     } catch (error) {
-        console.error(`Error calling ${functionName}:`, error);
+        // console.warn, not .error: the console interceptor forwards every
+        // console.error to the Discord error channel when Sentry is blocked —
+        // a failing callable would otherwise fan out into error-webhook calls.
+        console.warn(`Error calling ${functionName}:`, error);
         throw error;
     }
 };
@@ -23,9 +26,14 @@ export const triggerWebhookProxy = (webhookType, payload, webhookId = null) => {
     return triggerFunction('sendWebhookProxy', { webhookType, payload, webhookId });
 };
 export const triggerGetPublicConfig = () => triggerFunction('getPublicConfig');
+// Telemetry beacon transport (hourly aggregate → VPS JSONL store). Replaces
+// per-event sendWebhookProxy telemetry; the bot posts one V2 rollup/hour.
+export const triggerAppendTelemetry = (data) => triggerFunction('appendTelemetry', data);
 export const triggerGetMorgueRecords = (data) => triggerFunction('getMorgueRecords', data);
 export const triggerGetProtocolsDev = (data) => triggerFunction('getProtocolsDev', data);
 export const triggerDeleteMorgueRecord = (data) => triggerFunction('deleteMorgueRecord', data);
+// P1 (d) cost plan: bulk delete — 1 invocation for up to 100 rows (was N serial).
+export const triggerDeleteMorgueRecords = (data) => triggerFunction('deleteMorgueRecords', data);
 export const triggerPurgeMorgueRecords = () => triggerFunction('purgeMorgueRecords', { confirmed: true });
 export const triggerSyncMorgueFile = () => triggerFunction('syncMorgueFile', {});
 export const triggerCheckOfficerName = (data) => triggerFunction('checkOfficerName', data);
@@ -42,6 +50,6 @@ export const triggerCreateSavedReportsBackup = () => triggerFunction('createSave
 export const triggerRestoreSavedReportsBackup = (data) => triggerFunction('restoreSavedReportsBackup', data);
 export const triggerGetTowReports = () => triggerFunction('getTowReports', {});
 export const triggerSaveTowReport = (data) => triggerFunction('saveTowReport', data);
-export const triggerLogTowAudit = (data) => triggerFunction('logTowAudit', data);
+// P1 (e) cost plan: triggerLogTowAudit removed — zero callers (dead export).
 export const triggerAddTowAccess = (data) => triggerFunction('addTowAccess', data);
 export const triggerRemoveTowAccess = (data) => triggerFunction('removeTowAccess', data);

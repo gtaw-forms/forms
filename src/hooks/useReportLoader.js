@@ -4,8 +4,7 @@ import { ref, get } from 'firebase/database';
 import { triggerListSavedReports, triggerGetSavedReport } from '../services/firebaseFunctions';
 import * as Sentry from "@sentry/react";
 import { useNotification } from '../contexts/NotificationContext';
-import { useData } from '../contexts/DataContext';
-import { getCharacterName } from '../utils/identityUtils';
+import { useData, telemetryUserLabel } from '../contexts/DataContext';
 import { comprehensiveSanitize } from '../utils/textUtils';
 import useGtaWorldAuth from './useGtaWorldAuth';
 
@@ -212,7 +211,7 @@ export const useReportLoader = () => {
                         0,
                         reportSizeKb + bbCodeSizeKb,
                         isGtaAuthenticated,
-                        getCharacterName(gtaWorldUser),
+                        telemetryUserLabel(gtaWorldUser),
                         ['saved-report'],
                         [],
                         { 'saved-report': reportSizeKb + bbCodeSizeKb },

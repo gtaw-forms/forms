@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Form, Button, Badge } from 'react-bootstrap';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
-import { refreshFactionData as refreshFactionDataService, STORAGE_KEYS } from '../../services/gtaWorldAuth';
+import { STORAGE_KEYS } from '../../services/gtaWorldAuth';
 import { cleanRankText } from '../../utils/textUtils';
 import { getCharacterName, getCharacterID } from '../../utils/identityUtils';
 import { useNotification } from '../../contexts/NotificationContext.jsx';
@@ -50,8 +50,7 @@ const EmployeeCredentialsSection = ({
   const swapCharacter = propSwapCharacter || authHook.swapCharacter;
   const swappableCharacters = propSwappableCharacters || authHook.swappableCharacters;
   const factionData = propFactionData !== undefined ? propFactionData : authHook.factionData;
-  const updateFactionData = propUpdateFactionData || authHook.updateFactionData;
-  const triggerFactionSync = propTriggerFactionSync || authHook.triggerFactionSync;
+  // P1 (f): updateFactionData + triggerFactionSync consumers deleted with Reload.
   const login = propLogin || authHook.login;
   const logout = propLogout || authHook.logout;
   const isLoading = authHook.isLoading;
@@ -64,7 +63,6 @@ const EmployeeCredentialsSection = ({
   const persistEnabled = propPersistEnabled !== undefined ? propPersistEnabled : internalPersistEnabled;
   const setSetPersistEnabled = propSetPersistEnabled !== undefined ? propSetPersistEnabled : setInternalPersistEnabled;
 
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
   const [imgError, setImgError] = useState(false);
   const [imageCacheBuster] = useState(Date.now());
@@ -118,45 +116,8 @@ const EmployeeCredentialsSection = ({
     notify && notify(newValue ? 'Session will persist.' : 'Session will end on close.', 'info-circle', 3000);
   };
 
-  const handleRefreshFactionInfo = async () => {
-    const notify = showNotification || notifyFromContext;
-    const removeNotif = removeNotifFromContext;
-    if (!isGtaAuthenticated) return;
-    const loadingNotifId = notify('Fetching Employee Credentials...', 'spinner fa-spin', 0);
-    try {
-      setIsRefreshing(true);
-      
-      // Step 1: Trigger Faction Sync (RTDB -> GtaWorld API). Explicit user
-      // action (Reload button) — force bypasses the per-session debounce
-      // guard in GtaWorldAuthContext; harmless if the injected prop version
-      // ignores the options argument.
-      if (typeof triggerFactionSync === 'function') {
-        try {
-          await triggerFactionSync({ force: true });
-        } catch (syncErr) {
-          // If it's a permission error (e.g., Only Super Admins can manually trigger a sync), 
-          // we just log it and proceed to Step 2 to at least refresh local data.
-          console.warn('[EmployeeCredentialsSection] Background sync skipped or failed:', syncErr.message);
-        }
-      }
-
-      // Step 2: Refresh Faction Data (Local State -> RTDB)
-      const updated = await refreshFactionDataService();
-      if (updated && updated.faction) {
-        updateFactionData(updated.faction);
-        removeNotif && removeNotif(loadingNotifId);
-        notify && notify('Profile refreshed.', 'check-circle', 3000);
-      } else {
-        removeNotif && removeNotif(loadingNotifId);
-      }
-    } catch (err) {
-      removeNotif && removeNotif(loadingNotifId);
-      console.error('Refresh failed:', err);
-      notify && notify('Refresh failed.', 'exclamation-triangle', 5000);
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
+  // P1 (f) cost plan: handleRefreshFactionInfo deleted — Reload-button sync
+  // double-tap removed (modal reachable only via unrouted legacy FormHandler).
 
   const handleSwap = async () => {
     if (!isGtaAuthenticated || !canSwapCharacters) return;
@@ -303,15 +264,8 @@ const EmployeeCredentialsSection = ({
             </div>
         </div>
 
-        {/* Action Buttons with Labels */}
+        {/* Action Buttons with Labels (Reload removed — P1 (f)) */}
         <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                <Button variant="outline-info" size="sm" onClick={handleRefreshFactionInfo} disabled={isRefreshing} style={{ width: '100%' }}>
-                    <i className={`fas ${isRefreshing ? 'fa-spinner fa-spin' : 'fa-sync-alt'}`}></i>
-                </Button>
-                <div style={labelStyle}>Reload</div>
-            </div>
-
             {canSwapCharacters && (
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                     <Button variant="outline-primary" size="sm" onClick={handleSwap} style={{ width: '100%' }}>

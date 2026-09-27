@@ -267,6 +267,72 @@ export const deleteMorgueRecord = onCall({
 });
 
 /**
+ * Deletes MULTIPLE morgue records in one invocation (P1 (d) cost plan: the
+ * admin batch path was N serial callable invocations for N rows).
+ *
+ * Request data: { caseIds: string[] } (capped at 100 per call)
+ */
+export const deleteMorgueRecords = onCall({
+    region: "europe-west2",
+    memory: "256MiB",
+    timeoutSeconds: 300,
+    cors: [
+        'https://gtaw-forms.github.io',
+        'https://phmc-tools.gta.world',
+        'http://localhost:3000'
+    ]
+}, async (request) => {
+    if (!request.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'Authentication required.');
+    }
+
+    if (!MORGUE_API_KEY) {
+        throw new functions.https.HttpsError('internal', 'Server configuration error.');
+    }
+
+    const { caseIds } = request.data || {};
+    if (!Array.isArray(caseIds) || caseIds.length === 0) {
+        throw new functions.https.HttpsError('invalid-argument', 'caseIds must be a non-empty array.');
+    }
+    if (caseIds.length > 100) {
+        throw new functions.https.HttpsError('invalid-argument', 'caseIds is capped at 100 per call.');
+    }
+
+    const apiKey = MORGUE_WRITE_API_KEY || MORGUE_API_KEY;
+    const deleted = [];
+    const failed = [];
+    for (const rawId of caseIds) {
+        const caseId = String(rawId || '').trim();
+        if (!caseId) {
+            failed.push({ caseId: rawId, error: 'empty id' });
+            continue;
+        }
+        try {
+            const response = await fetch(`${MORGUE_API_URL}/api/morgue/records/${caseId}`, {
+                method: 'DELETE',
+                headers: { 'x-api-key': apiKey },
+                signal: AbortSignal.timeout(15000),
+            });
+            // 404 = already gone from VPS; still clean Firebase below.
+            if (response.status !== 404 && !response.ok) {
+                const text = await response.text();
+                throw new Error(`VPS returned ${response.status}: ${text.slice(0, 200)}`);
+            }
+            try {
+                await adminDb.ref(`morgue-records/${caseId}`).remove();
+            } catch (fbErr) {
+                console.warn(`[deleteMorgueRecords] Firebase cleanup warning for ${caseId}: ${fbErr.message}`);
+            }
+            deleted.push(caseId);
+        } catch (err) {
+            console.error(`[deleteMorgueRecords] Failed ${caseId}:`, err.message);
+            failed.push({ caseId, error: err.message });
+        }
+    }
+    return { success: failed.length === 0, deleted, deletedCount: deleted.length, failed };
+});
+
+/**
  * Purges ALL morgue records from both the VPS local file and Firebase.
  * Requires the caller to send a confirmation flag.
  *

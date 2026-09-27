@@ -1,11 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Button, Spinner, Alert, Form } from 'react-bootstrap';
-import {
-    triggerValidateGtaWorldToken,
-    triggerUploadFactionData,
-    triggerCheckFactionMembership,
-    triggerFetchExternalUrl
-} from '../../services/firebaseFunctions';
+import { Button, Spinner } from 'react-bootstrap';
+// P2 (f) cost plan: dead trigger imports + payload states + dispatcher removed
+// (4 imported callables, 10 payload states, handleTriggerFunction — all unwired,
+// zero onClick references). Kill-switch, maintenance toggle, debug buttons,
+// presence/visitor listeners below are live and untouched.
 
 import { database } from '../../firebase';
 import { ref, set, onValue, off } from 'firebase/database';
@@ -19,17 +17,6 @@ const FirebaseFunctionsTester = ({ showInAppNotification }) => {
     const [loading, setLoading] = useState(false);
     const [maintenanceLoading, setMaintenanceLoading] = useState(false);
     const [maintenanceEnabled, setMaintenanceEnabled] = useState(false);
-    const [result, setResult] = useState(null);
-    const [authCode, setAuthCode] = useState('');
-    const [redirectUri, setRedirectUri] = useState('');
-    const [accessToken, setAccessToken] = useState('');
-    const [characterId, setCharacterId] = useState('');
-    const [factionId, setFactionId] = useState('364'); // Default to PHMC faction
-    const [factionData, setFactionData] = useState('');
-    const [metadata, setMetadata] = useState('');
-    const [characterIds, setCharacterIds] = useState('');
-    const [externalUrl, setExternalUrl] = useState('https://phmc.gta.world/viewforum.php?f=265');
-    const [cookie, setCookie] = useState('');
     const [activeCount, setActiveCount] = useState(0);
     const [todayVisitors, setTodayVisitors] = useState(0);
 
@@ -128,20 +115,6 @@ const FirebaseFunctionsTester = ({ showInAppNotification }) => {
         }
     };
 
-    const handleTriggerFunction = async (func, ...args) => {
-        setLoading(true);
-        setResult(null);
-        try {
-            const response = await func(...args);
-            setResult(response);
-            showInAppNotification('Function triggered successfully. Check console for details.', 'success');
-        } catch (error) {
-            setResult({ error: error.message });
-            showInAppNotification(`Error triggering function: ${error.message}`, 'error');
-        }
-        setLoading(false);
-    };
-
     return (
         <div className="card">
             <div className="card-header">
@@ -221,12 +194,6 @@ const FirebaseFunctionsTester = ({ showInAppNotification }) => {
                         Use this ONLY in case of extreme data corruption, security breach, or platform-wide cache desync.
                     </p>
                 </div>
-
-                {result && (
-                    <Alert variant={result.error ? 'danger' : 'success'} className="mt-3">
-                        <pre style={{ maxHeight: '300px', overflowY: 'scroll', fontSize: '0.8em' }}>{JSON.stringify(result, null, 2)}</pre>
-                    </Alert>
-                )}
             </div>
         </div>
     );

@@ -5,7 +5,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { Card, Button, Alert, Table, Badge, Spinner, Tabs, Tab, Form } from 'react-bootstrap';
 import { useDropzone } from 'react-dropzone';
 import { httpsCallable } from 'firebase/functions';
-import { ref, get, set, remove } from 'firebase/database';
+import { ref, get, set, remove, update } from 'firebase/database';
 import { functions, database } from '../../firebase';
 import { markFactionSyncedThisSession } from '../../services/factionSyncGuard';
 import * as Sentry from "@sentry/react";
@@ -89,7 +89,9 @@ const FactionDataUpload = ({ showNotification }) => {
             
             if (result.data.success) {
                 showNotification(result.data.message || 'Faction sync completed.', 'success');
-                loadStoredFactionData();
+                // P1 (g) cost plan: await the post-sync refresh — the old
+                // un-awaited call raced the sync and fired a wasted full re-read.
+                await loadStoredFactionData();
             } else {
                 showNotification(`Sync failed: ${result.data.error}`, 'error');
             }
@@ -496,11 +498,22 @@ const FactionDataUpload = ({ showNotification }) => {
                 showNotification && showNotification('Warning: Could not update the faction data version. Caches may be stale.', 'warning');
             }
 
-            // Clear the audit trail after successful upload
+            // P1 (g) cost plan: retain the audit trail — the old code wiped
+            // audit/faction_uploads on every upload, erasing its own paper trail.
+            // Prune to the 20 most recent entries instead of clearing.
             try {
                 const auditRef = ref(database, 'audit/faction_uploads/');
-                await set(auditRef, null);
-                console.log('[Faction Upload] Successfully cleared audit trail.');
+                const auditSnap = await get(auditRef);
+                if (auditSnap.exists()) {
+                    const entries = Object.entries(auditSnap.val() || {});
+                    if (entries.length > 20) {
+                        entries.sort((a, b) => (b[1]?.uploadedAt || 0) - (a[1]?.uploadedAt || 0));
+                        const prune = {};
+                        entries.slice(20).forEach(([k]) => { prune[k] = null; });
+                        await update(auditRef, prune);
+                        console.log(`[Faction Upload] Pruned ${entries.length - 20} old audit entries.`);
+                    }
+                }
             } catch (auditError) {
                 console.error('[Faction Upload] Failed to clear audit trail:', auditError);
                 Sentry.captureException(auditError, { extra: { context: 'FactionDataUpload - Clear Audit' } });
@@ -587,7 +600,10 @@ const FactionDataUpload = ({ showNotification }) => {
                     <Button variant="outline-secondary" size="sm" onClick={handleReset} className="admin-btn">
                         Different File
                     </Button>
-                    <Button variant="success" size="sm" onClick={handleUploadToFirebase} disabled={parsedData?.errors?.length > 0} className="admin-btn">
+                    {/* P0 (e) client half: server requires upload_faction_data —
+                        manual CSV is unused (sync is automated), so fail closed
+                        in the UI instead of letting the call reject server-side. */}
+                    <Button variant="success" size="sm" onClick={handleUploadToFirebase} disabled={parsedData?.errors?.length > 0 || (!permissions.includes('upload_faction_data') && !permissions.includes('superadmin_access'))} title={(!permissions.includes('upload_faction_data') && !permissions.includes('superadmin_access')) ? 'Requires upload_faction_data permission (manual CSV is deprecated — sync is automated)' : undefined} className="admin-btn">
                         <i className="fas fa-upload me-2"></i> Sync Database
                     </Button>
                 </div>

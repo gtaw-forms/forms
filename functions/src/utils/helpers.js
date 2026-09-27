@@ -1,14 +1,8 @@
 import { db } from './firebase.js';
 import { getConfigValue } from './config.js';
 
-// Helper to safely check if secrets exist during deployment
-export const secretsExist = (secretNames) => {
-    try {
-        return secretNames.every(name => getConfigValue(name) !== undefined);
-    } catch {
-        return false;
-    }
-};
+// P2 (i) cost plan: secretsExist + sendWebhookWithFile removed — zero callers
+// repo-wide (verified). sendWebhook below is the only live helper.
 
 export const sendWebhook = async (payload, urlOverride = null) => {
     // Priority: urlOverride -> DISCORD_WEBHOOK_FUNCTIONS -> ADMIN_ACTION_WEBHOOK_URL
@@ -22,10 +16,13 @@ export const sendWebhook = async (payload, urlOverride = null) => {
     console.log(`Webhook URL is configured. Length: ${webhookURL.length}. Sending payload.`);
 
     try {
+        // P1 (b) cost plan: 15s cap — a stalled Discord POST previously held the
+        // instance for the remainder of the caller's timeout (up to 1200s).
         const response = await fetch(webhookURL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(15000),
         });
 
         if (!response.ok) {
@@ -38,36 +35,6 @@ export const sendWebhook = async (payload, urlOverride = null) => {
         }
     } catch (error) {
         console.error("Error sending webhook from Cloud Function:", error);
-        return false;
-    }
-};
-
-export const sendWebhookWithFile = async (content, filename, messagePayload = {}) => {
-    const webhookURL = getConfigValue("DISCORD_WEBHOOK_FUNCTIONS") || getConfigValue("ADMIN_ACTION_WEBHOOK_URL");
-    if (!webhookURL) return false;
-
-    try {
-        const form = new FormData();
-        form.append('file', new Blob([content]), filename);
-        
-        if (Object.keys(messagePayload).length > 0) {
-            form.append('payload_json', JSON.stringify(messagePayload));
-        }
-
-        const response = await fetch(webhookURL, {
-            method: 'POST',
-            body: form,
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error(`Error sending webhook with file. Status: ${response.status}. Response: ${errorText}`);
-            return false;
-        }
-
-        return true;
-    } catch (error) {
-        console.error("Error sending webhook with file:", error);
         return false;
     }
 };

@@ -147,6 +147,10 @@ export const syncFactionMembers = async (triggerSource = 'scheduled') => {
             // Update Metadata
             await db.ref('factions/364/metadata').update({
                 lastUpdated: new Date().toISOString(),
+                // P1 (h) cost plan: lastChecked belongs here too — the 1h
+                // throttle gates on it, and the old code only set it on the
+                // no-change branch, so back-to-back syncs ran unthrottled.
+                lastChecked: new Date().toISOString(),
                 uploadedBy: `Cloud Function (${triggerSource})`,
                 statistics: {
                     totalRecords: membersData.length,

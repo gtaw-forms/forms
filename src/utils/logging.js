@@ -143,7 +143,11 @@ export const logAdminAction = async (adminEmail, action, details, context = null
         await triggerWebhookProxy('admin', { embeds: [embed] });
         console.log(`Admin action logged to Discord: ${action}`);
     } catch (error) {
-        console.error('Error sending admin action webhook:', error);
+        // console.warn (not .error): keeps console visibility without feeding
+        // the interceptor, which forwards every console.error when Sentry is
+        // blocked — a failing admin webhook would otherwise cascade into the
+        // error channel it reports to.
+        console.warn('Error sending admin action webhook:', error);
         Sentry.captureException(error, {
             extra: {
                 context: 'Admin Action Webhook via Proxy',
@@ -185,7 +189,7 @@ export const logAuthErrorToDiscord = async (error, context) => {
 
     await triggerWebhookProxy('auth', payload);
   } catch (loggingError) {
-    console.error('Failed to log auth error to Discord:', loggingError);
+    console.warn('Failed to log auth error to Discord:', loggingError);
   }
 };
 
@@ -458,7 +462,10 @@ export const sendDiscordErrorWebhook = (errorDetails, sentryBlocked = false) => 
         timestamp: new Date().toISOString(),
         footer: { text: `PHMC Tools - Global Error Handler` }
     };
-    discordErrorWebhookQueue.push({ content: '<@228306972204597248>', embeds: [embed] });
+    // No user mention: every error post used to ping the owner on every
+    // occurrence (multi-tab testing = ping storm). Errors land in-channel
+    // silently; the hourly telemetry Errors field aggregates flaps.
+    discordErrorWebhookQueue.push({ embeds: [embed] });
     processDiscordErrorQueue();
 };
 

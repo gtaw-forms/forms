@@ -119,6 +119,7 @@ async function registerCommands() {
     const forwardAutopsyComplete = await import('./commands/forward-autopsy-complete.js');
     const debugChannels = await import('./commands/debug-channels.js');
     const infoPanel = await import('./commands/info-panel.js');
+    const telemetryNow = await import('./commands/telemetry-now.js');
     // Personal AGH dashboard — optional. The files are gitignored/not part of a
     // fork; guard so the bot still boots when they're absent.
     let aghDashboard = null;
@@ -174,6 +175,7 @@ async function registerCommands() {
         forwardAutopsyComplete.data.toJSON(),
         debugChannels.data.toJSON(),
         infoPanel.data.toJSON(),
+        telemetryNow.data.toJSON(),
         ...(aghDashboard ? [aghDashboard.data.toJSON()] : []),
     ];
 
@@ -335,6 +337,15 @@ client.once('clientReady', async () => {
         startScheduler();
     } catch (err) {
         console.warn('[BOT] ⚠️ Scheduler failed to start (non-fatal):', err.message);
+    }
+
+    // ── Start hourly client-telemetry rollup (V2 post to admin channel) ──
+    try {
+        const { setTelemetryClient, startTelemetryRollup } = await import('./services/telemetryRollup.js');
+        setTelemetryClient(client);
+        startTelemetryRollup();
+    } catch (err) {
+        console.warn('[BOT] ⚠️ Telemetry rollup failed to start (non-fatal):', err.message);
     }
 
     // ── Start dashboard manager (live status embed, 5-min refresh) ──
@@ -1071,6 +1082,9 @@ async function start() {
 
     const infoPanelCmd = await import('./commands/info-panel.js');
     client.commands.set(infoPanelCmd.data.name, { execute: infoPanelCmd.execute });
+
+    const telemetryNowCmd = await import('./commands/telemetry-now.js');
+    client.commands.set(telemetryNowCmd.data.name, { execute: telemetryNowCmd.execute });
 
     const testPingCmd = await import('./commands/test-ping.js');
     client.commands.set(testPingCmd.data.name, { execute: testPingCmd.execute });

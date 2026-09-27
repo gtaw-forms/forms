@@ -5,22 +5,48 @@ export * from './coroner.js';
 
 
 /**
- * Upload and process faction member data from CSV
+ * Upload and process faction member data from CSV.
+ *
+ * P0 (e) cost plan: this was anonymously invocable with no payload cap and
+ * performed a full-node overwrite + unbounded backups/ growth per call.
+ * Now: auth + upload_faction_data permission required, 2000-row cap,
+ * backups pruned to the 5 most recent.
  */
+const MAX_FACTION_UPLOAD_ROWS = 2000;
+const MAX_FACTION_BACKUPS = 5;
+
 export const uploadFactionData = onCall({
     region: "europe-west2",
+    memory: "256MiB",
+    timeoutSeconds: 120,
     cors: [
         'https://gtaw-forms.github.io',
         'https://phmc-tools.gta.world',
         'http://localhost:3000'
     ]
 }, async (request) => {
+    if (!request.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'Authentication required.');
+    }
+    // Same claim convention as triggerFactionSync: superadmin bypasses,
+    // otherwise the caller needs the upload_faction_data permission.
+    const token = request.auth.token || {};
+    const isSuperAdmin = token.isSuperAdmin === true || token.accessLevel === 'superadmin';
+    const permissions = Array.isArray(token.permissions) ? token.permissions : [];
+    if (!isSuperAdmin && !permissions.includes('upload_faction_data')) {
+        throw new functions.https.HttpsError('permission-denied', 'Faction data upload permission required.');
+    }
+
     console.log('[Faction Upload] Starting faction data upload');
-    
+
     const { factionData, metadata } = request.data;
-    
+
     if (!factionData || !Array.isArray(factionData)) {
         throw new functions.https.HttpsError('invalid-argument', 'Faction data must be an array');
+    }
+
+    if (factionData.length > MAX_FACTION_UPLOAD_ROWS) {
+        throw new functions.https.HttpsError('invalid-argument', `Faction data exceeds the ${MAX_FACTION_UPLOAD_ROWS}-row limit.`);
     }
     
     if (!metadata || !metadata.factionId) {
@@ -102,7 +128,7 @@ export const uploadFactionData = onCall({
         // Store the processed data in Firebase
         const factionRef = db.ref(`factions/${metadata.factionId}`);
         
-        // Create backup of existing data if it exists
+        // Create backup of existing data if it exists (pruned to the most recent few)
         const existingData = await factionRef.once('value');
         if (existingData.exists()) {
             const backupRef = db.ref(`factions/${metadata.factionId}/backups/${Date.now()}`);
@@ -112,6 +138,18 @@ export const uploadFactionData = onCall({
                 backedUpAt: timestamp
             });
             console.log('[Faction Upload] Created backup of existing data');
+            try {
+                const backupsSnap = await db.ref(`factions/${metadata.factionId}/backups`).once('value');
+                const backupKeys = Object.keys(backupsSnap.val() || {}).sort();
+                if (backupKeys.length > MAX_FACTION_BACKUPS) {
+                    const stale = {};
+                    backupKeys.slice(0, backupKeys.length - MAX_FACTION_BACKUPS).forEach((k) => { stale[k] = null; });
+                    await db.ref(`factions/${metadata.factionId}/backups`).update(stale);
+                    console.log(`[Faction Upload] Pruned ${backupKeys.length - MAX_FACTION_BACKUPS} old backups`);
+                }
+            } catch (pruneErr) {
+                console.warn('[Faction Upload] Backup prune failed (non-fatal):', pruneErr.message);
+            }
         }
         
         // Store new data

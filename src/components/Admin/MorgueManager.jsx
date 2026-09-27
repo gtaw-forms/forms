@@ -6,10 +6,22 @@ import { parseBulkMorgueRecords } from '../../utils/morgue';
 import { logDataVersionBump } from '../../utils/logging';
 import { useDropzone } from 'react-dropzone';
 import { useData } from '../../contexts/DataContext';
-import { triggerDeleteMorgueRecord, triggerPurgeMorgueRecords, triggerSyncMorgueFile } from '../../services/firebaseFunctions';
+import { triggerDeleteMorgueRecord, triggerDeleteMorgueRecords, triggerPurgeMorgueRecords, triggerSyncMorgueFile } from '../../services/firebaseFunctions';
 
 const MorgueManager = ({ showNotification }) => {
     const { morgueRecords, loadMorgueRecords, removeMorgueRecord } = useData();
+
+    // P1 (d) cost plan: single-flight VPS sync — uploads + manual saves share
+    // one flight instead of firing a sync each (concurrent callers coalesce).
+    const syncMorgueFileSingleFlight = React.useRef(null);
+    const queueMorgueFileSync = () => {
+        if (!syncMorgueFileSingleFlight.current) {
+            syncMorgueFileSingleFlight.current = triggerSyncMorgueFile()
+                .catch(err => console.warn('[MORGUE] VPS sync error:', err.message))
+                .finally(() => { syncMorgueFileSingleFlight.current = null; });
+        }
+        return syncMorgueFileSingleFlight.current;
+    };
 
     // Bump the morgue data version after any write to trigger cache invalidation on connected clients
     const bumpMorgueVersion = async () => {
@@ -154,7 +166,7 @@ const MorgueManager = ({ showNotification }) => {
 
             await update(ref(database), updates);
             await bumpMorgueVersion();
-            triggerSyncMorgueFile().catch(err => console.warn('[MORGUE] VPS sync error:', err.message));
+            queueMorgueFileSync();
 
             const message = updatedCount > 0 
                 ? `Processed ${parsedRecords.length} records: ${newCount} new, ${updatedCount} updated. Admin Notes preserved.`
@@ -204,24 +216,37 @@ const MorgueManager = ({ showNotification }) => {
         if (!window.confirm(`Delete ${selectedRecords.size} selected record(s)? This cannot be undone.`)) return;
 
         setIsProcessing(true);
-        let success = 0;
-        let fail = 0;
 
-        for (const caseId of selectedRecords) {
-            const record = existingRecords.find(r => String(r.caseId) === caseId || r.firebaseKey === caseId);
-            const name = record?.name || caseId;
-            try {
-                await triggerDeleteMorgueRecord({ caseId: String(caseId) });
-                removeMorgueRecord(String(caseId));
-                success++;
-            } catch {
-                fail++;
+        // P1 (d) cost plan: one bulk invocation (was N serial callables).
+        // Falls back to the serial path if the bulk export is unavailable.
+        const caseIds = [...selectedRecords].map(String);
+        try {
+            const result = await triggerDeleteMorgueRecords({ caseIds });
+            (result?.deleted || []).forEach((id) => removeMorgueRecord(String(id)));
+            const failed = result?.failed || [];
+            setSelectedRecords(new Set());
+            showNotification(
+                `Batch delete: ${result?.deletedCount ?? 0} deleted, ${failed.length} failed.`,
+                failed.length > 0 ? 'warning' : 'success'
+            );
+        } catch (bulkErr) {
+            console.warn('[MORGUE] Bulk delete unavailable, falling back to serial:', bulkErr.message);
+            let success = 0;
+            let fail = 0;
+            for (const caseId of selectedRecords) {
+                try {
+                    await triggerDeleteMorgueRecord({ caseId: String(caseId) });
+                    removeMorgueRecord(String(caseId));
+                    success++;
+                } catch {
+                    fail++;
+                }
             }
+            setSelectedRecords(new Set());
+            showNotification(`Batch delete: ${success} deleted, ${fail} failed.`, fail > 0 ? 'warning' : 'success');
+        } finally {
+            setIsProcessing(false);
         }
-
-        setSelectedRecords(new Set());
-        showNotification(`Batch delete: ${success} deleted, ${fail} failed.`, fail > 0 ? 'warning' : 'success');
-        setIsProcessing(false);
     };
 
     const toggleSelectRecord = (caseId) => {
@@ -379,7 +404,7 @@ const MorgueManager = ({ showNotification }) => {
             };
             await set(ref(database, `morgue-records/${key}`), record);
             await bumpMorgueVersion();
-            triggerSyncMorgueFile().catch(err => console.warn('[MORGUE] VPS sync error:', err.message));
+            queueMorgueFileSync();
             showNotification(`Manual entry saved for ${record.name}.`, 'success');
             setManualRecord({ ...emptyManualRecord });
             setActiveTab('manage');

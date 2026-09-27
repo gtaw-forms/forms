@@ -6,7 +6,7 @@ import { FormProvider } from './contexts/FormContext.jsx';
 import * as Sentry from "@sentry/react";
 import { sendDiscordErrorWebhook } from './utils/logging';
 import { database } from './firebase';
-import { ref, onValue, onDisconnect, set, serverTimestamp } from 'firebase/database';
+import { ref, onValue, onDisconnect, set, serverTimestamp, get, remove } from 'firebase/database';
 
 import ProtectedRoute from './components/Auth/ProtectedRoute.jsx';
 import Admin from './components/Admin/Admin.jsx';
@@ -137,12 +137,29 @@ function App() {
     }, []);
 
     // DAILY VISITOR TRACKING — persists after tab close for admin counts (skipped on localhost, no auth)
+    // P2 (e) cost plan: visitor day-nodes grew forever (one child per tab-load).
+    // Prune days older than 30d, at most once per client per 7d (localStorage
+    // stamp) so the prune read never becomes a per-load cost.
     useEffect(() => {
         if (window.location.hostname === 'localhost') return;
         const today = new Date().toISOString().split('T')[0];
         const sessionId = crypto.randomUUID();
         const visitorRef = ref(database, `analytics/visitors/${today}/${sessionId}`);
         set(visitorRef, serverTimestamp());
+
+        try {
+            const stamp = Number(localStorage.getItem('phmc_visitor_prune_at') || 0);
+            if (Date.now() - stamp < 7 * 24 * 60 * 60 * 1000) return;
+            localStorage.setItem('phmc_visitor_prune_at', String(Date.now()));
+            const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+            get(ref(database, 'analytics/visitors')).then((snap) => {
+                if (!snap.exists()) return;
+                const stale = Object.keys(snap.val() || {}).filter((day) => day < cutoff);
+                if (!stale.length) return;
+                Promise.allSettled(stale.map((day) => remove(ref(database, `analytics/visitors/${day}`))))
+                    .then(() => console.log(`[App] Pruned ${stale.length} old visitor days`));
+            }).catch(() => {});
+        } catch { /* prune must never break load */ }
     }, []);
 
     return (

@@ -59,15 +59,19 @@ const VehicleImpound = ({ showNotification, isAuthenticated, characterName, ucpN
         list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
         return { list, localOnly };
     };
+    // P1 (e) cost plan: coalesce post-mutation refreshes — a save/delete burst
+    // issues ONE trailing server load instead of one per mutation.
+    const refreshInFlightRef = React.useRef(false);
+    const refreshDirtyRef = React.useRef(false);
+    const migrationRanRef = React.useRef(false);
     const loadFromServer = async (dbg) => {
         const res = await triggerGetTowReports();
         const serverList = Array.isArray(res?.reports) ? res.reports : [];
         const serverVersion = res?.version ?? null;
         // Migrate browser-local entries the server lacks (matches by plate +
-        // createdAt, so revisits never duplicate). This replaces the old
-        // one-shot flag, which could be consumed while empty and strand
-        // pre-deploy saves locally forever.
-        if (isLocal) {
+        // createdAt, so revisits never duplicate). One-shot per mount — the old
+        // per-load scan is what multiplied saveTowReport/getTowReports calls.
+        if (isLocal && !migrationRanRef.current) {
             try {
                 const raw = localStorage.getItem(LOCAL_KEY);
                 const stored = raw ? JSON.parse(raw) || [] : [];
@@ -96,6 +100,7 @@ const VehicleImpound = ({ showNotification, isAuthenticated, characterName, ucpN
                     serverList.push(...list2);
                 }
             } catch (err) { console.warn(`[TOW-DBG] ${dbg} migration error: ${err?.message || err}`); }
+            migrationRanRef.current = true;
         }
         // Merge leftover browser-local entries so a reachable-but-empty
         // server never hides local work.
@@ -262,11 +267,25 @@ const VehicleImpound = ({ showNotification, isAuthenticated, characterName, ucpN
     const setField = (k, v) => setForm(prev => ({ ...prev, [k]: v }));
 
     const refresh = async () => {
+        // Coalesce: concurrent callers share one flight; a mutation landing
+        // mid-flight gets exactly one trailing pass instead of N extra GETs.
+        if (refreshInFlightRef.current) {
+            refreshDirtyRef.current = true;
+            return;
+        }
+        refreshInFlightRef.current = true;
         try {
-            await loadFromServer();
-        } catch {
-            if (isLocal) loadLocal();
-            else throw new Error('unreachable');
+            do {
+                refreshDirtyRef.current = false;
+                try {
+                    await loadFromServer();
+                } catch {
+                    if (isLocal) loadLocal();
+                    else throw new Error('unreachable');
+                }
+            } while (refreshDirtyRef.current);
+        } finally {
+            refreshInFlightRef.current = false;
         }
     };
 

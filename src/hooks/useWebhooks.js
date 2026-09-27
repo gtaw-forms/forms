@@ -1,8 +1,17 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import * as Sentry from "@sentry/react";
 import { database } from '../firebase';
 import { ref, set, push } from 'firebase/database';
-import { triggerWebhookProxy } from '../services/firebaseFunctions';
+import { triggerWebhookProxy, triggerAppendTelemetry } from '../services/firebaseFunctions';
+
+// P0 (b) cost plan: hourly telemetry batching constants.
+const TELEMETRY_BUCKET_KEY = 'phmc_telemetry_hour_v2';
+const TELEMETRY_FLUSH_MS = 3600000; // 1 hour
+const TELEMETRY_MAX_USERS = 20;
+const EMPTY_TELEMETRY_BUCKET = {
+    bucketStart: 0, events: 0, cacheHits: 0, network: 0, errors: 0, inactive: 0,
+    authed: false, totalKb: 0, netKb: 0, byTrigger: {}, routes: [], users: [], errorSamples: [],
+};
 
 export const useWebhooks = (formData, commitInfo, showNotification, getIsInactivityWarningTriggered) => {
     const logWebhookToFirebase = useCallback(async (type, payload) => {
@@ -17,82 +26,132 @@ export const useWebhooks = (formData, commitInfo, showNotification, getIsInactiv
         });
     }, []);
 
-    const sendDataRequestLog = useCallback(async (file, cached, source, cachedDataSize, networkTransferSize, loggedIn, user, requestedPortions, missingPortions, segmentSizes = {}, error = null, metadata = {}) => {
-        // P1 — Sample cache hits: 98% of CACHE hits are observability noise (e.g. 20 MB/hr). Only log 2% sampled + all errors/network.
-        if (cached && !error) {
-            // Always log in dev for validation, otherwise sample 2%
-            const isDev = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.'));
-            if (!isDev && Math.random() > 0.02) {
-                console.log(`[DataRequest] Sampled out (cache hit) ${file} ${source}`);
-                return;
-            }
+    // P0 (b) cost plan: data-request telemetry previously fired one
+    // `sendWebhookProxy` Cloud Function invocation PER event (page load, morgue
+    // open, every report open/delete). Now events accumulate locally and flush as
+    // ONE aggregate embed per hourly timer tick. Flush failures drop silently
+    // — telemetry must never emit telemetry.
+    const telemetryRef = useRef(null);
+    const telemetryTimerRef = useRef(null);
+
+    const loadTelemetryBucket = () => {
+        try {
+            const raw = localStorage.getItem(TELEMETRY_BUCKET_KEY);
+            if (!raw) return null;
+            const bucket = JSON.parse(raw);
+            if (!bucket || typeof bucket !== 'object' || typeof bucket.bucketStart !== 'number') return null;
+            return bucket;
+        } catch {
+            return null;
         }
-        // C — Detailed-compact: 3-4 lines, per-segment KB kept but collapsed to one compact line
-        // Keep observability non-fatal when an older caller passes a boolean or
-        // string in a size slot. Logging must never break report loading.
+    };
+
+    const flushTelemetry = useCallback(async (reason) => {
+        const bucket = telemetryRef.current;
+        if (!bucket || !bucket.events) return;
+        // Guests produce no beacon (callable requires auth) — drop silently.
+        if (!bucket.authed) {
+            telemetryRef.current = { ...EMPTY_TELEMETRY_BUCKET, bucketStart: Date.now() };
+            try {
+                localStorage.setItem(TELEMETRY_BUCKET_KEY, JSON.stringify(telemetryRef.current));
+            } catch { /* best effort */ }
+            return;
+        }
+        telemetryRef.current = { ...EMPTY_TELEMETRY_BUCKET, bucketStart: Date.now() };
+        try {
+            localStorage.setItem(TELEMETRY_BUCKET_KEY, JSON.stringify(telemetryRef.current));
+        } catch { /* best effort */ }
+
+        // Beacon → VPS JSONL store via the appendTelemetry callable (Function →
+        // VPS over HTTP; browsers never touch the VPS). The bot's hourly tick
+        // reads the file and posts ONE V2 rollup. At-most-once: already reset.
+        try {
+            await triggerAppendTelemetry({
+                events: bucket.events,
+                cacheHits: bucket.cacheHits,
+                network: bucket.network,
+                errors: bucket.errors,
+                inactive: bucket.inactive || 0,
+                totalKb: Math.round((Number(bucket.totalKb) || 0) * 10) / 10,
+                netKb: Math.round((Number(bucket.netKb) || 0) * 10) / 10,
+                byTrigger: bucket.byTrigger || {},
+                routes: bucket.routes || [],
+                users: bucket.users || [],
+                errorSamples: bucket.errorSamples || [],
+            });
+        } catch { /* drop silently — never retry telemetry */ }
+    }, []);
+
+    // Hourly timer ONLY. Tab-hide/unload flushes were removed: they fired a
+    // 1-event embed on every tab switch, defeating the batching (each visit =
+    // one "hourly" post). Unsent events persist in localStorage and are
+    // backfilled on the next load via the expiry path in sendDataRequestLog.
+    useEffect(() => {
+        if (telemetryTimerRef.current) return;
+        telemetryTimerRef.current = setInterval(() => { flushTelemetry('hourly'); }, TELEMETRY_FLUSH_MS);
+        return () => {
+            clearInterval(telemetryTimerRef.current);
+            telemetryTimerRef.current = null;
+        };
+    }, [flushTelemetry]);
+
+    const sendDataRequestLog = useCallback(async (file, cached, source, cachedDataSize, networkTransferSize, loggedIn, user, requestedPortions, missingPortions, _segmentSizes = {}, error = null, metadata = {}) => {
         const asKb = (value) => {
             const number = Number(value);
             return Number.isFinite(number) ? number : 0;
         };
+        // Init bucket from spillover (survives reloads). An expired bucket with
+        // pending events is backfilled immediately, then a fresh bucket starts.
+        if (!telemetryRef.current) {
+            const stored = loadTelemetryBucket();
+            if (stored?.events && (Date.now() - stored.bucketStart) > TELEMETRY_FLUSH_MS) {
+                telemetryRef.current = stored;
+                flushTelemetry('backfill');
+                telemetryRef.current = { ...EMPTY_TELEMETRY_BUCKET, bucketStart: Date.now() };
+            } else {
+                telemetryRef.current = (stored && typeof stored.events === 'number')
+                    ? stored
+                    : { ...EMPTY_TELEMETRY_BUCKET, bucketStart: Date.now() };
+            }
+        }
+        const bucket = telemetryRef.current;
         const totalKb = asKb(cachedDataSize) + asKb(networkTransferSize);
-        const netKb = asKb(networkTransferSize);
-        const srcLabel = `${source}${cached ? ' · cached' : ' · network'}`;
-        const hostPath = (()=>{ try{ const u=new URL(window.location.href); return u.host + u.pathname + u.hash; }catch{ return window.location.href.slice(0,80);} })();
-
-        const segmentSources = metadata.segmentSources || {};
-        const totalSegs = Object.keys(segmentSources).length;
-        const cachedCount = Object.values(segmentSources).filter(v=>v==='cache').length;
-        const networkCount = Object.values(segmentSources).filter(v=>v==='network').length;
-
-        // Compact per-segment line: factions·22.6k[C] | agencies·1.2k[C] ...
-        const compactSegments = Object.entries(segmentSources).map(([seg, src])=>{
-            const segmentKb = asKb(segmentSizes[seg]);
-            const kb = segmentKb ? `${segmentKb.toFixed(1)}k` : '—';
-            const badge = src==='cache' ? 'C' : src==='network' ? 'N' : '—';
-            return `${seg}·${kb}[${badge}]`;
-        }).join(' | ');
-
-        const fields = [
-            { name: 'Source', value: `\`${srcLabel}\``, inline: true },
-            { name: 'Cache', value: cached ? `Yes (${cachedCount}/${totalSegs})` : `No (${networkCount}/${totalSegs})`, inline: true },
-            { name: 'Size', value: `${totalKb.toFixed(1)} KB total${netKb?` · ${netKb.toFixed(1)} KB network`:''}`, inline: true },
-        ];
-
-        if (compactSegments) {
-            fields.push({ name: `Segments (${cachedCount}c/${networkCount}n)`, value: `\`${compactSegments}\``, inline: false });
-        }
-
-        if (missingPortions && missingPortions.length > 0) {
-            fields.push({ name: 'Missing', value: missingPortions.join(', ').slice(0,500), inline: false });
-        }
-
-        if (metadata.detail) {
-            fields.push({ name: 'Detail', value: String(metadata.detail).slice(0,500), inline: false });
-        }
-
+        bucket.events += 1;
+        if (cached) bucket.cacheHits += 1; else bucket.network += 1;
         if (error) {
-            fields.push({ name: 'Error', value: String(error).slice(0,500), inline: false });
+            bucket.errors += 1;
+            if ((bucket.errorSamples || []).length < 10) {
+                bucket.errorSamples = [...(bucket.errorSamples || []), String(error).slice(0, 200)];
+            }
         }
-
-        const inactiveFlag = getIsInactivityWarningTriggered() ? ' · inactivity' : '';
-        const userLabel = (loggedIn && user) ? `**${user}**` : (loggedIn ? 'Logged In' : 'Guest');
-        const embed = {
-            title: cached ? 'Data Cache Hit' : 'Data Fetch',
-            description: `${userLabel} • \`${metadata.route || '#/'}\` • \`${metadata.trigger || file}\`${inactiveFlag}`,
-            fields,
-            color: cached ? 0x2ecc71 : 0xe67e22,
-            timestamp: new Date().toISOString(),
-            footer: { text: `${hostPath}` }
-        };
-
+        bucket.totalKb = asKb(bucket.totalKb) + totalKb;
+        bucket.netKb = asKb(bucket.netKb) + asKb(networkTransferSize);
+        // Preserve the old inactivity flag signal as an aggregate counter.
         try {
-            await triggerWebhookProxy('admin', { embeds: [embed] });
-            console.log(`Data request log sent successfully.`);
-        } catch (error) {
-            console.error(`Failed to send data request log webhook:`, error);
-            Sentry.captureException(error, { extra: { context: `sendDataRequestLog` } });
+            if (typeof getIsInactivityWarningTriggered === 'function' && getIsInactivityWarningTriggered()) {
+                bucket.inactive = (bucket.inactive || 0) + 1;
+            }
+        } catch { /* flag must never break logging */ }
+        const trigger = metadata.trigger || file || 'unknown';
+        bucket.byTrigger = bucket.byTrigger || {};
+        bucket.byTrigger[trigger] = (bucket.byTrigger[trigger] || 0) + 1;
+        const route = metadata.route || (typeof window !== 'undefined' ? window.location.hash || '/' : '/');
+        bucket.routes = bucket.routes || [];
+        if (!bucket.routes.includes(route) && bucket.routes.length < 20) bucket.routes.push(route);
+        // Visited identity set for the V2 rollup ("username (character)").
+        // Contributes to the hourly union; capped, never sent per-event.
+        if (loggedIn && user) {
+            bucket.authed = true;
+            const label = String(user).slice(0, 80);
+            bucket.users = bucket.users || [];
+            if (label && !bucket.users.includes(label) && bucket.users.length < TELEMETRY_MAX_USERS) {
+                bucket.users.push(label);
+            }
         }
-    }, [getIsInactivityWarningTriggered]);
+        try {
+            localStorage.setItem(TELEMETRY_BUCKET_KEY, JSON.stringify(bucket));
+        } catch { /* best effort */ }
+    }, [flushTelemetry]);
 
     const handlePhmcWebhookSubmit = useCallback(async (payload) => {
         if (!payload) return;

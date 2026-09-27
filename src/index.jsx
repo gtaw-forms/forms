@@ -103,8 +103,11 @@ init({
       blockAllMedia: false,
     }),
   ],
-  tracesSampleRate: 1.0,
-  replaysSessionSampleRate: 0.1,
+  // P2 (n) cost plan: traces 1.0 → 0.05 and session replays 0.1 → 0.02.
+  // Full-fidelity tracing on every transaction was the largest client-side
+  // telemetry volume knob; on-error replays stay at 1.0 (low error volume).
+  tracesSampleRate: 0.05,
+  replaysSessionSampleRate: 0.02,
   replaysOnErrorSampleRate: 1.0,
   tracePropagationTargets: ["localhost", "https://forms.phmc.io", /^\//],
   beforeSend(event) {

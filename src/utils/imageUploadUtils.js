@@ -7,6 +7,19 @@ const uploadImageProxyCallable = () => {
   return httpsCallableFromURL(getFunctions(), url);
 };
 
+// P2 (j) cost plan: pre-flight reject before invoking the proxy. The callable
+// hard-caps at a 10 MB request and the server rejects >12 MB base64 — a ~7 MB
+// base64 ceiling (~5 MB raw file) fails fast locally instead of burning a
+// 512MiB/120s invocation on a deterministic failure.
+const MAX_PROXY_BASE64_LEN = 7 * 1024 * 1024;
+const assertUploadableSize = (base64Image, what) => {
+  if (typeof base64Image === 'string' && base64Image.length > MAX_PROXY_BASE64_LEN) {
+    throw new Error(
+      `${what || 'Image'} is too large (${(base64Image.length / 1024 / 1024).toFixed(1)} MB). Please use an image under ~5 MB.`
+    );
+  }
+};
+
 const logUploadFailureToDiscord = async (error, service, context) => {
   const payload = {
     embeds: [{
@@ -30,6 +43,8 @@ const logUploadFailureToDiscord = async (error, service, context) => {
 };
 
 const callUploadImageProxy = async (image, service, title) => {
+  // Single choke point: covers File and data-URL paths alike.
+  assertUploadableSize(image, 'Image');
   const uploadProxy = uploadImageProxyCallable();
   const result = await uploadProxy({ image, service, title });
   return result.data;
@@ -37,6 +52,9 @@ const callUploadImageProxy = async (image, service, title) => {
 
 export const uploadImageToImgBB = async (file) => {
   try {
+    if (file?.size > 5 * 1024 * 1024) {
+      throw new Error(`Image is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Please use an image under ~5 MB.`);
+    }
     const base64Image = await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result.split(',')[1]);
@@ -62,6 +80,9 @@ export const uploadImageToImgBB = async (file) => {
 
 export const uploadImageToImgur = async (file) => {
   try {
+    if (file?.size > 5 * 1024 * 1024) {
+      throw new Error(`Image is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Please use an image under ~5 MB.`);
+    }
     const base64Image = await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result.split(',')[1]);

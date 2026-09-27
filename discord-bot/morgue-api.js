@@ -1,4 +1,5 @@
-import { readFileSync, writeFileSync, existsSync, createWriteStream, renameSync, mkdirSync, readdirSync, rmSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, createWriteStream, renameSync, mkdirSync,
+readdirSync, rmSync, statSync, appendFileSync } from 'fs';
 import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { randomUUID, createHash } from 'crypto';
@@ -128,19 +129,34 @@ async function initDiscord() {
 initDiscord().catch(() => {});
 
 /**
- * Post a content/embeds payload to a channel via the bot client.
+ * Post a content/embeds payload — or a Components-V2 payload — to a channel
+ * via the bot client.
+ * V2 passthrough (telemetry rollups, dashboards): { components, flags } are
+ * forwarded verbatim after light shape validation. No pings are ever added
+ * here (callers set allowed_mentions explicitly; default parses nothing).
  * Fail-closed: never throws, returns { ok:false } when offline/unsendable.
  */
-async function sendToChannel(channelId, { content, embeds } = {}) {
+const V2_FLAG = 32768; // MessageFlags.IsComponentsV2
+async function sendToChannel(channelId, { content, embeds, components, flags } = {}) {
     if (!discordClient || !discordReady) return { ok: false, reason: 'discord-offline' };
     try {
         const channel = await discordClient.channels.fetch(channelId);
         if (!channel || typeof channel.send !== 'function') return { ok: false, reason: 'not-sendable' };
-        const msg = await channel.send({
+        const payload = {
             content: typeof content === 'string' && content ? content.slice(0, 2000) : undefined,
             embeds: Array.isArray(embeds) ? embeds.slice(0, 10) : undefined,
+            // Preserved: legacy content/embeds callers may mention users.
             allowed_mentions: { parse: ['users'] },
-        });
+        };
+        if (Array.isArray(components) && components.length > 0 && Number(flags) === V2_FLAG) {
+            payload.content = undefined;
+            payload.embeds = undefined;
+            payload.components = components.slice(0, 10);
+            payload.flags = V2_FLAG;
+            // V2 status posts never ping.
+            payload.allowed_mentions = { parse: [] };
+        }
+        const msg = await channel.send(payload);
         return { ok: true, messageId: msg.id };
     } catch (err) {
         return { ok: false, reason: err.message };
@@ -1758,22 +1774,27 @@ app.post('/api/morgue/export', validateApiKey, rateLimiter, async (req, res) => 
 /**
  * POST /api/notify
  * Bot-native Discord delivery (webhook migration). Sends a content/embeds
- * payload to a mapped channel via the bot's Discord client.
+ * payload — or a Components-V2 payload — to a mapped channel via the bot's
+ * Discord client.
  *
- * Body: { channel: <NOTIFY_CHANNELS key>, content?: string, embeds?: array }
+ * Body: { channel: <NOTIFY_CHANNELS key>, content?: string, embeds?: array,
+ *         components?: array, flags?: number }
+ *   V2 mode requires flags === 32768 (IsComponentsV2) plus a non-empty
+ *   components array; content/embeds are then ignored and nothing pings.
  * Auth: x-api-key (any valid key) + per-key rate limit. The channel key MUST
  * be in the allowlist — arbitrary channel IDs are rejected.
  */
 app.post('/api/notify', validateApiKey, rateLimiter, async (req, res) => {
-    const { channel, content, embeds } = req.body || {};
+    const { channel, content, embeds, components, flags } = req.body || {};
     const channelId = NOTIFY_CHANNELS[channel];
     if (!channel || !channelId) {
         return res.status(400).json({ success: false, error: 'Unknown channel key' });
     }
     const hasContent = typeof content === 'string' && content.trim().length > 0;
     const hasEmbeds = Array.isArray(embeds) && embeds.length > 0;
-    if (!hasContent && !hasEmbeds) {
-        return res.status(400).json({ success: false, error: 'content or embeds required' });
+    const hasV2 = Array.isArray(components) && components.length > 0 && Number(flags) === 32768;
+    if (!hasContent && !hasEmbeds && !hasV2) {
+        return res.status(400).json({ success: false, error: 'content, embeds, or V2 components required' });
     }
     if (typeof content === 'string' && content.length > 2000) {
         return res.status(400).json({ success: false, error: 'content exceeds 2000 chars' });
@@ -1781,12 +1802,87 @@ app.post('/api/notify', validateApiKey, rateLimiter, async (req, res) => {
     if (Array.isArray(embeds) && embeds.length > 10) {
         return res.status(400).json({ success: false, error: 'max 10 embeds' });
     }
-    const result = await sendToChannel(channelId, { content, embeds });
+    if (Array.isArray(components) && components.length > 10) {
+        return res.status(400).json({ success: false, error: 'max 10 top-level components' });
+    }
+    const result = await sendToChannel(channelId, { content, embeds, components, flags });
     if (!result.ok) {
         console.warn(`[MORGUE-API] /api/notify ${channel} failed: ${result.reason}`);
         return res.status(502).json({ success: false, error: 'Discord send failed', reason: result.reason });
     }
     res.json({ success: true, messageId: result.messageId });
+});
+
+// ── Client telemetry intake (hourly rollup source) ──
+// Browser clients flush an hourly aggregate beacon through the
+// appendTelemetry Cloud Function (browsers never hold an API key).
+// Lines are JSONL: { at, events, cacheHits, network, errors, inactive,
+// totalKb, netKb, byTrigger, routes, users, errorSamples }.
+// The bot's telemetryRollup tick reads + truncates this file hourly.
+// Rotation: single 5 MB cap with one .1 backup — the file can never grow
+// unbounded, even if the rollup stalls.
+const TELEMETRY_PATH = resolve(__dirname, 'data', 'telemetry.jsonl');
+const TELEMETRY_MAX_BYTES = 5 * 1024 * 1024;
+
+const TELEMETRY_NUM_FIELDS = ['events', 'cacheHits', 'network', 'errors', 'inactive', 'totalKb', 'netKb'];
+const TELEMETRY_STR_ARRAYS = ['routes', 'users', 'errorSamples'];
+
+function sanitizeTelemetryStr(value, max = 200) {
+    return String(value ?? '').replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, max);
+}
+
+app.post('/api/telemetry', validateApiKey, rateLimiter, async (req, res) => {
+    const body = req.body || {};
+    const clean = {};
+    for (const field of TELEMETRY_NUM_FIELDS) {
+        const num = Number(body[field]);
+        if (!Number.isFinite(num) || num < 0 || num > 1e7) {
+            return res.status(400).json({ success: false, error: `bad field: ${field}` });
+        }
+        clean[field] = num;
+    }
+    if (body.byTrigger !== undefined) {
+        if (!body.byTrigger || typeof body.byTrigger !== 'object' || Array.isArray(body.byTrigger)) {
+            return res.status(400).json({ success: false, error: 'bad field: byTrigger' });
+        }
+        const triggers = {};
+        for (const [key, val] of Object.entries(body.byTrigger).slice(0, 20)) {
+            const count = Number(val);
+            if (!Number.isFinite(count) || count < 0 || count > 1e6) {
+                return res.status(400).json({ success: false, error: 'bad field: byTrigger value' });
+            }
+            const cleanKey = sanitizeTelemetryStr(key, 80);
+            if (cleanKey) triggers[cleanKey] = count;
+        }
+        clean.byTrigger = triggers;
+    } else {
+        clean.byTrigger = {};
+    }
+    for (const field of TELEMETRY_STR_ARRAYS) {
+        const arr = body[field];
+        if (arr !== undefined && !Array.isArray(arr)) {
+            return res.status(400).json({ success: false, error: `bad field: ${field}` });
+        }
+        clean[field] = (Array.isArray(arr) ? arr : []).slice(0, 30)
+            .map((v) => sanitizeTelemetryStr(v))
+            .filter(Boolean);
+    }
+    clean.at = Date.now();
+    try {
+        try {
+            const stat = statSync(TELEMETRY_PATH);
+            if (stat.size > TELEMETRY_MAX_BYTES) {
+                renameSync(TELEMETRY_PATH, `${TELEMETRY_PATH}.1`);
+            }
+        } catch (err) {
+            if (err.code !== 'ENOENT') throw err;
+        }
+        appendFileSync(TELEMETRY_PATH, `${JSON.stringify(clean)}\n`);
+        return res.json({ success: true });
+    } catch (err) {
+        console.warn(`[MORGUE-API] /api/telemetry append failed: ${err.message}`);
+        return res.status(500).json({ success: false, error: 'telemetry store failed' });
+    }
 });
 
 /**

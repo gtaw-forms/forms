@@ -3,6 +3,7 @@ import * as functions from "firebase-functions";
 import { db, auth } from '../utils/firebase.js';
 import { getConfigValue, getConfig } from '../utils/config.js';
 import { sendWebhook } from '../utils/helpers.js';
+import { fetchUcpUserProfile } from './ucpClient.js'; // P1 (a): 15s x3 + backoff UCP helper
 
 /**
  * Helper to fetch Super Admin config from RTDB
@@ -192,21 +193,18 @@ export const processGtaWorldAuth = onCall({
             code: code,
         });
 
-        const tokenController = new AbortController();
-        const tokenTimeout = setTimeout(() => tokenController.abort(), 45000); // 45s timeout
-
+        // P1 (a) cost plan: 20s cap (was an unretried 45s hold billing full instance time).
         const tokenResponse = await fetch('https://ucp.gta.world/oauth/token', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'PHMC-Tools/1.0 (Firebase Functions)' },
             body: tokenRequestBody,
-            signal: tokenController.signal
+            signal: AbortSignal.timeout(20000)
         }).catch(err => {
-            if (err.name === 'AbortError') {
+            if (err.name === 'AbortError' || err.name === 'TimeoutError') {
                 throw new functions.https.HttpsError('deadline-exceeded', 'The request to GTA World timed out. Please try again later.');
             }
             throw err;
         });
-        clearTimeout(tokenTimeout);
         logPerf('token_exchange_api');
 
         const tokenResponseText = await tokenResponse.text();
@@ -233,19 +231,10 @@ export const processGtaWorldAuth = onCall({
 
         // 3. --- User Profile Fetch ---
         console.log('[UnifiedAuth] Token exchange successful, fetching user profile.');
-        const userController = new AbortController();
-        const userTimeout = setTimeout(() => userController.abort(), 60000); // 60s timeout
-
-        const userResponse = await fetch('https://ucp.gta.world/api/user', {
-            headers: { 'Authorization': `Bearer ${tokenData.access_token}`, 'Accept': 'application/json', 'User-Agent': 'PHMC-Tools/1.0 (Firebase Functions)' },
-            signal: userController.signal
-        }).catch(err => {
-            if (err.name === 'AbortError') {
-                throw new functions.https.HttpsError('deadline-exceeded', 'The request to GTA World for your user profile timed out. Please try again later.');
-            }
-            throw err;
-        });
-        clearTimeout(userTimeout);
+        // P1 (a) cost plan: shared helper (15s x3 + backoff) replaces the
+        // unretried 60s hold. 4xx returns as-is for the handling below; 5xx/429
+        // exhaustion throws HttpsError('unavailable') with an actionable message.
+        const userResponse = await fetchUcpUserProfile(tokenData.access_token, { tag: 'UnifiedAuth' });
         logPerf('user_profile_api');
 
         const userResponseText = await userResponse.text();
@@ -476,14 +465,20 @@ export const validateGtaWorldToken = onCall({
     
     try {
         console.log('[Token Validation] Validating token with GTA World API');
-        
-        const userResponse = await fetch('https://ucp.gta.world/api/user', {
-            headers: {
-                'Authorization': `Bearer ${accessToken}`,
-                'Accept': 'application/json',
-                'User-Agent': 'PHMC-Tools/1.0 (Firebase Functions)'
-            },
-        });
+
+        // P1 (a) cost plan: shared helper (15s x3 + backoff) replaces the
+        // timeout-less fetch. 'unavailable' (UCP outage) maps to valid:false so
+        // callers keep their existing expired-token handling, not a new throw.
+        let userResponse;
+        try {
+            userResponse = await fetchUcpUserProfile(accessToken, { tag: 'TokenValidation' });
+        } catch (helperErr) {
+            if (helperErr.code === 'unavailable') {
+                console.warn('[Token Validation] UCP unreachable, treating as invalid:', helperErr.message);
+                return { success: false, valid: false, error: 'GTA World login servers are not responding; try again in a minute.' };
+            }
+            throw helperErr;
+        }
         
         if (!userResponse.ok) {
             console.log('[Token Validation] Token validation failed:', userResponse.status);
@@ -549,9 +544,10 @@ export const refreshGtawUser = onCall({
     }
 
     try {
-        const userResponse = await fetch('https://ucp.gta.world/api/user', {
-            headers: { 'Authorization': `Bearer ${accessToken}`, 'Accept': 'application/json', 'User-Agent': 'PHMC-Tools/1.0 (Firebase Functions)' },
-        });
+        // P1 (a) cost plan: shared helper (15s x3 + backoff) replaces the
+        // timeout-less fetch. Exhaustion surfaces as HttpsError('unavailable')
+        // (actionable) instead of a 60s+ hold ending in 'internal'.
+        const userResponse = await fetchUcpUserProfile(accessToken, { tag: 'refreshGtawUser' });
 
         if (!userResponse.ok) {
             const respText = await userResponse.text().catch(() => 'N/A');

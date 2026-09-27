@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { Button, Form, Spinner, Card, Alert, Col, Row, ListGroup, Badge } from 'react-bootstrap';
+import { Button, Form, Spinner, Card, Alert, Col, Row, ListGroup, Badge, Table } from 'react-bootstrap';
 import BaseModal from '../Modals/BaseModal';
 import { ref, get, update, set, runTransaction } from 'firebase/database';
 import { database } from '../../firebase';
@@ -150,6 +150,27 @@ const DatabaseEditor = ({ showNotification, currentUser: propCurrentUser, gtawUs
         if (!path) {
             showNotification('Please enter a database path.', 'warning');
             return;
+        }
+        // P0 (g) cost plan: the fetch blocklist above never applied to saves —
+        // an operator could overwrite report/queue roots or any appMetadata
+        // version key (instant mass-refetch herd). Mirror the blocklist here and
+        // require typed confirmation for appMetadata writes.
+        const normalizedSavePath = String(path).trim().replace(/^\/+/, '');
+        const saveRoot = normalizedSavePath.split('/')[0];
+        if (BLOCKED_FETCH_ROOTS.includes(saveRoot)) {
+            const msg = `Saving to "${saveRoot}" is blocked: report data lives on the VPS now.`;
+            setError(msg);
+            showNotification(msg, 'error', 8000);
+            return;
+        }
+        if (saveRoot === 'appMetadata') {
+            const confirmText = window.prompt(
+                `You are writing to appMetadata ("${normalizedSavePath}"). Version-key writes trigger a mass client refetch. Type CONFIRM to proceed:`
+            );
+            if (confirmText !== 'CONFIRM') {
+                showNotification('appMetadata save cancelled.', 'info');
+                return;
+            }
         }
         let dataToSave;
         try {

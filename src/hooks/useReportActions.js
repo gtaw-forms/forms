@@ -3,11 +3,10 @@ import { database } from '../firebase';
 import { ref, remove } from 'firebase/database';
 import * as Sentry from "@sentry/react";
 import { useNotification } from '../contexts/NotificationContext';
-import { useData } from '../contexts/DataContext';
-import { getCharacterName } from '../utils/identityUtils';
+import { useData, telemetryUserLabel } from '../contexts/DataContext';
 import { comprehensiveSanitize } from '../utils/textUtils';
 import useGtaWorldAuth from './useGtaWorldAuth';
-import { triggerDeleteSavedReport, triggerCreateSavedReportsBackup } from '../services/firebaseFunctions';
+import { triggerDeleteSavedReport } from '../services/firebaseFunctions';
 
 export const useReportActions = () => {
     const { showNotification } = useNotification();
@@ -67,7 +66,7 @@ export const useReportActions = () => {
                     'Firebase Delete',
                     0,
                     isGtaAuthenticated,
-                    getCharacterName(gtaWorldUser),
+                    telemetryUserLabel(gtaWorldUser),
                     `Report: ${reportPath}${bbCodePath ? `, BBCode: ${bbCodePath}` : ''}`
                 );
             }
@@ -82,7 +81,7 @@ export const useReportActions = () => {
                     'Firebase Delete Error',
                     0,
                     isGtaAuthenticated,
-                    getCharacterName(gtaWorldUser),
+                    telemetryUserLabel(gtaWorldUser),
                     `Report: ${reportPath}, BBCode: ${bbCodePath}`,
                     error.message || 'Unknown Delete Error'
                 );
@@ -93,24 +92,10 @@ export const useReportActions = () => {
         }
     }, [showNotification, sendDataRequestLog, isGtaAuthenticated, gtaWorldUser]);
 
-    // Task 3b cutover (Q2: admin-only backups): per-user self-service backup
-    // is dropped. The old flow duplicated report data inside RTDB under
-    // `migrateBackup/<author>_<timestamp>`; backups are now full VPS snapshots
-    // via `triggerCreateSavedReportsBackup` (superadmin-gated server-side).
-    // This passthrough keeps the hook API stable for any caller.
-    const backupUserReports = useCallback(async () => {
-        try {
-            const result = await triggerCreateSavedReportsBackup();
-            return { success: true, backupId: result?.backupId || null, count: result?.count || 0 };
-        } catch (error) {
-            console.error(`Error creating VPS saved-reports backup:`, error);
-            Sentry.captureException(error, { extra: { context: 'backupUserReports' } });
-            return { success: false, error: error.message || "Failed to create VPS backup." };
-        }
-    }, []);
-
+    // P2 (h) cost plan: backupUserReports passthrough removed — zero UI
+    // callers (admin backups run from DatabaseEditor via
+    // triggerCreateSavedReportsBackup directly).
     return {
-        deleteReportForUser,
-        backupUserReports
+        deleteReportForUser
     };
 };

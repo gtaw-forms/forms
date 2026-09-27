@@ -131,12 +131,13 @@ const Admin = ({ formData, setFormData, showNotification }) => {
     // hasAdminAccess is true if they are in the faction, a staff member, or a whitelisted Gmail user
     const hasAdminAccess = isPhmcMember || isGmailUser || hasElevatedAccess;
     
-    if (!hasAdminAccess && isGtaAuthenticated && !gtaAuthLoading) {
-        // Log unauthorized access attempt (only once per session)
-        const logUnauthorizedAccess = async () => {
-            // Prevent multiple webhook calls for the same session
-            if (hasLoggedUnauthorizedAccess) return;
-            
+    // P2 (d) cost plan: unauthorized-access webhook moved out of the render
+    // body into an effect — render-phase I/O double-fired under StrictMode
+    // before the session flag committed (one invocation per extra render).
+    useEffect(() => {
+        if (hasAdminAccess || !isGtaAuthenticated || gtaAuthLoading || hasLoggedUnauthorizedAccess) return;
+        let cancelled = false;
+        (async () => {
             try {
                 const embed = {
                     title: "⚠️ Unauthorized Admin Access Attempt",
@@ -146,18 +147,15 @@ const Admin = ({ formData, setFormData, showNotification }) => {
                     footer: { text: "PHMC Security Alert" }
                 };
                 await triggerWebhookProxy('admin', { embeds: [embed] });
-
-                setHasLoggedUnauthorizedAccess(true);
+                if (!cancelled) setHasLoggedUnauthorizedAccess(true);
             } catch (error) {
                 console.error('Failed to log unauthorized access:', error);
             }
-        };
-        
-        // Only log if we haven't already for this session
-        if (!hasLoggedUnauthorizedAccess) {
-            logUnauthorizedAccess();
-        }
-        
+        })();
+        return () => { cancelled = true; };
+    }, [hasAdminAccess, isGtaAuthenticated, gtaAuthLoading, hasLoggedUnauthorizedAccess, gtaAuthUsername, currentUser]);
+
+    if (!hasAdminAccess && isGtaAuthenticated && !gtaAuthLoading) {
         return (
             <div style={{ textAlign: 'center', padding: '2rem' }}>
                 <h2>Access Denied</h2>

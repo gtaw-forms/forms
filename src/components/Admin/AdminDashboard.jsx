@@ -6,10 +6,9 @@ import { formatAccessLevel } from '../../utils/textUtils';
 import GtaWorldLoginButton from '../Auth/GtaWorldLoginButton';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import useFactionPermissions from '../../hooks/useFactionPermissions';
-import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getDatabase, ref, get, set } from 'firebase/database';
 import { isGoogleAuthenticated, getGoogleUser } from '../../services/gtaWorldAuth';
-import { runOAuthDiagnostics, testFirebaseFunctions, testProfileRetrieval, logEnvironmentInfo } from '../../services/firebaseDebug';
+// P2 (g): firebaseDebug imports removed with their dead handlers.
 import { triggerFetchExternalUrl, triggerWebhookProxy } from '../../services/firebaseFunctions';
 import { logAdminAction, getUserContext } from '../../utils/logging';
 import LoginSplash from '../Auth/LoginSplash';
@@ -40,8 +39,7 @@ const AdminDashboard = ({
 }) => {
 
     const [selectedSection, setSelectedSection] = useState('serviceStatus');
-    const [diagnosticsResult, setDiagnosticsResult] = useState(null);
-    const [isRunningDiagnostics, setIsRunningDiagnostics] = useState(false);
+    // P2 (g): diagnostics + phmc-auth-state state removed with dead handlers.
     const [lsccModalActive, setLsccModalActive] = useState(null);
     const [showMigrator, setShowMigrator] = useState(false);
     const [mapEnabled, setMapEnabled] = useState(false);
@@ -64,24 +62,30 @@ const AdminDashboard = ({
         googlecloud: { status: 'checking', description: 'Checking...' },
     });
 
+    // P0 (a) cost plan: external status poll was 3 Cloud Function invocations every
+    // 60s per open admin tab. Now 10-min, skipped in background tabs and unless the
+    // service-status section is selected; failures keep last-good (stale) values.
     useEffect(() => {
+        if (selectedSection !== 'serviceStatus') return;
+        let cancelled = false;
         const fetchExternalStatuses = async () => {
+            if (document.hidden) return;
             const endpoints = [
                 { key: 'github', url: 'https://www.githubstatus.com/api/v2/status.json' },
                 { key: 'cloudflare', url: 'https://www.cloudflarestatus.com/api/v2/status.json' },
                 { key: 'googlecloud', url: 'https://status.cloud.google.com/incidents.json' },
             ];
 
-            const results = { ...externalStatuses };
+            const results = {};
 
             await Promise.all(
                 endpoints.map(async ({ key, url }) => {
                     try {
                         const response = await triggerFetchExternalUrl({ url });
                         const data = response.data;
-                        
+
                         if (key === 'googlecloud') {
-                            // Google Cloud returns an array of incidents. 
+                            // Google Cloud returns an array of incidents.
                             // If empty, it's operational. If it has items, it's degraded/outage.
                             const hasIncidents = Array.isArray(data) && data.length > 0;
                             results[key] = {
@@ -97,18 +101,27 @@ const AdminDashboard = ({
                         }
                     } catch (error) {
                         console.error(`Failed to fetch ${key} status:`, error);
-                        results[key] = { status: 'unknown', description: 'Unable to reach' };
+                        // Keep last-good: mark unknown only if we never succeeded.
+                        setExternalStatuses((prev) => ({
+                            ...prev,
+                            [key]: prev[key]?.status && prev[key].status !== 'checking'
+                                ? prev[key]
+                                : { status: 'unknown', description: 'Unable to reach' },
+                        }));
+                        return;
                     }
                 })
             );
 
-            setExternalStatuses(results);
+            if (!cancelled && Object.keys(results).length > 0) {
+                setExternalStatuses((prev) => ({ ...prev, ...results }));
+            }
         };
 
         fetchExternalStatuses();
-        const interval = setInterval(fetchExternalStatuses, 60000);
-        return () => clearInterval(interval);
-    }, []);
+        const interval = setInterval(fetchExternalStatuses, 600000);
+        return () => { cancelled = true; clearInterval(interval); };
+    }, [selectedSection]);
 
     const getStatusIndicator = (status) => {
         switch (status) {
@@ -124,9 +137,7 @@ const AdminDashboard = ({
         }
     };
 
-    // State for PHMC Auth State upload
-    const [phmcAuthStateInput, setPhmcAuthStateInput] = useState('');
-    const [isUploadingPhmcAuthState, setIsUploadingPhmcAuthState] = useState(false);
+    // P2 (g): PHMC auth-state upload state removed (dead handler deleted).
 
     useEffect(() => {
         const fetchMapStatus = async () => {
@@ -155,17 +166,8 @@ const AdminDashboard = ({
         loadMaintenance();
     }, []);
 
-    const handleToggleMap = async () => {
-        const newStatus = !mapEnabled;
-        try {
-            const dbRef = ref(getDatabase(), '/map/settings/enabled');
-            await set(dbRef, newStatus);
-            setMapEnabled(newStatus);
-            showInAppNotification(`Map feature has been ${newStatus ? 'enabled' : 'disabled'}.`, 'success');
-        } catch (error) {
-            showInAppNotification('Failed to update map status.', 'error');
-        }
-    };
+    // P2 (g) cost plan: dead handleToggleMap removed (defined, never wired to
+    // any onClick). mapEnabled state + mount load above stay live.
 
     // Use the unified GTA World auth hook
     const { 
@@ -241,112 +243,11 @@ const AdminDashboard = ({
         }
     };
 
-    const handleRunDiagnostics = async () => {
-        setIsRunningDiagnostics(true);
-        try {
-            logEnvironmentInfo();
-            const result = await runOAuthDiagnostics();
-            setDiagnosticsResult(result);
-        } catch (error) {
-            console.error('Diagnostics failed:', error);
-            setDiagnosticsResult({
-                error: 'Failed to run diagnostics',
-                details: error.message
-            });
-        } finally {
-            setIsRunningDiagnostics(false);
-        }
-    };
-
-    const handleTestFirebase = async () => {
-        try {
-            const result = await testFirebaseFunctions();
-            showInAppNotification && showInAppNotification(
-                result.success ? 'Firebase Functions test passed' : `Test failed: ${result.error}`,
-                result.success ? 'success' : 'error'
-            );
-            console.info('Firebase test result:', result);
-        } catch (error) {
-            showInAppNotification && showInAppNotification(`Test error: ${error.message}`, 'error');
-        }
-    };
-
-    const handleTestProfile = async () => {
-        try {
-            const result = await testProfileRetrieval();
-            showInAppNotification && showInAppNotification(
-                result.success ? 'Profile retrieval successful - check console for raw data' : `Profile test failed: ${result.error}`,
-                result.success ? 'success' : 'error'
-            );
-            console.info('Profile test result:', result);
-            if (result.success && result.rawProfileData) {
-                console.group('🔍 RAW PROFILE DATA');
-                console.log('Full API Response:', result.rawProfileData);
-                console.log('Data Structure:', result.dataStructure);
-                console.groupEnd();
-            }
-        } catch (error) {
-            showInAppNotification && showInAppNotification(`Profile test error: ${error.message}`, 'error');
-        }
-    };
-
-    const handleTestWebhook = async (webhook) => {
-        try {
-            const payload = {
-                embeds: [{
-                    title: "🧪 Webhook Test",
-                    description: `This is a test message for the webhook: **${webhook.name}**\n\nWebhook Type: ${webhook.type}\nTest Time: ${new Date().toLocaleString()}`,
-                    color: 0x00FF00,
-                    timestamp: new Date().toISOString(),
-                    footer: {
-                        text: 'PHMC Form Generator - Admin Panel Test'
-                    }
-                }]
-            };
-
-            await triggerWebhookProxy('test', payload, webhook.id);
-            showInAppNotification && showInAppNotification(`Test webhook sent successfully to ${webhook.name}!`, 'success');
-        } catch (error) {
-            console.error('Error sending test webhook:', error);
-            showInAppNotification && showInAppNotification('Error sending test webhook', 'error');
-        }
-    };
-
-    const handleUploadPhmcAuthState = async () => {
-        if (!phmcAuthStateInput) {
-            showInAppNotification('Please paste the PHMC Auth State JSON.', 'warning');
-            return;
-        }
-
-        setIsUploadingPhmcAuthState(true);
-        try {
-            const storageState = JSON.parse(phmcAuthStateInput);
-            if (!storageState || !storageState.cookies) {
-                throw new Error('Invalid Playwright storageState JSON. Missing "cookies" array.');
-            }
-
-            const functions = getFunctions();
-            const uploadAuthState = httpsCallable(functions, 'updateAuthState'); // Use the generic updateAuthState
-            
-            const result = await uploadAuthState({ 
-                path: '/phmc/auth_state', // The target path for PHMC forum auth state
-                storageState: storageState 
-            });
-
-            if (result.data.success) {
-                showInAppNotification('PHMC Auth State uploaded successfully!', 'success');
-                setPhmcAuthStateInput(''); // Clear input on success
-            } else {
-                showInAppNotification(`Failed to upload PHMC Auth State: ${result.data.message || 'Unknown error'}`, 'error');
-            }
-        } catch (error) {
-            console.error('Error uploading PHMC Auth State:', error);
-            showInAppNotification(`Error uploading PHMC Auth State: ${error.message}`, 'error');
-        } finally {
-            setIsUploadingPhmcAuthState(false);
-        }
-    };
-
+    // P2 (g) cost plan: dead handlers removed — handleRunDiagnostics,
+    // handleTestFirebase, handleTestProfile, handleTestWebhook,
+    // handleUploadPhmcAuthState were defined but never wired to any onClick.
+    // (The PHMC-auth-state uploader took credential-grade JSON with no live
+    // caller; revive deliberately if ever needed.)
 
     const handleSaveMaintenance = async () => {
         setIsSavingMaintenance(true);
@@ -574,7 +475,9 @@ const AdminDashboard = ({
 
 
                         {selectedSection === 'dev' && (
-                            hasAdminPageAccess ? <div className="admin-section"><FirebaseFunctionsTester showInAppNotification={showInAppNotification} /></div> : <div className="admin-section"><div className="alert alert-danger border-0 bg-opacity-25 shadow-sm p-4">Access Denied</div></div>
+                            // P0 (f) cost plan: kill-switch + maintenance toggles are
+                            // superadmin-only — rank-11 staff must not see this panel.
+                            isSuperAdminAccess ? <div className="admin-section"><FirebaseFunctionsTester showInAppNotification={showInAppNotification} /></div> : <div className="admin-section"><div className="alert alert-danger border-0 bg-opacity-25 shadow-sm p-4">Access Denied</div></div>
                         )}
 
                         {selectedSection === 'factions' && (

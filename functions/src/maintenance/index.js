@@ -4,7 +4,8 @@ import { db, admin } from '../utils/firebase.js';
 import { sendWebhook } from '../utils/helpers.js';
 import { runWeeklyCoronerSummary, runMonthlyCoronerSummary, runYearlyCoronerSummary } from '../reports/coroner.js';
 // import { syncFactionMembers } from './factionSync.js';  // Commented out: sync now runs on auth recovery only, not scheduled
-import { getFunctionStats } from '../utils/functionStats.js';
+// P2 (a) cost plan: getFunctionStats (up-to-100k Cloud Logging scan inside the
+// maintenance window, feeding one embed field) removed — use the console instead.
 
 // --- VPS saved-report store client (3b-5) ---
 // Direct Admin-SDK-free HTTPS calls to morgue-api with server-side keys
@@ -234,15 +235,12 @@ const _runMaintenance = async (triggerContext) => {
     // --- 3. Webhook Logs Cleanup ... [MOVED TO BOT] ---
     // --- 4. Monitoring Data Cleanup ... [MOVED TO BOT] ---
 
-    // --- 5. Function Usage Stats (last 24h) ---
-    try {
-        const stats = await getFunctionStats(24);
-        maintenanceResults.functionStats = stats;
-        console.log(`[Maintenance] Function stats: ${stats.totalFunctions} functions, ${stats.totalEntries} log entries.`);
-    } catch (error) {
-        console.error('[Maintenance] Error fetching function stats:', error);
-        maintenanceResults.functionStats = { error: error.message };
-    }
+    // --- 5. Function Usage Stats ---
+    // P2 (a) cost plan: removed. getFunctionStats paged Cloud Logging up to
+    // 100k entries inside this run for a single top-5 embed field — rank
+    // functions in the Cloud Console instead (zero billable runtime).
+    // The embed field below now reports that stats moved to the console.
+    maintenanceResults.functionStats = { removed: true };
 
     const hasCleanedUp = maintenanceResults.reportCleanup.oldReportsCleaned > 0 || maintenanceResults.duplicateCleanup.duplicatesDeleted > 0;
     const hasPending = maintenanceResults.pendingDeployments.total > 0;
@@ -254,9 +252,12 @@ const _runMaintenance = async (triggerContext) => {
     const fnStats = maintenanceResults.functionStats;
 
     const topFunctions = fnStats?.functions?.slice(0, 5) || [];
-    const topFunctionsValue = topFunctions.length > 0
-        ? topFunctions.map((f, i) => `${i + 1}. **${f.name}** — ${f.count} calls`).join('\n')
-        : 'No data available';
+    // P2 (a): stats removed from the scheduled run — see section 5 above.
+    const topFunctionsValue = fnStats?.removed
+        ? 'Moved to Cloud Console (removed from scheduled run — cost plan P2 (a))'
+        : (topFunctions.length > 0
+            ? topFunctions.map((f, i) => `${i + 1}. **${f.name}** — ${f.count} calls`).join('\n')
+            : 'No data available');
     
     const embed = {
         title: `Daily Maintenance Task (${triggerContext.trigger})`,
@@ -309,9 +310,10 @@ Deleted: ${maintenanceResults.duplicateCleanup.duplicatesDeleted}`, inline: true
         ]);
     }
 
-    // Plan 5 cleanup (2026-09-14): runMonthlyCoronerSummary is @deprecated and
-    // early-returns null — kept in the call list so re-enabling is a validation
-    // task, not a rediscovery task. See functions/src/reports/coroner.js.
+    // P2 (c) cost plan (corrected 2026-09-26): runMonthlyCoronerSummary was
+    // re-enabled by 3b-4 (2026-09-14) and is a live VPS-aggregate implementation
+    // — see functions/src/reports/coroner.js. The old @deprecated note above is
+    // no longer true. (Moot while _runMaintenance has no live entry point.)
     if (isFirstOfMonth) {
         console.log('[Maintenance] Triggering monthly summaries (1st of month)...');
         await Promise.allSettled([
@@ -415,12 +417,15 @@ export const updateAuthState = onCall({
             }]
         });
 
-        // If it's the UCP auth state, trigger a sync to verify it works
+        // If it's the UCP auth state, note that verification happens via the
+        // auth-recovery sync path — no inline sync runs here.
+        // P2 (b) cost plan: the old message claimed "sync triggered" while the
+        // sync call below is commented out. Message corrected.
         if (path === '/factions/364/ucp_auth_state') {
             // const syncResult = await syncFactionMembers('auth_update');  // Commented out: sync runs on auth recovery
             return {
                 success: true,
-                message: `Auth state for ${path} updated and sync triggered.`,
+                message: `Auth state for ${path} updated. Verification runs via the auth-recovery sync path.`,
                 // syncResult
             };
         }

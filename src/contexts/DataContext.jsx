@@ -41,13 +41,20 @@ const FORMS_VERSION_REF_PATH = resolveVersionRef('appMetadata/formsDataVersion')
 // the getProtocolsDev function) so dev content never touches production and the
 // heavy base64 images stay out of RTDB. Falls back to prod protocols on error.
 const IS_DEV_HOST = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.'));
+// P2 (l) cost plan: memoize the dev protocols blob per session — repeated
+// LSCC segment updates re-ran a full getProtocolsDev invocation each.
+let cachedDevProtocols = null;
 const applyLsccDevOverride = async (data) => {
     if (!IS_DEV_HOST || !data || typeof data !== 'object') return data;
     try {
-        const res = await triggerGetProtocolsDev();
-        const devProtocols = res?.protocols;
-        if (Array.isArray(devProtocols) && devProtocols.length > 0) {
-            return { ...data, protocols: devProtocols };
+        if (!cachedDevProtocols) {
+            const res = await triggerGetProtocolsDev();
+            if (Array.isArray(res?.protocols) && res.protocols.length > 0) {
+                cachedDevProtocols = res.protocols;
+            }
+        }
+        if (cachedDevProtocols) {
+            return { ...data, protocols: cachedDevProtocols };
         }
     } catch (err) {
         console.warn('[DataContext] Failed to load dev protocols:', err?.message || err);
@@ -59,6 +66,15 @@ const DataContext = createContext();
 
 export const useData = () => {
     return useContext(DataContext);
+};
+
+// Telemetry identity label: "username (character)" for the hourly Visited
+// list (matches the V2 rollup format). Falls back gracefully when only one
+// identity is known.
+export const telemetryUserLabel = (u) => {
+    const uname = u?.username || u?.gtawUsername || 'Unknown';
+    const cname = u?.faction?.characterName;
+    return cname && cname !== uname ? `${uname} (${cname})` : uname;
 };
 
 // Rank-string keywords that classify a PHMC faction member as Coroner staff.
@@ -419,7 +435,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                     Object.values(CACHE_SEGMENTS).forEach(s => {
                         loadingMode[s] = s === CACHE_SEGMENTS.MORGUE_RECORDS ? 'network' : 'not_loaded';
                     });
-                    webhooks.sendDataRequestLog('DataContext.jsx', false, 'Cloud Function', 0, parseFloat(segmentSize), isAuthenticated, user?.faction?.characterName || user?.username, ['morgue-records'], [], { 'morgue-records': parseFloat(segmentSize) }, null, {
+                    webhooks.sendDataRequestLog('DataContext.jsx', false, 'Cloud Function', 0, parseFloat(segmentSize), isAuthenticated, telemetryUserLabel(user), ['morgue-records'], [], { 'morgue-records': parseFloat(segmentSize) }, null, {
                         route: window.location.hash || '/',
                         trigger: 'lazy',
                         segmentSources: loadingMode
@@ -643,7 +659,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                         loadingMode[s] = 'not_loaded';
                     }
                 });
-                webhooks.sendDataRequestLog('DataContext.jsx', true, 'Local Storage', totalCachedSize, 0, isAuthenticated, user?.faction?.characterName || user?.username, Object.keys(cachedSegments), [], segmentSizes, null, {
+                webhooks.sendDataRequestLog('DataContext.jsx', true, 'Local Storage', totalCachedSize, 0, isAuthenticated, telemetryUserLabel(user), Object.keys(cachedSegments), [], segmentSizes, null, {
                     route: window.location.hash || '/',
                     trigger: 'initial',
                     segmentSources: loadingMode
@@ -701,7 +717,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                             loadingMode[s] = 'not_loaded';
                         }
                     });
-                    webhooks.sendDataRequestLog('DataContext.jsx', didLoadFromCache.current, didLoadFromCache.current ? 'Partial Cache' : 'Firebase', totalCachedSize + totalNetworkTransferSize, totalNetworkTransferSize, isAuthenticated, user?.faction?.characterName || user?.username, Object.keys(cachedSegments).concat(segmentsToFetch), segmentsToFetch.filter(s => !fetchedData[s]), segmentSizes, null, {
+                    webhooks.sendDataRequestLog('DataContext.jsx', didLoadFromCache.current, didLoadFromCache.current ? 'Partial Cache' : 'Firebase', totalCachedSize + totalNetworkTransferSize, totalNetworkTransferSize, isAuthenticated, telemetryUserLabel(user), Object.keys(cachedSegments).concat(segmentsToFetch), segmentsToFetch.filter(s => !fetchedData[s]), segmentSizes, null, {
                         route: window.location.hash || '/',
                         trigger: 'initial',
                         segmentSources: loadingMode
@@ -735,7 +751,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                         loadingMode[s] = 'not_loaded';
                     }
                 });
-                webhooks.sendDataRequestLog('DataContext.jsx', didLoadFromCache.current, 'Firebase Error', totalCachedSize, 0, isAuthenticated, user?.faction?.characterName || user?.username, Object.keys(cachedSegments), segmentsToFetch, segmentSizes, error.message || 'Unknown Fetch Error', {
+                webhooks.sendDataRequestLog('DataContext.jsx', didLoadFromCache.current, 'Firebase Error', totalCachedSize, 0, isAuthenticated, telemetryUserLabel(user), Object.keys(cachedSegments), segmentsToFetch, segmentSizes, error.message || 'Unknown Fetch Error', {
                     route: window.location.hash || '/',
                     trigger: 'initial',
                     segmentSources: loadingMode

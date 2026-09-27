@@ -754,22 +754,25 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated, rosterData = {}) 
             }
 
             // ── Body Tampered incident logging ──
-            // Any form with a body_tampered field that was ticked triggers a separate alert webhook.
+            // P1 (c) cost plan: previously one alert webhook PER ticked field.
+            // Now a single collapsed alert listing all ticked fields (1 invocation).
             try {
-                const bodyTamperedFields = (selectedForm.fields || []).filter(f => f.type === 'body_tampered');
-                // Requesting officer details (if present) so the alert identifies who requested the report
-                const reqOfficer = formValues['Requesting Officer'] || formValues.requestingOfficer || '';
-                const reqDeptVal = formValues.department || formValues.requestingOfficerDepartment;
-                const reqDept = (typeof reqDeptVal === 'object' && reqDeptVal !== null) ? (reqDeptVal.label || reqDeptVal.value) : reqDeptVal;
-                for (const btField of bodyTamperedFields) {
-                    if (!formValues[btField.name]) continue;
-                    const btReasonKey = btField.associatedInputField?.name || `${btField.name || 'bodyTampered'}Reason`;
-                    const btReason = formValues[btReasonKey] || 'No reason provided';
+                const bodyTamperedFields = (selectedForm.fields || []).filter(f => f.type === 'body_tampered' && formValues[f.name]);
+                if (bodyTamperedFields.length > 0) {
+                    // Requesting officer details (if present) so the alert identifies who requested the report
+                    const reqOfficer = formValues['Requesting Officer'] || formValues.requestingOfficer || '';
+                    const reqDeptVal = formValues.department || formValues.requestingOfficerDepartment;
+                    const reqDept = (typeof reqDeptVal === 'object' && reqDeptVal !== null) ? (reqDeptVal.label || reqDeptVal.value) : reqDeptVal;
+                    const tamperedLines = bodyTamperedFields.map((btField) => {
+                        const btReasonKey = btField.associatedInputField?.name || `${btField.name || 'bodyTampered'}Reason`;
+                        const btReason = formValues[btReasonKey] || 'No reason provided';
+                        return `• ${btField.name}: ${btReason}`;
+                    }).join('\n').slice(0, 900);
                     const btFields = [
                         { name: 'Report Title', value: `\`${finalTitle}\``, inline: false },
                         { name: 'Submitter', value: currentAuthor, inline: true },
-                        { name: 'Body Tampered', value: 'Yes', inline: true },
-                        { name: 'Reason', value: btReason, inline: false },
+                        { name: 'Body Tampered', value: `Yes (${bodyTamperedFields.length})`, inline: true },
+                        { name: 'Fields / Reasons', value: tamperedLines || 'n/a', inline: false },
                     ];
                     if (reqOfficer) {
                         btFields.push({ name: 'Requesting Officer', value: reqOfficer, inline: true });
