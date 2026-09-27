@@ -150,6 +150,72 @@ const PrototypeFieldRenderer = ({
     prevTypeOfDeath.current = allValues.typeOfDeath;
   }, [allValues.typeOfDeath]);
 
+  /* ─── rules-of-hooks: case-scoped hooks hoisted ─── */
+  // One field per instance via switch (field.type) below; hooks used to live
+  // inside the decedent_list / autopsy_import_button cases (conditional hook
+  // order crashes if field.type ever changes for a mounted instance). They now
+  // run unconditionally here; only effect *bodies* stay conditional on
+  // field.type. State/callbacks are inert when their case is not rendered. [OK]
+
+  // decedent_list state
+  const [activeDecedentIndex, setActiveDecedentIndex] = useState(0);
+  const decedentListLength = Array.isArray(value) ? value.length : 0;
+
+  useEffect(() => {
+    if (field.type !== 'decedent_list') return;
+    const list = value || [];
+    if (list.length > 0 && activeDecedentIndex >= list.length) {
+      setActiveDecedentIndex(list.length - 1);
+    }
+  }, [field.type, decedentListLength, activeDecedentIndex]);
+
+  const addDecedent = useCallback(() => {
+    const list = value || [];
+    const newDecedent = decedentItemSchema.reduce((acc, subField) => {
+      if (subField.type === 'image') acc[subField.name] = [];
+      else if (subField.type !== 'section') acc[subField.name] = '';
+      return acc;
+    }, {});
+    const newList = [...list, newDecedent];
+    onChange(newList);
+    setActiveDecedentIndex(newList.length - 1);
+  }, [value, onChange]);
+
+  const handleDecedentItemChange = useCallback((idx, subName, subVal) => {
+    const list = value || [];
+    const updated = list.map((item, i) => {
+      if (i !== idx) return item;
+      const mod = { ...item, [subName]: subVal };
+      if (subName === 'typeOfDeath' && subVal === 'PK') mod.decedentName = 'John Doe';
+      return mod;
+    });
+    onChange(updated);
+  }, [value, onChange]);
+
+  const removeDecedent = useCallback((idx) => {
+    const list = value || [];
+    const updated = list.filter((_, i) => i !== idx);
+    onChange(updated);
+    if (idx <= activeDecedentIndex) {
+      setActiveDecedentIndex(Math.max(0, activeDecedentIndex - 1));
+    }
+  }, [value, onChange, activeDecedentIndex]);
+
+  // autopsy_import_button state
+  const [step, setStep] = useState(0);
+  const [inputText, setInputText] = useState('');
+  const [parsedData, setParsedData] = useState(null);
+  const [selectedSuggestions, setSelectedSuggestions] = useState([]);
+
+  useEffect(() => {
+    if (field.type !== 'autopsy_import_button') return;
+    if (parsedData?.suggestedCausesOfDeath) {
+      setSelectedSuggestions(parsedData.suggestedCausesOfDeath);
+    } else {
+      setSelectedSuggestions([]);
+    }
+  }, [field.type, parsedData]);
+
   /* =====================================================================
      FIELD TYPE HANDLERS
      ===================================================================== */
@@ -594,43 +660,8 @@ const PrototypeFieldRenderer = ({
 
     /* ─── Decedent List (Mass Fatality) ─── */
     case 'decedent_list': {
-      const [activeDecedentIndex, setActiveDecedentIndex] = useState(0);
+      // [OK] Hooks hoisted to component top (rules-of-hooks); bindings below are top-level.
       const decedentList = value || [];
-
-      useEffect(() => {
-        if (decedentList.length > 0 && activeDecedentIndex >= decedentList.length) {
-          setActiveDecedentIndex(decedentList.length - 1);
-        }
-      }, [decedentList.length, activeDecedentIndex]);
-
-      const addDecedent = useCallback(() => {
-        const newDecedent = decedentItemSchema.reduce((acc, subField) => {
-          if (subField.type === 'image') acc[subField.name] = [];
-          else if (subField.type !== 'section') acc[subField.name] = '';
-          return acc;
-        }, {});
-        const newList = [...decedentList, newDecedent];
-        onChange(newList);
-        setActiveDecedentIndex(newList.length - 1);
-      }, [decedentList, onChange]);
-
-      const handleDecedentItemChange = useCallback((idx, subName, subVal) => {
-        const updated = decedentList.map((item, i) => {
-          if (i !== idx) return item;
-          const mod = { ...item, [subName]: subVal };
-          if (subName === 'typeOfDeath' && subVal === 'PK') mod.decedentName = 'John Doe';
-          return mod;
-        });
-        onChange(updated);
-      }, [decedentList, onChange]);
-
-      const removeDecedent = useCallback((idx) => {
-        const updated = decedentList.filter((_, i) => i !== idx);
-        onChange(updated);
-        if (idx <= activeDecedentIndex) {
-          setActiveDecedentIndex(Math.max(0, activeDecedentIndex - 1));
-        }
-      }, [decedentList, onChange, activeDecedentIndex]);
 
       return (
         <div className="field full" style={{ marginTop: 8 }}>
@@ -793,11 +824,7 @@ const PrototypeFieldRenderer = ({
 
     /* ─── Autopsy Import Button ─── */
     case 'autopsy_import_button': {
-      const [step, setStep] = useState(0);
-      const [inputText, setInputText] = useState('');
-      const [parsedData, setParsedData] = useState(null);
-      const [selectedSuggestions, setSelectedSuggestions] = useState([]);
-
+      // [OK] Hooks hoisted to component top (rules-of-hooks); state below is top-level bindings.
       const customSelectStyles = {
         control: (provided) => ({ ...provided, width: '100%', padding: '0.2rem', background: '#182238', border: '1px solid #25324D', color: '#E7ECF5', borderRadius: 8, fontSize: '0.85rem', minHeight: 'auto' }),
         input: (provided) => ({ ...provided, color: '#E7ECF5' }),
@@ -807,13 +834,7 @@ const PrototypeFieldRenderer = ({
         menu: (provided) => ({ ...provided, backgroundColor: '#182238', border: '1px solid #25324D', zIndex: 1000 }),
       };
 
-      useEffect(() => {
-        if (parsedData?.suggestedCausesOfDeath) {
-          setSelectedSuggestions(parsedData.suggestedCausesOfDeath);
-        } else {
-          setSelectedSuggestions([]);
-        }
-      }, [parsedData]);
+      // [OK] suggestions-init effect hoisted to component top, guarded on field.type (rules-of-hooks).
 
       const causeOfDeathSuggestionsMap = {
         'gunshot wound': ['Massive blood loss due to gunshot wounds', 'Damage to vital organs by gunshot', 'Internal hemorrhage from gunshot wounds', 'Acute blood loss from gunshot wounds'],

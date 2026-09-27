@@ -21,10 +21,7 @@ const DecedentItemRenderer = ({
   setMapTargetField,
   isUploadingMapImage = {},
 }) => {
-  if (!itemValues) {
-    return null;
-  }
-
+  // [OK] Hooks must run unconditionally — the null guard lives below the hook calls.
   const handleSubFieldChange = useCallback((subFieldName, value) => {
     onItemChange(subFieldName, value);
   }, [onItemChange]);
@@ -166,6 +163,10 @@ const DecedentItemRenderer = ({
             </div>
         );
     }, [itemValues, onItemChange, finalSelectOptions, index, parentFieldName, handleSubFieldChange]);
+
+  if (!itemValues) {
+    return null;
+  }
 
   const decedentName = itemValues.decedentName || '';
   const decedentOOC = itemValues.decedentOOC || '';

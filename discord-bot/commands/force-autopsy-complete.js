@@ -108,7 +108,7 @@ export async function execute(interaction) {
             .setColor(status === 'completed' ? 0x28a745 : 0xffc107)
             .setTitle('Autopsy Force-' + (status === 'completed' ? 'Completed' : 'Failed'))
             .setDescription([
-                '**OOC:** ' + ooc,
+                '**OOC:** ' + searchName, // [OK] search term (OOC-first, then IC fallback); no separate ooc binding exists in this scope
                 '**Entries updated:** ' + updated,
                 '',
                 ...details,

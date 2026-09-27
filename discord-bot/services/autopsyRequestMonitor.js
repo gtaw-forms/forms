@@ -2148,15 +2148,15 @@ async function processMultiDecedentRequest({ db, topic, parsed, decedents, reque
                 }
                 // Skipped bodies ride along in the ack so the requester knows
                 // exactly what to re-submit (filed bodies proceed normally).
-                // Same for definitive morgue misses — the requester is the one
-                // who can fix a mis-spelt name.
-                if (massSkipped.length > 0) ackOpts.skippedBodies = massSkipped;
+                // [OK] Multi path has no mass.skippedBodies (mass-flow only) —
+                // fall back to any persisted skippedBodies on the request record.
+                const multiSkipped = Array.isArray(existing.skippedBodies) ? existing.skippedBodies : [];
+                if (multiSkipped.length > 0) ackOpts.skippedBodies = multiSkipped;
+                // [OK] No morgue pre-match exists in the multi-decedent path
+                // (morgueByBody/bodies/N are processMassRequest scope) — the
+                // dead block referencing them is removed; ackOpts.morgueMissing
+                // stays unset, which sendAutopsyAcknowledgement already handles.
                 const morgueMissing = [];
-                for (let i = 0; i < N; i++) {
-                    if (morgueByBody[i] && morgueByBody[i].found === false) {
-                        morgueMissing.push({ label: String(i + 1), name: bodies[i].name, oocName: bodies[i].oocName });
-                    }
-                }
                 if (morgueMissing.length > 0) ackOpts.morgueMissing = morgueMissing;
                 const ackResult = await sendAutopsyAcknowledgement(topic.topicId, requesterName, null, ackOpts);
 

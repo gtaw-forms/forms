@@ -137,7 +137,7 @@ const EmployeeManager = () => {
         stats.forEach(employee => {
             summary.totalReports += employee.total;
             for (const category in employee.categories) {
-                if (summary.hasOwnProperty(category)) {
+                if (Object.prototype.hasOwnProperty.call(summary, category)) {
                     summary[category] += employee.categories[category];
                 } else {
                     summary['Uncategorized'] += employee.categories[category];

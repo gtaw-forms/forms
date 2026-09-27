@@ -1,4 +1,6 @@
 
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '../firebase';
 import { validateFirebaseConfig } from './gtaWorldAuth';
 
 /**
@@ -165,10 +167,7 @@ export const testProfileRetrieval = async () => {
             // Use the Firebase Function to validate token and get live API data
             console.info('[Profile Test] Using Firebase Function to get live API data...');
             
-            // Import Firebase functions
-            const { httpsCallable } = require('firebase/functions');
-            const { functions } = require('../firebase');
-            
+            // [OK] Top-level firebase/functions + ../firebase imports reused (no CJS require in ESM browser bundle).
             const validateToken = httpsCallable(functions, 'validateGtaWorldToken');
             const result = await validateToken({ accessToken: currentToken });
             

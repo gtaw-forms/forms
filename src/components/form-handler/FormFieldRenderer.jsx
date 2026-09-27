@@ -116,7 +116,8 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
       const d = dateMatch[1].padStart(2, '0');
       const months = {
         jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06', jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12',
-        january: '01', february: '02', march: '03', april: '04', may: '05', june: '06', july: '07', august: '08', september: '09', october: '10', november: '11', december: '12'
+        january: '01', february: '02', march: '03', april: '04', june: '06', july: '07', august: '08', september: '09', october: '10', november: '11', december: '12'
+        // [OK] 'may'/'May' resolves via the short-form 'may' key above (full name is identical); long-form duplicate removed (no-dupe-keys).
       };
       const m = months[dateMatch[2].toLowerCase()] || '??';
       return `${d}/${m}/${dateMatch[3]}`;
@@ -206,6 +207,121 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
     }
     prevTypeOfDeath.current = formValues.typeOfDeath;
   }, [formValues.typeOfDeath]);
+
+  // ── rules-of-hooks: case-scoped hooks hoisted ──
+  // This component renders one field per instance via switch (field.type)
+  // below; hooks used to live inside three cases (conditional hook order
+  // crashes if field.type ever changes for a mounted instance). They now run
+  // unconditionally here; only effect *bodies* stay conditional on field.type.
+  // State/callbacks are inert when their case is not rendered. [OK]
+
+  // autopsy_import_button state
+  const [step, setStep] = useState(0);
+  const [inputText, setInputText] = useState("");
+  const [parsedData, setParsedData] = useState(null);
+  const [selectedSuggestions, setSelectedSuggestions] = useState([]);
+
+  // Effect to initialize selectedSuggestions when parsedData changes
+  useEffect(() => {
+    if (field.type !== 'autopsy_import_button') return;
+    if (parsedData && parsedData.suggestedCausesOfDeath) {
+      setSelectedSuggestions(parsedData.suggestedCausesOfDeath); // Select all by default
+    } else {
+      setSelectedSuggestions([]);
+    }
+  }, [field.type, parsedData]);
+
+  const handleToggleSuggestion = useCallback((cause) => {
+    setSelectedSuggestions(prev =>
+      prev.includes(cause) ? prev.filter(c => c !== cause) : [...prev, cause]
+    );
+  }, []);
+
+  const handleApplySelectedSuggestions = useCallback(() => {
+    handleChange('deathCausesListItems', selectedSuggestions);
+    showNotification("Selected causes successfully applied!", "success");
+  }, [handleChange, selectedSuggestions, showNotification]);
+
+  // decedent_list state
+  const currentDecedentItemSchema = useMemo(() => {
+    return decedentItemSchema;
+  }, []);
+
+  const [activeDecedentIndex, setActiveDecedentIndex] = useState(0);
+  const decedentListLength = ((formValues[field.name]) || []).length;
+
+  // Ensure activeDecedentIndex is within bounds if the list changes from outside
+  useEffect(() => {
+    if (field.type !== 'decedent_list') return;
+    const list = formValues[field.name] || [];
+    if (list.length > 0 && activeDecedentIndex >= list.length) {
+      setActiveDecedentIndex(list.length - 1);
+    }
+  }, [field.type, field.name, decedentListLength, activeDecedentIndex]);
+
+  const addDecedent = useCallback(() => {
+    const list = formValues[field.name] || [];
+    const newDecedent = decedentItemSchema.reduce((acc, subField) => {
+      if (subField.type === 'image') {
+        acc[subField.name] = [];
+      } else if (subField.type !== 'section') {
+        acc[subField.name] = '';
+      }
+      return acc;
+    }, {});
+    const newList = [...list, newDecedent];
+    handleChange(field.name, newList);
+    setActiveDecedentIndex(newList.length - 1); // Switch to the newly added decedent
+  }, [field.name, formValues, handleChange]);
+
+  const handleDecedentItemChange = useCallback((indexToUpdate, subFieldName, subFieldValue) => {
+    const list = formValues[field.name] || [];
+    const updatedList = list.map((item, idx) => {
+      if (idx === indexToUpdate) {
+        const updated = { ...item, [subFieldName]: subFieldValue };
+        if (subFieldName === 'typeOfDeath' && subFieldValue === 'PK') {
+          updated.decedentName = 'John Doe';
+        }
+        return updated;
+      }
+      return item;
+    });
+    handleChange(field.name, updatedList);
+  }, [field.name, formValues, handleChange]);
+
+  const removeDecedent = useCallback((indexToRemove) => {
+    const list = formValues[field.name] || [];
+    const updatedList = list.filter((_, idx) => idx !== indexToRemove);
+    handleChange(field.name, updatedList);
+
+    // Adjust active index if we removed the active one or an earlier one
+    if (indexToRemove <= activeDecedentIndex) {
+      setActiveDecedentIndex(Math.max(0, activeDecedentIndex - 1));
+    }
+  }, [field.name, formValues, handleChange, activeDecedentIndex]);
+
+  // dynamic_text_list callbacks
+  const addListItem = useCallback(() => {
+    const list = Array.isArray(formValues[field.name]) ? formValues[field.name] : [];
+    handleChange(field.name, [...list, ""]); // Add an empty string for a new item
+  }, [field.name, formValues, handleChange]);
+
+  const handleItemChange = useCallback((indexToUpdate, value) => {
+    const list = Array.isArray(formValues[field.name]) ? formValues[field.name] : [];
+    const updatedList = list.map((item, idx) => {
+      if (idx === indexToUpdate) {
+        return value;
+      }
+      return item;
+    });
+    handleChange(field.name, updatedList);
+  }, [field.name, formValues, handleChange]);
+
+  const removeListItem = useCallback((indexToRemove) => {
+    const list = Array.isArray(formValues[field.name]) ? formValues[field.name] : [];
+    const updatedList = list.filter((_, idx) => idx !== indexToRemove);
+    handleChange(field.name, updatedList);
+  }, [field.name, formValues, handleChange]);
 
   // Conditional visibility logic
   if (!evaluateFieldVisibility(field, formValues)) {
@@ -670,11 +786,7 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
         </div>
       );
     case "autopsy_import_button": {
-      const [step, setStep] = useState(0);
-      const [inputText, setInputText] = useState("");
-      const [parsedData, setParsedData] = useState(null);
-      const [selectedSuggestions, setSelectedSuggestions] = useState([]);
-
+      // [OK] Hooks hoisted to component top (rules-of-hooks); state/callbacks below are top-level bindings.
       // Shared select styles
       const customSelectStyles = {
         control: (provided) => ({ ...provided, width: "100%", padding: "0.2rem", background: "#1e293b", border: "1px solid #334155", color: "#e2e8f0", borderRadius: 8, fontSize: "1rem", minHeight: "auto" }),
@@ -684,26 +796,6 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
         option: (provided, state) => ({ ...provided, backgroundColor: state.isFocused ? "#334155" : "#1e293b", color: "#e2e8f0", "&:active": { backgroundColor: "#475569" } }),
         menu: (provided) => ({ ...provided, backgroundColor: "#1e293b", border: "1px solid #334155", zIndex: 1000 }),
       };
-
-      // Effect to initialize selectedSuggestions when parsedData changes
-      useEffect(() => {
-        if (parsedData && parsedData.suggestedCausesOfDeath) {
-          setSelectedSuggestions(parsedData.suggestedCausesOfDeath); // Select all by default
-        } else {
-          setSelectedSuggestions([]);
-        }
-      }, [parsedData]);
-
-      const handleToggleSuggestion = useCallback((cause) => {
-        setSelectedSuggestions(prev =>
-          prev.includes(cause) ? prev.filter(c => c !== cause) : [...prev, cause]
-        );
-      }, []);
-
-      const handleApplySelectedSuggestions = useCallback(() => {
-        handleChange('deathCausesListItems', selectedSuggestions);
-        showNotification("Selected causes successfully applied!", "success");
-      }, [handleChange, selectedSuggestions, showNotification]);
 
       // Mapping for suggested causes of death based on wound types
       const causeOfDeathSuggestionsMap = {
@@ -859,9 +951,10 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
             embeds: [embed],
           };
 
-          await triggerWebhookProxy('admin', payload);
+          const response = await triggerWebhookProxy('admin', payload);
 
-          if (!response.ok) {
+          // [OK] triggerWebhookProxy resolves result.data (throws on error); only warn on an explicit failure shape.
+          if (response && response.ok === false) {
             console.warn(`Webhook returned status ${response.status}`);
           }
         } catch (error) {
@@ -1324,57 +1417,8 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
       );
     }
     case "decedent_list": {
-      const currentDecedentItemSchema = useMemo(() => {
-        return decedentItemSchema;
-      }, []);
-
-      const [activeDecedentIndex, setActiveDecedentIndex] = useState(0);
+      // [OK] Hooks hoisted to component top (rules-of-hooks); bindings below are top-level.
       const decedentList = formValues[field.name] || [];
-
-      // Ensure activeDecedentIndex is within bounds if the list changes from outside
-      useEffect(() => {
-        if (decedentList.length > 0 && activeDecedentIndex >= decedentList.length) {
-          setActiveDecedentIndex(decedentList.length - 1);
-        }
-      }, [decedentList.length, activeDecedentIndex]);
-
-      const addDecedent = useCallback(() => {
-        const newDecedent = decedentItemSchema.reduce((acc, subField) => {
-          if (subField.type === 'image') {
-            acc[subField.name] = [];
-          } else if (subField.type !== 'section') {
-            acc[subField.name] = '';
-          }
-          return acc;
-        }, {});
-        const newList = [...decedentList, newDecedent];
-        handleChange(field.name, newList);
-        setActiveDecedentIndex(newList.length - 1); // Switch to the newly added decedent
-      }, [field.name, decedentList, handleChange]);
-
-      const handleDecedentItemChange = useCallback((indexToUpdate, subFieldName, subFieldValue) => {
-        const updatedList = decedentList.map((item, idx) => {
-          if (idx === indexToUpdate) {
-            const updated = { ...item, [subFieldName]: subFieldValue };
-            if (subFieldName === 'typeOfDeath' && subFieldValue === 'PK') {
-              updated.decedentName = 'John Doe';
-            }
-            return updated;
-          }
-          return item;
-        });
-        handleChange(field.name, updatedList);
-      }, [field.name, decedentList, handleChange]);
-
-      const removeDecedent = useCallback((indexToRemove) => {
-        const updatedList = decedentList.filter((_, idx) => idx !== indexToRemove);
-        handleChange(field.name, updatedList);
-
-        // Adjust active index if we removed the active one or an earlier one
-        if (indexToRemove <= activeDecedentIndex) {
-          setActiveDecedentIndex(Math.max(0, activeDecedentIndex - 1));
-        }
-      }, [field.name, decedentList, handleChange, activeDecedentIndex]);
 
       return (
         <div
@@ -1476,26 +1520,8 @@ const FormFieldRenderer = ({ field, selectedForm, formValues, handleChange, fina
       );
     }
     case "dynamic_text_list": {
+      // [OK] Hooks hoisted to component top (rules-of-hooks); callbacks below are top-level bindings.
       const listItems = Array.isArray(formValues[field.name]) ? formValues[field.name] : [];
-
-      const addListItem = useCallback(() => {
-        handleChange(field.name, [...listItems, ""]); // Add an empty string for a new item
-      }, [field.name, listItems, handleChange]);
-
-      const handleItemChange = useCallback((indexToUpdate, value) => {
-        const updatedList = listItems.map((item, idx) => {
-          if (idx === indexToUpdate) {
-            return value;
-          }
-          return item;
-        });
-        handleChange(field.name, updatedList);
-      }, [field.name, listItems, handleChange]);
-
-      const removeListItem = useCallback((indexToRemove) => {
-        const updatedList = listItems.filter((_, idx) => idx !== indexToRemove);
-        handleChange(field.name, updatedList);
-      }, [field.name, listItems, handleChange]);
 
       return (
         <div style={{ ...fieldWrapperStyle }}>

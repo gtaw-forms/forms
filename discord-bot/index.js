@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, REST, Routes, Collection, MessageFlags } from 'discord.js';
+import { Client, GatewayIntentBits, REST, Routes, Collection, MessageFlags, EmbedBuilder } from 'discord.js';
 import { readFileSync, existsSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';

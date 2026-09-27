@@ -91,7 +91,6 @@ export function upsertEnvValues(pairs) {
         }
 
         if (!handled) out.push(line);
-        else lines = lines; // no-op, keeps linters calm about reassignment
     }
 
     // Append anything still unmatched (skip dupes already resolved above).

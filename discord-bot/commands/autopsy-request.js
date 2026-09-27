@@ -257,6 +257,9 @@ export async function execute(interaction) {
 
 export async function handleModal(interaction) {
     const customId = interaction.customId;
+
+    firebase.init();
+    const db = firebase.db;
     const state = _modalState.get(interaction.user.id) || {};
 
     if (customId === 'ar_modal_1') {

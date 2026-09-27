@@ -50,7 +50,7 @@ export const useInactivityReload = () => {
 
         // Hard reload — window.location.reload() can be soft-cached or throttled when hidden.
         // Try reload(), then fallback to href assignment after 500ms if still on same page.
-        try { window.location.reload(); } catch(e) { window.location.href = window.location.href; }
+        try { window.location.reload(); } catch(e) { window.location.assign(window.location.href); } // [OK] href self-navigation fallback forces reload when reload() throws
         setTimeout(() => {
             // If reload didn't navigate (e.g. throttled while hidden), force via href
             try{ window.location.href = window.location.origin + window.location.pathname + window.location.search + window.location.hash; }catch{ /* last-resort forced navigation ignored: nothing left to attempt */ }
