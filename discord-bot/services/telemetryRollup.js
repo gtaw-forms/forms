@@ -187,15 +187,56 @@ export async function runTelemetryRollup() {
 }
 
 /**
- * Register the hourly central-scheduler tick (1h + up to 5min jitter,
- * reentrancy-guarded by the scheduler — never overlaps, never storms).
+ * Wall-clock hourly schedule (fires at xx:00, not 1h-after-restart).
+ *
+ * Deliberately NOT on the central scheduler: registerTick anchors to
+ * process start (nextRunAt = now + interval), which drifts the fire time to
+ * whenever the bot last restarted. Recursive setTimeout re-anchors to the
+ * wall clock every hour, so posts land on xx:00 consistently. Reentrancy is
+ * guarded locally (skip if the previous run is still going — same semantics
+ * as the central scheduler, minus the drift).
+ */
+
+let wallTimer = null;
+let wallRunning = false;
+
+function msToNextHour() {
+    const now = new Date();
+    return (60 - now.getMinutes()) * 60000 - now.getSeconds() * 1000 - now.getMilliseconds();
+}
+
+function armWallClock() {
+    wallTimer = setTimeout(async () => {
+        if (!wallRunning) {
+            wallRunning = true;
+            try {
+                await runTelemetryRollup();
+            } catch (err) {
+                console.warn('[TELEMETRY] Hourly run failed:', err?.message || err);
+            } finally {
+                wallRunning = false;
+            }
+        } else {
+            console.warn('[TELEMETRY] Skipping xx:00 run — previous run still in progress.');
+        }
+        armWallClock();
+    }, Math.max(msToNextHour(), 1000));
+    // Kept ref'd on purpose (repo convention — scheduler.js): ticks are heartbeat.
+}
+
+/**
+ * Start wall-clock hourly posting + register a scheduler entry for
+ * observability (getTickStatus). The scheduler entry is a passive marker —
+ * the wall-clock chain above does the actual firing.
  */
 export function startTelemetryRollup() {
+    armWallClock();
     registerTick('telemetry-rollup', {
         intervalMs: 3600000,
-        jitterMs: 300000,
+        jitterMs: 0,
         runAtStart: false,
-        fn: () => runTelemetryRollup(),
+        fn: async () => {},
     });
-    console.log('[TELEMETRY] Hourly rollup tick registered.');
+    const next = new Date(Date.now() + msToNextHour());
+    console.log(`[TELEMETRY] Wall-clock hourly rollup armed — first post at ${next.toISOString()}.`);
 }

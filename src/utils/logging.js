@@ -201,9 +201,11 @@ let lastIdentityRefreshLog = { username: '', at: 0 };
 const IDENTITY_REFRESH_LOG_COOLDOWN_MS = 60 * 1000;
 
 /**
- * Log a background identity profile refresh to the Discord admin webhook.
- * Fired on each attempt so the sequence is traceable; deduped per user (60s)
- * so a page-load loop can't flood the channel.
+ * Log a background identity profile refresh into client telemetry (hourly V2
+ * rollup) instead of a standalone Discord post. Fired on each attempt so the
+ * sequence is traceable; deduped per user (60s) so a page-load loop can't
+ * flood the accumulator. Delivery is via a window event consumed by
+ * useWebhooks — best-effort, never throws, never awaits.
  */
 export const logIdentityRefresh = async ({ username, characterName, trigger, attempt, maxAttempts, matchedBy, success, promptedReauth = false }) => {
   const now = Date.now();
@@ -213,24 +215,27 @@ export const logIdentityRefresh = async ({ username, characterName, trigger, att
   lastIdentityRefreshLog = { username: username || '', at: now };
 
   try {
-    const embed = {
-      title: 'Identity Refresh',
-      color: success ? 0x2ecc71 : 0xffc107,
-      description: `**User:** ${username || 'Unknown'}\n**Character:** ${characterName || 'N/A'}\n\nVisited site, previously authenticated, refreshing profile.`,
-      fields: [
-        { name: 'Trigger', value: trigger || 'unknown', inline: true },
-        { name: 'Attempt', value: `${attempt}/${maxAttempts}`, inline: true },
-        { name: 'Matched by', value: matchedBy || 'none', inline: true },
-        { name: 'Success', value: success ? 'yes' : 'no', inline: true },
-        ...(promptedReauth ? [{ name: 'Prompt', value: 'Re-auth notification shown to user', inline: false }] : []),
-      ],
-      timestamp: new Date().toISOString(),
-      footer: { text: 'PHMC Forms - Identity Refresh' },
-    };
-
-    await triggerWebhookProxy('admin', { embeds: [embed] });
+    const label = characterName && characterName !== username
+      ? `${username || 'Unknown'} (${characterName})`
+      : (username || characterName || 'Unknown');
+    const detail = [
+      `trigger=${trigger || 'unknown'}`,
+      `attempt=${attempt}/${maxAttempts}`,
+      `matchedBy=${matchedBy || 'none'}`,
+      `success=${success ? 'yes' : 'no'}`,
+      ...(promptedReauth ? ['reauthPrompt=yes'] : []),
+    ].join(' ');
+    window.dispatchEvent(new CustomEvent('phmc-telemetry', {
+      detail: {
+        file: 'logging.js/logIdentityRefresh',
+        trigger: 'identity-refresh',
+        user: label,
+        loggedIn: true,
+        detail,
+      },
+    }));
   } catch (err) {
-    console.warn('[IdentityRefresh] Failed to log to Discord:', err?.message || err);
+    console.warn('[IdentityRefresh] Failed to queue telemetry:', err?.message || err);
   }
 };
 

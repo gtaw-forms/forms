@@ -22,6 +22,7 @@ export const data = new SlashCommandBuilder()
             .addChoices(
                 { name: 'LSPD', value: 'lspd' },
                 { name: 'LSSD', value: 'lssd' },
+                { name: 'DAO', value: 'dao' },
                 { name: 'PHMC', value: 'phmc' },
             ))
     .addBooleanOption(opt =>

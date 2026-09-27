@@ -577,8 +577,8 @@ export const triggerCctvFetch = onCall({
  *
  * Request data: { name: string, department?: string }
  *   name       — officer name to look up (required)
- *   department — optional hint ("lspd" or "lssd"). If omitted, both rosters
- *                are checked and ALL matches are returned.
+ *   department — optional hint ("lspd", "lssd", "sadcr" or "dao"). If omitted,
+ *                all rosters are checked and ALL matches are returned.
  *
  * Returns (with dept):
  *   { found: bool, department: string, name: string, altMatch: object|null }
@@ -611,7 +611,7 @@ export const checkOfficerName = onCall({
 
     // Build URL — include dept only if provided and valid
     const dept = (department || '').toLowerCase().trim();
-    const hasDept = dept === 'lspd' || dept === 'lssd';
+    const hasDept = dept === 'lspd' || dept === 'lssd' || dept === 'sadcr' || dept === 'dao';
     let url;
     if (hasDept) {
         url = `${MORGUE_API_URL}/api/roster/check?name=${encodeURIComponent(name.trim())}&dept=${dept}`;

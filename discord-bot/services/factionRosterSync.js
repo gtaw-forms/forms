@@ -1,9 +1,11 @@
 /**
- * factionRosterSync.js — Daily LSPD/LSSD/SADCR member roster sync.
+ * factionRosterSync.js — Daily LSPD/LSSD/SADCR/DAO member roster sync.
  *
- * Scrapes LSPD (g=44), LSSD (g=66), and SADCR (g=11) phpBB group member
- * lists and saves them to local JSON files on the VPS. The files are
- * consumed by morgue-api.js for the /api/roster/check endpoint.
+ * Scrapes LSPD (g=44), LSSD (g=66), SADCR (g=11) and DAO/LSDA (g=24) phpBB
+ * group member lists and saves them to local JSON files on the VPS. The files
+ * are consumed by morgue-api.js for the /api/roster/check endpoint. DAO lives
+ * on its own domain (lsda.gta.world) with its own FORUM_DAO_* credentials —
+ * unlike the SADCR autopsy subforum, which rides the LSSD domain.
  *
  * Runs roughly every 12 hours (with random offset). Notifies bot-spam on completion.
  * Fires on bot startup if the last sync was >12h ago.
@@ -24,6 +26,7 @@ const ROSTER_DIR = resolve(__dirname, '..', 'data');
 const LSPD_GROUP_ID = 44;
 const LSSD_GROUP_ID = 66;
 const SADCR_GROUP_ID = 11;
+const DAO_GROUP_ID = 24; // LSDA memberlist (lsda.gta.world/memberlist.php?g=24)
 const COOLDOWN_MS = 12 * 60 * 60 * 1000;  // 12 hours
 const SYNC_WINDOW_MS = 30 * 60 * 1000;  // + up to 30 min random offset
 
@@ -51,6 +54,14 @@ const FACTION_CONFIG = {
         label: 'SADCR',
         usernameEnv: 'FORUM_SADCR_USERNAME',
         passwordEnv: 'FORUM_SADCR_PASSWORD',
+    },
+    dao: {
+        groupId: DAO_GROUP_ID,
+        baseUrl: process.env.FORUM_DAO_URL || 'https://lsda.gta.world',
+        file: 'dao-roster.json',
+        label: 'DAO',
+        usernameEnv: 'FORUM_DAO_USERNAME',
+        passwordEnv: 'FORUM_DAO_PASSWORD',
     },
 };
 
@@ -254,7 +265,7 @@ export function getFactionRoster(faction) {
 
 /**
  * Read roster sync status for the dashboard.
- * Returns { lastSyncAt, nextSyncAt, lspdCount, lssdCount, sadcrCount } or null.
+ * Returns { lastSyncAt, nextSyncAt, lspdCount, lssdCount, sadcrCount, daoCount } or null.
  */
 export function getRosterSyncStatus() {
     try {
@@ -270,6 +281,7 @@ export function getRosterSyncStatus() {
         const lspdData = getFactionRoster('lspd');
         const lssdData = getFactionRoster('lssd');
         const sadcrData = getFactionRoster('sadcr');
+        const daoData = getFactionRoster('dao');
 
         return {
             lastSyncAt: lastSyncAt || null,
@@ -277,6 +289,7 @@ export function getRosterSyncStatus() {
             lspdCount: lspdData?.count ?? lspdData?.members?.length ?? 0,
             lssdCount: lssdData?.count ?? lssdData?.members?.length ?? 0,
             sadcrCount: sadcrData?.count ?? sadcrData?.members?.length ?? 0,
+            daoCount: daoData?.count ?? daoData?.members?.length ?? 0,
         };
     } catch {
         return null;

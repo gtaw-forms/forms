@@ -218,9 +218,19 @@ export async function deployPendingPMs(options = {}) {
         const isLspd = domain.includes('lspd');
         const isLssd = domain.includes('lssd');
         const isSadcr = domain.includes('sadcr');
+        const isDao = domain.includes('lsda') || domain.includes('dao');
         let loginUser = null, loginPass = null, forumLabel = '';
 
-        if (isSadcr) {
+        if (isDao) {
+            loginUser = daoUser();
+            loginPass = daoPass();
+            forumLabel = 'DAO';
+            if (!loginUser || !loginPass) {
+                console.error('[DEPLOY] ❌ DAO forum requires FORUM_DAO_USERNAME and FORUM_DAO_PASSWORD in .env');
+                if (closeBrowser) await client.close();
+                return { deployed: 0, skipped: 0, failed: reports.length, results: [] };
+            }
+        } else if (isSadcr) {
             loginUser = sadcrUser();
             loginPass = sadcrPass();
             forumLabel = 'SADCR';

@@ -1110,11 +1110,12 @@ const OfficerSearch = ({ field, value, onChange, allValues, onFieldChange = () =
   const currentDept = allValues?.department || allValues?.requestingOfficerDepartment || '';
   const deptRaw = currentDept && typeof currentDept === 'object' ? (currentDept.value || currentDept.label || '') : currentDept;
   const deptCode = String(deptRaw || '').toLowerCase();
-  // Roster lookup exists for LSPD/LSSD/SADCR. A BLANK department means
+  // Roster lookup exists for LSPD/LSSD/SADCR/DAO. A BLANK department means
   // auto-detect — search those rosters regardless. Only departments with no
-  // roster at all (DAO, …) are pure manual entry (no roster API call).
+  // roster at all are pure manual entry (no roster API call).
   const supportsRosterCode = (code) => Boolean(code && (code.includes('lspd') || code.includes('lssd')
     || code.includes('sadcr') || code.includes('corrections')
+    || code.includes('dao') || code.includes('district attorney') || code.includes('atlantic')
     || code.includes('police') || code.includes('sheriff')));
   const rosterSearchable = !deptCode || supportsRosterCode(deptCode);
 
@@ -1132,7 +1133,7 @@ const OfficerSearch = ({ field, value, onChange, allValues, onFieldChange = () =
   // department), never on mount, and dedupes by key so it can't stack.
   const notifyManualEntry = useCallback(() => {
     if (!rosterSearchable) {
-      showNotification('Manual entry — you can type any officer name. Roster lookup is available for LSPD, LSSD, and SADCR.', 'info-circle', 4000, { key: 'officer-manual-entry' });
+      showNotification('Manual entry — you can type any officer name. Roster lookup is available for LSPD, LSSD, SADCR, and DAO.', 'info-circle', 4000, { key: 'officer-manual-entry' });
     }
   }, [rosterSearchable, showNotification]);
 

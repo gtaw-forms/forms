@@ -22,7 +22,7 @@ export const data = new SlashCommandBuilder()
             .setRequired(false))
     .addStringOption(opt =>
         opt.setName('faction')
-            .setDescription('Faction (LSPD, LSSD, SADCR, PRIVATE)')
+            .setDescription('Faction (LSPD, LSSD, SADCR, DAO, PRIVATE)')
             .setRequired(false))
     .addStringOption(opt =>
         opt.setName('pm_forum')
@@ -31,6 +31,7 @@ export const data = new SlashCommandBuilder()
             .addChoices(
                 { name: 'LSPD', value: 'lspd' },
                 { name: 'LSSD', value: 'lssd' },
+                { name: 'DAO', value: 'dao' },
                 { name: 'PHMC', value: 'phmc' },
             ))
     .addStringOption(opt =>

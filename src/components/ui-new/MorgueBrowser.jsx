@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { generateMorgueBBCode } from '../../utils/morgue';
-import { triggerWebhookProxy } from '../../services/firebaseFunctions';
+import { useData, telemetryUserLabel } from '../../contexts/DataContext';
 import { ref, onValue } from 'firebase/database';
 import { database } from '../../firebase';
 import RequestAutopsyModal from './RequestAutopsyModal';
@@ -16,6 +16,18 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
   const [page, setPage] = useState(1);
 
   const canAccess = IS_LOCALHOST || isAuthenticated;
+
+  // Hourly telemetry (V2 rollup): morgue audit events accumulate locally and
+  // flush once per hour — no per-click Cloud Function invocations, no pings.
+  // Distinct trigger slugs keep views/searches/autopsies/update-requests
+  // separable in the rollup Triggers section.
+  const { sendDataRequestLog } = useData();
+  const auditUser = () => {
+    const label = telemetryUserLabel(user);
+    return label !== 'Unknown' ? label : (characterName || 'Unknown');
+  };
+  const routeMeta = () => ({ route: window.location.hash || '#/' });
+
 
   // ── Morgue Admin Banner ──
   const [morgueBanner, setMorgueBanner] = useState(null);
@@ -39,41 +51,32 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
 
   const logMorgueAction = useCallback((action, detail) => {
     try {
-      triggerWebhookProxy('admin', {
-        embeds: [{
-          title: `Morgue — ${action}`,
-          color: 0x3498db,
-          fields: [
-            { name: 'User', value: characterName || user?.username || 'Unknown', inline: true },
-            { name: 'Detail', value: detail || '—', inline: false },
-            { name: 'UA', value: navigator.userAgent?.substring(0, 80) || 'Unknown', inline: false },
-          ],
-          timestamp: new Date().toISOString(),
-          footer: { text: 'Morgue Audit Log' },
-        }],
-      }).catch(() => {});
+      const slug = 'morgue-' + String(action || 'action').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      if (sendDataRequestLog) {
+        sendDataRequestLog(
+          'MorgueBrowser.jsx', false, 'Morgue Audit', 0, 0,
+          isAuthenticated, auditUser(), ['morgue-audit'], [], {},
+          null, Object.assign({}, routeMeta(), { trigger: slug, detail: String(detail || '').slice(0, 200) })
+        );
+      }
     } catch { /* silent */ }
-  }, [characterName, user]);
+  }, [characterName, user, isAuthenticated, sendDataRequestLog]);
+
 
   const requestMorgueUpdate = useCallback(() => {
-    const who = characterName || user?.username || 'Unknown';
+    // Formerly an immediate mention-ping to the owner on every click; now an
+    // hourly aggregate entry (who is covered by the Visited set). No pings.
     try {
-      triggerWebhookProxy('admin', {
-        content: `<@228306972204597248> **Morgue Record Update Requested** — ${who}`,
-        embeds: [{
-          title: 'Morgue Record Update Requested',
-          color: 0xf1c40f,
-          description: `**${who}** has requested a morgue record update.`,
-          fields: [
-            { name: 'User (OAuth)', value: who, inline: true },
-            { name: 'Requested At', value: new Date().toISOString(), inline: true },
-          ],
-          timestamp: new Date().toISOString(),
-          footer: { text: 'Morgue — Update Request' },
-        }],
-      }).catch(() => {});
+      if (sendDataRequestLog) {
+        sendDataRequestLog(
+          'MorgueBrowser.jsx', false, 'Morgue Audit', 0, 0,
+          isAuthenticated, auditUser(), ['morgue-audit'], [], {},
+          null, Object.assign({}, routeMeta(), { trigger: 'morgue-update-request' })
+        );
+      }
     } catch { /* silent */ }
-  }, [characterName, user]);
+  }, [characterName, user, isAuthenticated, sendDataRequestLog]);
+
 
   // Log the initial load/search
   useEffect(() => {
@@ -218,7 +221,7 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
           <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: '6px 12px' }}
             onClick={() => {
               requestMorgueUpdate();
-              showNotification?.('Update request sent to the bot developer!', 'success');
+              showNotification?.('Update request logged — reviewed in the hourly telemetry.', 'success');
             }}>
             <i className="fas fa-bullhorn me-1" /> Request Update
           </button>

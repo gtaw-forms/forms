@@ -2004,9 +2004,9 @@ app.get('/api/protocols-dev', validateApiKey, rateLimiter, (req, res) => {
 
 /**
  * GET /api/roster/check?name=XXX&dept=lspd
- * Checks a name against the LSPD/LSSD/SADCR rosters.
+ * Checks a name against the LSPD/LSSD/SADCR/DAO rosters.
  *
- * If `dept` is provided (lspd/lssd/sadcr): checks that department first,
+ * If `dept` is provided (lspd/lssd/sadcr/dao): checks that department first,
  * cross-references the others if not found.
  *
  * If `dept` is omitted: checks ALL rosters and returns ALL matches
@@ -2026,13 +2026,13 @@ app.get('/api/roster/check', validateApiKey, rateLimiter, (req, res) => {
     const name = (req.query.name || '').trim().toLowerCase();
     const rawName = req.query.name || '';
     const dept = (req.query.department || req.query.dept || '').trim().toLowerCase();
-    const hasDept = dept === 'lspd' || dept === 'lssd' || dept === 'sadcr';
+    const hasDept = dept === 'lspd' || dept === 'lssd' || dept === 'sadcr' || dept === 'dao';
 
     if (!name || name.length < 2) {
         return res.status(400).json({ error: 'name parameter is required (min 2 chars)' });
     }
 
-    const rosters = ['lspd', 'lssd', 'sadcr'];
+    const rosters = ['lspd', 'lssd', 'sadcr', 'dao'];
 
     if (hasDept) {
         // ── Specific department mode (original) ──
@@ -2143,14 +2143,16 @@ app.get('/api/patients', validateApiKey, rateLimiter, (req, res) => {
 /**
  * GET /api/roster/lspd
  * GET /api/roster/lssd
+ * GET /api/roster/sadcr
+ * GET /api/roster/dao
  * Returns the full member list for a faction.
  *
  * Auth: x-api-key header (query param ?key= is no longer supported)
  */
 app.get('/api/roster/:faction', validateApiKey, rateLimiter, (req, res) => {
     const faction = req.params.faction;
-    if (faction !== 'lspd' && faction !== 'lssd' && faction !== 'sadcr') {
-        return res.status(404).json({ error: 'Unknown faction. Use lspd, lssd, or sadcr.' });
+    if (faction !== 'lspd' && faction !== 'lssd' && faction !== 'sadcr' && faction !== 'dao') {
+        return res.status(404).json({ error: 'Unknown faction. Use lspd, lssd, sadcr, or dao.' });
     }
     const data = loadRoster(faction);
     if (!data) {

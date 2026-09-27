@@ -95,7 +95,10 @@ export const useWebhooks = (formData, commitInfo, showNotification, getIsInactiv
         };
     }, [flushTelemetry]);
 
-    const sendDataRequestLog = useCallback(async (file, cached, source, cachedDataSize, networkTransferSize, loggedIn, user, requestedPortions, missingPortions, _segmentSizes = {}, error = null, metadata = {}) => {
+    // Shared accumulator: normalized entry shape used by sendDataRequestLog
+    // AND the 'phmc-telemetry' window event (identity refresh, future hooks).
+    // Keeps one bucket-init/backfill path so no caller can fork the format.
+    const accumulateTelemetry = useCallback((entry = {}) => {
         const asKb = (value) => {
             const number = Number(value);
             return Number.isFinite(number) ? number : 0;
@@ -115,34 +118,33 @@ export const useWebhooks = (formData, commitInfo, showNotification, getIsInactiv
             }
         }
         const bucket = telemetryRef.current;
-        const totalKb = asKb(cachedDataSize) + asKb(networkTransferSize);
         bucket.events += 1;
-        if (cached) bucket.cacheHits += 1; else bucket.network += 1;
-        if (error) {
+        if (entry.cached) bucket.cacheHits += 1; else bucket.network += 1;
+        if (entry.error) {
             bucket.errors += 1;
             if ((bucket.errorSamples || []).length < 10) {
-                bucket.errorSamples = [...(bucket.errorSamples || []), String(error).slice(0, 200)];
+                bucket.errorSamples = [...(bucket.errorSamples || []), String(entry.error).slice(0, 200)];
             }
         }
-        bucket.totalKb = asKb(bucket.totalKb) + totalKb;
-        bucket.netKb = asKb(bucket.netKb) + asKb(networkTransferSize);
+        bucket.totalKb = asKb(bucket.totalKb) + asKb(entry.totalKb);
+        bucket.netKb = asKb(bucket.netKb) + asKb(entry.netKb);
         // Preserve the old inactivity flag signal as an aggregate counter.
         try {
             if (typeof getIsInactivityWarningTriggered === 'function' && getIsInactivityWarningTriggered()) {
                 bucket.inactive = (bucket.inactive || 0) + 1;
             }
         } catch { /* flag must never break logging */ }
-        const trigger = metadata.trigger || file || 'unknown';
+        const trigger = entry.trigger || entry.file || 'unknown';
         bucket.byTrigger = bucket.byTrigger || {};
         bucket.byTrigger[trigger] = (bucket.byTrigger[trigger] || 0) + 1;
-        const route = metadata.route || (typeof window !== 'undefined' ? window.location.hash || '/' : '/');
+        const route = entry.route || (typeof window !== 'undefined' ? window.location.hash || '/' : '/');
         bucket.routes = bucket.routes || [];
         if (!bucket.routes.includes(route) && bucket.routes.length < 20) bucket.routes.push(route);
         // Visited identity set for the V2 rollup ("username (character)").
         // Contributes to the hourly union; capped, never sent per-event.
-        if (loggedIn && user) {
+        if (entry.loggedIn && entry.user) {
             bucket.authed = true;
-            const label = String(user).slice(0, 80);
+            const label = String(entry.user).slice(0, 80);
             bucket.users = bucket.users || [];
             if (label && !bucket.users.includes(label) && bucket.users.length < TELEMETRY_MAX_USERS) {
                 bucket.users.push(label);
@@ -152,6 +154,47 @@ export const useWebhooks = (formData, commitInfo, showNotification, getIsInactiv
             localStorage.setItem(TELEMETRY_BUCKET_KEY, JSON.stringify(bucket));
         } catch { /* best effort */ }
     }, [flushTelemetry]);
+
+    // 'phmc-telemetry' window events (identity refresh today): hook-free
+    // producers (logging.js) feed the same bucket — no direct webhook calls.
+    useEffect(() => {
+        const onTelemetryEvent = (event) => {
+            const detail = (event && event.detail) || {};
+            try {
+                accumulateTelemetry({
+                    cached: false,
+                    totalKb: 0,
+                    netKb: 0,
+                    error: null,
+                    trigger: detail.trigger || 'custom',
+                    route: '#/',
+                    loggedIn: detail.loggedIn !== false,
+                    user: detail.user || null,
+                    file: detail.file || 'window-event',
+                });
+            } catch { /* telemetry must never break the app */ }
+        };
+        window.addEventListener('phmc-telemetry', onTelemetryEvent);
+        return () => window.removeEventListener('phmc-telemetry', onTelemetryEvent);
+    }, [accumulateTelemetry]);
+
+    const sendDataRequestLog = useCallback(async (file, cached, source, cachedDataSize, networkTransferSize, loggedIn, user, requestedPortions, missingPortions, _segmentSizes = {}, error = null, metadata = {}) => {
+        const asKb = (value) => {
+            const number = Number(value);
+            return Number.isFinite(number) ? number : 0;
+        };
+        accumulateTelemetry({
+            cached,
+            totalKb: asKb(cachedDataSize) + asKb(networkTransferSize),
+            netKb: asKb(networkTransferSize),
+            error,
+            trigger: metadata.trigger || file || 'unknown',
+            route: metadata.route,
+            loggedIn,
+            user,
+            file,
+        });
+    }, [accumulateTelemetry]);
 
     const handlePhmcWebhookSubmit = useCallback(async (payload) => {
         if (!payload) return;
