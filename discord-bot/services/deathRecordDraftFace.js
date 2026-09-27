@@ -143,7 +143,7 @@ export async function createFaceDraft(db, draftInfo, reportKey, { forumUrl } = {
         createdAt: Date.now(),
     });
 
-    try { await db.ref(`${FACE_TRACK_PATH}/_ids/${shortId(reportKey)}`).set(reportKey); } catch (e) {}
+    try { await db.ref(`${FACE_TRACK_PATH}/_ids/${shortId(reportKey)}`).set(reportKey); } catch (e) { /* _ids index write best-effort ignored: Face draft already persisted, lookup falls back */ }
 
     console.log(`[FACE] [OK] ${reportKey} — Face post scheduled for ${new Date(publishAt).toUTCString()} (+${FACE_PUBLISH_DELAY_HOURS}h)`);
     return { scheduled: true, publishAt };
@@ -380,7 +380,7 @@ async function resolveReportKey(db, shortKey) {
     try {
         const snap = await db.ref(`${FACE_TRACK_PATH}/_ids/${shortKey}`).once('value');
         if (snap.exists()) return snap.val();
-    } catch (e) {}
+    } catch (e) { /* _ids index read best-effort ignored: falls back to shortKey, caller reports not-found */ }
     return shortKey;
 }
 
@@ -394,7 +394,7 @@ async function markDeathRecordFaceField(db, reportKey, text) {
         if (snap.exists() && snap.val()) {
             await updateDraftFaceField(snap.val(), text);
         }
-    } catch (e) {}
+    } catch (e) { /* draft-embed reflect best-effort ignored: Face state already persisted, embed is cosmetic */ }
 }
 
 // ── Approve ──
@@ -468,7 +468,7 @@ async function handleApprove(interaction, shortKey) {
         try {
             const { default: firebase } = await import('./firebase.js');
             await firebase.db.ref(`${FACE_TRACK_PATH}/${shortKey}`).update({ lastError: err.message.slice(0, 300) }).catch(() => {});
-        } catch (e) {}
+        } catch (e) { /* lastError write best-effort ignored: user already got the error reply */ }
         await interaction.editReply({
             content: `Error: ${err.message.slice(0, 200)}`,
         });

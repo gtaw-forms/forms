@@ -35,12 +35,12 @@ export const useInactivityReload = () => {
                 sessionStorage.removeItem('inactivityReloadTriggered');
                 __globalWasReloaded = false;
             }
-        }catch{}
+        }catch{ /* sessionStorage cleanup best-effort ignored: stale flag simply re-triggers the notice once */ }
     }, []);
 
     const reloadPage = useCallback(() => {
         console.log("[Inactivity] Reloading page due to inactivity.");
-        try{ sessionStorage.setItem('inactivityReloadTriggered', 'true'); }catch{}
+        try{ sessionStorage.setItem('inactivityReloadTriggered', 'true'); }catch{ /* reload flag write best-effort ignored: reload proceeds regardless */ }
         __globalWarningTriggered = true;
 
         if (window.location.hash && window.location.hash.includes('/auth/gta/callback')) {
@@ -53,7 +53,7 @@ export const useInactivityReload = () => {
         try { window.location.reload(); } catch(e) { window.location.href = window.location.href; }
         setTimeout(() => {
             // If reload didn't navigate (e.g. throttled while hidden), force via href
-            try{ window.location.href = window.location.origin + window.location.pathname + window.location.search + window.location.hash; }catch{}
+            try{ window.location.href = window.location.origin + window.location.pathname + window.location.search + window.location.hash; }catch{ /* last-resort forced navigation ignored: nothing left to attempt */ }
         }, 800);
     }, []);
 
@@ -62,7 +62,7 @@ export const useInactivityReload = () => {
         inactivityWarningTriggered.current = true;
         __globalWarningTriggered = true;
         if (notificationId.current) {
-            try{ removeNotification(notificationId.current); }catch{}
+            try{ removeNotification(notificationId.current); }catch{ /* stale warning dismissal best-effort ignored: timers reset regardless */ }
         }
         notificationId.current = showNotification(
             'NO ACTIVITY DETECTED - GETTING LATEST BUILD IN 5 MINUTES',
@@ -80,7 +80,7 @@ export const useInactivityReload = () => {
         lastActivityTime.current = Date.now();
 
         if (notificationId.current) {
-            try{ removeNotification(notificationId.current); }catch{}
+            try{ removeNotification(notificationId.current); }catch{ /* stale warning dismissal best-effort ignored: timers reset regardless */ }
             notificationId.current = null;
         }
 

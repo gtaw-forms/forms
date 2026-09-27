@@ -138,7 +138,7 @@ export const GtaWorldAuthProvider = ({ children }) => {
                     key: username || character || 'unknown user',
                     name: character || username || 'unknown user',
                 }).catch(() => {});
-            } catch {}
+            } catch { /* LaunchDarkly analytics identity ignored: auth state already set, tracking only */ }
         })();
         return () => { cancelled = true; };
     }, [user, activeCharacter]);

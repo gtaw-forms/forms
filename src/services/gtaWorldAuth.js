@@ -596,18 +596,18 @@ export const getAccessToken = () => {
  */
 export const storeUser = (user) => {
     if (!user) return;
-    const existing = (() => { try { return JSON.parse(localStorage.getItem(STORAGE_KEYS.USER_DATA)); } catch {} })();
+    const existing = (() => { try { return JSON.parse(localStorage.getItem(STORAGE_KEYS.USER_DATA)); } catch { /* corrupt cached user data treated as absent: loginRole simply not preserved */ } })();
     if (existing?.loginRole && !user.loginRole) {
         user.loginRole = existing.loginRole;
     }
-    try { localStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(user)); } catch {}
+    try { localStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(user)); } catch (err) { console.warn('[WARN] gtaWorldAuth storeUser: persist failed, session continues in-memory only', err); }
 };
 
 /** Clear stored user data. */
 export const clearUser = () => {
-    try { localStorage.removeItem(STORAGE_KEYS.USER_DATA); } catch {}
-    try { sessionStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN); } catch {}
-    try { localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN); } catch {}
+    try { localStorage.removeItem(STORAGE_KEYS.USER_DATA); } catch { /* logout cleanup best-effort ignored: in-memory session already cleared */ }
+    try { sessionStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN); } catch { /* logout cleanup best-effort ignored: in-memory session already cleared */ }
+    try { localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN); } catch { /* logout cleanup best-effort ignored: in-memory session already cleared */ }
 };
 
 export const isAuthenticated = () => {

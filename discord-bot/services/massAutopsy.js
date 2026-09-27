@@ -176,7 +176,7 @@ export async function executeMassAutopsy(db, client, bodies, { dryRun = true, re
 
     // ── Step 1: Scan f=266 for highest case number ──
     // Ensure logged in so the disposable page has session cookies
-    try { await client.login(null, null, { force: false, baseUrl }); } catch (e) {}
+    try { await client.login(null, null, { force: false, baseUrl }); } catch (e) { /* pre-login best-effort ignored: case scan below warns on failure */ }
 
     let highest = 0;
     try {

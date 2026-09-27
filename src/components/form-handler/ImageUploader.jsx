@@ -82,7 +82,7 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, notes, onNotesChang
             if (img && img.src && /^http/i.test(img.src)) {
                 url = img.src;
             }
-        } catch (e) {}
+        } catch (e) { /* clipboard HTML parse ignored: falls back to text/uri-list URL below */ }
     }
     
     if (!url) return false;

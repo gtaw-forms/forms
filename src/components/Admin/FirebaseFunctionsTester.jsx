@@ -179,7 +179,7 @@ const FirebaseFunctionsTester = ({ showInAppNotification }) => {
                     </div>
                     <div className="d-flex flex-column align-items-center" style={{ minWidth: 120 }}>
                         <span className="h3 mb-0 fw-bold">{todayVisitors}</span>
-                        <span className="small">Today's Visitors</span>
+                        <span className="small">Today&apos;s Visitors</span>
                         <span className="text-muted" style={{ fontSize: '0.7rem' }}>incl. closed tabs</span>
                     </div>
                 </div>

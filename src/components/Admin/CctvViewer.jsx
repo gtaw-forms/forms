@@ -25,14 +25,14 @@ function cacheGet(key) {
 function cacheSet(key, data) {
   try {
     localStorage.setItem(key, JSON.stringify({ data, ts: Date.now() }));
-  } catch {}
+  } catch { /* cache write (quota/private-mode) ignored: data is refetched from server */ }
 }
 
 function cacheClear() {
   try {
     const keys = Object.keys(localStorage).filter(k => k.startsWith('cctv_'));
     keys.forEach(k => localStorage.removeItem(k));
-  } catch {}
+  } catch { /* cache clear best-effort ignored: TTL expiry handles stale entries */ }
 }
 
 let _cachedCameras = null;
@@ -497,7 +497,7 @@ const CctvViewer = ({ showInAppNotification, hideHeader }) => {
               ))}
               {filteredCameras.length === 0 && (
                 <div className="text-center text-muted py-4 small">
-                  No cameras matching "{cameraFilter}"
+                  No cameras matching &quot;{cameraFilter}&quot;
                 </div>
               )}
             </div>
@@ -568,7 +568,7 @@ const CctvViewer = ({ showInAppNotification, hideHeader }) => {
                     <div className="px-3 py-2 small text-muted border-bottom border-secondary">
                       Found <strong>{searchResults.totalMatches}</strong> matches across{' '}
                       <strong>{searchResults.camerasWithMatches}</strong> camera(s)
-                      {searchTerm && <> for "<strong>{searchResults.query}</strong>"</>}
+                      {searchTerm && <> for &quot;<strong>{searchResults.query}</strong>&quot;</>}
                     </div>
                     {searchResults.results.map((group) => (
                       <div key={group.cameraId}>
@@ -613,7 +613,7 @@ const CctvViewer = ({ showInAppNotification, hideHeader }) => {
                   <div className="cctv-no-data">
                     <div>
                       <i className="fas fa-search-minus fa-3x mb-3 d-block"></i>
-                      <p>No matches found for "<strong>{searchTerm}</strong>".</p>
+                      <p>No matches found for &quot;<strong>{searchTerm}</strong>&quot;.</p>
                     </div>
                   </div>
                 ) : null}

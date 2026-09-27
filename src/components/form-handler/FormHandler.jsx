@@ -778,7 +778,7 @@ const handleClearForm = useCallback(() => {
           });
 
           setTimeout(() => {
-            try { unsubscribe(); } catch {}
+            try { unsubscribe(); } catch { /* deploy-status unsubscribe best-effort ignored: 15s window already elapsed */ }
             removeNotification(notifIdRef.current);
           }, 15 * 1000);
         }
@@ -1506,7 +1506,7 @@ const handleClearForm = useCallback(() => {
                   </label>
                   <div style={{ marginBottom: 6, display: 'flex', alignItems: 'flex-start', gap: 6, padding: '6px 10px', background: 'rgba(99, 102, 241, 0.1)', border: '1px solid rgba(99, 102, 241, 0.25)', borderRadius: 6, fontSize: '0.78rem', color: '#a5b4fc', lineHeight: 1.4 }}>
                       <i className="fas fa-info-circle" style={{ fontSize: '0.85rem', marginTop: 1, flexShrink: 0 }}></i>
-                      <span>If you don't know the patient's ID, leave it blank — the bot will automatically find the correct thread or create one.</span>
+                      <span>If you don&apos;t know the patient&apos;s ID, leave it blank — the bot will automatically find the correct thread or create one.</span>
                     </div>
                   {!(formValues.decedentName || formValues.patientName) && (
                     <div style={{ marginBottom: 6, padding: '6px 10px', background: 'rgba(220, 38, 38, 0.15)', border: '1px solid rgba(220, 38, 38, 0.4)', borderRadius: 6, fontSize: '0.8rem', color: '#fca5a5', display: 'flex', alignItems: 'center', gap: 6 }}>

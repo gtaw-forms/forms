@@ -767,7 +767,7 @@ const FactionDataUpload = ({ showNotification }) => {
                                         <div className="card h-100 border-indigo border-opacity-25 bg-indigo bg-opacity-5">
                                             <div className="card-body p-4">
                                                 <h6 className="text-indigo uppercase fw-bold small mb-3">1. Identity Authentication</h6>
-                                                <p className="small text-muted mb-4">If sync fails with "Session Expired", upload a fresh <code>ucp-auth-state.json</code> file.</p>
+                                                <p className="small text-muted mb-4">If sync fails with &quot;Session Expired&quot;, upload a fresh <code>ucp-auth-state.json</code> file.</p>
                                                 <input type="file" id="auth-file-input" accept=".json" style={{ display: 'none' }} onChange={(e) => e.target.files[0] && handleUploadAuthState(e.target.files[0])} />
                                                 <Button variant="primary" disabled={isUploadingAuth} onClick={() => document.getElementById('auth-file-input').click()} className="w-100 admin-btn">
                                                     {isUploadingAuth ? <Spinner size="sm" /> : <><i className="fas fa-key me-2"></i>Upload Session State</>}

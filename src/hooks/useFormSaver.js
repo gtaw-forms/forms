@@ -827,7 +827,7 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated, rosterData = {}) 
                         timestamp: new Date().toISOString(),
                     }],
                 });
-            } catch {}
+            } catch (err) { console.warn('[WARN] useFormSaver: failure webhook not delivered, user already notified', err); }
             if (!options.silent) {
                 showNotification('Something went wrong while saving the report.', 'error');
             }

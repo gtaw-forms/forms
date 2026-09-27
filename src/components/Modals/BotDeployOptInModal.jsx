@@ -317,5 +317,5 @@ export default BotDeployOptInModal;
 
 const STORAGE_KEY = 'PHMC-Bot-OptIn';
 export function getBotDeployPref() { try { return localStorage.getItem(STORAGE_KEY); } catch { return null; } }
-export function setBotDeployPref(value) { try { localStorage.setItem(STORAGE_KEY, value); } catch {} }
+export function setBotDeployPref(value) { try { localStorage.setItem(STORAGE_KEY, value); } catch (err) { console.warn('[WARN] Bot deploy consent preference not persisted (storage unavailable)', err); } }
 export function isBotDeployOptedIn() { try { return localStorage.getItem(STORAGE_KEY) === 'true'; } catch { return false; } }

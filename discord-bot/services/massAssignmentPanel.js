@@ -79,9 +79,9 @@ export function startMassPanelWatcher(client) {
                         if (Date.now() - cur < WATCHER_RECENCY_MS) return;
                         const res = await refreshMassPanel(db, client || _discordClient, key);
                         if (res.refreshed) console.log(`[MASS-PANEL] Auto-refreshed panel for #${key} (Firebase change)`);
-                    } catch {}
+                    } catch { /* auto-refresh best-effort ignored: refreshMassPanel warns internally, next change retries */ }
                 }, WATCHER_DEBOUNCE_MS));
-            } catch {}
+            } catch { /* watcher event best-effort ignored: next Firebase change re-fires the handler */ }
         });
         console.log('[MASS-PANEL] Watcher active (auto-refresh on case changes).');
     } catch (err) {
@@ -822,7 +822,7 @@ export async function refreshMassPanel(db, client, requestTopicId) {
         });
         try {
             await db.ref(`autopsy-requested/${requestTopicId}/massPanel`).update({ updatedAt: Date.now() });
-        } catch {}
+        } catch { /* recency-marker write best-effort ignored: panel message already edited, marker is cosmetic */ }
         console.log(`[MASS-PANEL] Refreshed panel ${ref.panelId} for #${requestTopicId}: ${assignments.length} bodies / ${allGroups.length} MEs`);
         return { refreshed: true };
     } catch (err) {

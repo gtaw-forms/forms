@@ -455,7 +455,7 @@ const MorgueManager = ({ showNotification }) => {
                                     className="bg-dark text-light border-secondary"
                                 />
                                 <Form.Text className="opacity-75">
-                                    Records must be separated by the "MORGUE" header.
+                                    Records must be separated by the &quot;MORGUE&quot; header.
                                 </Form.Text>
                             </Form.Group>
                             <div className="d-flex gap-2">

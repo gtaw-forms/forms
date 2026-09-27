@@ -549,7 +549,7 @@ const AdminDashboard = ({
 
                                     <div className="admin-section-title mt-4"><i className="fas fa-exclamation-triangle me-2 text-warning" />Maintenance Splash Screen</div>
                                     <p className="text-muted" style={{ fontSize: '0.9rem' }}>
-                                        Full-screen overlay shown to all users during major maintenance / upstream outages. Public users see a hard splash; PHMC staff get a "Continue to dashboard" button.
+                                        Full-screen overlay shown to all users during major maintenance / upstream outages. Public users see a hard splash; PHMC staff get a &quot;Continue to dashboard&quot; button.
                                     </p>
                                     <div className="form-check form-switch mb-4">
                                         <input

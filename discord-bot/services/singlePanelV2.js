@@ -706,7 +706,7 @@ export async function handleSinglePanelV2Button(interaction) {
     if (!pending) {
         try {
             await interaction.reply({ content: 'This assignment panel is no longer active (bot restarted). The case thread still holds the full file.', flags: MessageFlags.Ephemeral });
-        } catch {}
+        } catch { /* [OK] expired-panel notice ignored: interaction token already expired or double-acked; nothing left to inform */ }
         return true;
     }
 
@@ -744,7 +744,7 @@ export async function handleSinglePanelV2Button(interaction) {
             console.warn(`[SINGLE-V2] Full-detail view failed for ${panelId}: ${err.message}`);
             try {
                 await interaction.reply({ content: 'Could not load the full detail — try again in a moment.', flags: MessageFlags.Ephemeral });
-            } catch {}
+            } catch { /* [OK] fallback error reply ignored: primary reply already failed, interaction likely expired; failure already warned above */ }
         }
         return true;
     }
@@ -755,7 +755,7 @@ export async function handleSinglePanelV2Button(interaction) {
 
     try {
         await interaction.reply({ content: 'Selection not found on this panel.', flags: MessageFlags.Ephemeral });
-    } catch {}
+    } catch { /* [OK] stale-selection notice ignored: interaction token already expired or double-acked */ }
     return true;
 }
 
@@ -769,20 +769,20 @@ export async function openSingleReassignModal(interaction, panelId, pending) {
     if (!isSupervisorUp(interaction)) {
         try {
             await interaction.reply({ content: 'Only Supervisors and up can reassign cases.', flags: MessageFlags.Ephemeral });
-        } catch {}
+        } catch { /* [OK] supervisor-gate notice ignored: interaction token already expired or double-acked */ }
         return true;
     }
     if (!pending.requestTopicId) {
         try {
             await interaction.reply({ content: 'This panel is not linked to a live case — reassign via /reassign-autopsy.', flags: MessageFlags.Ephemeral });
-        } catch {}
+        } catch { /* [OK] unlinked-panel notice ignored: interaction token already expired or double-acked */ }
         return true;
     }
     const db = await singleV2Db();
     if (!db) {
         try {
             await interaction.reply({ content: 'Firebase not ready — try again in a moment.', flags: MessageFlags.Ephemeral });
-        } catch {}
+        } catch { /* [OK] db-not-ready notice ignored: interaction token already expired or double-acked */ }
         return true;
     }
     // Completed cases can't be reassigned (matters for healed panels whose
@@ -795,7 +795,7 @@ export async function openSingleReassignModal(interaction, panelId, pending) {
         if (doneSnap && doneSnap.val()) {
             try {
                 await interaction.reply({ content: 'This case is already completed — it cannot be reassigned.', flags: MessageFlags.Ephemeral });
-            } catch {}
+            } catch { /* [OK] completed-case notice ignored: interaction token already expired or double-acked */ }
             return true;
         }
     } catch { /* check is best-effort; the core re-checks state anyway */ }
@@ -805,7 +805,7 @@ export async function openSingleReassignModal(interaction, panelId, pending) {
     if (meOptions.length < 2) {
         try {
             await interaction.reply({ content: 'Not enough MEs on rotation to offer a pick — use /reassign-autopsy instead.', flags: MessageFlags.Ephemeral });
-        } catch {}
+        } catch { /* [OK] short-rotation notice ignored: interaction token already expired or double-acked */ }
         return true;
     }
     try {
@@ -838,7 +838,7 @@ export async function openSingleReassignModal(interaction, panelId, pending) {
         console.warn(`[SINGLE-V2] Panel ${panelId}: reassign modal failed: ${err.message}`);
         try {
             await interaction.reply({ content: 'Could not open the reassign form — use /reassign-autopsy instead.', flags: MessageFlags.Ephemeral });
-        } catch {}
+        } catch { /* [OK] modal-failure fallback ignored: showModal already failed, interaction likely expired; failure already warned above */ }
     }
     return true;
 }
@@ -856,7 +856,7 @@ export async function handleSinglePanelV2ReassignModal(interaction) {
     if (!isSupervisorUp(interaction)) {
         try {
             await interaction.reply({ content: 'Only Supervisors and up can reassign cases.', flags: MessageFlags.Ephemeral });
-        } catch {}
+        } catch { /* [OK] modal-submit gate notice ignored: interaction token already expired or double-acked */ }
         return true;
     }
     const panelId = customId.slice(SINGLE_V2_REASSIGN_MODAL_PREFIX.length);
@@ -870,19 +870,19 @@ export async function handleSinglePanelV2ReassignModal(interaction) {
     if (!pending || !pending.requestTopicId || !newME) {
         try {
             await interaction.reply({ content: (!newME ? 'Pick a medical examiner first.' : 'Reassign expired — start again from the panel.'), flags: MessageFlags.Ephemeral });
-        } catch {}
+        } catch { /* [OK] missing-pick notice ignored: interaction token already expired or double-acked */ }
         return true;
     }
     const db = await singleV2Db();
     if (!db) {
         try {
             await interaction.reply({ content: 'Firebase not ready — try again in a moment.', flags: MessageFlags.Ephemeral });
-        } catch {}
+        } catch { /* [OK] db-not-ready notice ignored: interaction token already expired or double-acked */ }
         return true;
     }
     try {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    } catch {}
+    } catch { /* [OK] defer ignored: already deferred or acked; editReply below targets whichever state holds */ }
     const { performReassign } = await import('../commands/reassign-autopsy.js');
     const res = await performReassign({
         db,
@@ -899,6 +899,6 @@ export async function handleSinglePanelV2ReassignModal(interaction) {
         } else {
             await interaction.editReply({ content: `Reassigned **${res.decedentName}** from **${res.currentAssigned}** to **${res.newME}**.` });
         }
-    } catch {}
+    } catch (err) { console.warn(`[WARN] Panel ${panelId}: reassign executed but confirmation editReply failed: ${err.message}`); }
     return true;
 }

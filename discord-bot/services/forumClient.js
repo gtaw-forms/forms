@@ -465,8 +465,8 @@ export async function closeSharedBrowser(reason = 'shutdown', opts = {}) {
     // Drop stale page/context handles on every live instance so the next
     // ensureBrowser() rebuilds them instead of reusing dead objects.
     for (const inst of _liveInstances) {
-        try { if (inst.page) await inst.page.close().catch(() => {}); } catch {}
-        try { if (inst.context) await inst.context.close().catch(() => {}); } catch {}
+        try { if (inst.page) await inst.page.close().catch(() => {}); } catch { /* [OK] teardown ignored: page already closed or handle dead; handles nulled below */ }
+        try { if (inst.context) await inst.context.close().catch(() => {}); } catch { /* [OK] teardown ignored: context already closed or handle dead; handles nulled below */ }
         inst.page = null;
         inst.context = null;
     }
@@ -1084,7 +1084,7 @@ class ForumClient {
         };
 
         const reloadAndResubmit = async () => {
-            try { await this.page.goto(postUrl, { waitUntil: 'networkidle', timeout: 180000 }); } catch {}
+            try { await this.page.goto(postUrl, { waitUntil: 'networkidle', timeout: 180000 }); } catch { /* [OK] nav-timeout ignored: refill + resubmit proceeds anyway; outcome verified via URL below */ }
             await this.page.waitForTimeout(2000);
             await trustedFill(this.page, 'input[name="subject"]', subject);
             await trustedFillMessage(this.page, bbCode);
@@ -1095,7 +1095,7 @@ class ForumClient {
                 'button[type="submit"][name="post"]',
             ]);
             await this.page.waitForTimeout(3000);
-            try { await this.page.waitForLoadState('networkidle', { timeout: 25000 }); } catch {}
+            try { await this.page.waitForLoadState('networkidle', { timeout: 25000 }); } catch { /* [OK] load-wait timeout ignored: timing hint only; submit outcome verified via URL below */ }
             await this.page.waitForTimeout(2000);
         };
 
@@ -1136,7 +1136,7 @@ class ForumClient {
                     this.page.waitForNavigation({ timeout: 20000 }),
                     this.page.waitForTimeout(20000),
                 ]);
-            } catch {}
+            } catch { /* [OK] preview-resubmit nav timeout ignored: url re-checked below, falls through to alternative selectors */ }
             url = this.page.url();
             ok = url.includes('viewtopic.php');
 
@@ -1160,14 +1160,14 @@ class ForumClient {
                         this.page.waitForNavigation({ timeout: 20000 }),
                         this.page.waitForTimeout(20000),
                     ]);
-                } catch {}
+                } catch { /* [OK] alt-selector resubmit nav timeout ignored: url re-checked below, falls through to success-text check */ }
                 url = this.page.url();
                 ok = url.includes('viewtopic.php');
             }
 
             // Final check: look for success text
             if (!ok) {
-                try { await this.page.waitForTimeout(10000); } catch {}
+                try { await this.page.waitForTimeout(10000); } catch { /* [OK] settle-wait ignored: page may be closed; url + success-text checks below still run */ }
                 url = this.page.url();
                 ok = url.includes('viewtopic.php');
                 if (!ok) {
@@ -1947,14 +1947,14 @@ class ForumClient {
 
         // Reload the reply form (fresh token), refill, and resubmit.
         const reloadAndResubmit = async () => {
-            try { await this.page.goto(replyUrl, { waitUntil: 'networkidle', timeout: 180000 }); } catch {}
+            try { await this.page.goto(replyUrl, { waitUntil: 'networkidle', timeout: 180000 }); } catch { /* [OK] nav-timeout ignored: refill + resubmit proceeds anyway; outcome verified via finalUrl below */ }
             await this.page.waitForTimeout(2000);
             if (!(await fillMessage())) return;
             console.log(`[FORUM] 📤 Re-submitting reply after reload...`);
             const r = await clickSubmit();
             if (r !== true) { console.error(`[FORUM] ❌ ${r}`); return; }
             await this.page.waitForTimeout(3000);
-            try { await this.page.waitForLoadState('networkidle', { timeout: 25000 }); } catch {}
+            try { await this.page.waitForLoadState('networkidle', { timeout: 25000 }); } catch { /* [OK] load-wait timeout ignored: timing hint only; reply outcome verified via finalUrl below */ }
             await this.page.waitForTimeout(2000);
         };
 
@@ -1992,7 +1992,7 @@ class ForumClient {
                     btn.click();
                     return true;
                 });
-            } catch {}
+            } catch { /* [OK] strategy-1 evaluate failure ignored: reSubmitted stays false, falls through to strategy 2 */ }
 
             if (reSubmitted) {
                 try {
@@ -2000,7 +2000,7 @@ class ForumClient {
                         this.page.waitForNavigation({ timeout: 20000 }),
                         this.page.waitForTimeout(20000),
                     ]);
-                } catch {}
+                } catch { /* [OK] strategy-1 nav timeout ignored: finalUrl re-checked below, falls through to strategy 2 */ }
                 finalUrl = this.page.url();
             }
 
@@ -2027,7 +2027,7 @@ class ForumClient {
                         this.page.waitForNavigation({ timeout: 20000 }),
                         this.page.waitForTimeout(20000),
                     ]);
-                } catch {}
+                } catch { /* [OK] strategy-2 nav timeout ignored: finalUrl re-checked below, falls through to success-text check */ }
                 finalUrl = this.page.url();
             }
 
@@ -2035,7 +2035,7 @@ class ForumClient {
             if (!finalUrl.includes('viewtopic.php') && !finalUrl.includes('p=')) {
                 // Wait a bit longer — Cloudflare challenges or slow rendering may
                 // delay the redirect. Give it 10 more seconds before checking.
-                try { await this.page.waitForTimeout(10000); } catch {}
+                try { await this.page.waitForTimeout(10000); } catch { /* [OK] settle-wait ignored: page may be closed; finalUrl + success-text checks below still run */ }
                 finalUrl = this.page.url();
 
                 const pageText = await this.page.evaluate(() => document.body.innerText || '').catch(() => '');
@@ -2051,7 +2051,7 @@ class ForumClient {
             // Dump full page HTML for debugging submit failures (no truncation)
             const pageHtml = await this.page.content().catch(() => '(unable to capture page content)');
             const dumpPath = resolve(__dirname, '..', 'debug', 'debug-reply-page.html');
-            try { mkdirSync(dirname(dumpPath), { recursive: true }); writeFileSync(dumpPath, pageHtml, 'utf-8'); console.log(`[FORUM] 💾 Full page HTML saved to ${dumpPath} for debugging`); } catch (e) {}
+            try { mkdirSync(dirname(dumpPath), { recursive: true }); writeFileSync(dumpPath, pageHtml, 'utf-8'); console.log(`[FORUM] 💾 Full page HTML saved to ${dumpPath} for debugging`); } catch (e) { /* [OK] debug-dump ignored: best-effort diagnostics only; must never break the reply path */ }
         }
         console.log(`[FORUM] 📬 Reply ${ok ? '✅ Posted' : '⚠️ Unknown'} — ${finalUrl}`);
         } finally { lock.release(); }

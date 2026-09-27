@@ -130,7 +130,7 @@ export async function recoverInterruptedDeathRecordApprovals(db) {
                                 createdAt: Date.now(),
                                 recovered: true,
                             });
-                            try { await db.ref(`facePostDrafts/_ids/${shortId(key)}`).set(key); } catch (e) {}
+                            try { await db.ref(`facePostDrafts/_ids/${shortId(key)}`).set(key); } catch (e) { /* _ids index write best-effort ignored: recovery already cleared the flag, lookup falls back */ }
                             verifiedFace++;
                             faceText = `Face post VERIFIED (${hit.url}). The forum post was interrupted — check f=404 before re-approving.`;
                         }
@@ -232,7 +232,7 @@ export async function processCKReport(db, authorId, reportKey, reportData) {
             formId: reportData.formId,
         });
 
-        try { await db.ref(DRAFT_TRACK_PATH + '/_ids/' + shortId(reportKey)).set(reportKey); } catch(e) {}
+        try { await db.ref(DRAFT_TRACK_PATH + '/_ids/' + shortId(reportKey)).set(reportKey); } catch(e) { /* _ids index write best-effort ignored: draft already persisted, lookup falls back */ }
 
         console.log(`[DRAFT] [OK] Draft sent for ${reportKey}${needsMorgue ? ' (awaiting morgue data)' : ''}`);
         return true;
@@ -431,7 +431,7 @@ export async function recheckMorgueForDraft(db, reportKey) {
             status: draftInfo.status === 'pending_review' ? 'morgue_updated' : draftInfo.status,
         });
 
-        try { await db.ref(DRAFT_TRACK_PATH + '/_ids/' + shortId(reportKey)).set(reportKey); } catch(e) {}
+        try { await db.ref(DRAFT_TRACK_PATH + '/_ids/' + shortId(reportKey)).set(reportKey); } catch(e) { /* _ids index write best-effort ignored: draft update already persisted, lookup falls back */ }
 
         console.log(`[DRAFT] [OK] Morgue data updated for ${reportKey} — Case #${newCase}${isLow ? ' (still low-confidence)' : ''}`);
         return true;
@@ -516,7 +516,7 @@ async function checkAndDraftIfMorgueMatched(db, authorId, reportKey, reportData)
             formId: reportData.formId,
         });
 
-        try { await db.ref(DRAFT_TRACK_PATH + '/_ids/' + shortId(reportKey)).set(reportKey); } catch(e) {}
+        try { await db.ref(DRAFT_TRACK_PATH + '/_ids/' + shortId(reportKey)).set(reportKey); } catch(e) { /* _ids index write best-effort ignored: draft already persisted, lookup falls back */ }
 
         console.log(`[DRAFT] [OK] Auto-drafted death record for ${reportKey} — ${decedentName} (Case #${morgueRecord.caseId})`);
         return true;
@@ -868,7 +868,7 @@ export async function scanAndDraftCKs(db, options = {}) {
                 scanDate: options.date || null,
             });
 
-            try { await db.ref(DRAFT_TRACK_PATH + '/_ids/' + shortId(reportKey)).set(reportKey); } catch(e) {}
+            try { await db.ref(DRAFT_TRACK_PATH + '/_ids/' + shortId(reportKey)).set(reportKey); } catch(e) { /* _ids index write best-effort ignored: draft already persisted, lookup falls back */ }
 
             results.drafted++;
             console.log(`[DRAFT] [OK] Draft created for ${reportKey}${needsMorgue ? ' (awaiting morgue)' : ''}`);
@@ -964,7 +964,7 @@ export async function verifyPostedDeathRecords(db) {
                     description: `**${val.title || key}**\nApproved at ${new Date(val.deployedAt || 0).toUTCString()}, but NOT found in the Death Records forum (f=${DEATH_RECORD_VERIFY_FORUM_ID}).\nThe post may have failed or landed elsewhere � please check manually.`,
                     color: 0xe74c3c,
                 });
-            } catch (e) {}
+            } catch (e) { /* verify-failure log post best-effort ignored: flags already persisted and console already warned */ }
         }
     }
 

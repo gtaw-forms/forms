@@ -60,7 +60,7 @@ const infoBubble = (hint) => (
 );
 const requiredNote = (
     <span style={{ fontWeight: 400, color: 'var(--text-faint)', fontSize: 10.5 }}>
-        ({reqStar} required — requests without requester details can't be processed)
+        ({reqStar} required — requests without requester details can&apos;t be processed)
     </span>
 );
 

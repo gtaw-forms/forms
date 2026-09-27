@@ -201,7 +201,7 @@ export async function gatherDashboardData(db, force = false) {
                 const j = await res.json();
                 latest = j.records?.[0]?.lastUpdated || 0;
             }
-        } catch {}
+        } catch { /* VPS health read best-effort ignored: RTDB fallback below covers it */ }
         if (!latest) {
             const morgueSnap = await db.ref('morgue-records').orderByChild('lastUpdated').limitToLast(1).once('value');
             if (morgueSnap.exists()) morgueSnap.forEach(child => { latest = child.val().lastUpdated || 0; });

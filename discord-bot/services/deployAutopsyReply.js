@@ -388,7 +388,7 @@ async function postLssdCombinedReply({ key, entry, reportData, completionBb, bbC
             // renderer processes (one per context) alive forever — a ~200MB leak
             // per operation. close() delays 1s for health-check page creation to
             // settle, then suppresses all errors (proven by the fallback path below).
-            try { await lssdClient.close(); } catch {}
+            try { await lssdClient.close(); } catch { /* isolated browser cleanup best-effort ignored: reply result already recorded */ }
         }
     }
 
@@ -451,7 +451,7 @@ async function postLssdCombinedReply({ key, entry, reportData, completionBb, bbC
         await markLssdFailure(e.message);
         return { ok: false, url: null };
     } finally {
-        try { await lssdClient.close(); } catch {}
+        try { await lssdClient.close(); } catch { /* isolated browser cleanup best-effort ignored: failure already recorded */ }
     }
 
     // Field holding the effective faction's saved request-topic id.
@@ -1201,7 +1201,7 @@ export async function handleAutopsyReply(report) {
                                     await retireMassPanel(db, state.discordClient, key).catch(() => {});
                                     const { retireMassPanelV2 } = await import('./massPanelV2.js');
                                     await retireMassPanelV2(db, state.discordClient, key).catch(() => {});
-                                } catch {}
+                                } catch { /* panel retire best-effort ignored: completion itself already persisted */ }
                             }
                         } else {
                             await ref.update({ completedAt: new Date().toISOString(), completedBbCode: bbCode });
@@ -1457,7 +1457,7 @@ export async function handleAutopsyReply(report) {
                             // is done — no premature "completed" DM for an open request.
                             if (isMulti && !allCasesDone) {
                                 await progress.addStep('DM Requester', 'ok', 'Deferred until all decedents complete');
-                                try { await dmClient.close(); } catch {}
+                                try { await dmClient.close(); } catch { /* isolated DM client cleanup best-effort ignored: deferred step already recorded */ }
                                 return;
                             }
 
@@ -1577,7 +1577,7 @@ export async function handleAutopsyReply(report) {
                                 // Close the isolated DM client's context. Leaving it open
                                 // leaked a renderer process per autopsy completion — same
                                 // fix as the LSSD client above.
-                                try { await dmClient.close(); } catch {}
+                                try { await dmClient.close(); } catch { /* isolated DM client cleanup best-effort ignored: DM result already recorded */ }
                             }
                         })());
 
@@ -1664,7 +1664,7 @@ export async function handleAutopsyReply(report) {
                         try {
                             const { completeSinglePanel } = await import('./singlePanelV2.js');
                             await completeSinglePanel(db, state.discordClient, { requestTopicId: key, caseIdx }).catch(() => {});
-                        } catch {}
+                        } catch { /* panel flip best-effort ignored: completion itself already persisted */ }
                     }
 
             } catch (e) { console.warn("[AUTO] Completion marker error:", e.message); }

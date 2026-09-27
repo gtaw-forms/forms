@@ -825,7 +825,7 @@ export async function checkForNewRequests() {
                             try {
                                 await cc.login(null, null, { force: true, baseUrl: PHMC_BASE });
                                 existingTopics = await cc.getForumTopics(266, { baseUrl: PHMC_BASE });
-                            } catch {}
+                            } catch { /* retry-login best-effort ignored: empty-list guard below aborts safely with an ERR log */ }
                         }
                         if (!existingTopics || existingTopics.length === 0) {
                             console.error('[AUTOPSY-MON] [ERR] Case-number scan empty twice — aborting, NOT filing; will retry next cycle');
@@ -1339,7 +1339,7 @@ async function processMassRequest({ db, topic, parsed, mass, requestBbCode, proc
                 try {
                     await cc.login(null, null, { force: true, baseUrl: PHMC_BASE });
                     existingTopics = await cc.getForumTopics(266, { baseUrl: PHMC_BASE });
-                } catch {}
+                } catch { /* retry-login best-effort ignored: empty-list guard below aborts safely with an ERR log */ }
             }
             if (!existingTopics || existingTopics.length === 0) {
                 console.error('[AUTOPSY-MON] [ERR] Mass case-number scan empty twice — aborting, NOT filing Case 1; will retry next cycle');
@@ -1902,7 +1902,7 @@ async function processMultiDecedentRequest({ db, topic, parsed, decedents, reque
                 try {
                     await cc.login(null, null, { force: true, baseUrl: PHMC_BASE });
                     existingTopics = await cc.getForumTopics(266, { baseUrl: PHMC_BASE });
-                } catch {}
+                } catch { /* retry-login best-effort ignored: empty-list guard below aborts safely with an ERR log */ }
             }
             if (!existingTopics || existingTopics.length === 0) {
                 console.error('[AUTOPSY-MON] [ERR] Multi case-number scan empty twice — aborting, NOT filing; will retry next cycle');

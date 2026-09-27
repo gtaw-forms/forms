@@ -219,7 +219,7 @@ export async function resolveAutopsyTopic(interaction) {
                                 try {
                                     const { completeSinglePanel } = await import('./singlePanelV2.js');
                                     await completeSinglePanel(db, (interaction && interaction.client) || state.discordClient, { requestTopicId: key, caseIdx: ci }).catch(() => {});
-                                } catch {}
+                                } catch { /* panel flip best-effort ignored: private completion already persisted */ }
                             } else {
                                 console.log('[AUTO-COMPLETE] Marking autopsy request as completed in Firebase');
                                 const requesterName = entry.parsed?.requesterName || 'Requesting Party';
@@ -301,7 +301,7 @@ export async function resolveAutopsyTopic(interaction) {
                                 try {
                                     const { completeSinglePanel } = await import('./singlePanelV2.js');
                                     await completeSinglePanel(db, (interaction && interaction.client) || state.discordClient, { requestTopicId: key, caseIdx: ci }).catch(() => {});
-                                } catch {}
+                                } catch { /* panel flip best-effort ignored: completion already persisted */ }
                             }
                         }
                     }

@@ -100,7 +100,7 @@ try {
         const clicked = await page.click('form[action*="posting.php"] input[type="submit"][name="post"], form[action*="posting.php"] input[type="submit"][value="Submit"], form[action*="posting.php"] button[type="submit"][name="post"]', { timeout: 15000 }).then(() => true).catch(() => false);
         console.log(JSON.stringify({ trustedSubmitClicked: clicked }));
         await sleep(5000);
-        try { await page.waitForLoadState('networkidle', { timeout: 30000 }); } catch {}
+        try { await page.waitForLoadState('networkidle', { timeout: 30000 }); } catch { /* probe wait best-effort ignored: snapshot below is taken regardless */ }
         await sleep(2000);
         s = await summarize('after-submit', page);
         console.log(JSON.stringify(s));
@@ -128,6 +128,6 @@ try {
 } catch (err) {
     console.log(JSON.stringify({ fatal: err.message.slice(0, 200) }));
 } finally {
-    try { await browser.close(); } catch {}
+    try { await browser.close(); } catch { /* probe cleanup best-effort ignored: process exits immediately after */ }
 }
 process.exit(0);

@@ -240,7 +240,7 @@ const NewUIPrototype = ({ basicMode = false, initialView = null }) => {
     const a = findAgency(code);
     if (!a) return null;
     let domain = '';
-    try { domain = new URL(a.url).hostname; } catch (e) {}
+    try { domain = new URL(a.url).hostname; } catch (e) { /* malformed agency URL ignored: faction shows without stored credentials */ }
     return domain ? (agencyCreds[domain] || null) : null;
   };
   const displayCreds = displayFactions.map(credsForFaction).filter(Boolean);
@@ -502,7 +502,7 @@ const NewUIPrototype = ({ basicMode = false, initialView = null }) => {
             });
             return merged;
           });
-        } catch {}
+        } catch { /* corrupt saved draft ignored: form starts fresh with current credentials */ }
       }
     }
   }, [selectedForm?.firebaseKey]);
@@ -1919,7 +1919,7 @@ const NewUIPrototype = ({ basicMode = false, initialView = null }) => {
                       {formConsent ? (
                         <>
                           Finished with the form? Click on <strong>Save & Queue</strong>, the PHMC Bot will do everything for you.
-                          {' '}If you wish to opt out, you can use the 'Deploy Consent' button at the top right.
+                          {' '}If you wish to opt out, you can use the &apos;Deploy Consent&apos; button at the top right.
                         </>
                       ) : (
                         <>
@@ -1963,7 +1963,7 @@ const NewUIPrototype = ({ basicMode = false, initialView = null }) => {
         <div style={{ position: 'fixed', inset: 0, zIndex: 10001, background: 'rgba(6,10,18,0.82)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }} onClick={() => setSigOpen(false)}>
           <div style={{ maxWidth: 420, width: '100%', background: 'var(--bg-elevated)', border: '1px solid var(--border-accent)', borderRadius: 12, padding: 20 }} onClick={e => e.stopPropagation()} onPaste={handleSigPaste}>
             <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 4 }}><i className="fas fa-signature" style={{ marginRight: 6, color: 'var(--teal)' }} />Employee Signature</div>
-            <p style={{ fontSize: 11.5, color: 'var(--text-faint)', margin: '0 0 12px' }}>Paste your signature image (Ctrl+V) or its URL, or upload an image. It will be shown on this report's sign-off in place of the typed employee name.</p>
+            <p style={{ fontSize: 11.5, color: 'var(--text-faint)', margin: '0 0 12px' }}>Paste your signature image (Ctrl+V) or its URL, or upload an image. It will be shown on this report&apos;s sign-off in place of the typed employee name.</p>
             <input
               value={sigUrl}
               onChange={e => setSigUrl(e.target.value)}

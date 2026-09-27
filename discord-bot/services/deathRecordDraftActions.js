@@ -74,7 +74,7 @@ async function resolveReportKey(db, shortKey) {
     try {
         const snap = await db.ref(DRAFT_TRACK_PATH + '/_ids/' + shortKey).once('value');
         if (snap.exists()) return snap.val();
-    } catch(e) {}
+    } catch (e) { /* _ids index read best-effort ignored: falls back to shortKey, caller reports not-found */ }
     return shortKey;
 }
 
@@ -108,7 +108,7 @@ export async function handleDraftButton(interaction) {
                     }
                 }
                 if (resolved) interaction.customId = pfx + resolved;
-            } catch(e) {}
+            } catch (e) { /* shortId resolution best-effort ignored: original customId retained, handler reports not-found */ }
             break;
         }
     }
@@ -240,7 +240,7 @@ async function handleApprove(interaction, reportKey) {
         try {
             const { default: firebase } = await import('./firebase.js');
             await firebase.db.ref(`${DRAFT_TRACK_PATH}/${reportKey}`).update({ deploying: false }).catch(() => {});
-        } catch (e) {}
+        } catch (e) { /* deploying-flag reset best-effort ignored: user already got the error reply, recovery sweep heals the flag */ }
         await interaction.editReply({
             content: `Error: ${err.message.slice(0, 200)}`,
         });
@@ -272,7 +272,7 @@ async function handleEdit(interaction, reportKey) {
 
         // Index shortId -> reportKey so the submit handler can resolve it back.
         // Discord caps modal custom IDs at 100 chars; long report keys would crash otherwise.
-        try { await db.ref(DRAFT_TRACK_PATH + '/_ids/' + shortId(reportKey)).set(reportKey); } catch (e) {}
+        try { await db.ref(DRAFT_TRACK_PATH + '/_ids/' + shortId(reportKey)).set(reportKey); } catch (e) { /* _ids index write best-effort ignored: modal still shows, submit resolves via fallback */ }
 
         const modal = new ModalBuilder()
             .setCustomId(`${MODAL_BBCODE_PREFIX}${shortId(reportKey)}`)
@@ -314,7 +314,7 @@ async function handleEditFields(interaction, reportKey) {
 
         const values = draftInfo.values || {};
         // Index shortId -> reportKey so the submit handler can resolve it back.
-        try { await db.ref(DRAFT_TRACK_PATH + '/_ids/' + shortId(reportKey)).set(reportKey); } catch (e) {}
+        try { await db.ref(DRAFT_TRACK_PATH + '/_ids/' + shortId(reportKey)).set(reportKey); } catch (e) { /* _ids index write best-effort ignored: modal still shows, submit resolves via fallback */ }
 
         const modal = new ModalBuilder()
             .setCustomId(`${MODAL_FIELDS_PREFIX}${shortId(reportKey)}`)
@@ -578,7 +578,7 @@ async function handleDeny(interaction, reportKey) {
                 }).catch(() => {});
                 console.log(`[DRAFT] [OK] ${reportKey} — scheduled Face post cancelled`);
             }
-        } catch (e) {}
+        } catch (e) { /* Face-cancel best-effort ignored: deny still completes and the user gets a reply */ }
 
         if (draftInfo?.messageId) {
             await updateDraftMessage(draftInfo.messageId, 'denied');

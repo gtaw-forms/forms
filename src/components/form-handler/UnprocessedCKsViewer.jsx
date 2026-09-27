@@ -235,6 +235,7 @@ const UnprocessedCKsViewer = ({ selectedForm, onPreload }) => {
                     }
 
                     if (morgueMatch) {
+                        /* match found: falls through to the place-of-death/ethnicity fallbacks below */
                     } else {
                         console.log(`[CK Preload] Stage 2: Fields AFTER Morgue Lookup (No Match Found)`);
                     }
