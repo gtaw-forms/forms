@@ -204,7 +204,7 @@ const FormFieldRenderer = ({ field, selectedForm: _selectedForm, formValues, han
       handleChange('decedentName', 'John Doe');
     }
     prevTypeOfDeath.current = formValues.typeOfDeath;
-  }, [formValues.typeOfDeath]);
+  }, [formValues.typeOfDeath, formValues.decedentName, handleChange]);
 
   // ── rules-of-hooks: case-scoped hooks hoisted ──
   // This component renders one field per instance via switch (field.type)
@@ -255,7 +255,7 @@ const FormFieldRenderer = ({ field, selectedForm: _selectedForm, formValues, han
     if (list.length > 0 && activeDecedentIndex >= list.length) {
       setActiveDecedentIndex(list.length - 1);
     }
-  }, [field.type, field.name, decedentListLength, activeDecedentIndex]);
+  }, [field.type, field.name, formValues, decedentListLength, activeDecedentIndex]);
 
   const addDecedent = useCallback(() => {
     const list = formValues[field.name] || [];

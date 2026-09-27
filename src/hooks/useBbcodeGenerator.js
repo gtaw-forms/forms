@@ -1002,7 +1002,7 @@ const formatToNorthAmericanDate = (isoDateTime) => {
 
     // Return the generated values so callers (e.g. Save & Queue) can use them synchronously
     return { bbcode, finalTitle };
-  }, [selectedForm, formValues, finalSelectOptions, agencyDataStore, gtaWorldUser, factionsData, factionListData, resolvedCredentials]);
+  }, [selectedForm, formValues, agencyDataStore, gtaWorldUser, factionsData, factionListData, resolvedCredentials]);
 
   const clearBBCode = useCallback(() => {
     setGeneratedBBCode("");

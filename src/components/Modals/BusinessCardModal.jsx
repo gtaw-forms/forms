@@ -187,7 +187,7 @@ const BusinessCardModal = ({ show, onHide, showNotification, handleImageUpload }
     } finally {
       setIsSaving(false);
     }
-  }, [name, rank, phoneNumber, showNotification, handleImageUpload, sendDiscordWebhook]);
+  }, [name, rank, phoneNumber, handleImageUpload, sendDiscordWebhook]);
 
   if (!show) {
     return null;

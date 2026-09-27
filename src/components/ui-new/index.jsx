@@ -32,6 +32,19 @@ import { ref, onValue, query, orderByChild, equalTo } from 'firebase/database';
 import { database } from '../../firebase';
 import './styles.css';
 import phmcLogo from '../../assets/phmc.png';
+
+// Static field-type list for the progress stamp (module scope: stable identity,
+// so the progress memo below never recomputes on unrelated renders).
+const fillableTypes = ['input', 'textarea', 'select', 'multi_select', 'checkbox', 'radio', 'timer', 'employee_select', 'multi_employee_select', 'dynamic_text_list', 'requesting_officer', 'medicine_block', 'body_tampered'];
+
+// Credential fields preserved across draft restore/clear (module scope: static
+// list, so effects keyed on the selected form never re-fire on its identity).
+const CREDENTIAL_KEYS = [
+  'coronerEmployee', 'coronerRank', 'coronerBadge', 'coronerDiscord', 'coronerPHNumber',
+  'coronerFirstName', 'coronerLastName',
+  'phmcEmployee', 'phmcRank', 'phmcBadge', 'phmcDiscord', 'phmcPHNumber',
+  'phmcFirstName', 'phmcLastName',
+];
 /**
  * New UI Prototype — grid-based form layout with
  * branded sidebar, top bar, and tabbed right panel.
@@ -284,7 +297,7 @@ const NewUIPrototype = ({ basicMode = false, initialView = null }) => {
       map[cat].push(form);
     }
     return map;
-  }, [formsData, searchTerm, isAuthenticated, isPhmcMember, user, factionData, consent, activeView]);
+  }, [formsData, searchTerm, isAuthenticated, isPhmcMember, user, factionData, activeView, isFormOptedIn]);
 
   // ── EMS Protocols data (normalized categories from lsccData) ──
   useEffect(() => {
@@ -436,7 +449,6 @@ const NewUIPrototype = ({ basicMode = false, initialView = null }) => {
     patientName.trim().toLowerCase() === String(signedInIdentity).trim().toLowerCase();
 
   // ── Progress stamp ──
-  const fillableTypes = ['input', 'textarea', 'select', 'multi_select', 'checkbox', 'radio', 'timer', 'employee_select', 'multi_employee_select', 'dynamic_text_list', 'requesting_officer', 'medicine_block', 'body_tampered'];
   const { totalFields, filledFields } = useMemo(() => {
     if (!selectedForm?.fields) return { totalFields: 0, filledFields: 0 };
     const nonEmpty = (v) => {
@@ -481,12 +493,6 @@ const NewUIPrototype = ({ basicMode = false, initialView = null }) => {
   // Restore progress when selecting a form.
   // Merge instead of wholesale overwrite so a stale progression (saved before
   // OAuth credential sync) can never wipe the current coroner/phmc identity.
-  const CREDENTIAL_KEYS = [
-    'coronerEmployee', 'coronerRank', 'coronerBadge', 'coronerDiscord', 'coronerPHNumber',
-    'coronerFirstName', 'coronerLastName',
-    'phmcEmployee', 'phmcRank', 'phmcBadge', 'phmcDiscord', 'phmcPHNumber',
-    'phmcFirstName', 'phmcLastName',
-  ];
   useEffect(() => {
     if (selectedForm?.firebaseKey) {
       const saved = localStorage.getItem(`form_progression_${selectedForm.firebaseKey}`);
@@ -539,6 +545,7 @@ const NewUIPrototype = ({ basicMode = false, initialView = null }) => {
       setFormBackups([]);
     }
     setBackupMenuOpen(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- loadBackups intentionally omitted: pure localStorage reader keyed by firebaseKey (already a dep); adding the per-render closure re-runs setFormBackups on every render.
   }, [selectedForm?.firebaseKey]);
 
   const summarizeDraft = (data) => {
@@ -831,6 +838,7 @@ const NewUIPrototype = ({ basicMode = false, initialView = null }) => {
       setDeployCountdown(prev => prev ? { ...prev } : null);
     }, 1000);
     return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- deployCountdown intentionally omitted: the 1s interval ticks via shallow-copy setState, adding the object resets the timer on every tick; endTime is the only real input.
   }, [deployCountdown?.endTime]);
 
   // Leaving the autopsy form drops the loaded case (FAB falls back to View

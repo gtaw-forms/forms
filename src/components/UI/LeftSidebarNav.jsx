@@ -27,6 +27,7 @@ const LeftSidebarNav = ({
       if (onPanelToggle) {
           onPanelToggle(isPanelOpen);
       }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-once parent sync: adding onPanelToggle/isPanelOpen double-notifies (togglePanel already notifies) and re-fires on every parent render.
   }, []);
 
   return (

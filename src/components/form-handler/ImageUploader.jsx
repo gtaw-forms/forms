@@ -13,19 +13,20 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, notes, onNotesChang
   const { showNotification } = useNotification();
 
   // Cleanup effect: Close gallery modal when component unmounts to prevent state leakage
+  // (mount-only: fieldName is not read here, setters are stable)
   useEffect(() => {
     return () => {
       // Reset to ensure clean state for next component instance
       setShowGalleryModal(false);
       setCurrentImageIndex(0);
     };
-  }, [fieldName]);
+  }, []);
 
   const images = React.useMemo(() => {
     const result = Array.isArray(imagesProp) ? imagesProp : (typeof imagesProp === 'string' && imagesProp.trim() ? imagesProp.split(', ').filter(Boolean) : []);
         
     return result;
-  }, [imagesProp, fieldName]);
+  }, [imagesProp]);
 
   // Keyboard Navigation for Gallery
   useEffect(() => {
@@ -63,7 +64,7 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, notes, onNotesChang
 
     const newImages = [...images, url];
     onImagesChange(newImages);
-  }, [images, maxImages, onImagesChange, showNotification, fieldName]);
+  }, [images, maxImages, onImagesChange, showNotification]);
 
   const detectAndAddImageUrl = useCallback((data) => {
     const text = data.getData('text/plain')?.trim();
@@ -103,7 +104,7 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, notes, onNotesChang
     return false;
   }, [handleImageUrlAdd]);
 
-  const processFiles = async (files) => {
+  const processFiles = useCallback(async (files) => {
     if (images.length + files.length > maxImages) {
       showNotification(`Maximum ${maxImages} images allowed.`, 'error');
       return;
@@ -128,7 +129,7 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, notes, onNotesChang
       onImagesChange(newImages);
     }
     setIsUploading(false);
-  };
+  }, [images, maxImages, onImagesChange, showNotification]);
 
   const handleFileUpload = (event) => {
     const files = Array.from(event.target.files);

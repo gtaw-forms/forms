@@ -73,7 +73,7 @@ const GtaWorldLoginButton = ({
                 }
             }
         });
-    }, [login, returnPath, onError, onInitiate, onSuccess, clickDebounceMs, isAuthenticated, user]);
+    }, [login, returnPath, role, onError, onInitiate, onSuccess, clickDebounceMs, isAuthenticated, user]);
 
     return (
         <Button

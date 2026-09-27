@@ -169,7 +169,7 @@ export const FormHandler = () => {
         }
       }
     }
-  }, [formsData]); // Run once when formsData is available
+  }, [formsData, selectedForm]); // Run once when formsData is available
 
   const { saveReport: saveNewReport, validateMembership } = useFormSaver(user, isAuthenticated, { factionListData });
   const modalCloseTimer = React.useRef(null);
@@ -330,7 +330,7 @@ export const FormHandler = () => {
           { label: 'PHMC Staff', options: phmcOptions },
           { label: 'Coroner Staff', options: coronerOptions }
       ];
-  }, [factionListData, coronerListData, swappableCharacters]);
+  }, [factionListData, coronerListData, swappableCharacters, isDevelopment]);
 
   const isFoundInStaffList = useMemo(() => {
     if (!characterName) return false;
@@ -610,7 +610,7 @@ export const FormHandler = () => {
     }
 
     setFormValues(prev => ({ ...prev, ...updates }));
-  }, [employeeType, factionListData, cleanRankText, setFormValues]);
+  }, [employeeType, factionListData, setFormValues]);
 
 const handleClearForm = useCallback(() => {
     console.log("[FormHandler] 🗑️ handleClearForm triggered.");
@@ -660,7 +660,7 @@ const handleClearForm = useCallback(() => {
     }
     setShowBBCode(false);
     showNotification('Form cleared!', 'info');
-  }, [formValues, setFormValues, selectedForm, showNotification, keepCredentials, isAuthenticated, user, factionListData, cleanRankText]);
+  }, [formValues, setFormValues, setShowBBCode, selectedForm, showNotification, keepCredentials, isAuthenticated, user, factionListData]);
 
   const copyAndSaveReport = useCallback(async () => {
     // Prevent saving BBCode generated for a different form
@@ -825,7 +825,7 @@ const handleClearForm = useCallback(() => {
       
       showNotification(finalNotificationMessage, finalNotificationType, notificationDuration, { actions: finalNotificationOptions });
     }
-  }, [generatedBBCode, selectedForm, formValues, generatedTitle, saveNewReport, showNotification, handleClearForm, removeNotification, firebaseUid, consentLoaded]);
+  }, [selectedForm, formValues, generatedTitle, saveNewReport, showNotification, handleClearForm, removeNotification, firebaseUid, consentLoaded, generateBBCode, isFormOptedIn]);
 
 
 
@@ -981,7 +981,7 @@ const handleClearForm = useCallback(() => {
 
     document.addEventListener('paste', handlePaste);
     return () => document.removeEventListener('paste', handlePaste);
-  }, [selectedForm, showNotification, setIsUploading, setFormValues, formValues]); // Added formValues to dependencies to get latest state in log
+  }, [selectedForm, showNotification, removeNotification, setIsUploading, setFormValues, formValues]); // Added formValues to dependencies to get latest state in log
 
   useEffect(() => {
     if (selectedForm?.firebaseKey && Object.keys(formValues).length > 0) {
@@ -1042,7 +1042,7 @@ const handleClearForm = useCallback(() => {
       }
     });
 
-  }, [user, isAuthenticated, selectedForm, setFormValues, characterName, factionListData, cleanRankText]);
+  }, [user, isAuthenticated, selectedForm, setFormValues, characterName, factionListData, isDevelopment]);
 
 
 
@@ -1175,7 +1175,7 @@ const handleClearForm = useCallback(() => {
     });
 
     return [sortedGroupedForms, tempNotDisplayedFormsDetails];
-  }, [formsData, searchTerm, isAuthenticated, isPhmcMember, isDevelopment, user, factionData, botConsent, consentLoaded]);
+  }, [formsData, searchTerm, isAuthenticated, isPhmcMember, isDevelopment, user, factionData, isFormOptedIn]);
 
   useEffect(() => {
     const updateUtcTime = () => {

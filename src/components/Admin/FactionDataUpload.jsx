@@ -333,7 +333,7 @@ const FactionDataUpload = ({ showNotification }) => {
                 loadCountOnly();
             }
         }
-    }, [activeTab, loadStoredFactionData]); // Removed storedData and error from dependencies
+    }, [activeTab, loadStoredFactionData, loadingStored, storedData, error]); // Guards return early once loaded/loading, so re-runs converge
 
     // Initial data load on component mount
     useEffect(() => {
@@ -362,6 +362,7 @@ const FactionDataUpload = ({ showNotification }) => {
             console.log('[Faction Data] Initial count load for upload tab');
             loadInitialCount();
         }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-once initial load: tab switches are handled by the effect above, adding activeTab/storedData would duplicate loads.
     }, []); // Empty dependency array - only run on mount
 
     // Dropzone configuration

@@ -345,6 +345,7 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
                 return m;
             }));
         }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- findNearestLocation intentionally omitted: per-render helper over liveMapData (already a dep); adding it re-runs marker resolution and setMarkers on every render.
     }, [markers, liveMapData]);
 
     const handleMapDblClick = (e) => {

@@ -111,7 +111,7 @@ export const GtaWorldAuthProvider = ({ children }) => {
         } else {
             setActiveCharacter(null);
         }
-    }, [user]);
+    }, [user, activeCharacter]);
 
     // Attribute LaunchDarkly sessions to the signed-in identity (replays list
     // a name instead of "anonymous"); back to anonymous on logout. Covers
@@ -551,7 +551,8 @@ export const GtaWorldAuthProvider = ({ children }) => {
                 });
             }
         }
-    }, [processCallback, triggerFactionSync, getIsInactivityWarningTriggered, firebaseIsPhmcMember, authLoading, user]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- activeCharacter intentionally omitted: read only in the non-employee branch (guarded set-once); adding it re-runs faction DB validation and setIsValidatingSession churn on every character swap.
+    }, [processCallback, triggerFactionSync, getIsInactivityWarningTriggered, firebaseIsPhmcMember, authLoading, user, isGoogleAdmin, isStaff, normalizeChar]);
 
     // SESSION VALIDATION ON MOUNT
     useEffect(() => {
@@ -578,6 +579,7 @@ export const GtaWorldAuthProvider = ({ children }) => {
         };
         
         validateSession();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-gated session validation (user/isGoogleAdmin/isStaff/handleLogout intentionally omitted): adding them re-validates and risks logout on every character swap, which rebuilds the user object.
     }, [authLoading]);
 
     // ── BACKGROUND IDENTITY PROFILE REFRESH ──
@@ -692,7 +694,7 @@ export const GtaWorldAuthProvider = ({ children }) => {
             setActiveCharacter(normalized);
             hadCharacter.current = true;
         }
-    }, [user?.id, user?.faction, user?.character]);
+    }, [user, user?.id, user?.faction, user?.character, normalizeChar]);
 
     // REAL-TIME MEMBERSHIP ENFORCEMENT (skipped for non-employee logins)
     useEffect(() => {
@@ -725,7 +727,7 @@ export const GtaWorldAuthProvider = ({ children }) => {
             console.log('[GtaWorldAuthContext] Cleaning up real-time membership listener');
             unsubscribe();
         };
-    }, [user, firebaseUser, isGoogleAdmin, isStaff, handleLogout]);
+    }, [user, firebaseUser, isGoogleAdmin, isStaff, handleLogout, firebaseIsPhmcMember]);
 
     const value = useMemo(() => ({
         user,
@@ -755,7 +757,7 @@ export const GtaWorldAuthProvider = ({ children }) => {
         identityRefreshStatus,
     }), [
         user, isLoading, authLoading, error, isValidatingSession, sessionLostReason, login, handleLogout, processCallback,
-        clearError, isGoogleAdmin, firebaseUser, firebaseIsPhmcMember, firebaseAccessLevel,
+        clearError, isGoogleAdmin, isStaff, firebaseUser, firebaseIsPhmcMember, firebaseAccessLevel,
         firebasePermissions, activeCharacter, swappableCharacters, swapCharacter, updateFactionData,
         triggerFactionSync, credentialsLoading, identityRefreshStatus
     ]);

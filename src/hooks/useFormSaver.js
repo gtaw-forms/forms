@@ -833,7 +833,7 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated, rosterData = {}) 
             }
             return { success: false, error: error.message };
         }
-    }, [gtaWorldUser, isGtaAuthenticated, authUser, showNotification, factionListData, resolvedCredentials]);
+    }, [gtaWorldUser, isGtaAuthenticated, showNotification, factionListData, resolvedCredentials, firebaseUid, validateMembership]);
 
     return { saveReport, validateMembership };
 };

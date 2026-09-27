@@ -54,6 +54,7 @@ const SurgicalDiagramModal = ({ show, onClose, data, onChange }) => {
             historyRef.current = [];
             setShowAnnotations(false);
         }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- init-on-open only: re-running on data change would wipe in-progress annotations while the modal is open.
     }, [show]);
 
     useEffect(() => {
@@ -82,6 +83,7 @@ const SurgicalDiagramModal = ({ show, onClose, data, onChange }) => {
         };
         window.addEventListener('keydown', handleKey);
         return () => window.removeEventListener('keydown', handleKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deleteSelected/onClose/undoLast intentionally omitted: per-render closures whose state inputs are already deps; adding them only re-subscribes the listener every render.
     }, [show, selectedId, selectedShapeId, editingId, texts, shapes]);
 
     const commit = (nextImageType, nextTexts, nextShapes) => {

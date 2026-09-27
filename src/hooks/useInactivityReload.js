@@ -86,7 +86,7 @@ export const useInactivityReload = () => {
 
         warningTimer.current = setTimeout(showWarning, INACTIVITY_WARNING_TIMEOUT);
         reloadTimer.current = setTimeout(reloadPage, INACTIVITY_RELOAD_TIMEOUT);
-    }, [removeNotification, showNotification, showWarning, reloadPage]);
+    }, [removeNotification, showWarning, reloadPage]);
 
     useEffect(() => {
         // Singleton: only the first mounted instance owns timers/listeners.

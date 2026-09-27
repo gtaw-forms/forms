@@ -153,7 +153,7 @@ export const useWebhooks = (formData, commitInfo, showNotification, getIsInactiv
         try {
             localStorage.setItem(TELEMETRY_BUCKET_KEY, JSON.stringify(bucket));
         } catch { /* best effort */ }
-    }, [flushTelemetry]);
+    }, [flushTelemetry, getIsInactivityWarningTriggered]);
 
     // 'phmc-telemetry' window events (identity refresh today): hook-free
     // producers (logging.js) feed the same bucket — no direct webhook calls.

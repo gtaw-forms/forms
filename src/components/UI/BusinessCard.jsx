@@ -252,7 +252,7 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo, handleI
     if (!isWebhookProcessing.current) {
       processWebhookQueue();
     }
-  }, [processWebhookQueue]);
+  }, [processWebhookQueue, commitInfo?.sha]);
 
   const handleSave = useCallback(async () => {
     setIsSaving(true);
@@ -343,7 +343,7 @@ const BusinessCardModal = ({ show, onHide, showNotification, commitInfo, handleI
     } finally {
       setIsSaving(false);
     }
-  }, [name, rank, phoneNumber, showNotification, handleImageUpload, sendDiscordWebhook, commitInfo]);
+  }, [name, rank, phoneNumber, showNotification, handleImageUpload, sendDiscordWebhook]);
 
   return (
     <BaseModal

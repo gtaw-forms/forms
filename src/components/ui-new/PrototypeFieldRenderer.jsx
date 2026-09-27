@@ -148,7 +148,7 @@ const PrototypeFieldRenderer = ({
       onFieldChange('decedentName', 'John Doe');
     }
     prevTypeOfDeath.current = allValues.typeOfDeath;
-  }, [allValues.typeOfDeath]);
+  }, [allValues.typeOfDeath, allValues.decedentName, onFieldChange]);
 
   /* ─── rules-of-hooks: case-scoped hooks hoisted ─── */
   // One field per instance via switch (field.type) below; hooks used to live
@@ -167,7 +167,7 @@ const PrototypeFieldRenderer = ({
     if (list.length > 0 && activeDecedentIndex >= list.length) {
       setActiveDecedentIndex(list.length - 1);
     }
-  }, [field.type, decedentListLength, activeDecedentIndex]);
+  }, [field.type, value, decedentListLength, activeDecedentIndex]);
 
   const addDecedent = useCallback(() => {
     const list = value || [];

@@ -22,10 +22,10 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
   // Distinct trigger slugs keep views/searches/autopsies/update-requests
   // separable in the rollup Triggers section.
   const { sendDataRequestLog } = useData();
-  const auditUser = () => {
+  const auditUser = useCallback(() => {
     const label = telemetryUserLabel(user);
     return label !== 'Unknown' ? label : (characterName || 'Unknown');
-  };
+  }, [user, characterName]);
   const routeMeta = () => ({ route: window.location.hash || '#/' });
 
 
@@ -47,7 +47,7 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
   useEffect(() => {
     if (!canAccess) return;
     if (!isLoading && records.length === 0 && loadRecords) loadRecords();
-  }, [canAccess]);
+  }, [canAccess, isLoading, loadRecords, records.length]);
 
   const logMorgueAction = useCallback((action, detail) => {
     try {
@@ -60,7 +60,7 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
         );
       }
     } catch { /* silent */ }
-  }, [characterName, user, isAuthenticated, sendDataRequestLog]);
+  }, [isAuthenticated, sendDataRequestLog, auditUser]);
 
 
   const requestMorgueUpdate = useCallback(() => {
@@ -75,7 +75,7 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
         );
       }
     } catch { /* silent */ }
-  }, [characterName, user, isAuthenticated, sendDataRequestLog]);
+  }, [isAuthenticated, sendDataRequestLog, auditUser]);
 
 
   // Log the initial load/search
@@ -83,7 +83,7 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
     if (records.length > 0 && canAccess) {
       logMorgueAction('Accessed', `${records.length} records loaded`);
     }
-  }, [records.length, canAccess]);
+  }, [records.length, canAccess, logMorgueAction]);
 
   // Reset to page 1 when search/filter changes
   useEffect(() => { setPage(1); }, [search]);
@@ -107,7 +107,7 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
       logMorgueAction('Search', `"${search.trim()}" — ${n} entr${n === 1 ? 'y' : 'ies'} found`);
     }, 2000);
     return () => clearTimeout(searchLogTimer.current);
-  }, [search, canAccess, filtered.length]);
+  }, [search, canAccess, filtered.length, logMorgueAction]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);

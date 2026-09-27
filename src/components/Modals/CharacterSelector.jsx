@@ -156,6 +156,7 @@ const CharacterSelector = ({ onCharacterSelect, selectedCharacterId, label = "Se
         } else {
             setCharacters([]);
         }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- onCharacterSelect intentionally omitted: parent passes an inline callback, adding it re-fires this effect on every render and loops setCharacters/onCharacterSelect.
     }, [user, selectedCharacterId, gtawUser, isGtawAuthenticated]); // Removed onCharacterSelect from dependencies to prevent infinite loops
 
     const handleCharacterChange = (event) => {

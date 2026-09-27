@@ -189,6 +189,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
             default:
                 console.warn(`Unknown cache segment: ${segment}`);
         }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- getCacheKey/getSegmentVersion/getTimestampKey/getVersionKey intentionally omitted: pure per-render key builders; adding them cascades identity churn through refreshSegments/debouncedRefresh/listeners and causes refetch loops.
     }, [isAuthenticated, user, webhooks]);
 
     const updateStateWithData = (data) => {
@@ -330,6 +331,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
             }
         }
         console.log(`[refreshSegments] Done`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- getCacheKey intentionally omitted: per-render key builder; adding it invalidates refreshSegments every render and loops the version-listener refresh chain.
     }, [updateCacheSegment, showNotification]);
 
     const DEBOUNCE_DELAY_MS = 15 * 60 * 1000; // was 5m — 20 MB/hr was 5 version bumps → herd; 15m coalesces
@@ -347,7 +349,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
         }, DEBOUNCE_DELAY_MS);
 
         setPendingRefreshInfo({ segment: key, expiresAt });
-    }, [refreshSegments]);
+    }, [refreshSegments, DEBOUNCE_DELAY_MS]);
 
     const updateNow = useCallback(async () => {
         const info = pendingRefreshInfo;
@@ -584,7 +586,8 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                 firstFire = false;
             });
         })();
-    }, [updateCacheSegment, showNotification, refreshSegments, webhooks, isAuthenticated, user]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- getCacheKey/getTimestampKey/getVersionKey intentionally omitted: per-render key builders over the same render's version trackers; adding them re-subscribes the appMetadata listener every render.
+    }, [updateCacheSegment, showNotification, refreshSegments, debouncedRefresh, webhooks, isAuthenticated, user]);
 
 
 
@@ -766,6 +769,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                 removeNotification(loadingNotificationId);
             }
         }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dataLoaded/getCacheKey/isCacheValid/updateStateWithData intentionally omitted: per-render helpers plus load-guard state; adding them invalidates loadData every render so the mount-guarded init effect tears down live Firebase listeners without re-attaching.
     }, [
         showNotification, removeNotification, updateCacheSegment, // Added updateCacheSegment
         setFactionsData, setAgencyDataStore, setSelectOptions,
@@ -867,6 +871,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                 }
             }
         }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- getCacheKey/getTimestampKey/getVersionKey intentionally omitted: per-render key builders; adding them re-keys the mount-guarded init effect and cycles Firebase listeners every render.
     }, []);
 
             useEffect(() => {
@@ -945,6 +950,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                     Object.values(firebaseListeners.current).forEach(unsubscribe => unsubscribe());
                     firebaseListeners.current = {};
                 };
+            // eslint-disable-next-line react-hooks/exhaustive-deps -- isAuthenticated intentionally omitted: mount-once init guarded by dataInitializedRef; auth transitions are handled by the retry effect below, adding it would unsubscribe live listeners then early-return without re-attaching.
             }, [loadData, setupFirebaseListeners, cleanupCache]); // Dependencies: ensure these useCallback functions are stable        // DEPRICATED - USE IN VERY LIMITED APPLICATIONS
 
         // Retry data loading when auth state changes (e.g. user logs in after initial load failed)
