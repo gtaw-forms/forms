@@ -5,7 +5,7 @@ import { useNotification } from './NotificationContext.jsx';
 import { useWebhooks } from '../hooks/useWebhooks';
 import { useInactivityReload } from '../hooks/useInactivityReload';
 import useGtaWorldAuth from '../hooks/useGtaWorldAuth';
-import { triggerGetMorgueRecords, triggerGetProtocolsDev } from '../services/firebaseFunctions';
+import { triggerGetMorgueRecords, triggerGetProtocolsDev, triggerGetFormsData } from '../services/firebaseFunctions';
 import { isStagingMode, resolveStagingPath, resolveVersionRef, resolveVersionKey } from '../utils/stagingPath';
 import { idbGet, idbSet } from '../utils/idbCache';
 
@@ -302,13 +302,46 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
 
                 console.log(`[refreshSegments] Fetching ${segment} from Firebase...`);
                 const t0 = performance.now();
-                const snapshot = await get(segmentRef);
-                const elapsed = (performance.now() - t0).toFixed(1);
-                console.log(`[refreshSegments] ${segment} snapshot exists: ${snapshot.exists()}, key count: ${snapshot.exists() ? Object.keys(snapshot.val()).length : 0} (${elapsed}ms)`);
-                
-                if (snapshot.exists()) {
-                    let data = snapshot.val();
-                    if (segment === CACHE_SEGMENTS.FORMS && data) {
+
+                let data = null;
+                if (segment === CACHE_SEGMENTS.FORMS) {
+                    // Forms: fetch the VPS cache blob FIRST (via the getFormsData
+                    // proxy) — mirrors the protocols-dev pipeline to cut RTDB egress.
+                    // The VPS blob is the raw forms/forms_staging node value (same
+                    // shape as snapshot.val()). Fall back to RTDB on failure or an
+                    // empty blob so the forms never blank out.
+                    let servedFromVps = false;
+                    try {
+                        const vpsBlob = await triggerGetFormsData({ staging: isStagingMode() });
+                        const elapsed = (performance.now() - t0).toFixed(1);
+                        if (vpsBlob && typeof vpsBlob === 'object' && Object.keys(vpsBlob).length > 0) {
+                            data = vpsBlob;
+                            servedFromVps = true;
+                            console.log(`[OK] [refreshSegments] forms served from VPS cache (${Object.keys(data).length} keys, ${elapsed}ms)`);
+                        } else {
+                            console.warn(`[WARN] [refreshSegments] forms VPS cache blob was empty (${elapsed}ms) — falling back to RTDB`);
+                        }
+                    } catch (err) {
+                        console.warn(`[WARN] [refreshSegments] forms VPS cache fetch failed (${err?.message || err}) — falling back to RTDB`);
+                    }
+                    if (!servedFromVps) {
+                        const snapshot = await get(segmentRef);
+                        if (snapshot.exists()) {
+                            data = snapshot.val();
+                            console.log(`[WARN] [refreshSegments] forms fallback to RTDB (${Object.keys(data).length} keys)`);
+                        }
+                    }
+                } else {
+                    const snapshot = await get(segmentRef);
+                    const elapsed = (performance.now() - t0).toFixed(1);
+                    console.log(`[refreshSegments] ${segment} snapshot exists: ${snapshot.exists()}, key count: ${snapshot.exists() ? Object.keys(snapshot.val()).length : 0} (${elapsed}ms)`);
+                    if (snapshot.exists()) {
+                        data = snapshot.val();
+                    }
+                }
+
+                if (data) {
+                    if (segment === CACHE_SEGMENTS.FORMS) {
                         data = Object.keys(data).map(key => ({ ...data[key], firebaseKey: key }));
                         const coroner = data.find(f => f.firebaseKey === 'coroner-report');
                         if (coroner) {

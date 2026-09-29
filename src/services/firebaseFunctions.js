@@ -31,6 +31,7 @@ export const triggerGetPublicConfig = () => triggerFunction('getPublicConfig');
 export const triggerAppendTelemetry = (data) => triggerFunction('appendTelemetry', data);
 export const triggerGetMorgueRecords = (data) => triggerFunction('getMorgueRecords', data);
 export const triggerGetProtocolsDev = (data) => triggerFunction('getProtocolsDev', data);
+export const triggerGetFormsData = (data) => triggerFunction('getFormsData', data);
 export const triggerDeleteMorgueRecord = (data) => triggerFunction('deleteMorgueRecord', data);
 // P1 (d) cost plan: bulk delete — 1 invocation for up to 100 rows (was N serial).
 export const triggerDeleteMorgueRecords = (data) => triggerFunction('deleteMorgueRecords', data);

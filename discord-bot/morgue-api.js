@@ -2012,6 +2012,43 @@ app.get('/api/protocols-dev', validateApiKey, rateLimiter, (req, res) => {
     return res.json(data);
 });
 
+// ── Forms Cache Endpoints ──
+// Cached copies of the RTDB `forms` / `forms_staging` nodes, hosted on the VPS
+// (data/forms.json / data/forms-staging.json) to cut per-client RTDB egress —
+// N client reads become 1 server-side read + N cheap VPS GETs. Seeded via
+// tools/seed-forms-vps.mjs --apply + SCP + `pm2 restart morgue-api`.
+const FORMS_PATH = resolve(__dirname, 'data', 'forms.json');
+const FORMS_STAGING_PATH = resolve(__dirname, 'data', 'forms-staging.json');
+
+function loadForms(filePath) {
+    try {
+        if (!existsSync(filePath)) return null;
+        return JSON.parse(readFileSync(filePath, 'utf-8'));
+    } catch { return null; }
+}
+
+/**
+ * GET /api/forms
+ * Returns the cached `forms` node (raw RTDB value shape). Auth: x-api-key
+ * header (the web client goes through the Firebase function).
+ */
+app.get('/api/forms', validateApiKey, rateLimiter, (req, res) => {
+    const data = loadForms(FORMS_PATH);
+    if (!data) return res.status(404).json({ error: 'No forms cache configured — run tools/seed-forms-vps.mjs --apply + SCP' });
+    return res.json(data);
+});
+
+/**
+ * GET /api/forms-staging
+ * Returns the cached `forms_staging` node (raw RTDB value shape). Auth:
+ * x-api-key header (the web client goes through the Firebase function).
+ */
+app.get('/api/forms-staging', validateApiKey, rateLimiter, (req, res) => {
+    const data = loadForms(FORMS_STAGING_PATH);
+    if (!data) return res.status(404).json({ error: 'No forms cache configured — run tools/seed-forms-vps.mjs --apply + SCP' });
+    return res.json(data);
+});
+
 /**
  * GET /api/roster/check?name=XXX&dept=lspd
  * Checks a name against the LSPD/LSSD/SADCR/DAO rosters.

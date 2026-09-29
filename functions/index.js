@@ -206,6 +206,52 @@ export const getProtocolsDev = onCall({
 });
 
 /**
+ * getFormsData — Returns the cached `forms` / `forms_staging` node from the
+ * VPS (data/forms.json / data/forms-staging.json), seeded via
+ * tools/seed-forms-vps.mjs. Cuts per-client RTDB egress (N client reads become
+ * 1 server-side read + N cheap VPS GETs).
+ *
+ * Request data: { staging?: boolean } — true selects the forms_staging blob.
+ * Security: any signed-in user may fetch it.
+ */
+export const getFormsData = onCall({
+    region: "europe-west2",
+    memory: "256MiB",
+    cors: [
+        'https://gtaw-forms.github.io',
+        'https://phmc-tools.gta.world',
+        'http://localhost:3000',
+        'http://localhost:5173'
+    ]
+}, async (request) => {
+    if (!request.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'Authentication required.');
+    }
+    if (!MORGUE_API_KEY) {
+        console.error('[getFormsData] MORGUE_API_KEY environment variable is not set.');
+        throw new functions.https.HttpsError('internal', 'Server configuration error.');
+    }
+
+    const staging = request.data && request.data.staging;
+    const url = `${MORGUE_API_URL}/api/${staging ? 'forms-staging' : 'forms'}`;
+    try {
+        const response = await fetch(url, {
+            headers: { 'x-api-key': MORGUE_API_KEY },
+        });
+        if (!response.ok) {
+            const text = await response.text();
+            console.error(`[getFormsData] VPS API returned ${response.status}: ${text}`);
+            throw new functions.https.HttpsError('internal', 'Failed to fetch forms data.');
+        }
+        return await response.json();
+    } catch (err) {
+        if (err instanceof functions.https.HttpsError) throw err;
+        console.error('[getFormsData] Error:', err.message);
+        throw new functions.https.HttpsError('internal', `Failed to fetch forms data: ${err.message}`);
+    }
+});
+
+/**
  * Deletes a single morgue record from both the VPS local file and Firebase.
  * Called from the Morgue Manager admin panel.
  *
