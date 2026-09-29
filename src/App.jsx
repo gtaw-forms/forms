@@ -44,6 +44,50 @@ function SessionExpiredBanner() {
     );
 }
 
+// Stale-tab killer: compares this tab's stamped bundle id against the
+// deployed build-id.txt (written by tools/deploy.js). On mismatch the tab is
+// running a previous deploy — banner prompts a reload. Polls every 15 min and
+// on tab-visible; silent on fetch failure (offline) or when either side is
+// unknown (dev builds without the stamp).
+function UpdateBanner() {
+    const [stale, setStale] = useState(false);
+    useEffect(() => {
+        let cancelled = false;
+        const check = async () => {
+            try {
+                const mine = window.__PHMC_BUILD__ && window.__PHMC_BUILD__.index;
+                const res = await fetch('build-id.txt', { cache: 'no-store' });
+                if (!res.ok) return;
+                const latest = (await res.text()).trim();
+                if (!cancelled && mine && latest && latest !== mine) setStale(true);
+            } catch { /* offline or missing file — stay silent */ }
+        };
+        check();
+        const timer = setInterval(check, 15 * 60 * 1000);
+        const onVisible = () => { if (document.visibilityState === 'visible') check(); };
+        document.addEventListener('visibilitychange', onVisible);
+        return () => { cancelled = true; clearInterval(timer); document.removeEventListener('visibilitychange', onVisible); };
+    }, []);
+    if (!stale) return null;
+    return (
+        <div style={{
+            position: 'fixed', top: 0, left: 0, right: 0, zIndex: 99999,
+            background: '#b7791f', color: '#fff', padding: '10px 24px',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16,
+            fontFamily: 'Arial, sans-serif', fontSize: '14px', fontWeight: 600,
+            boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+        }}>
+            <i className="fas fa-sync-alt" style={{ fontSize: 16 }}></i>
+            A newer version is available — reload to pick up the latest fixes
+            <button onClick={() => window.location.reload()}
+                style={{ background: '#fff', color: '#b7791f', border: 'none',
+                    borderRadius: 6, padding: '8px 20px', fontWeight: 700, cursor: 'pointer', fontSize: '14px' }}>
+                Reload Now
+            </button>
+        </div>
+    );
+}
+
 // Lazy load non-critical components
 const GtaLogin = lazy(() => import('./components/Auth/GtaLogin.jsx'));
 const GtaCallback = lazy(() => import('./components/Auth/GtaCallback.jsx'));
@@ -226,6 +270,7 @@ function App() {
         >
             <FormProvider formData={formData} setFormData={setFormData} setLastWebhookIdentifier={setLastWebhookIdentifier} showNotification={showNotification}>
                 <SessionExpiredBanner />
+                <UpdateBanner />
                 <SplashGate>
                     <MigrationNoticeGate>
                     <Router>
