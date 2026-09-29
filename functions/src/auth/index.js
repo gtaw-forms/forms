@@ -89,6 +89,8 @@ function resolveRosterCharacter(character, allMembers) {
     return entry ? { key: entry[0], memberData: entry[1] } : null;
 }
 
+export { resolveRosterCharacter };
+
 /**
  * Helper function to get permissions based on script rank or superadmin status
  */
