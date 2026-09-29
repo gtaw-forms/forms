@@ -86,13 +86,13 @@ export async function setMaintenanceMode(enabled, db) {
                     const reportKey = reportSnap.key;
                     const reportData = reportSnap.val();
                     if (reportData.hasdeployed !== false) return;
-                    // 'blocked_empty_employee' is settled (see autoDeploy.js
-                    // cold-load): the handbrake never retries it, so the
-                    // maintenance-off rescan must not re-queue it either —
-                    // otherwise every maintenance cycle re-blocks it and
-                    // re-pings the developer webhook. Manual repair
-                    // (deployStatus:'pending') re-arms it.
-                    if (reportData.deployStatus === 'blocked_empty_employee') return;
+                    // 'blocked_empty_employee' and 'blocked_test_failed' are
+                    // settled (see autoDeploy.js cold-load): the deploy gates
+                    // never retry them, so the maintenance-off rescan must not
+                    // re-queue them either — otherwise every maintenance cycle
+                    // re-blocks them and re-pings the developer webhook. Manual
+                    // repair (deployStatus:'pending') re-arms them.
+                    if (reportData.deployStatus === 'blocked_empty_employee' || reportData.deployStatus === 'blocked_test_failed') return;
                     if (!state.knownReportKeys) return;
                     // A report may have been marked seen while maintenance was
                     // enabled. Pending reports must be reconsidered on resume.

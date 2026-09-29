@@ -8,6 +8,7 @@ import { logFnCall, sendWebhook, notifyDeployFailure } from './deployLogger.js';
 import { state, C } from './deployState.js';
 import { requeueReport } from './deployRetry.js';
 import { checkUserConsent, skipDueToConsent } from './deployConsent.js';
+import { checkBbcodeSanity } from './bbcodeSanity.js';
 
 // Lazy import handlers from the dedicated handler modules
 let _handlers = null;
@@ -149,6 +150,81 @@ export async function runDeploy(type, data) {
         }
         state.processing = false;
         return;
+    }
+
+    // ── 🛑 TEST GATE: BBCode sanity (golden invariants) ──
+    // The golden tests (tests/golden-core.test.js) pin two invariants for the
+    // coroner/mass forms: no leftover {{...}} placeholders in the rendered
+    // BBCode, and a known department short code rendered as its FULL name. The
+    // bot deploys the WEB-generated BBCode (scheduledReportsBBCode/<authorId>/
+    // <key>/bbCode), so re-check it here right before dispatch. A failing
+    // report is hard-blocked, marked deployStatus:'blocked_test_failed', and
+    // NEVER retried (mirror of blocked_empty_employee). Override: set env
+    // BYPASS_BBCODE_GATE=1 or forceDeploy:true on the report — the override is
+    // logged loudly, never silent. Missing BBCode is skipped here: the topic
+    // handler's "No BBCode" path owns that case.
+    const TEST_GATED_FORMS = ['coroner-report', 'coroner_email', 'mass-ftality-test', 'death_record'];
+    const forceOverride = process.env.BYPASS_BBCODE_GATE === '1' || data.report?.forceDeploy === true;
+    if (TEST_GATED_FORMS.includes(formId) && !forceOverride) {
+        const bbSnap = await data.db.ref(`scheduledReportsBBCode/${data.authorId}/${data.key}`).once('value');
+        const bbCode = bbSnap.val()?.bbCode;
+        if (bbCode) {
+            const { ok, problems } = checkBbcodeSanity(bbCode, d.department);
+            if (!ok) {
+                console.error('[AUTO] 🛑 BLOCKED (test gate) ' + label + ' — ' + problems.join('; '));
+                try {
+                    await data.db.ref(`scheduledReports/${data.authorId}/${data.key}`).update({
+                        hasdeployed: false,
+                        deployStatus: 'blocked_test_failed',
+                        deployMessage: 'BLOCKED: BBCode test gate failed. Fix the report data (re-save in the app), or set `forceDeploy:true` on the report, then set hasdeployed:false + deployStatus:"pending" and restart the bot.',
+                        deployCheckedAt: new Date().toISOString(),
+                    });
+                    await data.db.ref(`retry-queue/${data.authorId}|${data.key}`).remove().catch(() => {});
+                } catch (statusErr) {
+                    console.error('[AUTO] Failed to mark blocked status:', statusErr.message);
+                }
+
+                await sendWebhook(null, {
+                    title: '🛑 DEPLOY BLOCKED — BBCode Test Gate',
+                    description: [
+                        '**Report:** ' + label,
+                        '**Key:** `' + data.key + '`',
+                        '**Type:** ' + type,
+                        '**Form:** ' + (formId || 'unknown'),
+                        '',
+                        '**Problems:**',
+                        ...problems.map((p) => '• ' + p),
+                        '',
+                        '🛠 <@228306972204597248> — fix the report data first (re-save in the app, or set `forceDeploy:true` on the report), then set `hasdeployed:false` + `deployStatus:"pending"` and restart the bot.',
+                    ].join('\n'),
+                    color: 0xdc3545,
+                    footer: { text: 'PHMC Bot — Auto Deploy (BBCode test gate)' },
+                    timestamp: new Date().toISOString(),
+                });
+
+                if (data._progressMessageId && state.discordClient) {
+                    try {
+                        const channel = await state.discordClient.channels.fetch(data._progressChannelId);
+                        const msg = await channel.messages.fetch(data._progressMessageId);
+                        await msg.edit({ content: `[BLOCKED] ${label} — BBCode test gate failed, deploy halted`, embeds: [], components: [] });
+                    } catch { /* progress embed is optional */ }
+                }
+                state.processing = false;
+                return;
+            }
+        }
+    } else if (forceOverride && TEST_GATED_FORMS.includes(formId)) {
+        // Forced override: surface it when the gate WOULD have blocked — the
+        // override is never silent. Best-effort only; a read hiccup here must
+        // not break a forced deploy.
+        try {
+            const bbSnap = await data.db.ref(`scheduledReportsBBCode/${data.authorId}/${data.key}`).once('value');
+            const bbCode = bbSnap.val()?.bbCode;
+            if (bbCode) {
+                const { ok } = checkBbcodeSanity(bbCode, d.department);
+                if (!ok) console.warn('[AUTO] [WARN] BBCode test gate BYPASSED (forced) for ' + label);
+            }
+        } catch { /* best-effort warning only */ }
     }
 
     // Determine forum label based on deploy type

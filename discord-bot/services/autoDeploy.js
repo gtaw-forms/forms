@@ -393,14 +393,14 @@ export function buildStartupStatusV2({ caseCount = 0, desc = '', loaDesc = 'None
                 coldAuthors.push(authorSnap.key);
                 authorSnap.forEach((reportSnap) => {
                     const rd = reportSnap.val();
-                    // 'blocked_empty_employee' is settled: the deployExecutor
-                    // handbrake parks it with hasdeployed:false AND never
-                    // retries. Without this exclusion every restart
-                    // re-queues it, re-blocks it, and re-pings the
-                    // developer webhook forever. Manual repair (set
-                    // deployStatus:'pending') re-arms it — 'pending' is
+                    // 'blocked_empty_employee' and 'blocked_test_failed' are
+                    // settled: the deployExecutor gates park them with
+                    // hasdeployed:false AND never retry. Without this exclusion
+                    // every restart re-queues them, re-blocks them, and
+                    // re-pings the developer webhook forever. Manual repair
+                    // (set deployStatus:'pending') re-arms them — 'pending' is
                     // not excluded.
-                    if (rd?.hasdeployed === true || rd?.deployStatus === 'deployed' || rd?.deployStatus === 'skipped_manual' || rd?.deployStatus === 'failed_permanent' || rd?.deployStatus === 'blocked_empty_employee') {
+                    if (rd?.hasdeployed === true || rd?.deployStatus === 'deployed' || rd?.deployStatus === 'skipped_manual' || rd?.deployStatus === 'failed_permanent' || rd?.deployStatus === 'blocked_empty_employee' || rd?.deployStatus === 'blocked_test_failed') {
                         state.knownReportKeys.add(reportSnap.key);
                         primed++;
                     } else {
