@@ -1,0 +1,80 @@
+{
+  "departmentCodes": ["lspd", "lssd", "sadcr", "dao", "lsfd", "unknown", "legacy-full-name"],
+  "agencyDataStore": {
+    "LSPD": { "fullName": "Los Santos Police Department" },
+    "LSSD": { "fullName": "Los Santos County Sheriffs Department" },
+    "SADCR": { "fullName": "San Andreas Department of Corrections and Rehabilitation" },
+    "DAO": { "fullName": "District Attorney's Office" },
+    "LSFD": { "fullName": "Los Santos Fire Department" }
+  },
+  "coronerReport": {
+    "departmentField": "department",
+    "baseValues": {
+      "placeOfDeath": "123 Grove Street",
+      "dateTime": "2026-09-29T14:30:00",
+      "pronouncedTimeOfDeath": "2026-09-29T15:00:00",
+      "decedentName": "John Doe",
+      "decedentOOC": "JohnDoe_1999",
+      "coronerEmployee": "Coroner Investigator John Doe (SN: 5573)",
+      "coronerRank": "Coroner Investigator",
+      "coronerBadge": "5573",
+      "synopsis": "Decedent was found unresponsive in a vehicle at the scene with no visible signs of forced entry.",
+      "probableCauseOfDeath": "Gunshot wound to the chest",
+      "mannerOfDeath": "Homicide",
+      "typeOfDeath": "Suicide",
+      "requestingOfficer": "Officer Smith",
+      "ReportRequested": true,
+      "additionalstaff": ["Jane Rider"],
+      "evidenceLocker": false,
+      "evidenceLockerItems": "EL#2026-001",
+      "scenePhotosBBCode": "[img]https://example.test/photo.jpg[/img]",
+      "additionalPhotos": ["https://example.test/additional.jpg"],
+      "additionalPhotos_narrative": ""
+    }
+  },
+  "massFatality": {
+    "departmentField": "department",
+    "baseValues": {
+      "placeOfDeath": "Legion Square",
+      "dateTime": "2026-09-29T14:30:00",
+      "coronerEmployee": "Coroner Investigator John Doe (SN: 5573)",
+      "coronerRank": "Coroner Investigator",
+      "coronerBadge": "5573",
+      "synopsis": "Multiple decedents located at the scene following the incident. Scene secured and documented."
+    },
+    "decedents": [
+      {
+        "decedentName": "John Doe",
+        "decedentOOC": "JohnDoe_1999",
+        "pronouncedTimeOfDeath": "2026-09-29T15:00:00",
+        "probableCauseOfDeath": "Gunshot wound to the chest",
+        "mannerOfDeath": "Homicide",
+        "typeOfDeath": "PK",
+        "synopsis": "Gunshot wound to the chest, no other visible trauma.",
+        "scenePhotos": ["https://example.test/scene1.jpg"],
+        "scenePhotos_narrative": "Scene photographed from the entrance.",
+        "additionalImages": ["https://example.test/ooc1.jpg"],
+        "additionalImages_narrative": "Morgue screen and injuries captured.",
+        "evidenceLockerID": "EL#2026-001",
+        "morgueStatus": false,
+        "decedentLocation": "123 Grove Street"
+      },
+      {
+        "decedentName": "Jane Doe",
+        "decedentOOC": "JaneDoe_2001",
+        "pronouncedTimeOfDeath": "2026-09-29T15:05:00",
+        "probableCauseOfDeath": "Blunt force trauma to the head",
+        "mannerOfDeath": "Homicide",
+        "typeOfDeath": "PK",
+        "synopsis": "Blunt force trauma consistent with a fall from height.",
+        "scenePhotos": [],
+        "scenePhotos_narrative": "",
+        "additionalImages": [],
+        "additionalImages_narrative": "",
+        "evidenceLockerID": "",
+        "morgueStatus": "true",
+        "decedentLocation": "123 Grove Street"
+      }
+    ]
+  }
+}
