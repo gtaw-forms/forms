@@ -438,6 +438,16 @@ client.once('clientReady', async () => {
         console.warn('[BOT] ⚠️ Forms cache sync failed to start (non-fatal):', err.message);
     }
 
+    // ── Start test-run reporter (testRun/active -> DeployProgressEmbed) ──
+    try {
+        const firebase = (await import('./services/firebase.js')).default;
+        firebase.init();
+        const { startTestRunReporter } = await import('./services/testRunReporter.js');
+        startTestRunReporter(firebase.db, client);
+    } catch (err) {
+        console.warn('[BOT] [WARN] Test-run reporter failed to start (non-fatal):', err.message);
+    }
+
     // ── Start queue dashboard (lightweight deploy queue embed in bot-spam) ──
     try {
         const { setQueueDashboardClient, setupQueueDashboard } = await import('./services/queueDashboard.js');
