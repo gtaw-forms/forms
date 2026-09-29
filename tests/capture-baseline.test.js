@@ -37,7 +37,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import path from 'path';
 import useBbcodeGenerator from '../src/hooks/useBbcodeGenerator';
-import generateDecedentBBCode from '../src/phmc-bbcode-generators/generateMassFatality';
+import { assertTagBalance, DEPARTMENT_VALUES, EXPECTED_DEPARTMENT_NAMES } from './helpers/goldenUtils';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const fixture = (name) => JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', name), 'utf8'));
@@ -62,82 +62,11 @@ const coronerForm = fixture('coroner-report.template.json');
 const massForm = fixture('mass-fatality.template.json');
 const canonical = fixture('canonical-inputs.json');
 
-// Department short code -> raw value fed into the template's
-// {{getDepartmentFullName(formData.department, agencyDataStore)}} placeholder.
-// 'unknown' carries the literal code "XYZ" (getDepartmentFullName falls back to
-// the raw code); 'legacy-full-name' carries a full name to exercise passthrough.
-const DEPARTMENT_VALUES = {
-  lspd: 'lspd',
-  lssd: 'lssd',
-  sadcr: 'sadcr',
-  dao: 'dao',
-  lsfd: 'lsfd',
-  unknown: 'XYZ',
-  'legacy-full-name': 'Los Santos Police Department',
-};
-
-const EXPECTED_DEPARTMENT_NAMES = {
-  lspd: 'Los Santos Police Department',
-  lssd: 'Los Santos County Sheriffs Department',
-  sadcr: 'San Andreas Department of Corrections and Rehabilitation',
-  dao: "District Attorney's Office",
-  lsfd: 'Los Santos Fire Department',
-  unknown: 'XYZ',
-  'legacy-full-name': 'Los Santos Police Department',
-};
-
 // Non-null user with an OAuth faction -> isLocalInstance is false, so the local
 // fallbacks (LocalEmployee/LocalRank) never stamp; values are pre-filled anyway.
 const GTAW_USER = {
   username: 'john_doe',
   faction: { characterName: 'John Doe', rank: 'Coroner Investigator' },
-};
-
-// ---------------------------------------------------------------------------
-// BBCode tag balance helpers
-// ---------------------------------------------------------------------------
-// phpBB tags checked for balance. Self-closing [hr], [br], [*] and tags the
-// pinned inputs do not emit ([url], [spoiler], [cbc], [cb]) are fine to keep in
-// the set — they are asserted as balanced at 0/0. [color] (emitted by the
-// decedent generator for the morgue-unavailable line) is intentionally NOT in
-// the set.
-const TAG_SET = ['b', 'i', 'u', 'size', 'url', 'img', 'center', 'divbox', 'list', 'spoiler', 'altspoiler', 'cbc', 'cb', 'bold'];
-const openRe = (tag) => new RegExp(`\\[${tag}(?:=[^\\]]*)?\\]`, 'gi');
-const closeRe = (tag) => new RegExp(`\\[/${tag}\\]`, 'gi');
-const tagCount = (s, tag) => ({
-  open: (s.match(openRe(tag)) || []).length,
-  close: (s.match(closeRe(tag)) || []).length,
-});
-
-// Expected open-minus-close delta per tag, computed from the pinned inputs the
-// hook consumes verbatim: the template plus (for mass) the decedent block the
-// generator splices in. The rendered output must reproduce these deltas exactly.
-const pinnedTagDeltas = (template, decedents, coronerInfo) => {
-  const delta = {};
-  for (const tag of TAG_SET) delta[tag] = 0;
-  const add = (s) => {
-    for (const tag of TAG_SET) {
-      const c = tagCount(s, tag);
-      delta[tag] += c.open - c.close;
-    }
-  };
-  add(template);
-  if (decedents) add(generateDecedentBBCode(decedents, coronerInfo));
-  return delta;
-};
-
-const assertTagBalance = (bbcode, template, decedents, coronerInfo) => {
-  const delta = pinnedTagDeltas(template, decedents, coronerInfo);
-  for (const tag of TAG_SET) {
-    const c = tagCount(bbcode, tag);
-    expect(
-      c.open - c.close,
-      `[ERR] '${tag}' drifted from pinned delta ${delta[tag]} (rendered ${c.open}/${c.close})`
-    ).toBe(delta[tag]);
-    if (delta[tag] === 0) {
-      expect(c.open, `[ERR] '${tag}' unbalanced: ${c.open} opens vs ${c.close} closes`).toBe(c.close);
-    }
-  }
 };
 
 // ---------------------------------------------------------------------------
