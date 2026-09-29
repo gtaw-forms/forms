@@ -1100,6 +1100,22 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
     toggleSavedReports(null, type, null);
   }, [toggleSavedReports, selectedForm]);
 
+  // Duplicate-check "View existing": open the author's saved-reports modal so
+  // the possible duplicate can be inspected WITHOUT clobbering the in-progress
+  // form (loading it into the form would wipe unsaved input — never do that here).
+  useEffect(() => {
+    const openSaved = async (e) => {
+      const author = e?.detail?.author;
+      if (!author) return;
+      try {
+        await loadUserSavedReports(author);
+      } catch { /* list failure still shows the modal (possibly stale) */ }
+      setShowSavedReports(true);
+    };
+    window.addEventListener('phmc-open-saved-report', openSaved);
+    return () => window.removeEventListener('phmc-open-saved-report', openSaved);
+  }, [loadUserSavedReports, setShowSavedReports]);
+
   const savedReportEmployeeOptions = useMemo(() => {
     if (!factionsData || !factionsData['364'] || !factionsData['364'].members) return [];
     const options = Object.entries(factionsData['364'].members).map(([id, m]) => ({

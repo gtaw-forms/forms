@@ -1,5 +1,10 @@
 # PHMC Forms — Project Guide
 
+> **🚧 ACTIVE WORK — test-strategy plan (`plan/test-strategy-plan.md`, Phases T1+T2).**
+> Supervisor: test-strategy session (deepseek). Coordinate file touches with it;
+> no out-of-plan refactors, no pushes and no `node tools/deploy.js` without the
+> owner's explicit go-ahead. (The eslint-cleanup banner was retired with that plan.)
+
 > **PHMC = Pillbox Hill Medical Center** — the faction/organization this app and the bot serve.
 >
 > **Bot docs:** [`discord-bot/README.md`](discord-bot/README.md) — architecture, Firebase schema, commands, setup
