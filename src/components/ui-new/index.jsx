@@ -28,7 +28,7 @@ import ServiceStatusTicker from './ServiceStatusTicker';
 import BusinessCardModal from '../UI/BusinessCard';
 import { useImageUpload } from '../../hooks/useImageUpload';
 import { triggerGetPatientNames } from '../../services/firebaseFunctions';
-import { ref, onValue, query, orderByChild, equalTo } from 'firebase/database';
+import { ref, onValue, get, query, orderByChild, equalTo } from 'firebase/database';
 import { database } from '../../firebase';
 import './styles.css';
 import phmcLogo from '../../assets/phmc.png';
@@ -50,7 +50,7 @@ const CREDENTIAL_KEYS = [
  * branded sidebar, top bar, and tabbed right panel.
  * Route: /ui-prototype
  */
-const NewUIPrototype = ({ basicMode = false, initialView = null }) => {
+const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null }) => {
   const [activeMiscTab, setActiveMiscTab] = useState('profile');
   const [showCharSwitch, setShowCharSwitch] = useState(false);
   const [showLoginDialog, setShowLoginDialog] = useState(false);
@@ -819,6 +819,153 @@ const NewUIPrototype = ({ basicMode = false, initialView = null }) => {
   // caseInfo tracks the load source ({ entry, morgue }); cleared on form
   // clear / leaving the autopsy form so the FAB never shows a stale case.
   const [caseInfo, setCaseInfo] = useState(null);
+
+  // Shared autopsy-form filler: used by the Assigned Autopsies modal AND
+  // the #/load/:requestId deep link (autoLoad effect below).
+  const fillAutopsyForm = useCallback((morgue, entry) => {
+          setShowAssignedAutopsies(false);
+          setCaseInfo({ entry: entry || null, morgue: morgue || null });
+          const autopsyForm = formsData?.find(f => f.firebaseKey === 'autopsy');
+          if (!autopsyForm) { showNotification('Autopsy form not found', 'warning'); return; }
+          setSelectedForm(autopsyForm);
+          clearBBCode();
+          setActiveView('forms');
+          // Clear previous case fields first
+          const clearFields = ['decedentName','decedentOOC','Requester','sex','placeOfDeath','deathType',
+            'dnaProfile','bacLevel','narcoticTraces','externalExamination','department',
+            'anatomicSummaryListItems','casings','RadiologyResult','synopsis','causeDetail',
+            'causeOfDeath','deathCausesListItems','dateTime','timeOfDeath'];
+          setFormValues(prev => {
+            const cleared = { ...prev };
+            clearFields.forEach(f => { cleared[f] = ''; });
+            return cleared;
+          });
+          const updates = {};
+          const p = entry?.parsed || {};
+          // Extract IC name: "John Doe ((OOC))" -> "John Doe"
+          const fullName = p.decedentName || morgue?.name || '';
+          const icMatch = fullName.match(/^(.+?)\s*\(\(/);
+          const icName = icMatch ? icMatch[1].trim() : fullName.replace(/\(\(.+?\)\)/g, '').trim() || fullName;
+          updates.decedentName = icName;
+          updates.decedentOOC = entry?.oocName || '';
+          if (p.requesterName) updates.Requester = p.requesterName;
+          if (p.sex || morgue?.sex) updates.sex = p.sex || morgue.sex;
+          if (p.placeOfDeath || morgue?.location) updates.placeOfDeath = p.placeOfDeath || morgue.location;
+          if (p.deathType) updates.deathType = (p.deathType || '').toUpperCase() === 'CK' ? 'CK' : 'PK';
+          if (morgue?.dnaProfile) updates.dnaProfile = morgue.dnaProfile;
+          if (morgue?.bac) updates.bacLevel = morgue.bac;
+          if (morgue?.narcotics) updates.narcoticTraces = morgue.narcotics;
+          // Build external examination from physical description
+          if (morgue?.physicalDescription) {
+            let extLines = '** The Morgue Technician provides a written description below of the Decedent ** ((This section is descriptive purposes only and is automatically generated from the Morgue Records ))\n\n';
+            extLines += `Physical Description:\n${morgue.physicalDescription}\n\n`;
+            if (morgue.tattoos && morgue.tattoos !== 'None' && morgue.tattoos !== 'Unknown') {
+              extLines += `Tattoos/Marks:\n${morgue.tattoos}\n\n`;
+            }
+            if (morgue.estimatedAge && morgue.estimatedAge !== 'Unknown') {
+              extLines += `Est. Age: ${morgue.estimatedAge}\n`;
+            }
+            updates.externalExamination = extLines.trim();
+          }
+          const deptMap = { LSPD: 'Los Santos Police Department', LSSD: 'Los Santos County Sheriffs Department', SADCR: 'San Andreas Department of Corrections and Rehabilitation' };
+          if (entry?.faction) updates.department = deptMap[entry.faction] || entry.faction;
+          if (Array.isArray(morgue?.findings)) {
+            updates.anatomicSummaryListItems = morgue.findings.map(f => {
+              const type = (f.type || '').trim();
+              const part = (f.part || '').trim();
+              const typeL = type.toLowerCase();
+              const dist = f.dist ? f.dist.replace(/[^\d.]/g, '') : '';
+              const distN = parseFloat(dist);
+              const distR = !isNaN(distN) ? Math.floor(distN) : null;
+              if (!typeL || typeL === 'blood loss' || typeL.includes('wound type') || part.includes('body part') || part === '-' || part === 'N/A') return null;
+              if (typeL.includes('gunshot')) return `Gunshot Wound to ${part}${distR !== null ? `, estimated range ${distR}m` : ''}`;
+              if (typeL.includes('blunt force trauma') || typeL.includes('stab wound')) return type.replace(/\b\w/g, c => c.toUpperCase()) + ' to ' + part;
+              return type + ' to ' + part + (distR !== null ? ` (${distR}m)` : '');
+            }).filter(Boolean);
+          }
+          const rawBullets = morgue?.bullets;
+          const bulletsArr = rawBullets && typeof rawBullets === 'object'
+            ? (Array.isArray(rawBullets) ? rawBullets : [rawBullets])
+            : [];
+          if (bulletsArr.length > 0) {
+            updates.casings = bulletsArr.map(b => {
+              const prefix = (b.type || '').toLowerCase().includes('gauge') ? 'Pellet' : 'Bullet';
+              return `${prefix} found with striation marks - ${b.type || ''} #${b.id || ''}`;
+            });
+            updates.RadiologyResult = `${bulletsArr.length} projectiles/slugs were identified via fluoroscopy and recovered during the autopsy.`;
+          }
+          if (!morgue) {
+            showNotification('Cannot load case — no morgue record found.', 'error');
+            return;
+          }
+          setFormValues(prev => ({ ...prev, ...updates }));
+          showNotification(`Loaded case #${morgue?.caseId} — ${updates.decedentName || 'Unknown'}`, 'success');
+  }, [formsData, showNotification, clearBBCode]);
+
+  // Deep-link auto-load (#/load/:requestId/:caseIdx?): fetch the assignment
+  // entry, morgue-match it (simplified scoring — the modal keeps the full
+  // date/location-weighted version), and fill the autopsy form. Runs once.
+  const autoLoadDoneRef = useRef(false);
+  useEffect(() => {
+    if (!autoLoad?.requestId || autoLoadDoneRef.current) return;
+    const autopsyForm = formsData?.find(f => f.firebaseKey === 'autopsy');
+    if (!autopsyForm) return;
+    autoLoadDoneRef.current = true;
+    (async () => {
+      try {
+        const key = String(autoLoad.requestId);
+        const snap = await get(ref(database, `autopsy-requested/${key}`));
+        if (!snap.exists()) {
+          showNotification('Case not found — it may be completed or removed.', 'error');
+          return;
+        }
+        const v = snap.val() || {};
+        const ci = autoLoad.caseIdx;
+        let entry;
+        if (ci !== null && ci !== undefined && ci !== '' && v.cases && v.cases[ci]) {
+          const c = v.cases[ci];
+          entry = {
+            id: `${key}/cases/${ci}`, name: c.name || '?', oocName: c.oocName || '',
+            faction: v.faction || '', assignedTo: c.assignedTo,
+            topicUrl: v.topicUrl || '', caseUrl: c.caseUrl || v.caseUrl || '',
+            detectedAt: v.detectedAt || '', parsed: v.parsed || null,
+          };
+        } else {
+          entry = {
+            id: key, name: v.name || '?', oocName: v.oocName || '',
+            faction: v.faction || '', assignedTo: v.assignedTo,
+            topicUrl: v.topicUrl || '', caseUrl: v.caseUrl || '',
+            detectedAt: v.detectedAt || '', parsed: v.parsed || null,
+          };
+        }
+        let bestMatch = null;
+        try {
+          const result = await loadMorgueRecords();
+          const records = result?.records || (Array.isArray(result) ? result : Object.values(result || {}));
+          const terms = [String(entry.oocName || '').toLowerCase(), String(entry.name || '').toLowerCase()].filter(Boolean);
+          let bestScore = 0;
+          for (const rec of records) {
+            const rn = String(rec.name || '').toLowerCase();
+            for (const t of terms) {
+              if (!t) continue;
+              let s = 0;
+              if (rn === t) s = 999;
+              else if (rn.includes(t) || t.includes(rn)) s = 100 + t.length;
+              else continue;
+              if (s > bestScore) { bestScore = s; bestMatch = rec; }
+            }
+          }
+        } catch (morgueErr) {
+          console.warn('[autoLoad] Morgue match failed:', morgueErr?.message || morgueErr);
+        }
+        fillAutopsyForm(bestMatch, entry);
+      } catch (err) {
+        console.error('[autoLoad] Failed to load case:', err);
+        showNotification('Failed to load case.', 'error');
+      }
+    })();
+  }, [autoLoad, formsData, loadMorgueRecords, fillAutopsyForm, showNotification]);
+
   const [showCaseInfo, setShowCaseInfo] = useState(false);
   const [showConsentPrefs, setShowConsentPrefs] = useState(false);
   const [showBusinessCard, setShowBusinessCard] = useState(false);
@@ -2110,85 +2257,7 @@ const NewUIPrototype = ({ basicMode = false, initialView = null }) => {
         onClose={() => setShowAssignedAutopsies(false)}
         factionsData={factionsData}
         loadMorgueRecords={loadMorgueRecords}
-        onLoadCase={(morgue, entry) => {
-          setShowAssignedAutopsies(false);
-          setCaseInfo({ entry: entry || null, morgue: morgue || null });
-          const autopsyForm = formsData?.find(f => f.firebaseKey === 'autopsy');
-          if (!autopsyForm) { showNotification('Autopsy form not found', 'warning'); return; }
-          setSelectedForm(autopsyForm);
-          clearBBCode();
-          setActiveView('forms');
-          // Clear previous case fields first
-          const clearFields = ['decedentName','decedentOOC','Requester','sex','placeOfDeath','deathType',
-            'dnaProfile','bacLevel','narcoticTraces','externalExamination','department',
-            'anatomicSummaryListItems','casings','RadiologyResult','synopsis','causeDetail',
-            'causeOfDeath','deathCausesListItems','dateTime','timeOfDeath'];
-          setFormValues(prev => {
-            const cleared = { ...prev };
-            clearFields.forEach(f => { cleared[f] = ''; });
-            return cleared;
-          });
-          const updates = {};
-          const p = entry?.parsed || {};
-          // Extract IC name: "John Doe ((OOC))" -> "John Doe"
-          const fullName = p.decedentName || morgue?.name || '';
-          const icMatch = fullName.match(/^(.+?)\s*\(\(/);
-          const icName = icMatch ? icMatch[1].trim() : fullName.replace(/\(\(.+?\)\)/g, '').trim() || fullName;
-          updates.decedentName = icName;
-          updates.decedentOOC = entry?.oocName || '';
-          if (p.requesterName) updates.Requester = p.requesterName;
-          if (p.sex || morgue?.sex) updates.sex = p.sex || morgue.sex;
-          if (p.placeOfDeath || morgue?.location) updates.placeOfDeath = p.placeOfDeath || morgue.location;
-          if (p.deathType) updates.deathType = (p.deathType || '').toUpperCase() === 'CK' ? 'CK' : 'PK';
-          if (morgue?.dnaProfile) updates.dnaProfile = morgue.dnaProfile;
-          if (morgue?.bac) updates.bacLevel = morgue.bac;
-          if (morgue?.narcotics) updates.narcoticTraces = morgue.narcotics;
-          // Build external examination from physical description
-          if (morgue?.physicalDescription) {
-            let extLines = '** The Morgue Technician provides a written description below of the Decedent ** ((This section is descriptive purposes only and is automatically generated from the Morgue Records ))\n\n';
-            extLines += `Physical Description:\n${morgue.physicalDescription}\n\n`;
-            if (morgue.tattoos && morgue.tattoos !== 'None' && morgue.tattoos !== 'Unknown') {
-              extLines += `Tattoos/Marks:\n${morgue.tattoos}\n\n`;
-            }
-            if (morgue.estimatedAge && morgue.estimatedAge !== 'Unknown') {
-              extLines += `Est. Age: ${morgue.estimatedAge}\n`;
-            }
-            updates.externalExamination = extLines.trim();
-          }
-          const deptMap = { LSPD: 'Los Santos Police Department', LSSD: 'Los Santos County Sheriffs Department', SADCR: 'San Andreas Department of Corrections and Rehabilitation' };
-          if (entry?.faction) updates.department = deptMap[entry.faction] || entry.faction;
-          if (Array.isArray(morgue?.findings)) {
-            updates.anatomicSummaryListItems = morgue.findings.map(f => {
-              const type = (f.type || '').trim();
-              const part = (f.part || '').trim();
-              const typeL = type.toLowerCase();
-              const dist = f.dist ? f.dist.replace(/[^\d.]/g, '') : '';
-              const distN = parseFloat(dist);
-              const distR = !isNaN(distN) ? Math.floor(distN) : null;
-              if (!typeL || typeL === 'blood loss' || typeL.includes('wound type') || part.includes('body part') || part === '-' || part === 'N/A') return null;
-              if (typeL.includes('gunshot')) return `Gunshot Wound to ${part}${distR !== null ? `, estimated range ${distR}m` : ''}`;
-              if (typeL.includes('blunt force trauma') || typeL.includes('stab wound')) return type.replace(/\b\w/g, c => c.toUpperCase()) + ' to ' + part;
-              return type + ' to ' + part + (distR !== null ? ` (${distR}m)` : '');
-            }).filter(Boolean);
-          }
-          const rawBullets = morgue?.bullets;
-          const bulletsArr = rawBullets && typeof rawBullets === 'object'
-            ? (Array.isArray(rawBullets) ? rawBullets : [rawBullets])
-            : [];
-          if (bulletsArr.length > 0) {
-            updates.casings = bulletsArr.map(b => {
-              const prefix = (b.type || '').toLowerCase().includes('gauge') ? 'Pellet' : 'Bullet';
-              return `${prefix} found with striation marks - ${b.type || ''} #${b.id || ''}`;
-            });
-            updates.RadiologyResult = `${bulletsArr.length} projectiles/slugs were identified via fluoroscopy and recovered during the autopsy.`;
-          }
-          if (!morgue) {
-            showNotification('Cannot load case — no morgue record found.', 'error');
-            return;
-          }
-          setFormValues(prev => ({ ...prev, ...updates }));
-          showNotification(`Loaded case #${morgue?.caseId} — ${updates.decedentName || 'Unknown'}`, 'success');
-        }}
+        onLoadCase={fillAutopsyForm}
       />
       <SavedReportsModal
         show={showSavedReports}

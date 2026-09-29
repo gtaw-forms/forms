@@ -10,6 +10,10 @@ import { ref, onValue, onDisconnect, set, serverTimestamp, get, remove } from 'f
 
 import ProtectedRoute from './components/Auth/ProtectedRoute.jsx';
 import Admin from './components/Admin/Admin.jsx';
+// Lazy (not static): LoadCaseRoute statically imports ui-new/index.jsx, which
+// App otherwise loads lazily — a static import here merges it into the entry
+// chunk and reorders module evaluation (TDZ crash at boot). Keep the boundary.
+const LoadCaseRoute = lazy(() => import('./components/ui-new/LoadCaseRoute.jsx'));
 import SplashGate, { AppLoadingScreen } from './components/ui-new/SplashGate.jsx';
 import MigrationNoticeGate from './components/ui-new/MigrationNotice.jsx';
 
@@ -236,6 +240,8 @@ function App() {
                                 {/* Deep links used by the Discord link-preview buttons */}
                                 <Route path="/morgue" element={<NewUIPrototype initialView="morgue" />} />
                                 <Route path="/tow" element={<NewUIPrototype initialView="tow" />} />
+                                {/* Autopsy deep link from the bot (?#/load/<requestTopicId>/<caseIdx?>) */}
+                                <Route path="/load/:requestId/:caseIdx?" element={<LoadCaseRoute />} />
                                 {/* Legacy form-handler DECOMMISSIONED — any attempt redirects to the new UI */}
                                 <Route path="/form-handler" element={<Navigate to="/ui-prototype" replace />} />
                                 <Route path="*" element={<Navigate to="/" replace />} />

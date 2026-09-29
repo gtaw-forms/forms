@@ -269,6 +269,19 @@ export const GtaWorldAuthProvider = ({ children }) => {
         }
     }, []);
 
+    // Normalize a raw API character object so it always has a characterName property.
+    // The GTA World API returns characters in multiple formats:
+    //   { id, name } or { firstname, lastname } or { characterId, characterName }.
+    // Declared here (above all uses): the session-validation effect below
+    // references it in its dep array, which evaluates at render time — a later
+    // declaration throws TDZ ReferenceError on every render.
+    const normalizeChar = useCallback((char) => {
+        if (!char) return null;
+        if (char.characterName) return char; // already normalized
+        const name = char.name || (char.firstname ? `${char.firstname} ${char.lastname || ''}`.trim() : null) || null;
+        return { ...char, characterName: name };
+    }, []);
+
     const { 
         user: firebaseUser, 
         isPhmcMember: firebaseIsPhmcMember, 
@@ -673,15 +686,7 @@ export const GtaWorldAuthProvider = ({ children }) => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [user?.id, user?.loginRole, isGoogleAdmin, isStaff, authLoading, triggerFactionSync]);
 
-    // Normalize a raw API character object so it always has a characterName property.
-    // The GTA World API returns characters in multiple formats:
-    //   { id, name } or { firstname, lastname } or { characterId, characterName }.
-    const normalizeChar = useCallback((char) => {
-        if (!char) return null;
-        if (char.characterName) return char; // already normalized
-        const name = char.name || (char.firstname ? `${char.firstname} ${char.lastname || ''}`.trim() : null) || null;
-        return { ...char, characterName: name };
-    }, []);
+    // (normalizeChar now declared near the top of the component — see above.)
 
     // POPULATE ACTIVE CHARACTER from user data (runs after OAuth callback fills character[])
     const hadCharacter = useRef(false);

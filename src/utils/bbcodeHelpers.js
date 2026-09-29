@@ -1,9 +1,30 @@
 // src/utils/bbcodeHelpers.js
+// Static fallback mirror of RTDB /agencies (fullName values). Used when the
+// live store hasn't loaded (permissions, race, offline) so BBCode never
+// prints a raw short code. The live store wins when present.
+const STATIC_AGENCY_NAMES = {
+    LSPD: 'Los Santos Police Department',
+    LSSD: 'Los Santos County Sheriffs Department',
+    SADCR: 'San Andreas Department of Corrections and Rehabilitation',
+    DAO: "District Attorney's Office",
+    LSFD: 'Los Santos Fire Department',
+    LSGOV: 'Los Santos City Government',
+    PHMC: 'Pillbox Hill Medical Center',
+    SANFIRE: 'State Fire Marshal',
+};
 const getDepartmentFullName = (departmentShortCode, agencyDataStore) => {
-    if (agencyDataStore && departmentShortCode && agencyDataStore[departmentShortCode]) {
-        return agencyDataStore[departmentShortCode].fullName;
+    if (!departmentShortCode) return departmentShortCode;
+    const raw = String(departmentShortCode);
+    if (agencyDataStore) {
+        // RTDB keys are UPPERCASE ('LSPD'); stored values drifted between
+        // codes ('lspd') and full names depending on client version — match
+        // case-insensitively, pass full names straight through.
+        const hit = agencyDataStore[raw] || agencyDataStore[raw.toUpperCase()] || agencyDataStore[raw.toLowerCase()];
+        if (hit?.fullName) return hit.fullName;
     }
-    return departmentShortCode; // Fallback
+    const staticHit = STATIC_AGENCY_NAMES[raw.toUpperCase()];
+    if (staticHit) return staticHit;
+    return raw; // Fallback (already a full name or unknown code)
 };
 
 // Helper to transform the report title on attachment
