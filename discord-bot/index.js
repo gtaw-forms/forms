@@ -428,6 +428,16 @@ client.once('clientReady', async () => {
         console.warn('[BOT] ⚠️ Coroner-email worker failed to start (non-fatal):', err.message);
     }
 
+    // ── Start forms cache sync (mirror RTDB forms/forms_staging to VPS disk) ──
+    try {
+        const firebase = (await import('./services/firebase.js')).default;
+        firebase.init();
+        const { startFormsCacheSync } = await import('./services/formsCacheSync.js');
+        startFormsCacheSync(firebase.db);
+    } catch (err) {
+        console.warn('[BOT] ⚠️ Forms cache sync failed to start (non-fatal):', err.message);
+    }
+
     // ── Start queue dashboard (lightweight deploy queue embed in bot-spam) ──
     try {
         const { setQueueDashboardClient, setupQueueDashboard } = await import('./services/queueDashboard.js');
