@@ -36,6 +36,7 @@
 
 ## Recurring gotchas
 
+- **Web deploys are test-gated**: `tools/deploy.js` (and therefore `npm run deploy`) runs the test suite before building/pushing — a failure blocks the deploy. `--force`/`--skip-tests` bypasses (logged). Prefer `node tools/deploy-with-gate.mjs` for the full flow. Tests report to Discord via `node tools/run-tests.mjs` (bot embeds the result). See `plan/refinements-plan.md` for the re-pin runbook — the BBCode goldens are fixture-pinned, so a live template edit must be re-pinned or deploys false-block by design.
 - **Re-scheduling a bot report**: set `hasdeployed:false` + `deployStatus:'pending'` in `scheduledReports`, then restart the bot — its cold-load treats it as pending and re-queues.
 - **Bot recovery sweeps** run sequentially via `runRecoveryHeartbeat`; the startup sweep is delayed 30s so the shared Playwright browser's startup tasks settle.
 - **Reports already posted to the forum by the bot are not retro-fixed** by DB/script repairs — those need a manual forum edit.
