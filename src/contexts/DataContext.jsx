@@ -70,12 +70,11 @@ export const useData = () => {
 
 // Telemetry identity label: "username (character)" for the hourly Visited
 // list (matches the V2 rollup format). Falls back gracefully when only one
-// identity is known.
-export const telemetryUserLabel = (u) => {
-    const uname = u?.username || u?.gtawUsername || 'Unknown';
-    const cname = u?.faction?.characterName;
-    return cname && cname !== uname ? `${uname} (${cname})` : uname;
-};
+// identity is known. Moved to src/utils/identityUtils.js (pure helper);
+// re-exported here so existing importers keep working unchanged. Also
+// imported locally because DataContext itself calls it (lines below).
+import { telemetryUserLabel } from '../utils/identityUtils';
+export { telemetryUserLabel } from '../utils/identityUtils';
 
 // Rank-string keywords that classify a PHMC faction member as Coroner staff.
 // Used only where the coroner distinction is still needed (legacy UI grouping,

@@ -3,11 +3,11 @@ import * as Sentry from "@sentry/react";
 import { database } from '../firebase';
 import { ref, set, push } from 'firebase/database';
 import { triggerWebhookProxy, triggerAppendTelemetry } from '../services/firebaseFunctions';
+import { accumulateTelemetryEntry } from '../utils/telemetry';
 
 // P0 (b) cost plan: hourly telemetry batching constants.
 const TELEMETRY_BUCKET_KEY = 'phmc_telemetry_hour_v2';
 const TELEMETRY_FLUSH_MS = 3600000; // 1 hour
-const TELEMETRY_MAX_USERS = 20;
 const EMPTY_TELEMETRY_BUCKET = {
     bucketStart: 0, events: 0, cacheHits: 0, network: 0, errors: 0, inactive: 0,
     authed: false, totalKb: 0, netKb: 0, byTrigger: {}, routes: [], users: [], errorSamples: [],
@@ -99,10 +99,6 @@ export const useWebhooks = (formData, commitInfo, showNotification, getIsInactiv
     // AND the 'phmc-telemetry' window event (identity refresh, future hooks).
     // Keeps one bucket-init/backfill path so no caller can fork the format.
     const accumulateTelemetry = useCallback((entry = {}) => {
-        const asKb = (value) => {
-            const number = Number(value);
-            return Number.isFinite(number) ? number : 0;
-        };
         // Init bucket from spillover (survives reloads). An expired bucket with
         // pending events is backfilled immediately, then a fresh bucket starts.
         if (!telemetryRef.current) {
@@ -118,38 +114,13 @@ export const useWebhooks = (formData, commitInfo, showNotification, getIsInactiv
             }
         }
         const bucket = telemetryRef.current;
-        bucket.events += 1;
-        if (entry.cached) bucket.cacheHits += 1; else bucket.network += 1;
-        if (entry.error) {
-            bucket.errors += 1;
-            if ((bucket.errorSamples || []).length < 10) {
-                bucket.errorSamples = [...(bucket.errorSamples || []), String(entry.error).slice(0, 200)];
-            }
-        }
-        bucket.totalKb = asKb(bucket.totalKb) + asKb(entry.totalKb);
-        bucket.netKb = asKb(bucket.netKb) + asKb(entry.netKb);
-        // Preserve the old inactivity flag signal as an aggregate counter.
-        try {
-            if (typeof getIsInactivityWarningTriggered === 'function' && getIsInactivityWarningTriggered()) {
-                bucket.inactive = (bucket.inactive || 0) + 1;
-            }
-        } catch { /* flag must never break logging */ }
-        const trigger = entry.trigger || entry.file || 'unknown';
-        bucket.byTrigger = bucket.byTrigger || {};
-        bucket.byTrigger[trigger] = (bucket.byTrigger[trigger] || 0) + 1;
-        const route = entry.route || (typeof window !== 'undefined' ? window.location.hash || '/' : '/');
-        bucket.routes = bucket.routes || [];
-        if (!bucket.routes.includes(route) && bucket.routes.length < 20) bucket.routes.push(route);
-        // Visited identity set for the V2 rollup ("username (character)").
-        // Contributes to the hourly union; capped, never sent per-event.
-        if (entry.loggedIn && entry.user) {
-            bucket.authed = true;
-            const label = String(entry.user).slice(0, 80);
-            bucket.users = bucket.users || [];
-            if (label && !bucket.users.includes(label) && bucket.users.length < TELEMETRY_MAX_USERS) {
-                bucket.users.push(label);
-            }
-        }
+        // Pure bucket mutation delegated to the shared, unit-tested core
+        // (src/utils/telemetry.js). Bucket init/backfill and the localStorage
+        // persist below stay here — they are the non-pure parts.
+        accumulateTelemetryEntry(bucket, entry, {
+            getInactivityFlag: getIsInactivityWarningTriggered,
+            route: (typeof window !== 'undefined' ? window.location.hash || '/' : '/'),
+        });
         try {
             localStorage.setItem(TELEMETRY_BUCKET_KEY, JSON.stringify(bucket));
         } catch { /* best effort */ }

@@ -8,6 +8,7 @@ import { decedentItemSchema } from '../../formSchemas/decedentSchema';
 import { sanitizeMorgueText } from '../../utils/textUtils';
 import { getUtcFormattedDateTime, getUtcFormattedTime } from '../../utils/dateTimeUtils';
 import { formatCharacterNameForDisplay } from '../../utils/identityUtils';
+import { mapAgencyOptions } from '../../utils/agencyOptions';
 import { triggerCheckOfficerName } from '../../services/firebaseFunctions';
 import { useNotification } from '../../contexts/NotificationContext';
 
@@ -73,20 +74,7 @@ const PrototypeFieldRenderer = ({
       .sort((a, b) => a.label.localeCompare(b.label));
   }, [factionsData]);
 
-  const agencyOptions = useMemo(() => {
-    if (!agencyDataStore) return [];
-    // RTDB agency records carry fullName/logo/url but NO shortCode field, so
-    // `value: a.shortCode` produced `undefined` for every option (the select
-    // then fell back to label text as the value). Fall back to the record KEY
-    // (LSPD/LSSD/SADCR/DAO/…) so options are always code-valued — matching the
-    // hardcoded fallback list and the roster-check department codes. Without
-    // this, roster auto-select storing 'dao' matched no option and the field
-    // looked unfilled.
-    return Object.entries(agencyDataStore).map(([key, a]) => ({
-      value: (a.shortCode || key).toLowerCase(),
-      label: a.fullName,
-    }));
-  }, [agencyDataStore]);
+  const agencyOptions = useMemo(() => mapAgencyOptions(agencyDataStore), [agencyDataStore]);
 
   const memoizedStandardOptions = useMemo(() => {
     if (!finalSelectOptions) return {};

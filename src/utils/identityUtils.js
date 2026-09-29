@@ -279,3 +279,14 @@ export const getOAuthShapeFlags = (gtaWorldUser) => {
 // ---------------------------------------------------------------------------
 // Faction Member Updates
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Telemetry identity label
+// ---------------------------------------------------------------------------
+// "username (character)" for the hourly Visited list (matches the V2 rollup
+// format). Falls back gracefully when only one identity is known. Pure helper.
+export const telemetryUserLabel = (u) => {
+    const uname = u?.username || u?.gtawUsername || 'Unknown';
+    const cname = u?.faction?.characterName;
+    return cname && cname !== uname ? `${uname} (${cname})` : uname;
+};
