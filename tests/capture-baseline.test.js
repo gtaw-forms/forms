@@ -1,16 +1,21 @@
 // tests/capture-baseline.test.js
-// Stage T2-A of the test-strategy plan: capture a pinned, reproducible BASELINE
-// of what the CURRENT useBbcodeGenerator (src/hooks/useBbcodeGenerator.js)
-// renders for the coroner-report and mass-fatality templates across 7 canonical
-// department inputs. The written baseline JSONs are the goldens a later stage
-// compares against after factoring out a pure renderBbcode core.
+// Stages T2-A/T2-B of the test-strategy plan: render useBbcodeGenerator
+// (src/hooks/useBbcodeGenerator.js) for the coroner-report and mass-fatality
+// templates across 7 canonical department inputs and pin/compare a reproducible
+// BASELINE.
 //
-// [OK] This file renders the CURRENT hook in jsdom, asserts structure on every
-// fresh capture (proving current behavior is correct on these inputs), then
-// writes the captured { bbcode, finalTitle, year } per department code to
-// tests/fixtures/baseline-*.json. It keeps PASSING after a behavior-preserving
-// refactor; if the refactor changes output, the assertions or the written
-// goldens diverge — that is the intended signal.
+// T2-A pinned the goldens in tests/fixtures/baseline-*.json. T2-B flipped this
+// harness into a no-behavior-change ORACLE: once a pinned baseline file exists,
+// each run asserts the rendered { bbcode, finalTitle } is byte-identical to the
+// pinned golden (year is compared only at capture time, so the oracle is
+// year-stable). If the hook's behavior changes, the assertion fails — that is
+// the intended signal.
+//
+// [OK] The baseline file is only WRITTEN on first-run bootstrap when the pinned
+// file is MISSING (JSON.stringify(baseline, null, 2), 2-space indent).
+//
+// [OK] This file renders the CURRENT hook in jsdom and asserts structure on
+// every fresh capture (proving current behavior is correct on these inputs).
 //
 // [OK] Known, PRE-EXISTING tag imbalances live in the pinned inputs themselves
 // (not the harness):
@@ -36,6 +41,22 @@ import generateDecedentBBCode from '../src/phmc-bbcode-generators/generateMassFa
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const fixture = (name) => JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', name), 'utf8'));
+
+// Read a pinned baseline file, or null when it does not exist yet (bootstrap).
+const readBaselineOrNull = (name) => {
+  const filePath = path.join(__dirname, 'fixtures', name);
+  if (!fs.existsSync(filePath)) return null;
+  return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+};
+
+// Compare the freshly rendered bbcode+finalTitle against the pinned golden.
+// `year` is intentionally ignored so the oracle is year-stable.
+const assertMatchesPinned = (out, pinnedForCode) => {
+  expect({ bbcode: out.bbcode, finalTitle: out.finalTitle }).toEqual({
+    bbcode: pinnedForCode.bbcode,
+    finalTitle: pinnedForCode.finalTitle,
+  });
+};
 
 const coronerForm = fixture('coroner-report.template.json');
 const massForm = fixture('mass-fatality.template.json');
@@ -174,9 +195,10 @@ const commonProps = (form, formValues) => ({
 });
 
 // ---------------------------------------------------------------------------
-describe('T2-A baseline capture — coroner-report', () => {
-  it('renders current hook for every department, asserts structure, pins baseline', () => {
+describe('T2-A/T2-B baseline oracle — coroner-report', () => {
+  it('renders current hook for every department, asserts structure, compares/pins baseline', () => {
     const spec = canonical.coronerReport;
+    const pinned = readBaselineOrNull('baseline-coroner-report.json');
     const baseline = {};
 
     for (const code of canonical.departmentCodes) {
@@ -199,23 +221,32 @@ describe('T2-A baseline capture — coroner-report', () => {
       // Deterministic golden title from the pinned titleGeneratorCode.
       expect(out.finalTitle).toBe('[Suicide] John Doe ((JohnDoe_1999)) - 09/29/2026');
 
-      baseline[code] = { bbcode: out.bbcode, finalTitle: out.finalTitle, year };
+      // 4. Compare against the pinned golden (or bootstrap-capture on first run).
+      if (pinned) {
+        assertMatchesPinned(out, pinned[code]);
+      } else {
+        baseline[code] = { bbcode: out.bbcode, finalTitle: out.finalTitle, year };
+      }
     }
 
-    fs.writeFileSync(
-      path.join(__dirname, 'fixtures', 'baseline-coroner-report.json'),
-      JSON.stringify(baseline, null, 2)
-    );
+    // Bootstrap only: write the golden when no pinned baseline exists yet.
+    if (!pinned) {
+      fs.writeFileSync(
+        path.join(__dirname, 'fixtures', 'baseline-coroner-report.json'),
+        JSON.stringify(baseline, null, 2)
+      );
+    }
   });
 });
 
-describe('T2-A baseline capture — mass-fatality', () => {
-  it('renders current hook for every department, asserts structure, pins baseline', () => {
+describe('T2-A/T2-B baseline oracle — mass-fatality', () => {
+  it('renders current hook for every department, asserts structure, compares/pins baseline', () => {
     const spec = canonical.massFatality;
     const coronerInfo = {
       coronerRank: spec.baseValues.coronerRank || spec.baseValues.phmcRank || 'Coroner',
       coronerEmployee: spec.baseValues.coronerEmployee || spec.baseValues.phmcEmployee || spec.baseValues.employeeName || 'Unknown Coroner',
     };
+    const pinned = readBaselineOrNull('baseline-mass-fatality.json');
     const baseline = {};
 
     for (const code of canonical.departmentCodes) {
@@ -232,13 +263,21 @@ describe('T2-A baseline capture — mass-fatality', () => {
 
       expect(out.finalTitle).toBe('[Multi Fatality Report] John Doe | Jane Doe - 09/29/2026');
 
-      baseline[code] = { bbcode: out.bbcode, finalTitle: out.finalTitle, year };
+      // 4. Compare against the pinned golden (or bootstrap-capture on first run).
+      if (pinned) {
+        assertMatchesPinned(out, pinned[code]);
+      } else {
+        baseline[code] = { bbcode: out.bbcode, finalTitle: out.finalTitle, year };
+      }
     }
 
-    fs.writeFileSync(
-      path.join(__dirname, 'fixtures', 'baseline-mass-fatality.json'),
-      JSON.stringify(baseline, null, 2)
-    );
+    // Bootstrap only: write the golden when no pinned baseline exists yet.
+    if (!pinned) {
+      fs.writeFileSync(
+        path.join(__dirname, 'fixtures', 'baseline-mass-fatality.json'),
+        JSON.stringify(baseline, null, 2)
+      );
+    }
   });
 });
 
