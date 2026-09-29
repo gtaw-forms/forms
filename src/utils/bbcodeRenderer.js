@@ -139,6 +139,16 @@ export function renderBbcode({ template, form, values, coronerInfo, agencyDataSt
 
   const ctx = { ...values };
   ctx.formData = ctx;
+
+  // Resolve department codes to full names at the context level so EVERY
+  // template renders full names — including live RTDB templates that still
+  // carry raw {{department}} placeholders (a local JSON edit cannot fix
+  // those; the store of record is the database). Full names pass through
+  // untouched, so explicit getDepartmentFullName(...) template calls are
+  // unaffected (idempotent).
+  if (ctx.department && typeof getDepartmentFullName === 'function') {
+    ctx.department = getDepartmentFullName(ctx.department, agencyDataStore);
+  }
   
   // DEBUG: Check template for coroner placeholders
   const hasCoronerRank = bbcode.includes('{{coronerRank}}');
@@ -522,6 +532,14 @@ export function renderBbcode({ template, form, values, coronerInfo, agencyDataSt
       }
 
       let replacement = String(value ?? '');
+      // Department codes resolve to full names HERE (not just in the later
+      // expression-eval stage): plain {{department}} placeholders substitute
+      // straight from values[], so the expression-stage ctx fix alone never
+      // fires for the live RTDB templates. Resolving at substitution covers
+      // every template, present and future.
+      if ((key === 'department' || key === 'requestingOfficerDepartment') && typeof getDepartmentFullName === 'function') {
+          replacement = getDepartmentFullName(replacement, agencyDataStore);
+      }
       const field = form.fields?.find(f => f.name === key);
       
       // DEBUG: Log coroner field replacements

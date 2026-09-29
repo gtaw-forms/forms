@@ -129,6 +129,45 @@ export async function startTestRunReporter(db, client) {
                 }
 
                 activeProgress.delete(data.runId);
+
+                // Full-fill BBCode validation output (FULL_BBCODE_OUTPUT=1 runs):
+                // post the COMPLETE rendered form as embedded code blocks so it
+                // reads inline (no .txt download step). Discord caps embed
+                // descriptions at 4096 chars — chunk by line (3900 ceiling with
+                // fences), one embed per chunk, max 10 embeds per message
+                // (~39KB ceiling; the coroner full-fill is ~4.3KB = 2 embeds).
+                // Best-effort; never fails the run reporting.
+                try {
+                    if (data.fullBbcode && data.fullBbcode.bbcode) {
+                        const full = String(data.fullBbcode.bbcode);
+                        const title = String(data.fullBbcode.title || 'full-fill coroner').slice(0, 80);
+                        const chunks = [];
+                        let current = '';
+                        for (const line of full.split('\n')) {
+                            if ((current + '\n' + line).length > 3900 && current) {
+                                chunks.push(current);
+                                current = '';
+                                if (chunks.length >= 10) break;
+                            }
+                            current += (current ? '\n' : '') + line;
+                        }
+                        if (current && chunks.length < 10) chunks.push(current);
+                        if (chunks.length > 0) {
+                            const channel = await client.channels.fetch(progress.channelId);
+                            if (channel?.isTextBased()) {
+                                const embeds = chunks.map((chunk, i) => new EmbedBuilder()
+                                    .setColor(0x3498db)
+                                    .setTitle(i === 0 ? `Full-fill validation output — ${title}` : `continued (${i + 1}/${chunks.length})`)
+                                    .setDescription('```\n' + chunk.slice(0, 3900) + '\n```')
+                                    .setFooter({ text: `run ${data.runId}` }));
+                                await channel.send({ embeds });
+                                console.log(`[${TAG}] [OK] full-fill BBCode embedded in ${embeds.length} block(s) for run ${data.runId}`);
+                            }
+                        }
+                    }
+                } catch (err) {
+                    console.warn(`[${TAG}] [WARN] full-fill embed post failed: ${err?.message || err}`);
+                }
                 return;
             }
 

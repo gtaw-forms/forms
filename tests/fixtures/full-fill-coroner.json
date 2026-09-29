@@ -1,0 +1,31 @@
+{
+  "departmentField": "department",
+  "baseValues": {
+    "placeOfDeath": "123 Grove Street, Davis",
+    "dateTime": "2026-09-29T14:30:00",
+    "pronouncedTimeOfDeath": "2026-09-29T15:00:00",
+    "decedentName": "John Doe",
+    "decedentOOC": "JohnDoe_1999",
+    "coronerEmployee": "Coroner Investigator John Doe (SN: 5573)",
+    "coronerRank": "Coroner Investigator",
+    "coronerBadge": "5573",
+    "synopsis": "Decedent was found unresponsive in a vehicle at the scene with no visible signs of forced entry. Witnesses reported hearing a single loud bang at approximately 14:25.",
+    "probableCauseOfDeath": "Gunshot wound to the chest",
+    "mannerOfDeath": "Homicide",
+    "typeOfDeath": "Suicide",
+    "requestingOfficer": "Sergeant Maria Reyes",
+    "ReportRequested": true,
+    "additionalstaff": [
+      "Jane Rider",
+      "Samuel Voss"
+    ],
+    "evidenceLocker": true,
+    "evidenceLockerItems": "EL#2026-001, EL#2026-002",
+    "scenePhotosBBCode": "[img]https://example.test/photo1.jpg[/img]\n[img]https://example.test/photo2.jpg[/img]",
+    "additionalPhotos": [
+      "https://example.test/additional1.jpg",
+      "https://example.test/additional2.jpg"
+    ],
+    "additionalPhotos_narrative": "Overview and close-up of the vehicle interior."
+  }
+}

@@ -9,6 +9,7 @@ const jstr = (obj) => {
 };
 import { triggerSaveSavedReport } from '../services/firebaseFunctions';
 import { triggerListSavedReports } from '../services/firebaseFunctions';
+import { findDuplicateCandidate } from '../utils/duplicateCheck';
 import * as Sentry from "@sentry/react";
 import { getCharacterName, getCharacterID, resolveEmployeeCredentials, getOAuthShapeFlags } from '../utils/identityUtils';
 import { cleanRankText, comprehensiveSanitize } from '../utils/textUtils';
@@ -21,38 +22,7 @@ import { getAppBuildId } from '../utils/buildVersion';
 
 const isLocalHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
-// ── Duplicate-report check (Tier 1: URL overlap OR metadata triple) ──
-// Warn-never-block: returns the matched recent report or null. Fail-open on
-// any error (a broken check must never block a save).
-const dupNormText = (v) => String(v ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
-const dupNormUrl = (u) => {
-    const s = String(u ?? '').trim();
-    if (!/^https?:\/\//i.test(s) || s.length > 2000) return null;
-    try {
-        const parsed = new URL(s);
-        return (parsed.host + parsed.pathname).toLowerCase().replace(/\/$/, '');
-    } catch {
-        return s.toLowerCase();
-    }
-};
-const dupCollectUrls = (node, out = new Set()) => {
-    if (out.size >= 50) return out;
-    if (typeof node === 'string') {
-        const norm = dupNormUrl(node);
-        if (norm) out.add(norm);
-    } else if (Array.isArray(node)) {
-        for (const item of node) { dupCollectUrls(item, out); if (out.size >= 50) break; }
-    } else if (node && typeof node === 'object') {
-        for (const value of Object.values(node)) { dupCollectUrls(value, out); if (out.size >= 50) break; }
-    }
-    return out;
-};
-const dupDayOf = (v) => {
-    const t = Date.parse(String(v ?? ''));
-    if (Number.isNaN(t)) return null;
-    const d = new Date(t);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
+// Duplicate matching lives in utils/duplicateCheck (pure, unit-tested).
 
 const deployTrackedForms = ['coroner-report', 'coroner_email', 'death_record', 'autopsy', 'mass-ftality-test',
     'patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical',
@@ -557,52 +527,16 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated, rosterData = {}) 
         // ── Duplicate-report check (Tier 1: photo-URL overlap OR metadata triple) ──
         // Warn-never-block: skipped for edits (intentional re-saves) and silent
         // flows (no user present to answer). Fail-open: list failure saves normally.
+        // Matching lives in utils/duplicateCheck (pure, unit-tested).
         if (!options.editDeployedReport && !options.silent) {
             let dupMatch = null;
             try {
                 const dupList = await triggerListSavedReports({ author: sanitizedAuthorId, limit: 10 });
                 const candidates = Array.isArray(dupList?.reports) ? dupList.reports : [];
-                const mineUrls = dupCollectUrls(reportDataToSave?.data);
-                const mineDecedent = dupNormText(
-                    reportDataToSave?.data?.decedentName || reportDataToSave?.data?.patientName
+                dupMatch = findDuplicateCandidate(
+                    { formId: selectedForm.firebaseKey, key: sanitizedKey, data: reportDataToSave?.data },
+                    candidates
                 );
-                const mineDay = dupDayOf(reportDataToSave?.data?.dateTime);
-                const minePlace = dupNormText(reportDataToSave?.data?.placeOfDeath);
-                const mineFormId = selectedForm.firebaseKey;
-                const minePhotoCount = mineUrls.size;
-                for (const cand of candidates) {
-                    if (!cand || cand.key === sanitizedKey) continue;
-                    const cData = cand.report?.data || cand.data || {};
-                    if ((cand.formId || cand.report?.formId) && (cand.formId || cand.report?.formId) !== mineFormId) continue;
-                    // Signal 1: shared photo URL (re-attached/reused uploads, copies).
-                    let urlHit = false;
-                    if (minePhotoCount > 0) {
-                        const candUrls = dupCollectUrls(cData);
-                        for (const u of mineUrls) {
-                            if (candUrls.has(u)) { urlHit = true; break; }
-                        }
-                    }
-                    // Signal 2: same decedent + day + place (both-empty place
-                    // needs equal non-zero photo counts to count).
-                    const cDecedent = dupNormText(cData.decedentName || cData.patientName);
-                    const cDay = dupDayOf(cData.dateTime);
-                    const cPlace = dupNormText(cData.placeOfDeath);
-                    const metaHit = !!mineDecedent && !!cDecedent && mineDecedent === cDecedent
-                        && !!mineDay && !!cDay && mineDay === cDay
-                        && (minePlace && cPlace
-                            ? minePlace === cPlace
-                            : (!minePlace && !cPlace && minePhotoCount > 0
-                                && minePhotoCount === dupCollectUrls(cData).size));
-                    if (urlHit || metaHit) {
-                        dupMatch = {
-                            key: cand.key,
-                            title: cand.originalKey || cand.report?.originalKey || cand.key,
-                            timestamp: cand.timestamp || cand.report?.timestamp || null,
-                            reason: urlHit ? 'same photo detected' : 'same decedent, date and location',
-                        };
-                        break;
-                    }
-                }
             } catch (dupErr) {
                 console.warn('[useFormSaver] Duplicate check unavailable, saving normally:', dupErr?.message || dupErr);
                 dupMatch = null;
