@@ -44,7 +44,10 @@ const VPS = process.env.PHMC_VPS_HOST || 'root@88.208.243.254';
 const REMOTE_BOT = process.env.PHMC_VPS_BOT_DIR || '/opt/phmc-bot/discord-bot';
 
 const EXCLUDE_DIRS = new Set(['node_modules', 'data', 'logs', '.git', 'debug', 'debug-testing-scripts', 'out']);
-const EXCLUDE_FILE_RE = /(^|\/)(\.env(\..*)?|\.browser\.env|forum-session.*\.json|[^/]*\.log|log\..+\.(txt|log)|firebase-admin-key\.json|morgue-data\.json|morgue-meta\.json|\.deploy-revision)$/i;
+// changelog.md is deliberately excluded: the repo and VPS copies have diverged
+// (different sections; the repo copy is also encoding-damaged) so a mirror must
+// not clobber either. Reconcile it by hand.
+const EXCLUDE_FILE_RE = /(^|\/)(\.env(\..*)?|\.browser\.env|forum-session.*\.json|[^/]*\.log|log\..+\.(txt|log)|firebase-admin-key\.json|morgue-data\.json|morgue-meta\.json|changelog\.md|\.deploy-revision)$/i;
 
 const DEPLOY = process.argv.includes('--deploy');
 const NO_RESTART = process.argv.includes('--no-restart');

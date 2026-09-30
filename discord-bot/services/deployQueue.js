@@ -210,19 +210,40 @@ export async function enqueue(type, data) {
 
     // Post a unified progress embed (will be edited by the deploy handler later)
     let progressMessageId = null;
+    let progressChannelId = null;
     try {
         const embed = new DeployProgressEmbed(state.discordClient, process.env.BOT_LOG_CHANNEL_ID, data?.report?.appBuild);
         const minutes = Math.round(C.DEFER_MS / 60000);
         const displayLabel = patientName ? `${label} — ${patientName}` : label;
         await embed.start(`Queued: ${displayLabel} — deploys ~${deployTime} (${minutes} min)`);
         progressMessageId = embed.messageId;
+        progressChannelId = embed.channelId;
+        // Persist the embed id so it can be looked up/edited later (and resumed
+        // after a restart). Previously this lived only in memory, so a restart
+        // left an orphaned embed with no way to find its message id.
+        if (progressMessageId && data.authorId && data.key) {
+            const dbRef = data.db || state.dbRef;
+            if (dbRef) {
+                dbRef.ref(`scheduledReports/${data.authorId}/${data.key}`).update({
+                    progressMessageId,
+                    progressChannelId,
+                }).catch(() => {});
+                dbRef.ref(`deployProgressById/${progressMessageId}`).set({
+                    authorId: data.authorId,
+                    key: data.key,
+                    type,
+                    channelId: progressChannelId,
+                    createdAt: Date.now(),
+                }).catch(() => {});
+            }
+        }
     } catch (e) { /* progress embed is optional */ }
 
     const timer = setTimeout(async () => {
         state.pendingDeployments.delete(entityKey);
         if (progressMessageId) {
             data._progressMessageId = progressMessageId;
-            data._progressChannelId = process.env.BOT_LOG_CHANNEL_ID;
+            data._progressChannelId = progressChannelId || process.env.BOT_LOG_CHANNEL_ID;
         }
         const runDeploy = await getRunDeploy();
         runDeploy(type, data);
