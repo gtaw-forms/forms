@@ -252,6 +252,33 @@ export const appendTelemetry = onCall({
   } else {
     clean.byTrigger = {};
   }
+  // Per-user activity rows ("who did what") for the V2 rollup. Sanitized, never
+  // strict: a single bad user row defaults to zeros rather than dropping the
+  // whole beacon (the aggregate counters above already guard the important path).
+  if (body.userActivity !== undefined) {
+    if (!body.userActivity || typeof body.userActivity !== 'object' || Array.isArray(body.userActivity)) {
+      throw new functions.https.HttpsError('invalid-argument', 'bad telemetry field: userActivity');
+    }
+    clean.userActivity = {};
+    const numOrZero = (v) => { const n = cleanTelemetryNum(v); return n === null ? 0 : Math.min(n, 1e7); };
+    for (const [user, act] of Object.entries(body.userActivity).slice(0, 20)) {
+      const cleanUser = cleanTelemetryStr(user, 80);
+      if (!cleanUser || !act || typeof act !== 'object') continue;
+      clean.userActivity[cleanUser] = {
+        events: numOrZero(act.events),
+        errors: numOrZero(act.errors),
+        cacheHits: numOrZero(act.cacheHits),
+        network: numOrZero(act.network),
+        totalKb: numOrZero(act.totalKb),
+        netKb: numOrZero(act.netKb),
+        routes: (Array.isArray(act.routes) ? act.routes : []).slice(0, 10)
+          .map((v) => cleanTelemetryStr(v, 80))
+          .filter(Boolean),
+      };
+    }
+  } else {
+    clean.userActivity = {};
+  }
   for (const field of ['routes', 'users', 'errorSamples']) {
     const arr = body[field];
     if (arr !== undefined && !Array.isArray(arr)) {
