@@ -29,7 +29,7 @@ npm run bot:deploy    # mirror the whole discord-bot/ tree + verify + restart
 
 1. Runs `tools/check-bot-imports.mjs` — refuses to deploy if any named import across the bot does not resolve (prevents the 2026-09-26 class of bug where a committed call site's implementation was never committed).
 2. Refuses to deploy if `discord-bot/` has uncommitted changes (bypass with `--allow-dirty`).
-3. Tars the whole tree — excluding `node_modules/`, `data/`, `logs/`, `.env*`, `.browser.env`, `forum-session*.json`, `firebase-admin-key.json`, `debug/`, `.git/` — backs up the current VPS tree, uploads, and extracts over `/opt/phmc-bot/discord-bot/`.
+3. Tars the committed (git-tracked) tree — secrets, `node_modules/`, `data/`, `logs/`, `changelog.md`, `debug/` are gitignored and therefore never included — backs up the current VPS tree, uploads, and extracts over `/opt/phmc-bot/discord-bot/`.
 4. Runs `npm install` on the VPS only if `package.json` changed.
 5. Writes the deployed commit SHA + branch + timestamp to `/opt/phmc-bot/discord-bot/.deploy-revision`.
 6. Restarts `phmc-bot` (and `morgue-api` when `morgue-api.js` changed), then re-checks md5 parity and **fails loudly if the tree did not fully sync**.

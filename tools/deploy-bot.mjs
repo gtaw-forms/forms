@@ -72,8 +72,24 @@ function walk(dir, base = '') {
 const md5 = (buf) => crypto.createHash('md5').update(buf).digest('hex');
 
 function localManifest() {
+    // Mirror exactly the COMMITTED (git-tracked) tree, so local-only artifacts
+    // that are deliberately gitignored (.env, changelog.md, debug scripts,
+    // aghMetrics) never clobber the VPS copy. Falls back to a directory walk if
+    // git is unavailable.
+    let rels;
+    try {
+        rels = execFileSync('git', ['ls-files', '-z', '--', 'discord-bot'], { cwd: ROOT, encoding: 'utf8' })
+            .split('\0').filter(Boolean)
+            .map(p => p.replace(/^discord-bot\//, ''))
+            .filter(rel => rel && !isExcluded(rel));
+    } catch {
+        rels = walk(LOCAL_BOT);
+    }
     const m = new Map();
-    for (const rel of walk(LOCAL_BOT)) m.set(rel, md5(fs.readFileSync(path.join(LOCAL_BOT, rel))));
+    for (const rel of rels) {
+        const full = path.join(LOCAL_BOT, rel);
+        if (fs.existsSync(full)) m.set(rel, md5(fs.readFileSync(full)));
+    }
     return m;
 }
 
