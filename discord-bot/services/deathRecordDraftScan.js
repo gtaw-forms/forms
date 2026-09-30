@@ -267,6 +267,14 @@ export function startMorgueListener(db) {
                 const morgueName = (morgueRecord?.name || '').trim().toLowerCase();
                 if (!morgueName) return;
 
+                // Autopsy assignment panels: a new/updated morgue record can turn
+                // a stale POSSIBLY FOUND line into a definitive FOUND. Fire-and-
+                // forget so it never blocks the draft path.
+                try {
+                    const { refreshAutopsyPanelsForMorgue } = await import('./morguePanelRefresh.js');
+                    refreshAutopsyPanelsForMorgue(db, null, morgueRecord).catch(() => {});
+                } catch { /* ignore */ }
+
                 const [pendingSnap, betterSnap] = await Promise.all([
                     db.ref(DRAFT_TRACK_PATH)
                         .orderByChild('needsMorgue')
