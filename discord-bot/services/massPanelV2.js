@@ -39,6 +39,7 @@ import { MessageFlags, ModalBuilder, LabelBuilder, RadioGroupBuilder, TextDispla
 import { isDevTestActive } from './devRouting.js';
 import { getChannelId, channelSendEnabled } from './phmcChannels.js';
 import { buildMeSliceEmbed, buildMeSliceText, resolveMassPanelChannelId } from './massAssignmentPanel.js';
+import { readChild, writeChild, removeChild } from './vpsState.js';
 
 export const MASS_V2_PREFIX = 'massv2_';
 export const MASS_V2_CANCEL_SLOT = 'cancel';
@@ -107,7 +108,7 @@ async function cleanupMassV2Records(panelId, basePath, topicIdHint) {
     try {
         const db = await v2Db();
         if (!db) return;
-        await db.ref(`massPanelV2ById/${panelId}`).remove().catch(() => {});
+        removeChild('massPanelV2ById', panelId);
         if (topicIdHint) {
             const cur = (await db.ref(`${basePath || 'autopsy-requested'}/${topicIdHint}/massPanelV2`).once('value')).val() || null;
             if (cur && cur.panelId === panelId) {
@@ -684,7 +685,7 @@ export async function postMassPanelV2(db, client, assignments, { channelId, noPi
                     updatedAt: Date.now(),
                 };
                 await db.ref(`${basePath}/${requestTopicId}/massPanelV2`).set(refPayload);
-                await db.ref(`massPanelV2ById/${panelId}`).set({
+                writeChild('massPanelV2ById', panelId, {
                     requestTopicId, basePath, channelId: target, messageId: message.id,
                     devReassign: devReassign === true, compact: compact === true,
                 });
@@ -951,7 +952,7 @@ async function healMassV2PanelFromPress(interaction, panelId) {
     try {
         const db = await v2Db();
         if (!db) return false;
-        const reg = (await db.ref(`massPanelV2ById/${panelId}`).once('value')).val() || null;
+        const reg = readChild('massPanelV2ById', panelId);
         if (!reg || !reg.requestTopicId) return false;
         const base = reg.basePath || 'autopsy-requested';
         const entry = (await db.ref(`${base}/${reg.requestTopicId}`).once('value')).val() || {};

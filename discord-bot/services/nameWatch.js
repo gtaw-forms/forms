@@ -13,6 +13,7 @@
  */
 
 import { sendLogMessage } from './logChannel.js';
+import { readState, writeChild } from './vpsState.js';
 
 // OOC values that carry no identity signal — skip, never flag.
 const SKIP_OOC_RE = /^(answer|unknown(\s*ooc)?|ooc\s*name|tbd|n\/a\b|na\b|none|\?+|\.+|-+)$/i;
@@ -93,15 +94,14 @@ export async function checkSuspectNames(db) {
         }
         const now = Date.now();
         const windowMs = 30 * 24 * 60 * 60 * 1000;
-        const notifiedSnap = await db.ref('monitoring/nameWatchNotified').once('value').catch(() => null);
-        const notified = (notifiedSnap && notifiedSnap.val()) || {};
+        const notified = readState('monitoring/nameWatchNotified', {});
         const snap = await db.ref('autopsy-requested').once('value');
         if (!snap.exists()) return;
 
         const flags = [];
         const mark = async (flagKey, ooc, proposal) => {
             notified[flagKey] = { ooc, proposal: proposal || null, at: now };
-            await db.ref(`monitoring/nameWatchNotified/${flagKey}`).set(notified[flagKey]).catch(() => {});
+            writeChild('monitoring/nameWatchNotified', flagKey, notified[flagKey]);
         };
 
         const consider = async (topicId, slot, name, ooc, me, caseNum) => {

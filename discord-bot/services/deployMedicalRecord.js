@@ -15,6 +15,7 @@ import { state } from './deployState.js';
 import { setDeployStatus, markReportComplete } from './deployStatus.js';
 import { upsertPatient, findPatientIndexEntry, removePatientIndexEntry, readIndex } from './patientIndex.js';
 import { isMaintenanceMode } from './deployQueue.js';
+import { readState, writeState } from './vpsState.js';
 
 // ── Safety env vars ──
 const MEDICAL_RECORD_DRY_RUN = process.env.MEDICAL_RECORD_DRY_RUN !== 'false';
@@ -43,7 +44,24 @@ function pruneRecentPatientRecords() {
  * can't draw the same number; a failed create leaves a harmless gap.
  * Falls back to a forum scan only when both index and counter are empty.
  */
+// One-time seed of the VPS-local patient-id counter from the legacy RTDB value,
+// so a move off RTDB never resets numbering (which would collide with existing
+// patient records). Runs lazily on the first allocation.
+let patientCounterSeeded = false;
+async function ensurePatientCounterSeeded(db) {
+    if (patientCounterSeeded) return;
+    patientCounterSeeded = true;
+    if (readState('nextPatientId', null) !== null) return;
+    try {
+        const snap = await db.ref('appMetadata/nextPatientId').once('value');
+        const val = parseInt(snap.val(), 10) || 0;
+        writeState('nextPatientId', val);
+        console.log(`[MEDICAL-RECORD] Seeded nextPatientId counter from RTDB: ${val}`);
+    } catch (e) { /* ignore — start from 0 */ }
+}
+
 async function getNextPatientId(client, db, patientName) {
+    await ensurePatientCounterSeeded(db);
     let indexMax = 0;
     try {
         for (const p of readIndex().patients || []) {
@@ -52,33 +70,11 @@ async function getNextPatientId(client, db, patientName) {
         }
     } catch (e) { /* fall through */ }
 
-    let counter = 0;
-    let next = 0;
-    let claimed = false;
-    try {
-        // Atomic claim via transaction: concurrent creates serialize here, so
-        // two reports can't draw the same number (the old read-then-set raced).
-        // Aborts (claims nothing) when both index and counter are empty — the
-        // forum scan below handles that case as before.
-        const txnResult = await db.ref('appMetadata/nextPatientId').transaction((current) => {
-            const cur = parseInt(current, 10) || 0;
-            counter = cur;
-            if (indexMax === 0 && cur === 0) return undefined;
-            return Math.max(indexMax, cur) + 1;
-        });
-        const committed = parseInt(txnResult?.snapshot?.val(), 10);
-        if (txnResult?.committed && !isNaN(committed)) {
-            next = committed;
-            claimed = true;
-        }
-    } catch (e) { /* fall through */ }
+    const counter = readState('nextPatientId', 0) || 0;
 
     if (indexMax > 0 || counter > 0) {
-        if (!claimed) {
-            // Transaction unavailable — blind write, same racy behavior as before.
-            next = Math.max(indexMax, counter) + 1;
-            await db.ref('appMetadata/nextPatientId').set(next).catch(() => {});
-        }
+        const next = Math.max(indexMax, counter) + 1;
+        writeState('nextPatientId', next);
         if (patientName) {
             upsertPatient({ name: patientName, id: String(next), threadId: null, lastSeen: Date.now(), source: 'deploy:medical-record' });
         }
@@ -98,7 +94,7 @@ async function getNextPatientId(client, db, patientName) {
             }
         }
         const next = highest + 1;
-        await db.ref('appMetadata/nextPatientId').set(next).catch(() => {});
+        writeState('nextPatientId', next);
         console.log(`[MEDICAL-RECORD] Scanned f=97 — highest ID: ${highest}, next: ${next}`);
         return next;
     } catch (e) {

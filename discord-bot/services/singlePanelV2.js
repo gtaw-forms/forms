@@ -39,6 +39,7 @@ import { isDevTestActive } from './devRouting.js';
 import { getChannelId, channelSendEnabled } from './phmcChannels.js';
 import { deathTypeWindow } from './assignmentWebhook.js';
 import { measureV2Text, countV2Components, V2_TEXT_BUDGET, V2_COMPONENT_BUDGET } from './massPanelV2.js';
+import { readChild, writeChild, removeChild } from './vpsState.js';
 
 export const SINGLE_V2_PREFIX = 'singlev2_';
 export const SINGLE_V2_INFO_SLOT = 'info';
@@ -443,7 +444,7 @@ export async function postSinglePanelV2(db, client, data = {}, { channelId, noPi
                     ? `autopsy-requested/${requestTopicId}/singlePanel`
                     : `autopsy-requested/${requestTopicId}/cases/${caseIdx}/singlePanel`;
                 await db.ref(nodePath).set(refPayload);
-                await db.ref(`singlePanelById/${panelId}`).set({
+                writeChild('singlePanelById', panelId, {
                     requestTopicId, caseIdx: caseIdx ?? null, channelId: target, messageId: message.id,
                 });
             } catch (e) {
@@ -508,7 +509,7 @@ async function cleanupSinglePanelRecords(panelId, requestTopicId, caseIdx) {
     try {
         const db = await singleV2Db();
         if (!db) return;
-        await db.ref(`singlePanelById/${panelId}`).remove().catch(() => {});
+        removeChild('singlePanelById', panelId);
         if (requestTopicId) {
             const nodePath = (caseIdx === null || caseIdx === undefined)
                 ? `autopsy-requested/${requestTopicId}/singlePanel`
@@ -631,7 +632,7 @@ async function healSinglePanelFromPress(interaction, panelId) {
     try {
         const db = await singleV2Db();
         if (!db) return false;
-        const reg = (await db.ref(`singlePanelById/${panelId}`).once('value')).val() || null;
+        const reg = readChild('singlePanelById', panelId);
         if (!reg || !reg.requestTopicId) return false;
         // Never resurrect a superseded panel onto the wrong message.
         if (reg.messageId && interaction.message?.id && reg.messageId !== interaction.message.id) return false;

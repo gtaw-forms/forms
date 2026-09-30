@@ -23,6 +23,22 @@ import { TERMINAL_STATES } from './outstandingAutopsies.js';
 import { DeployProgressEmbed } from './deployLogger.js';
 import { state as deployState } from './deployState.js';
 import { registerTick, unregisterTick } from './scheduler.js';
+import { mutateState } from './vpsState.js';
+
+/**
+ * Bump a faction intake counter (VPS-local, off RTDB — the totals are only
+ * ever read by the bot, never the web app). Store: data/bot-state/
+ * autopsy-requests/counters.json -> { counts: {<faction>: n}, lastUpdated }.
+ */
+function bumpFactionCounter(countKey, delta = 1) {
+    const s = mutateState('autopsy-requests/counters', (cur) => {
+        cur = cur || { counts: {}, lastUpdated: {} };
+        cur.counts[countKey] = (cur.counts[countKey] || 0) + delta;
+        cur.lastUpdated[countKey] = Date.now();
+        return cur;
+    }, { counts: {}, lastUpdated: {} });
+    return s.counts[countKey];
+}
 
 // ── Optional 55k-char chunk fallback (massPostChunker.js, Task 6) ──
 // ESM-only module — resolved lazily via dynamic import (a static require()
@@ -1200,11 +1216,7 @@ export async function checkForNewRequests() {
                 if (state === 'ack_sent') {
                     try {
                         const countKey = ['LSPD', 'LSSD', 'SADCR', 'DAO'].includes(parsed.faction) ? parsed.faction : 'OTHER';
-                        const countRef = _db.ref(`autopsy-requests/${countKey}/count`);
-                        const countSnap = await countRef.once('value');
-                        const newCount = (countSnap.val() || 0) + 1;
-                        await countRef.set(newCount);
-                        await _db.ref(`autopsy-requests/${countKey}/lastUpdated`).set(Date.now());
+                        const newCount = bumpFactionCounter(countKey);
                         console.log(`[AUTOPSY-MON] Counters updated — ${countKey}: ${newCount}`);
                     } catch (err) {
                         console.warn(`[AUTOPSY-MON] Counter update: ${err.message}`);
@@ -1882,11 +1894,7 @@ async function processMassRequest({ db, topic, parsed, mass, requestBbCode, proc
         // Faction counter +N (one bump for the whole batch).
         try {
             const countKey = ['LSPD', 'LSSD', 'SADCR', 'DAO'].includes(parsed.faction) ? parsed.faction : 'OTHER';
-            const countRef = db.ref(`autopsy-requests/${countKey}/count`);
-            const countSnap = await countRef.once('value');
-            const newCount = (countSnap.val() || 0) + N;
-            await countRef.set(newCount);
-            await db.ref(`autopsy-requests/${countKey}/lastUpdated`).set(Date.now());
+            const newCount = bumpFactionCounter(countKey, N);
             console.log(`[AUTOPSY-MON] [OK] Counters updated — ${countKey}: +${N} -> ${newCount}`);
         } catch (err) {
             console.warn(`[AUTOPSY-MON] [WARN] Mass counter update: ${err.message}`);
@@ -2251,11 +2259,7 @@ async function processMultiDecedentRequest({ db, topic, parsed, decedents, reque
         if (multiAckState === 'ack_sent' || (await rootRef.child('multiAckState').once('value')).val() === 'ack_sent') {
             try {
                 const countKey = ['LSPD', 'LSSD', 'SADCR', 'DAO'].includes(parsed.faction) ? parsed.faction : 'OTHER';
-                const countRef = db.ref(`autopsy-requests/${countKey}/count`);
-                const countSnap = await countRef.once('value');
-                const newCount = (countSnap.val() || 0) + 1;
-                await countRef.set(newCount);
-                await db.ref(`autopsy-requests/${countKey}/lastUpdated`).set(Date.now());
+                const newCount = bumpFactionCounter(countKey);
                 console.log(`[AUTOPSY-MON] Counters updated — ${countKey}: ${newCount}`);
             } catch (err) {
                 console.warn(`[AUTOPSY-MON] Counter update: ${err.message}`);

@@ -20,6 +20,7 @@ import { crosspostAutopsyToLspd } from './deployLspd.js';
 import { getAgencyForum, isAgencyFaction } from './agencyForums.js';
 import { notifyRequesterOfCompletion } from './requesterWebhook.js';
 import { clearAssignment } from './autopsyRotation.js';
+import { readState, mutateState } from './vpsState.js';
 
 import { COMPLETION_TEMPLATE, buildCompletionBb } from './completionTemplate.js';
 
@@ -539,19 +540,28 @@ async function notifyCompletionStepFailure(topicId, stepName, detail) {
 export const STEP_RETRY_PATH = 'completionStepRetries';
 
 export function markStepRetry(topicId, stepName, detail = '') {
-    if (!topicId || !stepName || !state.dbRef) return;
+    if (!topicId || !stepName) return;
     try {
-        state.dbRef
-            .child(`${STEP_RETRY_PATH}/${topicId}/${stepName}`)
-            .set({ failedAt: new Date().toISOString(), detail: String(detail || '').slice(0, 300) })
-            .catch(() => {});
+        mutateState(STEP_RETRY_PATH, (idx) => {
+            idx = idx || {};
+            idx[topicId] = idx[topicId] || {};
+            idx[topicId][stepName] = { failedAt: new Date().toISOString(), detail: String(detail || '').slice(0, 300) };
+            return idx;
+        }, {});
     } catch { /* fire-and-forget */ }
 }
 
 export function clearStepRetry(topicId, stepName) {
-    if (!topicId || !stepName || !state.dbRef) return;
+    if (!topicId || !stepName) return;
     try {
-        state.dbRef.child(`${STEP_RETRY_PATH}/${topicId}/${stepName}`).remove().catch(() => {});
+        mutateState(STEP_RETRY_PATH, (idx) => {
+            idx = idx || {};
+            if (idx[topicId]) {
+                delete idx[topicId][stepName];
+                if (!Object.keys(idx[topicId]).length) delete idx[topicId];
+            }
+            return idx;
+        }, {});
     } catch { /* fire-and-forget */ }
 }
 
@@ -1720,8 +1730,7 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
         // step self-heals on the next restart reseed.)
         let markers = {};
         try {
-            const mSnap = await db.ref(STEP_RETRY_PATH).once('value');
-            markers = mSnap.exists() ? mSnap.val() || {} : {};
+            markers = readState(STEP_RETRY_PATH, {});
         } catch { markers = {}; }
         if (entries === undefined) {
             // Marker-driven scan: fetch ONLY the marker-listed entries.

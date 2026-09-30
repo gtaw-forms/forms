@@ -11,6 +11,7 @@ import { logFnCall, sendWebhook, DeployProgressEmbed } from './deployLogger.js';
 import { state, C } from './deployState.js';
 import { checkUserConsent, skipDueToConsent } from './deployConsent.js';
 import { setDeployStatus } from './deployStatus.js';
+import { writeChild } from './vpsState.js';
 
 //  Import runDeploy lazily to avoid circular dependency (autoDeploy imports deployQueue which uses runDeploy)
 let _runDeploy = null;
@@ -228,13 +229,13 @@ export async function enqueue(type, data) {
                     progressMessageId,
                     progressChannelId,
                 }).catch(() => {});
-                dbRef.ref(`deployProgressById/${progressMessageId}`).set({
+                writeChild('deployProgressById', progressMessageId, {
                     authorId: data.authorId,
                     key: data.key,
                     type,
                     channelId: progressChannelId,
                     createdAt: Date.now(),
-                }).catch(() => {});
+                });
             }
         }
     } catch (e) { /* progress embed is optional */ }

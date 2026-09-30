@@ -45,6 +45,7 @@ import { isDevTestActive, devLogChannelId } from './devRouting.js';
 import { getChannelId, channelSendEnabled } from './phmcChannels.js';
 import { sendToChannel } from './logChannel.js';
 import firebase from './firebase.js';
+import { readChild, writeChild, removeChild } from './vpsState.js';
 
 // ── Auto-refresh watcher ──
 // Watches autopsy-requested for changes on mass collections that have a live
@@ -130,7 +131,7 @@ async function cleanupPanelRecords(panelId, topicIdHint) {
     try {
         const db = await panelDb();
         if (!db) return;
-        await db.ref(`massPanelById/${panelId}`).remove().catch(() => {});
+        removeChild('massPanelById', panelId);
         if (topicIdHint) {
             const cur = (await db.ref(`autopsy-requested/${topicIdHint}/massPanel`).once('value')).val() || null;
             if (cur && cur.panelId === panelId) {
@@ -612,7 +613,7 @@ export async function postMassAssignmentPanel(db, client, assignments, { channel
                 await db.ref(`autopsy-requested/${requestTopicId}/massPanel`).set({
                     panelId, channelId: target, messageId: message.id, updatedAt: Date.now(),
                 });
-                await db.ref(`massPanelById/${panelId}`).set({
+                writeChild('massPanelById', panelId, {
                     requestTopicId, channelId: target, messageId: message.id,
                 });
             } catch (e) {
@@ -870,7 +871,7 @@ async function healPanelFromPress(interaction, panelId) {
     try {
         const db = await panelDb();
         if (!db) return false;
-        const reg = (await db.ref(`massPanelById/${panelId}`).once('value')).val() || null;
+        const reg = readChild('massPanelById', panelId);
         if (!reg || !reg.requestTopicId) return false;
         const entry = (await db.ref(`autopsy-requested/${reg.requestTopicId}`).once('value')).val() || {};
         const ref = entry.massPanel || null;

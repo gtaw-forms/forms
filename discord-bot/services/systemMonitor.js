@@ -10,6 +10,7 @@ import firebase from './firebase.js';
 import { sendLogMessage } from './logChannel.js';
 import { firstApiKey } from './apiKeyUtil.js';
 import { registerTick, unregisterTick } from './scheduler.js';
+import { readState, writeState } from './vpsState.js';
 
 async function sendWebhook(content, embed) {
     try {
@@ -288,8 +289,7 @@ async function checkMorgueOverdue(db) {
         }
 
         // Cooldown: only notify once every 6 hours
-        const monitorSnap = await db.ref('monitoring/morgueUpdate').once('value');
-        const lastNotified = monitorSnap.val()?.lastNotified || 0;
+        const lastNotified = readState('monitoring/morgueUpdate')?.lastNotified || 0;
         if (now - lastNotified < 6 * 60 * 60 * 1000) {
             console.log('[MONITOR] Morgue already notified recently, skipping.');
             return;
@@ -310,7 +310,7 @@ async function checkMorgueOverdue(db) {
             timestamp: new Date().toISOString(),
         });
 
-        await db.ref('monitoring/morgueUpdate').set({ lastNotified: now });
+        writeState('monitoring/morgueUpdate', { lastNotified: now });
         console.log('[MONITOR] ✅ Morgue overdue notification sent.');
     } catch (err) {
         console.error('[MONITOR] Morgue check error:', err.message);
@@ -413,8 +413,7 @@ async function checkOverdueAutopsies(db) {
         }
 
         // Cooldown — alert at most once per 6 hours while cases remain overdue.
-        const cdSnap = await db.ref('monitoring/autopsyOverdue').once('value');
-        const lastNotified = cdSnap.val()?.lastNotified || 0;
+        const lastNotified = readState('monitoring/autopsyOverdue')?.lastNotified || 0;
         if (now - lastNotified < 6 * 60 * 60 * 1000) {
             console.log('[MONITOR] Overdue autopsies already notified recently, skipping.');
             return;
@@ -442,7 +441,7 @@ async function checkOverdueAutopsies(db) {
             timestamp: new Date().toISOString(),
         });
 
-        await db.ref('monitoring/autopsyOverdue').set({ lastNotified: now, count: overdue.length });
+        writeState('monitoring/autopsyOverdue', { lastNotified: now, count: overdue.length });
         console.log(`[MONITOR] ✅ Overdue autopsy notification sent (${overdue.length} cases).`);
     } catch (err) {
         console.error('[MONITOR] Overdue autopsy check error:', err.message);
