@@ -8,6 +8,7 @@ import { accumulateTelemetryEntry, TELEMETRY_MAX_USERS } from './telemetry';
 const EMPTY_TELEMETRY_BUCKET = {
     bucketStart: 0, events: 0, cacheHits: 0, network: 0, errors: 0, inactive: 0,
     authed: false, totalKb: 0, netKb: 0, byTrigger: {}, routes: [], users: [], errorSamples: [],
+    userActivity: {},
 };
 
 const freshBucket = () => ({
@@ -16,6 +17,7 @@ const freshBucket = () => ({
     routes: [],
     users: [],
     errorSamples: [],
+    userActivity: {},
 });
 
 describe('accumulateTelemetryEntry', () => {
@@ -118,6 +120,28 @@ describe('accumulateTelemetryEntry', () => {
             accumulateTelemetryEntry(b, { cached: true, loggedIn: true, user: long });
             expect(b.users).toEqual([long.slice(0, 80)]);
             expect(b.users[0]).toHaveLength(80);
+        });
+
+        it('per-user activity tracked per authed user', () => {
+            const b = freshBucket();
+            accumulateTelemetryEntry(b, { cached: true, loggedIn: true, user: 'alice', route: '#/a' });
+            accumulateTelemetryEntry(b, { cached: false, loggedIn: true, user: 'alice', route: '#/b', error: 'x' });
+            accumulateTelemetryEntry(b, { cached: true, loggedIn: true, user: 'bob', route: '#/a' });
+            expect(b.userActivity.alice.events).toBe(2);
+            expect(b.userActivity.alice.cacheHits).toBe(1);
+            expect(b.userActivity.alice.network).toBe(1);
+            expect(b.userActivity.alice.errors).toBe(1);
+            expect(b.userActivity.alice.routes).toEqual(['#/a', '#/b']);
+            expect(b.userActivity.bob.events).toBe(1);
+            expect(b.userActivity.bob.errors).toBe(0);
+        });
+
+        it('guest entries do not create per-user rows', () => {
+            const b = freshBucket();
+            accumulateTelemetryEntry(b, { cached: true });
+            accumulateTelemetryEntry(b, { cached: true, loggedIn: false, user: 'ghost' });
+            expect(b.userActivity).toEqual({});
+            expect(b.authed).toBe(false);
         });
     });
 

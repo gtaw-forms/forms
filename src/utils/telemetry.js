@@ -2,6 +2,8 @@
 // useWebhooks accumulator (localStorage bucket) and future producers. Kept
 // free of firebase/DOM references so it can be unit-tested offline.
 export const TELEMETRY_MAX_USERS = 20;
+const TELEMETRY_MAX_USER_ACTIVITY = 20;
+const TELEMETRY_MAX_USER_ROUTES = 10;
 
 const TELEMETRY_MAX_ROUTES = 20;
 const TELEMETRY_ERROR_SAMPLE_LIMIT = 10;
@@ -48,6 +50,33 @@ export const accumulateTelemetryEntry = (bucket, entry = {}, opts = {}) => {
         bucket.users = bucket.users || [];
         if (label && !bucket.users.includes(label) && bucket.users.length < TELEMETRY_MAX_USERS) {
             bucket.users.push(label);
+        }
+    }
+    // Per-user activity for the V2 rollup ("who did what"). Keyed by the same
+    // label as `users` so the two stay consistent. Capped — users past the cap
+    // fall back to aggregate-only counts (no per-user row for them).
+    if (entry.loggedIn && entry.user) {
+        const ulabel = String(entry.user).slice(0, TELEMETRY_USER_LABEL_MAX_LENGTH);
+        if (ulabel) {
+            bucket.userActivity = bucket.userActivity || {};
+            let ua = bucket.userActivity[ulabel];
+            if (!ua) {
+                if (Object.keys(bucket.userActivity).length >= TELEMETRY_MAX_USER_ACTIVITY) {
+                    ua = null;
+                } else {
+                    ua = { events: 0, errors: 0, cacheHits: 0, network: 0, totalKb: 0, netKb: 0, routes: [] };
+                    bucket.userActivity[ulabel] = ua;
+                }
+            }
+            if (ua) {
+                ua.events += 1;
+                if (entry.cached) ua.cacheHits += 1; else ua.network += 1;
+                if (entry.error) ua.errors += 1;
+                ua.totalKb = asKb(ua.totalKb) + asKb(entry.totalKb);
+                ua.netKb = asKb(ua.netKb) + asKb(entry.netKb);
+                const uroute = entry.route || opts.route || '/';
+                if (ua.routes.length < TELEMETRY_MAX_USER_ROUTES && !ua.routes.includes(uroute)) ua.routes.push(uroute);
+            }
         }
     }
     return bucket;

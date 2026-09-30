@@ -816,6 +816,20 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated, rosterData = {}) 
                 Sentry.captureException(err, { extra: { context: 'saveReport - Webhook' } });
             }
 
+            // Telemetry: a successful save is the core user action — feed the
+            // hourly beacon so the rollup reflects real activity. Previously the
+            // save contributed nothing (only loads/opens did), so "load, fill,
+            // save, close" sessions left no trace.
+            try {
+                window.dispatchEvent(new CustomEvent('phmc-telemetry', {
+                    detail: {
+                        file: 'useFormSaver.js/save', trigger: 'report-save',
+                        user: currentAuthor || null, loggedIn: !!isGtaAuthenticated,
+                        detail: `${selectedForm?.name || ''}:${finalTitle || ''}`,
+                    },
+                }));
+            } catch { /* telemetry must never break saving */ }
+
             // ── Body Tampered incident logging ──
             // P1 (c) cost plan: previously one alert webhook PER ticked field.
             // Now a single collapsed alert listing all ticked fields (1 invocation).

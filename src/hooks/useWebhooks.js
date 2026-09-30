@@ -11,6 +11,7 @@ const TELEMETRY_FLUSH_MS = 3600000; // 1 hour
 const EMPTY_TELEMETRY_BUCKET = {
     bucketStart: 0, events: 0, cacheHits: 0, network: 0, errors: 0, inactive: 0,
     authed: false, totalKb: 0, netKb: 0, byTrigger: {}, routes: [], users: [], errorSamples: [],
+    userActivity: {},
 };
 
 export const useWebhooks = (formData, commitInfo, showNotification, getIsInactivityWarningTriggered) => {
@@ -78,6 +79,7 @@ export const useWebhooks = (formData, commitInfo, showNotification, getIsInactiv
                 routes: bucket.routes || [],
                 users: bucket.users || [],
                 errorSamples: bucket.errorSamples || [],
+                userActivity: bucket.userActivity || {},
             });
         } catch { /* drop silently — never retry telemetry */ }
     }, []);
