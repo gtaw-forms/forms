@@ -28,10 +28,10 @@ npm run bot:deploy    # mirror the whole discord-bot/ tree + verify + restart
 `npm run bot:deploy` (`node tools/deploy-bot.mjs --deploy`) does, in order:
 
 1. Runs `tools/check-bot-imports.mjs` — refuses to deploy if any named import across the bot does not resolve (prevents the 2026-09-26 class of bug where a committed call site's implementation was never committed).
-2. Refuses to deploy if `discord-bot/` has uncommitted changes (bypass with `--allow-dirty`).
-3. Tars the committed (git-tracked) tree. Secrets plus `node_modules/`, `data/`, `logs/`, `debug/` are gitignored and never tracked; `changelog.md` is explicitly excluded (the repo and VPS copies diverged — reconcile it by hand). Backs up the current VPS tree, uploads, and extracts over `/opt/phmc-bot/discord-bot/`.
+2. Mirrors the **local working tree on this PC**, not the git index and not GitHub — uncommitted edits and brand-new untracked files ship as-is, so multiple local fixes can be deployed in one go. If `discord-bot/` is dirty it warns (and marks the revision `-dirty`); pass `--strict` to refuse a dirty tree.
+3. Tars that tree. Secrets plus `node_modules/`, `data/`, `logs/`, `debug/` are excluded by name; `changelog.md` is also excluded (the repo and VPS copies diverged — reconcile it by hand). Backs up the current VPS tree, uploads, and extracts over `/opt/phmc-bot/discord-bot/`.
 4. Runs `npm install` on the VPS only if `package.json` changed.
-5. Writes the deployed commit SHA + branch + timestamp to `/opt/phmc-bot/discord-bot/.deploy-revision`.
+5. Writes the deployed commit SHA (+ `-dirty` when uncommitted), a working-tree content hash, branch and timestamp to `/opt/phmc-bot/discord-bot/.deploy-revision`.
 6. Restarts `phmc-bot` (and `morgue-api` when `morgue-api.js` changed), then re-checks md5 parity and **fails loudly if the tree did not fully sync**.
 
 **Rules for an AI assistant (anti-vagueness — do not skip):**

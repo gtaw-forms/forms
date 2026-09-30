@@ -18,10 +18,14 @@
  * safe no-op-when-unchanged mirror.
  *
  * Usage:
- *   node tools/deploy-bot.mjs                  # PARITY CHECK ONLY (safe default)
- *   node tools/deploy-bot.mjs --deploy         # sync tree + verify + restart
+ *   node tools/deploy-bot.mjs                    # PARITY CHECK ONLY (safe default)
+ *   node tools/deploy-bot.mjs --deploy           # sync tree + verify + restart
  *   node tools/deploy-bot.mjs --deploy --no-restart
- *   node tools/deploy-bot.mjs --allow-dirty    # skip the clean-git-tree guard
+ *   node tools/deploy-bot.mjs --deploy --strict  # refuse if discord-bot/ is dirty
+ *
+ * Mirrors the LOCAL WORKING TREE on this PC, never GitHub — pushing is unrelated
+ * to deploying. Uncommitted edits are mirrored as-is (the marker records
+ * `<sha>-dirty`); commit locally for a clean marker, or pass --strict to refuse.
  *
  * Env overrides:
  *   PHMC_VPS_HOST     (default root@88.208.243.254)
@@ -51,7 +55,7 @@ const EXCLUDE_FILE_RE = /(^|\/)(\.env(\..*)?|\.browser\.env|forum-session.*\.jso
 
 const DEPLOY = process.argv.includes('--deploy');
 const NO_RESTART = process.argv.includes('--no-restart');
-const ALLOW_DIRTY = process.argv.includes('--allow-dirty');
+const STRICT = process.argv.includes('--strict');
 
 function isExcluded(rel) {
     if (rel.split('/').some(p => EXCLUDE_DIRS.has(p))) return true;
@@ -75,21 +79,13 @@ function walk(dir, base = '') {
 const md5 = (buf) => crypto.createHash('md5').update(buf).digest('hex');
 
 function localManifest() {
-    // Mirror exactly the COMMITTED (git-tracked) tree, so local-only artifacts
-    // that are deliberately gitignored (.env, changelog.md, debug scripts,
-    // aghMetrics) never clobber the VPS copy. Falls back to a directory walk if
-    // git is unavailable.
-    let rels;
-    try {
-        rels = execFileSync('git', ['ls-files', '-z', '--', 'discord-bot'], { cwd: ROOT, encoding: 'utf8' })
-            .split('\0').filter(Boolean)
-            .map(p => p.replace(/^discord-bot\//, ''))
-            .filter(rel => rel && !isExcluded(rel));
-    } catch {
-        rels = walk(LOCAL_BOT);
-    }
+    // Mirror the LOCAL WORKING TREE on this PC — NOT the git index and NOT
+    // GitHub. The PC is the source of truth for deploys, so uncommitted edits
+    // AND brand-new untracked files must ship (pushing to GitHub is a separate,
+    // later step). Secrets, node_modules, data, logs, debug and changelog are
+    // excluded by name; nothing else is dropped.
     const m = new Map();
-    for (const rel of rels) {
+    for (const rel of walk(LOCAL_BOT)) {
         const full = path.join(LOCAL_BOT, rel);
         if (fs.existsSync(full)) m.set(rel, md5(fs.readFileSync(full)));
     }
@@ -150,10 +146,15 @@ if (!DEPLOY) {
 
 // ── 3. Deploy ──
 const dirty = execFileSync('git', ['status', '--porcelain', '--', 'discord-bot'], { cwd: ROOT, encoding: 'utf8' }).trim();
-if (dirty && !ALLOW_DIRTY) {
-    console.error('\n[bot-parity] ABORT — discord-bot/ has uncommitted changes. Commit first (or pass --allow-dirty).');
-    console.error(dirty);
-    process.exit(1);
+const dirtyFiles = dirty ? dirty.split('\n').map(l => l.trim()).filter(Boolean) : [];
+if (dirty) {
+    if (STRICT) {
+        console.error('\n[bot-parity] ABORT (--strict) — discord-bot/ has uncommitted changes:');
+        console.error(dirty);
+        process.exit(1);
+    }
+    console.warn(`\n[bot-parity] [WARN] discord-bot/ has ${dirtyFiles.length} uncommitted change(s) — mirroring the WORKING TREE (this PC state), not the last commit. Pass --strict to refuse.`);
+    for (const f of dirtyFiles) console.warn('    ' + f);
 }
 
 const listFile = path.join(os.tmpdir(), `phmc-bot-files-${Date.now()}.txt`);
@@ -177,12 +178,21 @@ if (remoteBefore.get('package.json') && remoteBefore.get('package.json') !== loc
     execFileSync('ssh', ['-i', SSH_KEY, VPS, `cd ${REMOTE_BOT} && npm install --omit=dev 2>&1 | tail -5`], { stdio: 'inherit' });
 }
 
-// ── 5. Deploy marker (git SHA of what is now live) ──
+// ── 5. Deploy marker (git SHA + working-tree fingerprint of what is live) ──
 const sha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim();
 const branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim();
-const marker = JSON.stringify({ sha, branch, deployedAt: new Date().toISOString(), by: os.userInfo().username, files: local.size }, null, 2);
+const treeHash = md5([...local.entries()].map(([k, v]) => k + ':' + v).join('\n'));
+const marker = JSON.stringify({
+    sha: dirty ? sha + '-dirty' : sha,
+    branch,
+    dirty: !!dirty,
+    treeHash,
+    deployedAt: new Date().toISOString(),
+    by: os.userInfo().username,
+    files: local.size,
+}, null, 2);
 ssh(`cat > ${REMOTE_BOT}/.deploy-revision <<'PHMC_EOF'\n${marker}\nPHMC_EOF`);
-console.log('[bot-parity] Wrote deploy marker: ' + sha.slice(0, 10) + ' (' + branch + ')');
+console.log('[bot-parity] Wrote deploy marker: ' + sha.slice(0, 10) + (dirty ? '-dirty' : '') + ' (' + branch + ')' + ' treeHash=' + treeHash.slice(0, 8));
 
 // ── 6. Restart ──
 if (!NO_RESTART) {
