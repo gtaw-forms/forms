@@ -38,8 +38,9 @@ function load(key) {
 
 function persist(key) {
     try {
-        mkdirSync(STATE_DIR, { recursive: true });
         const f = fileFor(key);
+        // Keys may contain '/' (e.g. 'monitoring/morgueUpdate') -> nested path.
+        mkdirSync(dirname(f), { recursive: true });
         const tmp = f + '.tmp-' + process.pid;
         writeFileSync(tmp, JSON.stringify(cache.get(key) ?? null, null, 2), 'utf-8');
         renameSync(tmp, f);
