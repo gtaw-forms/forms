@@ -1868,6 +1868,33 @@ app.post('/api/telemetry', validateApiKey, rateLimiter, async (req, res) => {
     } else {
         clean.byTrigger = {};
     }
+    // Per-user activity ("who did what") for the V2 rollup. Tolerant: bad user
+    // rows default to zeros rather than rejecting the whole beacon.
+    if (body.userActivity !== undefined) {
+        if (body.userActivity && typeof body.userActivity === 'object' && !Array.isArray(body.userActivity)) {
+            const ua = {};
+            const n = (v) => { const x = Number(v); return Number.isFinite(x) && x >= 0 && x <= 1e7 ? x : 0; };
+            for (const [user, act] of Object.entries(body.userActivity).slice(0, 20)) {
+                const cleanUser = sanitizeTelemetryStr(user, 80);
+                if (!cleanUser || !act || typeof act !== 'object') continue;
+                ua[cleanUser] = {
+                    events: n(act.events),
+                    errors: n(act.errors),
+                    cacheHits: n(act.cacheHits),
+                    network: n(act.network),
+                    totalKb: n(act.totalKb),
+                    netKb: n(act.netKb),
+                    routes: (Array.isArray(act.routes) ? act.routes : []).slice(0, 10)
+                        .map((v) => sanitizeTelemetryStr(v, 80)).filter(Boolean),
+                };
+            }
+            clean.userActivity = ua;
+        } else {
+            clean.userActivity = {};
+        }
+    } else {
+        clean.userActivity = {};
+    }
     for (const field of TELEMETRY_STR_ARRAYS) {
         const arr = body[field];
         if (arr !== undefined && !Array.isArray(arr)) {

@@ -64,7 +64,7 @@ function aggregate(lines) {
     const total = {
         events: 0, cacheHits: 0, network: 0, errors: 0, inactive: 0,
         totalKb: 0, netKb: 0, byTrigger: {}, routes: new Set(),
-        users: new Set(), errorSamples: [],
+        users: new Set(), errorSamples: [], byUser: {},
     };
     let minAt = null;
     let maxAt = null;
@@ -87,6 +87,22 @@ function aggregate(lines) {
         }
         for (const u of line.users || []) {
             if (typeof u === 'string' && u) total.users.add(u.slice(0, 80));
+        }
+        // Per-user activity ("who did what") — merged across beacons by name.
+        const ua = line.userActivity;
+        if (ua && typeof ua === 'object' && !Array.isArray(ua)) {
+            for (const [u, a] of Object.entries(ua)) {
+                const name = String(u).slice(0, 80);
+                if (!name || !a || typeof a !== 'object') continue;
+                let row = total.byUser[name];
+                if (!row) row = total.byUser[name] = { events: 0, errors: 0, cacheHits: 0, network: 0, totalKb: 0, netKb: 0, routes: [] };
+                row.events += num(a.events); row.errors += num(a.errors);
+                row.cacheHits += num(a.cacheHits); row.network += num(a.network);
+                row.totalKb += num(a.totalKb); row.netKb += num(a.netKb);
+                for (const r of a.routes || []) {
+                    if (typeof r === 'string' && r && !row.routes.includes(r) && row.routes.length < 10) row.routes.push(r.slice(0, 80));
+                }
+            }
         }
         for (const e of line.errorSamples || []) {
             if (typeof e === 'string' && e && total.errorSamples.length < 50) {
@@ -137,6 +153,21 @@ function buildV2(total, minAt, maxAt) {
     } else {
         blocks.push({ type: 10, content: '**Visited**\nNo identified sessions' });
     }
+    // Per-user detail ("who did what") — top users by events with their
+    // errors and routes. Only users with an activity row appear here.
+    const userRows = Object.entries(total.byUser || {})
+        .map(([name, r]) => ({ name, ...r }))
+        .sort((a, b) => b.events - a.events)
+        .slice(0, 8);
+    if (userRows.length > 0) {
+        const ulines = userRows.map((u) => {
+            const bits = [`${u.events} event${u.events === 1 ? '' : 's'}`];
+            if (u.errors > 0) bits.push(`${u.errors} err`);
+            const rts = (u.routes || []).slice(0, 3).join(', ');
+            return `**${u.name}** — ${bits.join(' · ')}${rts ? ` · ${rts}` : ''}`;
+        });
+        blocks.push({ type: 10, content: `**By user**\n${ulines.join('\n').slice(0, 1500)}` });
+    }
     if (total.errors > 0) {
         const samples = [...new Set(total.errorSamples)].slice(0, MAX_ERROR_SAMPLES);
         blocks.push({
@@ -158,9 +189,15 @@ export async function runTelemetryRollup() {
     if (!_client) return { posted: false, reason: 'no-client' };
     const id = channelId();
     const lines = readLines();
-    if (lines.length === 0) return { posted: false, reason: 'empty' };
+    if (lines.length === 0) {
+        // Quiet diagnostic (not silence): lets staff tell "no data" apart from
+        // "rollup broken" when an hour goes missing.
+        console.log(`[TELEMETRY] ${new Date().toISOString()} no telemetry data this hour (skipped).`);
+        return { posted: false, reason: 'empty' };
+    }
     const { total, minAt, maxAt } = aggregate(lines);
     if (total.events === 0) {
+        console.log(`[TELEMETRY] ${new Date().toISOString()} no telemetry events this hour (skipped).`);
         writeFileSync(TELEMETRY_PATH, '');
         return { posted: false, reason: 'no-events' };
     }
