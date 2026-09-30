@@ -12,17 +12,41 @@
 
 ## Key Facts
 
-- **Bot changes must be UPLOADED to the VPS, then the bot RESTARTED — in that order.** Editing `discord-bot/*.js` (or `.env`) locally only changes the repo; the deployed bot on the VPS (`/opt/phmc-bot/discord-bot/`) keeps running the old code until you (1) `scp` the changed files up and (2) `pm2 restart phmc-bot` (plus `pm2 restart morgue-api` when `morgue-api.js` changed). No upload = no change; no restart after upload = no change either. Restart happens only on the VPS via SSH — a local `pm2`/`node` command on the user's machine does nothing to the deployed bot.
+- **`phmc.gta.world` (web app) and the VPS bot are separate deploy targets.** The web app is built + pushed by the user (`npm run build && node tools/deploy.js`). The Discord bot lives on the VPS at `/opt/phmc-bot/discord-bot/` and is deployed with the whole-tree tool below.
+- **Bot deploy is WHOLE-TREE, never file-by-file.** The VPS is a **mirror**, not a partial copy: a file there only updates when it is physically copied. Copying "just the files I edited" leaves every other file on its last hand-copied version — that is exactly how the repo and VPS silently drifted apart (2026-09-26 → 2026-09-30) and how autopsy request 10308 lost its acknowledgement. Use the tool; it syncs the entire tree and proves the result.
+- **The repo is the single source of truth.** Never edit files on the VPS in place (`nano`, OpenChamber, etc.). If an emergency VPS edit is unavoidable, port it back to the repo the same day and record it in `discord-bot/OPENCHAMBER-VPS-EDITS.md`. A bot is not "changed" until the repo has the change AND it is deployed.
+
+## Bot Deployment (discord-bot/ → VPS)
+
+**The only supported way to deploy the bot:**
+
+```bash
+npm run bot:check     # READ-ONLY parity report: what differs / is missing on the VPS
+npm run bot:deploy    # mirror the whole discord-bot/ tree + verify + restart
+```
+
+`npm run bot:deploy` (`node tools/deploy-bot.mjs --deploy`) does, in order:
+
+1. Runs `tools/check-bot-imports.mjs` — refuses to deploy if any named import across the bot does not resolve (prevents the 2026-09-26 class of bug where a committed call site's implementation was never committed).
+2. Refuses to deploy if `discord-bot/` has uncommitted changes (bypass with `--allow-dirty`).
+3. Tars the whole tree — excluding `node_modules/`, `data/`, `logs/`, `.env*`, `.browser.env`, `forum-session*.json`, `firebase-admin-key.json`, `debug/`, `.git/` — backs up the current VPS tree, uploads, and extracts over `/opt/phmc-bot/discord-bot/`.
+4. Runs `npm install` on the VPS only if `package.json` changed.
+5. Writes the deployed commit SHA + branch + timestamp to `/opt/phmc-bot/discord-bot/.deploy-revision`.
+6. Restarts `phmc-bot` (and `morgue-api` when `morgue-api.js` changed), then re-checks md5 parity and **fails loudly if the tree did not fully sync**.
+
+**Rules for an AI assistant (anti-vagueness — do not skip):**
+
+- **"The changed files" is NOT a deploy unit.** Do not `scp` individual files, and never assume the VPS matches the repo. Always run `npm run bot:check` first, then `npm run bot:deploy`.
+- **Review drift before a reconciliation.** If `bot:check` reports many differences, the VPS may hold newer/hotfixed code for some files. Diff first (`git diff`, or pull the VPS copy of a file) so a whole-tree sync does not regress it. After one clean reconciliation, the mirror keeps them aligned.
+- **`.env` / credentials are never in the tar.** Edit those on the VPS directly; they are deliberately excluded from both deploy and parity.
+- **Assume nothing is live until `bot:deploy` has run.** Editing `discord-bot/*.js` locally changes only the repo.
 
 ## Deploy Matrix
 
-What changed determines what needs deploying and who does it:
-
 | Changed files | Deploy action | Who runs it |
 |---|---|---|
-| `discord-bot/*.js` (services, commands) | SCP to VPS + `pm2 restart phmc-bot` | Claude (Bash tool — try SCP/SSH directly first) |
-| `discord-bot/morgue-api.js` | SCP to VPS + `pm2 restart morgue-api` | Claude |
-| `discord-bot/.env` | SCP to VPS + `pm2 restart phmc-bot` | Claude |
+| `discord-bot/**` (services, commands, components, templates, index.js) | `npm run bot:check` then `npm run bot:deploy` (whole tree) | Claude (Bash tool) or user |
+| `discord-bot/.env` (secrets — excluded from the tool) | Edit on the VPS, then `pm2 restart phmc-bot` | Claude over SSH |
 | `src/*` (web app components, hooks) | `npm run build && node tools/deploy.js` | User runs locally |
 | `functions/*` (Cloud Functions code) | `firebase deploy --only functions` | Claude (try Bash tool first) |
 | `functions/database.rules.json` | `firebase deploy --only database` | User (Firebase CLI auth required) |
@@ -34,11 +58,7 @@ What changed determines what needs deploying and who does it:
 
 **Localhost dev** — the user runs a Vite dev server on localhost while working. Web app changes are hot-reloaded immediately. Only push to production (`npm run build && node tools/deploy.js`) when asked.
 
-SSH key is at `~/.ssh/phmc_vps` — try SCP/SSH via the Bash tool first. If the sandbox blocks interactive auth, tell the user to prefix the command with `! `:
-
-```
-! scp -i ~/.ssh/phmc_vps discord-bot/path/file.js root@88.208.243.254:/opt/phmc-bot/discord-bot/path/file.js
-```
+SSH key is at `~/.ssh/phmc_vps`. `npm run bot:check` / `npm run bot:deploy` use it automatically (`PHMC_VPS_SSH_KEY` to override). If the sandbox blocks interactive auth, tell the user to prefix the command with `! ` (e.g. `! npm run bot:deploy`).
 
 ## Bash Sandbox Quirks
 
@@ -46,19 +66,23 @@ The Bash tool sometimes hangs on long-running commands (e.g. `firebase deploy`, 
 
 > `! firebase deploy --only functions`
 
-This sends the command through the user's local terminal instead of the sandboxed Bash tool. SCP/SSH one-liners usually work fine; the hang is most common with interactive CLI tools and long-running builds.
+This sends the command through the user's local terminal instead of the sandboxed Bash tool. SSH one-liners usually work fine; the hang is most common with interactive CLI tools and long-running builds.
 
 ## VPS Commands
 
 ```bash
-# ── File Transfer ──
-scp -i ~/.ssh/phmc_vps discord-bot/path/to/file.js root@88.208.243.254:/opt/phmc-bot/discord-bot/path/to/file.js
+# ── Bot deploy (whole tree — do NOT scp single files) ──
+npm run bot:check        # read-only parity: repo vs VPS
+npm run bot:deploy       # mirror whole discord-bot/ tree + verify + restart
 
-# ── Bot Management ──
+# ── Bot Management (logs/status are fine to SSH directly) ──
 ssh -i ~/.ssh/phmc_vps root@88.208.243.254 "cd /opt/phmc-bot/discord-bot && pm2 restart phmc-bot"
 ssh -i ~/.ssh/phmc_vps root@88.208.243.254 "pm2 status"
 ssh -i ~/.ssh/phmc_vps root@88.208.243.254 "pm2 logs phmc-bot --lines 50 --out"
 ssh -i ~/.ssh/phmc_vps root@88.208.243.254 "pm2 logs phmc-bot --lines 50 --err"
+
+# ── Deployed revision ──
+ssh -i ~/.ssh/phmc_vps root@88.208.243.254 "cat /opt/phmc-bot/discord-bot/.deploy-revision"
 
 # ── Morgue API ──
 ssh -i ~/.ssh/phmc_vps root@88.208.243.254 "cd /opt/phmc-bot/discord-bot && pm2 restart morgue-api"
@@ -68,6 +92,10 @@ ssh -i ~/.ssh/phmc_vps root@88.208.243.254 "curl http://localhost:3001/api/healt
 # ── Combined Logs (realtime) ──
 ssh -i ~/.ssh/phmc_vps root@88.208.243.254 "pm2 logs"
 ```
+
+> `.env` edits are the one exception: the deploy tool excludes secrets, so edit
+> `.env` on the VPS (or via a one-off `scp` of `.env` only) and then restart.
+> Everything under `discord-bot/` goes through `npm run bot:deploy`.
 
 ## Project Structure
 
@@ -183,7 +211,7 @@ The app has two parallel UI implementations sharing the same hooks, contexts, an
 - All hooks (`src/hooks/`), contexts (`src/contexts/`), and services (`src/services/`) are shared between both UIs — changes there affect both
 - Modals (`src/components/Modals/`) are shared, though prototype may pass different props
 
-## Staging Mode (forms_staging)
+## Bot Deploy Queue — scheduledReports Routing
 
 - Listens on `scheduledReports` in Firebase RTDB
 - Routes: `coroner_email` → PM (LSPD/LSSD/SADCR), others → PHMC forum topic, `autopsy` → Case Management reply (f=266)
@@ -232,7 +260,7 @@ A standalone Express server (`discord-bot/morgue-api.js`) that exposes morgue re
 
 Managed as a separate PM2 process (`morgue-api`) alongside the bot.
 
-**Deploying:** Upload `morgue-api.js` via SCP, then SSH in to:
+**Deploying:** ship it with the bot (`npm run bot:deploy` — it restarts `morgue-api` automatically when `morgue-api.js` changed). First-time process creation on the VPS:
 ```bash
 ssh root@88.208.243.254 "cd /opt/phmc-bot/discord-bot && npm install express && pm2 start morgue-api.js --name morgue-api"
 ```

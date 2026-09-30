@@ -30,6 +30,9 @@
   "scripts": {
     "predeploy": "npm run build",
     "deploy": "node tools/deploy.js",
+    "bot:check": "node tools/deploy-bot.mjs",
+    "bot:imports": "node tools/check-bot-imports.mjs",
+    "bot:deploy": "node tools/deploy-bot.mjs --deploy",
     "start": "vite",
     "build": "vite build && node -e \"const fs=require('fs'),p='build/assets';fs.readdirSync(p).filter(f=>f.endsWith('.map')).forEach(f=>fs.rmSync(p+'/'+f))\"",
     "test": "vitest run"

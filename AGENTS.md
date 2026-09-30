@@ -8,6 +8,12 @@
 - **Never commit a `discord.com/api/webhooks/…` URL anywhere** — source, comments, tests, fixtures, docs, plans. The URL *is* the token (post + delete). Env/`PHMC_CONFIG`/RTDB at runtime only; fail closed when unset. Full rule in `CLAUDE.md` Code Conventions. Enforced by `.githooks/pre-commit`.
 - **History:** the 2026-08-31 "main deploy" committed two live webhook tokens to the public repo (`gtaw-forms/forms`); both were abused (spam posts as "Autopsy Bot"). Purged from history + rotated — see `discord-bot/changelog.md`. The old `.env`-only wording of the secrets rule is why the review missed it: hardcoded literals in `.js` looked like "defaults", not secrets.
 
+## Hard rule — bot deploys are whole-tree, never single-file (2026-09-30)
+
+- **Deploy the bot with `npm run bot:check` then `npm run bot:deploy`** (whole `discord-bot/` tree, md5-verified). Do **not** `scp` individual files. The VPS is a mirror, not a partial copy — single-file copies are what let the repo and VPS drift apart (2026-09-26 → 2026-09-30) and cost autopsy request 10308 its acknowledgement. (One exception: `.env` secrets, which the tool deliberately excludes.)
+- **The repo is the source of truth.** Never edit the VPS in place; if forced, port the change back the same day and tick `discord-bot/OPENCHAMBER-VPS-EDITS.md`.
+- **`bot:deploy` refuses** a dirty `discord-bot/` tree and unresolved named imports (`tools/check-bot-imports.mjs`). A first deploy after a drift period is a reconciliation — review `bot:check` output before syncing. Full detail in `CLAUDE.md` → "Bot Deployment".
+
 ## Plans & planning docs
 
 - **Rule — plans live in `plan/`:** all plans and plan files go in a dedicated `plan/` folder at the repo root (e.g. `plan/plan.md`, `plan/<topic>-plan.md`). The whole `plan/` folder is **gitignored by default** — never commit plan files. Keep them local-only, or mirror the ones the bot needs to the VPS under `discord-bot/debug/`.
@@ -17,11 +23,9 @@
 - **`plan/plan.md`** — Patient Name Autocomplete for Medical Records. VPS copy at `/opt/phmc-bot/discord-bot/debug/patient-name-autocomplete-plan.md`.
 - **`plan/autopsy-caselink-webhook-plan.md`** — CASELINK requester completion webhooks + SADCR/DAO registry crossposting. SHIPPED & live (2026-08-26); plan file retained for the staging-runbook history + build checklist.
 
-## Next session — pending deploys (2026-08-11)
+## Historical — pending deploys (2026-08-11, superseded)
 
-- **Web app rebuild + deploy needed (`npm run build && node tools/deploy.js`, owner action)** to ship the last batch: EMS dev-protocols VPS hosting (`DataContext` fetches via `getProtocolsDev`), agency-credentials non-employee gate, Business Card modal, morgue "Request Update" ping, BaseModal display fix, Discord-Integration removal, legacy morgue/EMS/SidebarNav retirement.
-- **After deploy, clear the localhost LSCC cache once** (`firebaseCache_lscc*` keys) so the dev EMS protocols show.
-- **EMS dev protocols live on the VPS, not RTDB** — `data/protocols-dev.json` → morgue-api `GET /api/protocols-dev` → `getProtocolsDev` function. Re-seed any doc changes: `node tools/seed-protocols-dev.mjs` → SCP `protocols_dev.json` to VPS `data/protocols-dev.json` → `pm2 restart morgue-api`. No Firebase writes, no `lsccDataVersion` bump.
+- Shipped long ago; kept only for the reusable pointer: **EMS dev protocols live on the VPS, not RTDB** — `data/protocols-dev.json` → morgue-api `GET /api/protocols-dev` → `getProtocolsDev` function. Re-seed a doc change: `node tools/seed-protocols-dev.mjs` → upload `protocols_dev.json` to VPS `data/protocols-dev.json` → `pm2 restart morgue-api`. No Firebase writes, no `lsccDataVersion` bump.
 
 ## Field semantics (why certain fields exist)
 
@@ -40,7 +44,7 @@
 - **Re-scheduling a bot report**: set `hasdeployed:false` + `deployStatus:'pending'` in `scheduledReports`, then restart the bot — its cold-load treats it as pending and re-queues.
 - **Bot recovery sweeps** run sequentially via `runRecoveryHeartbeat`; the startup sweep is delayed 30s so the shared Playwright browser's startup tasks settle.
 - **Reports already posted to the forum by the bot are not retro-fixed** by DB/script repairs — those need a manual forum edit.
-- **Deploying the web app is a user action** (`npm run build && node tools/deploy.js`); bot + functions are agent-deployable via SCP/`firebase deploy` (see CLAUDE.md).
+- **Deploying the web app is a user action** (`npm run build && node tools/deploy.js`); the bot deploys via `npm run bot:deploy` (whole-tree mirror, agent-deployable); functions via `firebase deploy` (see CLAUDE.md).
 - **Legacy `/form-handler` is decommissioned (2026-08-11)** — the route redirects to `/ui-prototype` and the component is no longer bundled. Don't re-add it; global CSS (`App.css`, `buttons.css`, bootstrap) now lives in `src/index.jsx`.
 
 ## Recent fixes — blank coroner credentials (2026-08-11)

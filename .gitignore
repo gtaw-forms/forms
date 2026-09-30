@@ -45,7 +45,10 @@ firebase-admin-key.json
 .env.sentry-build-plugin
 
 # tools
-tools/
+tools/*
+# deploy-critical bot tooling IS tracked (documented in CLAUDE.md → Bot Deployment)
+!tools/deploy-bot.mjs
+!tools/check-bot-imports.mjs
 tools/service-account.json
 docs/
 
