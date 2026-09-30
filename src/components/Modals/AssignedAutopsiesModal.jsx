@@ -73,7 +73,7 @@ const AssignedAutopsiesModal = ({ show, onClose, onLoadCase, factionsData, loadM
                         if (v.caseState === 'multi' && v.cases) {
                             const entries = [];
                             Object.entries(v.cases).forEach(([ci, c]) => {
-                                if (!c.assignedTo) return;
+                                if (!c.assignedTo || c.completedAt) return;
                                 const parsedTitle = parseCaseTitle(c.caseTitle || '');
                                 entries.push({
                                     id: `${k}/cases/${ci}`,
