@@ -7,8 +7,8 @@
  */
 
 import { sendLogMessage } from './logChannel.js';
-import { notifyAssignmentWebhook, assignmentWebhookConfigured, forwardAssignmentWebhook, getForwardWebhookUrl, buildContent, buildCaseEmbed, buildComponents, deathTypeWindow } from './assignmentWebhook.js';
-import { postAutopsyNotice } from './phmcChannels.js';
+import { deathTypeWindow } from './assignmentWebhook.js';
+import { postMassAssignmentPanel } from './massAssignmentPanel.js';
 
 /**
  * Look up a Discord user ID for a given forum username.
@@ -42,12 +42,40 @@ export async function setDiscordMapping(db, forumName, discordUserId) {
 }
 
 /**
- * Send an assignment notification to the ME.
+ * Post the mass-assignment panel — Components V2 first (live supervisor
+ * reassign + Load links + countdowns), with the legacy embed panel as
+ * fail-closed fallback (V2 over-budget, send failure). When either panel
+ * posts, callers must skip the per-body notifyAssignment pings so each ME is
+ * tagged exactly once.
  *
- * When ASSIGNMENT_WEBHOOK_URL is configured, the ME is pinged on the assignment
- * webhook (rich embed + View Case / PHMC Forms buttons) and the log-channel message
- * is posted WITHOUT the mention so the ME is never pinged twice. Without a webhook
- * config it falls back to the legacy log-channel ping.
+ * @param {import('firebase-admin').database.Database|null} db
+ * @param {object} client — logged-in discord.js Client (falls back to registered)
+ * @param {Array} assignments — raw entries (see massAssignmentPanel.js header)
+ * @param {object} [opts] — { channelId?, requestTopicId?, noPing?, devReassign? }
+ *   devReassign defaults ON (live supervisor button); showcase passes false.
+ */
+export async function notifyMassAssignmentPanel(db, client, assignments, opts = {}) {
+    try {
+        const { postMassPanelV2 } = await import('./massPanelV2.js');
+        const res = await postMassPanelV2(db, client, assignments, {
+            channelId: opts.channelId,
+            requestTopicId: opts.requestTopicId,
+            noPing: opts.noPing,
+            devReassign: opts.devReassign !== false,
+        });
+        if (res && res.posted) return res;
+        console.warn(`[ME-NOTIFY] V2 mass panel not posted (${(res && res.reason) || 'unknown'}) — legacy fallback`);
+    } catch (e) {
+        console.warn(`[ME-NOTIFY] V2 mass panel error (${e.message}) — legacy fallback`);
+    }
+    return postMassAssignmentPanel(db, client, assignments, opts);
+}
+
+/**
+ * Send an assignment notification to the ME — exactly ONE ping, via the V2
+ * single-assignment panel. (Legacy embed sends were removed: they fired
+ * alongside the V2 panel and double-pinged the ME.) A mention-free trail
+ * line still goes to the log channel.
  *
  * @param {import('firebase-admin').database.Database} db
  * @param {string} assignedName — forum username of the ME
@@ -59,64 +87,41 @@ export async function setDiscordMapping(db, forumName, discordUserId) {
  * @param {string} [options.ooc] — decedent OOC name (webhook embed)
  * @param {string|number} [options.caseNumber]
  * @param {string} [options.deathType] — "CK"/"PK" for the wait window label
+ * @param {string} [options.requestTopicId] — autopsy-requested/<id> key; links the V2 panel's Info/Reassign buttons to the live row
+ * @param {string|number} [options.caseIdx] — mass sub-case index (V2 reassign target)
+ * @param {object} [options.client] — discord.js Client override for the V2 post (falls back to registered)
  */
 export async function notifyAssignment(db, assignedName, caseTitle, caseUrl, {
-    isMassAutopsy = false, decedent, ooc, caseNumber, deathType, label, embedTitle,
+    isMassAutopsy = false, decedent, ooc, caseNumber, deathType, label, embedTitle, action,
+    requestTopicId, caseIdx, client: discordClient,
 } = {}) {
     try {
-        const discordId = await getDiscordId(db, assignedName);
+        const buttonTitle = embedTitle || (isMassAutopsy ? '🔬 Mass Autopsy Assigned' : '🔬 Autopsy Case Assigned');
+        // Single V2 panel: the ONLY assignment ping. The legacy embed sends
+        // (assignment webhook, auto-forward, bot-native #autopsies post) were
+        // removed — they double-pinged alongside this panel (seen live: one
+        // legacy embed + one V2 panel for the same case). Manual
+        // /forward-autopsy-notify is untouched (separate on-demand path).
+        try {
+            const { postSinglePanelV2 } = await import('./singlePanelV2.js');
+            await postSinglePanelV2(db, discordClient || null, {
+                me: assignedName, caseNumber, caseTitle, decedent, ooc, caseUrl,
+                deathType, deadline: deathTypeWindow(deathType),
+                title: buttonTitle, action,
+            }, { requestTopicId, caseIdx });
+        } catch (e) {
+            console.warn(`[ME-NOTIFY] Single V2 panel skipped for ${assignedName}: ${e.message}`);
+        }
+
+        // Staff trail in the log channel — never mentions (the V2 panel owns
+        // the single ping, so any mention here would double-ping).
         const resolvedLabel = label || (isMassAutopsy ? 'Mass Autopsy' : 'Autopsy Assignment');
         const titleLine = caseUrl ? `[${caseTitle}](${caseUrl})` : caseTitle;
-
-        const webhookMode = assignmentWebhookConfigured();
-        if (webhookMode) {
-            await notifyAssignmentWebhook({
-                me: assignedName, discordId, caseTitle, caseNumber,
-                decedent, ooc, caseUrl, deathType,
-                title: embedTitle || (isMassAutopsy ? '🔬 Mass Autopsy Assigned' : '🔬 Autopsy Case Assigned'),
-            });
-        }
-
-        // Auto-forward to the PHMC Discord forwarding webhook (same template as
-        // /forward-autopsy-notify) so assigned autopsies are posted there without
-        // a manual command. Non-blocking — failures are logged, never thrown.
-        try {
-            await forwardAssignmentWebhook(getForwardWebhookUrl(), {
-                me: assignedName, discordId, caseTitle, caseNumber,
-                decedent, ooc, caseUrl, deathType,
-                title: embedTitle || (isMassAutopsy ? '🔬 Mass Autopsy Assigned' : '🔬 Autopsy Case Assigned'),
-            });
-        } catch (e) {
-            console.warn(`[ME-NOTIFY] Auto-forward failed for ${assignedName}: ${e.message}`);
-        }
-
-        // Bot-native post to the PHMC #autopsies channel (same template as the
-        // webhook ping, minus the webhook-only username). Gated by
-        // PHMC_CHANNEL_SEND_ENABLED and skipped in DEV TEST mode — see
-        // postAutopsyNotice. Audit-trailed there on success.
-        try {
-            const buttonTitle = embedTitle || (isMassAutopsy ? '🔬 Mass Autopsy Assigned' : '🔬 Autopsy Case Assigned');
-            await postAutopsyNotice({
-                content: buildContent({ me: assignedName, discordId, label }),
-                allowed_mentions: { parse: ['users'] },
-                embeds: [buildCaseEmbed({
-                    me: assignedName, caseTitle, caseNumber, decedent, ooc, caseUrl,
-                    deadline: deathTypeWindow(deathType),
-                    title: buttonTitle,
-                })],
-                components: buildComponents({ caseUrl }),
-            }, `ME ${assignedName} | case #${caseNumber ?? '?'} ${caseTitle || ''}`.trim());
-        } catch (e) {
-            console.warn(`[ME-NOTIFY] Bot-native autopsies post failed for ${assignedName}: ${e.message}`);
-        }
-
-        // Webhook mode already pinged — never mention again here.
-        const mention = (webhookMode || !discordId) ? `**${assignedName}**` : `<@${discordId}>`;
         await sendLogMessage(
-            `${mention} — **${resolvedLabel}**: ${titleLine}`,
+            `**${assignedName}** — **${resolvedLabel}**: ${titleLine}`,
             null
         );
-        console.log(`[ME-NOTIFY] Notified ${assignedName} → ${discordId ? `<@${discordId}>` : '(no Discord mapping)'} for ${caseTitle}${webhookMode ? ' (webhook ping)' : ''}`);
+        console.log(`[ME-NOTIFY] Notified ${assignedName} for ${caseTitle} (V2 panel)`);
     } catch (err) {
         console.warn(`[ME-NOTIFY] Failed to notify ${assignedName}: ${err.message}`);
     }

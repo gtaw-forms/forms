@@ -103,6 +103,36 @@ function factionFromDept(deptRaw) {
     return '';
 }
 
+/**
+ * Map a requester "Rank" field onto a faction key. Fallback for requests whose
+ * title carries no faction tag AND whose department wording the dept matcher
+ * misses (e.g. LSSD's "Central Patrol Division", LSPD's "Metro Division").
+ * Rank titles are a more reliable agency signal (Sheriff/Deputy → LSSD,
+ * Correctional → SADCR, District Attorney → DAO, Police/Officer → LSPD).
+ * Order matters — check the specific agencies before the broad LSPD keywords
+ * (a "Correctional Officer" is SADCR, not LSPD). @returns as factionFromDept.
+ */
+function factionFromRank(rankRaw) {
+    const r = String(rankRaw || '').toLowerCase();
+    if (!r) return '';
+    if (/\bdistrict\s+attorney\b|\bd\.?\s*a\b|\bdeputy\s+da\b/.test(r)) return 'DAO';
+    if (/\bcorrectional\b|\bcorrections\b/.test(r)) return 'SADCR';
+    if (/sheriff|undersheriff/.test(r)) return 'LSSD';
+    if (/\bpolice\b|\bofficer\b/.test(r)) return 'LSPD';
+    return '';
+}
+
+/**
+ * Resolve the requesting faction from the request body, preferring the
+ * department field then falling back to the rank field. Both come straight
+ * from the parsed BBCode (parseAutopsyRequestBbcode).
+ * @param {{ dept?: string, rank?: string }} raw
+ * @returns {string} 'LSSD' | 'LSPD' | 'SADCR' | 'DAO' | ''
+ */
+function resolveFactionFromRequest({ dept, rank } = {}) {
+    return factionFromDept(dept) || factionFromRank(rank);
+}
+
 // ── State ──
 
 let _monitorTimer = null;
@@ -562,7 +592,7 @@ export async function checkForNewRequests() {
                                 parsed = {
                                     name: firstMass.name,
                                     oocName: firstMass.oocName,
-                                    faction: factionFromDept(massProbe.shared.requesterDept || '') || (massTitle ? massTitle.agency : ''),
+                                    faction: resolveFactionFromRequest({ dept: massProbe.shared.requesterDept, rank: massProbe.shared.requesterRank }) || (massTitle ? massTitle.agency : ''),
                                 };
                                 splitDecedents(parsed);
                                 parsedBbFields = { ...massProbe.shared };
@@ -572,9 +602,14 @@ export async function checkForNewRequests() {
                         if (!parsed) {
                         const bodyFields = parseAutopsyRequestBbcode(bbcode);
                         const deptRaw = (bodyFields.requesterDept || '').trim();
+                        const rankRaw = (bodyFields.requesterRank || '').trim();
                         const nameRaw = (bodyFields.decedentName || '').trim();
-                        // Registry factions (LSSD/LSPD/SADCR/DAO) — see factionFromDept.
-                        const hasDept = !!factionFromDept(deptRaw);
+                        // Registry factions (LSSD/LSPD/SADCR/DAO) — dept first,
+                        // then rank as the fallback (title may lack a faction tag
+                        // and dept wording may miss the matcher, e.g. LSSD's
+                        // "Central Patrol Division" → rank "Deputy Sheriff").
+                        const resolvedFaction = resolveFactionFromRequest({ dept: deptRaw, rank: rankRaw });
+                        const hasDept = !!resolvedFaction;
                         const hasName = !!nameRaw;
 
                         // Reject template/placeholder bodies — not real requests.
@@ -602,7 +637,7 @@ export async function checkForNewRequests() {
                             parsed = {
                                 name: cleanName,
                                 oocName: (oocMatch && oocMatch[1] ? oocMatch[1].trim() : ''),
-                                faction: factionFromDept(deptRaw),
+                                faction: resolvedFaction,
                             };
                             splitDecedents(parsed);
                             parsedBbFields = bodyFields;

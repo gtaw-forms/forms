@@ -82,6 +82,73 @@ function hasAlternativeInRotation(rotation, position, skipSteps, activeCounts, l
 }
 
 /**
+ * Build a one-read snapshot of the assignments subtree: active case counts
+ * plus lastAssigned timestamps, both keyed by lowercased username.
+ * Used by the batch picker so N bodies in one tick share a single snapshot.
+ */
+async function getAssignmentSnapshot(db) {
+    const snap = await db.ref('autopsy-requests/assignments').once('value');
+    const data = snap.val() || {};
+    const counts = {};
+    const lastAssigned = {};
+    for (const [name, entry] of Object.entries(data)) {
+        counts[name] = entry.active || 0;
+        lastAssigned[name] = entry.lastAssigned || 0;
+    }
+    return { counts, lastAssigned };
+}
+
+/**
+ * Fair-share deal for mass batches: pick the eligible (non-LOA) ME with the
+ * lowest SIMULATED active count, tie-broken by oldest lastAssigned
+ * (never-assigned counts as oldest), then rotation-list order. Unlike the
+ * single-case picker there is deliberately NO active>0 skip and NO 48h
+ * recency skip — every ME shares the load until the batch is exhausted, with
+ * prior assignments counting as load (busiest MEs dealt last). Returns the
+ * pointer advanced past the dealt ME.
+ *
+ * @returns {{ name: string|null, newPos: number }}
+ */
+function dealOneSim(list, pos, simCounts, simLast, loaSet) {
+    let best = null;
+    let bestCount = Infinity;
+    let bestLast = Infinity;
+    let bestIdx = Infinity;
+    for (let i = 0; i < list.length; i++) {
+        const m = list[i];
+        const ml = m.toLowerCase();
+        if (loaSet.has(ml)) continue;
+        const c = simCounts[ml] || 0;
+        const ts = simLast[ml] || 0;
+        if (c < bestCount || (c === bestCount && (ts < bestLast || (ts === bestLast && i < bestIdx)))) {
+            best = m;
+            bestCount = c;
+            bestLast = ts;
+            bestIdx = i;
+        }
+    }
+    if (!best) return { name: null, newPos: pos };
+    return { name: best, newPos: (bestIdx + 1) % list.length };
+}
+
+/**
+ * Resolve one per-body supervised "ASSIGNED:" override against the LOA set.
+ * Strips the trailing "for Final Autopsy Exams..." marker (same pattern the
+ * single-case monitor uses). Returns the override name, or null when empty
+ * or LOA'd — null means the caller falls back to rotation for that body only.
+ *
+ * @param {string} overrideRaw — per-body override text (may include the marker suffix)
+ * @param {Set<string>} loaSet — lowercased usernames on LOA
+ * @returns {string|null}
+ */
+export function resolveAssignedOverride(overrideRaw, loaSet) {
+    const name = String(overrideRaw || '').replace(/\s+for\s+Final\s+Autopsy\s+Exams.*$/i, '').trim();
+    if (!name) return null;
+    if (loaSet && loaSet.has(name.toLowerCase())) return null;
+    return name;
+}
+
+/**
  * DEV TEST MODE — runtime-forced ME assignment for safe pipeline testing.
  *
  * When AUTOPSY_DEV_TEST=true, EVERY new autopsy case (fair rotation, surge and
@@ -213,6 +280,177 @@ export async function selectME(db, topicId, caseNum) {
     await recordAssignment(db, best, topicId, caseNum);
     console.log(`[ROTATION] SURGE — assigned ${best} (${bestCount} active cases, position unchanged)`);
     return best;
+}
+
+/**
+ * Batch-aware ME picker for mass autopsy ticks (N bodies, one tick).
+ *
+ * Reads rotation + assignments + LOA ONCE, then simulates N picks in-memory
+ * so bodies in one tick never race selectME() on stale counts. Each simulated
+ * pick feeds its result back into the in-memory counts/timestamps/position
+ * before the next body is picked.
+ *
+ * FAIR-SHARE DEALING (deliberately different from selectME): every body goes
+ * to the eligible non-LOA ME with the lowest simulated active count,
+ * tie-broken by oldest lastAssigned then rotation-list order. There is NO
+ * active>0 skip and NO 48h recency skip — prior assignments count as load
+ * (busiest MEs are dealt last) but never exclude an ME, so 5 bodies across
+ * 5 MEs always land one per ME and larger batches wrap around evenly. Null
+ * only when every ME is on LOA. DEV TEST MODE outranks everything: every slot
+ * resolves to AUTOPSY_DEV_TEST_ME.
+ *
+ * Per-body ASSIGNED overrides: pass one entry per body in opts.overrides
+ * (raw marker text or plain name; missing entries = rotation). A valid
+ * non-LOA override wins for THAT body only and does not advance the rotation
+ * pointer (same as the single-case monitor path). A LOA'd override resolves
+ * to null via resolveAssignedOverride() so that body falls back to rotation
+ * instead of forcing all N bodies onto one ME.
+ *
+ * WRITE POLICY — default is read-only (no Firebase writes), safe for tests
+ * and dry-runs. Pass opts.commit=true ONLY on a live tick, with
+ * opts.topicIds/opts.caseNums aligned per body, to persist all picks in one
+ * multi-path update plus a single rotation/position write.
+ *
+ * TEST PINS — during maintenance testing keep commit off (default) and pin:
+ *   AUTOPSY_DEV_TEST=true + AUTOPSY_DEV_TEST_ME=Alyson Frost (or Anne Carter,
+ *   or Arthur Blackwood). Names come from env only, never hardcoded here.
+ *
+ * @param {import('firebase-admin').database.Database} db
+ * @param {number} count — number of bodies to pick for
+ * @param {object} [opts]
+ * @param {Array<string>} [opts.overrides] — per-body ASSIGNED override text
+ * @param {boolean} [opts.commit=false] — persist picks + position (live ticks only)
+ * @param {Array<string>} [opts.topicIds] — required with commit for case records
+ * @param {Array<string>} [opts.caseNums] — case numbers aligned with topicIds
+ * @param {object} [opts.positionOut] — optional out-param; receives { value }
+ *   with the simulated rotation position after all picks (null in dev-test
+ *   mode where the pointer is untouched). Lets callers that persist picks
+ *   themselves (e.g. massAutopsy.js per-body loop) advance the pointer once.
+ * @param {number} [opts.now] — clock override (tests); defaults to Date.now()
+ * @returns {Promise<Array<string|null>>} assigned ME per body (null = none available)
+ */
+export async function selectMEsForMass(db, count, opts = {}) {
+    const n = Math.max(0, Math.floor(Number(count) || 0));
+    const now = typeof opts.now === 'number' ? opts.now : Date.now();
+    const overrides = Array.isArray(opts.overrides) ? opts.overrides : [];
+    const commit = opts.commit === true;
+    const setPositionOut = (v) => {
+        if (opts && typeof opts.positionOut === 'object' && opts.positionOut !== null) {
+            try { opts.positionOut.value = v; } catch { /* ignore */ }
+        }
+    };
+
+    // DEV TEST MODE outranks rotation + overrides, mirroring selectME().
+    const devName = getDevTestME();
+    if (devName) {
+        console.log(`[ROTATION] DEV TEST — batch assigning ${n} bodies to ${devName}`);
+        const picks = Array(n).fill(devName);
+        setPositionOut(null);
+        if (commit) {
+            const topicIds = Array.isArray(opts.topicIds) ? opts.topicIds : [];
+            const caseNums = Array.isArray(opts.caseNums) ? opts.caseNums : [];
+            for (let k = 0; k < n; k++) {
+                if (!topicIds[k]) continue;
+                await recordAssignment(db, devName, topicIds[k], caseNums[k] || '');
+            }
+        }
+        return picks;
+    }
+
+    const rotation = await getRotation(db);
+    const loaSet = await getLoaSet(db);
+    if (!rotation) {
+        console.warn('[ROTATION] No rotation list configured — use /rotation-set to create one');
+        return Array(n).fill(null);
+    }
+
+    const { list } = rotation;
+    let pos = rotation.position;
+    const snapshot = await getAssignmentSnapshot(db);
+    const simCounts = { ...snapshot.counts };
+    const simLast = { ...snapshot.lastAssigned };
+
+    const picks = [];
+    for (let k = 0; k < n; k++) {
+        const rawOverride = k < overrides.length ? overrides[k] : '';
+        const hasOverrideText = String(rawOverride || '').trim().length > 0;
+        const resolved = resolveAssignedOverride(rawOverride, loaSet);
+        if (resolved) {
+            // Per-body override: wins for this body only, pointer untouched.
+            picks.push(resolved);
+            const ol = resolved.toLowerCase();
+            simCounts[ol] = (simCounts[ol] || 0) + 1;
+            simLast[ol] = now;
+            console.log(`[ROTATION] Batch [${k + 1}/${n}] Assigned-override ME: ${resolved} (position unchanged)`);
+            continue;
+        }
+        if (hasOverrideText) {
+            console.warn(`[ROTATION] Batch [${k + 1}/${n}] Assigned-override is on LOA — falling back to rotation for this body only`);
+        }
+        const pick = dealOneSim(list, pos, simCounts, simLast, loaSet);
+        picks.push(pick.name);
+        pos = pick.newPos;
+        if (pick.name) {
+            const ml = pick.name.toLowerCase();
+            simCounts[ml] = (simCounts[ml] || 0) + 1;
+            simLast[ml] = now;
+            console.log(`[ROTATION] Batch [${k + 1}/${n}] Dealt ${pick.name} (load now ${simCounts[ml]})`);
+        } else {
+            console.warn(`[ROTATION] Batch [${k + 1}/${n}] All MEs are on LOA — cannot assign`);
+        }
+    }
+
+    if (commit) {
+        const topicIds = Array.isArray(opts.topicIds) ? opts.topicIds : [];
+        const caseNums = Array.isArray(opts.caseNums) ? opts.caseNums : [];
+        const updates = {};
+        const increments = {};
+        // Merge records sharing one ME+topic (mass single-thread: N bodies, one
+        // topicId) so the multi-path update keeps one record per key with a
+        // bodyCount/bodyIndexes manifest instead of last-wins data loss.
+        const merged = new Map();
+        picks.forEach((name, k) => {
+            if (!name) return;
+            const key = name.toLowerCase();
+            increments[key] = (increments[key] || 0) + 1;
+            if (topicIds[k]) {
+                const mKey = `${key}|${topicIds[k]}`;
+                if (!merged.has(mKey)) {
+                    merged.set(mKey, {
+                        key,
+                        topicId: topicIds[k],
+                        assignedAt: now,
+                        caseNum: caseNums[k] || '',
+                        bodyCount: 0,
+                        bodyIndexes: [],
+                    });
+                }
+                const rec = merged.get(mKey);
+                rec.bodyCount += 1;
+                rec.bodyIndexes.push(k);
+            }
+            updates[`autopsy-requests/assignments/${key}/lastAssigned`] = now;
+        });
+        for (const rec of merged.values()) {
+            const payload = { assignedAt: rec.assignedAt, caseNum: rec.caseNum };
+            if (rec.bodyCount > 1) {
+                payload.bodyCount = rec.bodyCount;
+                payload.bodyIndexes = rec.bodyIndexes;
+            }
+            updates[`autopsy-requests/assignments/${rec.key}/cases/${rec.topicId}`] = payload;
+        }
+        for (const [key, total] of Object.entries(increments)) {
+            updates[`autopsy-requests/assignments/${key}/active`] = { '.sv': { increment: total } };
+        }
+        if (Object.keys(updates).length > 0) {
+            await db.ref().update(updates);
+        }
+        await db.ref('autopsy-requests/rotation/position').set(pos);
+        console.log(`[ROTATION] Batch committed ${picks.filter(Boolean).length}/${n} picks, new pos: ${pos}`);
+    }
+    setPositionOut(pos);
+
+    return picks;
 }
 
 /**
