@@ -2,8 +2,10 @@
 
 > **🚧 ACTIVE WORK — test-strategy plan (`plan/test-strategy-plan.md`, Phases T1+T2).**
 > Supervisor: test-strategy session (deepseek). Coordinate file touches with it;
-> no out-of-plan refactors, no pushes and no `node tools/deploy.js` without the
-> owner's explicit go-ahead. (The eslint-cleanup banner was retired with that plan.)
+> no out-of-plan refactors. (The eslint-cleanup banner was retired with that plan.)
+>
+> **Deploy policy:** the agent may deploy and push by default (web app, bot,
+> functions) — hold off only when explicitly told not to for a given change.
 
 > **PHMC = Pillbox Hill Medical Center** — the faction/organization this app and the bot serve.
 >
@@ -47,16 +49,16 @@ npm run bot:deploy    # mirror the whole discord-bot/ tree + verify + restart
 |---|---|---|
 | `discord-bot/**` (services, commands, components, templates, index.js) | `npm run bot:check` then `npm run bot:deploy` (whole tree) | Claude (Bash tool) or user |
 | `discord-bot/.env` (secrets — excluded from the tool) | Edit on the VPS, then `pm2 restart phmc-bot` | Claude over SSH |
-| `src/*` (web app components, hooks) | `npm run build && node tools/deploy.js` | User runs locally |
+| `src/*` (web app components, hooks) | `npm run build && node tools/deploy.js` | Claude (or user) |
 | `functions/*` (Cloud Functions code) | `firebase deploy --only functions` | Claude (try Bash tool first) |
-| `functions/database.rules.json` | `firebase deploy --only database` | User (Firebase CLI auth required) |
-| `src/*` + production push | `npm run build && node tools/deploy.js` | User only — may want extra testing first |
+| `functions/database.rules.json` | `firebase deploy --only database` | Claude if CLI authed, else user |
+| `src/*` + production push | `npm run build && node tools/deploy.js` | Claude (hold off only if explicitly told not to) |
 
 **When multiple layers change** (e.g., bot + web app), both changelogs must be updated:
 - `changelog.md` (root — web app changes)
 - `discord-bot/changelog.md` (bot changes)
 
-**Localhost dev** — the user runs a Vite dev server on localhost while working. Web app changes are hot-reloaded immediately. Only push to production (`npm run build && node tools/deploy.js`) when asked.
+**Localhost dev** — the user runs a Vite dev server on localhost while working. Web app changes are hot-reloaded immediately. Production pushes (`npm run build && node tools/deploy.js`) are allowed by default; hold off only when explicitly told not to.
 
 SSH key is at `~/.ssh/phmc_vps`. `npm run bot:check` / `npm run bot:deploy` use it automatically (`PHMC_VPS_SSH_KEY` to override). If the sandbox blocks interactive auth, tell the user to prefix the command with `! ` (e.g. `! npm run bot:deploy`).
 

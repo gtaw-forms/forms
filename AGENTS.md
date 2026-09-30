@@ -44,7 +44,7 @@
 - **Re-scheduling a bot report**: set `hasdeployed:false` + `deployStatus:'pending'` in `scheduledReports`, then restart the bot — its cold-load treats it as pending and re-queues.
 - **Bot recovery sweeps** run sequentially via `runRecoveryHeartbeat`; the startup sweep is delayed 30s so the shared Playwright browser's startup tasks settle.
 - **Reports already posted to the forum by the bot are not retro-fixed** by DB/script repairs — those need a manual forum edit.
-- **Deploying the web app is a user action** (`npm run build && node tools/deploy.js`); the bot deploys via `npm run bot:deploy` (whole-tree mirror, agent-deployable); functions via `firebase deploy` (see CLAUDE.md).
+- **Web app, bot and functions are agent-deployable** (`npm run build && node tools/deploy.js`, `npm run bot:deploy`, `firebase deploy`); hold off only when explicitly told not to (see CLAUDE.md).
 - **Legacy `/form-handler` is decommissioned (2026-08-11)** — the route redirects to `/ui-prototype` and the component is no longer bundled. Don't re-add it; global CSS (`App.css`, `buttons.css`, bootstrap) now lives in `src/index.jsx`.
 
 ## Recent fixes — blank coroner credentials (2026-08-11)
