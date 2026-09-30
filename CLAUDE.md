@@ -60,6 +60,30 @@ npm run bot:deploy    # mirror the whole discord-bot/ tree + verify + restart
 
 SSH key is at `~/.ssh/phmc_vps`. `npm run bot:check` / `npm run bot:deploy` use it automatically (`PHMC_VPS_SSH_KEY` to override). If the sandbox blocks interactive auth, tell the user to prefix the command with `! ` (e.g. `! npm run bot:deploy`).
 
+## Writing Commands — Scripts, Not One-Liners
+
+**Default to a script for anything beyond a trivial one-liner.** PowerShell 5.1
+mangles `$`, backticks, `$(...)`, nested quotes and inline `node -e` JS before
+they reach the VPS; fighting it wastes turns and causes silent breakage. A script
+file is also reviewable, re-runnable, and copy/paste-safe.
+
+Workflow:
+
+1. **Write** the script to `C:\Users\cross\AppData\Local\Temp\opencode\` — a Node
+   `.mjs` when it touches Firebase/HTTP/JSON, a `.sh` for pure remote shell.
+2. **Run** it (`node <script>.mjs`, or `scp` it up and `ssh … "bash /tmp/<script>.sh"`).
+3. **Promote or delete** — every script ends one of two ways:
+   - **Reusable** (a repair, probe, or deploy helper you would run again) → move it
+     into the repo and commit it. Reusable bot/VPS tooling lives in `tools/` (add a
+     `.gitignore` negation under the otherwise-ignored `tools/`, as done for
+     `tools/deploy-bot.mjs` and `tools/check-bot-imports.mjs`).
+   - **One-shot** → delete it (the local temp copy and any VPS copy). Do not leave
+     dead scripts behind.
+
+Inline one-liners stay fine only for trivial, quoting-free commands (`ls`,
+`pm2 status`, `git log`). The `!`-prefix escape hatch below is for commands that
+must run in the user's own terminal.
+
 ## Bash Sandbox Quirks
 
 The Bash tool sometimes hangs on long-running commands (e.g. `firebase deploy`, `npm build`, SSH sessions). If a command doesn't return within ~30 seconds, prompt the user to run it themselves by prefixing with `! `:
