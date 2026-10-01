@@ -11,6 +11,7 @@ const STATIC_AGENCY_NAMES = {
     LSGOV: 'Los Santos City Government',
     PHMC: 'Pillbox Hill Medical Center',
     SANFIRE: 'State Fire Marshal',
+    SAAA: 'San Andreas Aviation Administration',
 };
 const getDepartmentFullName = (departmentShortCode, agencyDataStore) => {
     if (!departmentShortCode) return departmentShortCode;

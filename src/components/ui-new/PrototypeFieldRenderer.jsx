@@ -415,6 +415,7 @@ const PrototypeFieldRenderer = ({
           { value: 'lssd', label: 'Los Santos County Sheriffs Department' },
           { value: 'sadcr', label: 'San Andreas Department of Corrections and Rehabilitation' },
           { value: 'dao', label: 'District Attorney Office' },
+          { value: 'saaa', label: 'San Andreas Aviation Administration' },
         ];
         return (
           <div className="field full">
@@ -1122,6 +1123,7 @@ const OfficerSearch = ({ field, value, onChange, allValues, onFieldChange = () =
     { value: 'lssd', label: 'Los Santos County Sheriffs Department' },
     { value: 'sadcr', label: 'San Andreas Department of Corrections and Rehabilitation' },
     { value: 'dao', label: 'District Attorney Office' },
+    { value: 'saaa', label: 'San Andreas Aviation Administration' },
   ];
   const currentDept = allValues?.department || allValues?.requestingOfficerDepartment || '';
   const deptRaw = currentDept && typeof currentDept === 'object' ? (currentDept.value || currentDept.label || '') : currentDept;

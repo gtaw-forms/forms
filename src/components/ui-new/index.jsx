@@ -1453,7 +1453,7 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
               <VehicleImpound showNotification={showNotification} isAuthenticated={isAuthenticated} characterName={characterName} ucpName={realUser?.username || ''} isPhmcMember={isPhmcMember} accessLevel={realAccessLevel} />
             ) : activeView === 'morgue' ? (
               <MorgueBrowser records={morgueRecords || []} isLoading={morgueLoading || isLoadingData} loadRecords={loadMorgueRecords} showNotification={showNotification}
-                isAuthenticated={isAuthenticated} characterName={characterName} user={realUser} />
+                isAuthenticated={isAuthenticated} characterName={characterName} user={realUser} accessLevel={realAccessLevel} />
             ) : activeForm ? (
               <>
                 <div className="doc-header">

@@ -49,6 +49,8 @@ tools/*
 # deploy-critical bot tooling IS tracked (documented in CLAUDE.md → Bot Deployment)
 !tools/deploy-bot.mjs
 !tools/check-bot-imports.mjs
+# morgue street-bubble coverage checker (read-only probe; reused by the feature)
+!tools/morgue-street-coverage.mjs
 tools/service-account.json
 docs/
 

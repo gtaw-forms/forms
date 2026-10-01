@@ -4,18 +4,26 @@ import { useData, telemetryUserLabel } from '../../contexts/DataContext';
 import { ref, onValue } from 'firebase/database';
 import { database } from '../../firebase';
 import RequestAutopsyModal from './RequestAutopsyModal';
+import MorgueBodyMapModal from './MorgueBodyMapModal';
 
 const PAGE_SIZE = 50;
 const IS_LOCALHOST = window.location.hostname === 'localhost';
 
-const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAuthenticated, characterName, user }) => {
+const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAuthenticated, characterName, user, accessLevel }) => {
   const [search, setSearch] = useState('');
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [requestingAutopsy, setRequestingAutopsy] = useState(null);
+  const [showBodyMap, setShowBodyMap] = useState(false);
   const [page, setPage] = useState(1);
 
   const canAccess = IS_LOCALHOST || isAuthenticated;
+
+  // Auto-load guard: fire at most ONCE per access-session. `loadRecords` is not
+  // referentially stable (it re-creates when its DataContext deps change), so a
+  // bare [deps] effect re-fires on every render; if the fetch fails and leaves
+  // `records` empty, that became an unbounded reload loop (hundreds/sec).
+  const autoLoadFiredRef = useRef(false);
 
   // Hourly telemetry (V2 rollup): morgue audit events accumulate locally and
   // flush once per hour — no per-click Cloud Function invocations, no pings.
@@ -43,10 +51,15 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
   // ── Set banner function for admins (passed via prop) ──
   // This gets wired from the prototype's misc panel
 
-  // Don't load records if user isn't authenticated (bypass on localhost)
+  // Don't load records if user isn't authenticated (bypass on localhost).
+  // Fires once per access-session; the "Load Records" button and the refresh
+  // control remain the explicit re-fetch paths.
   useEffect(() => {
     if (!canAccess) return;
-    if (!isLoading && records.length === 0 && loadRecords) loadRecords();
+    if (autoLoadFiredRef.current) return;
+    if (isLoading || records.length > 0 || !loadRecords) return;
+    autoLoadFiredRef.current = true;
+    loadRecords();
   }, [canAccess, isLoading, loadRecords, records.length]);
 
   const logMorgueAction = useCallback((action, detail) => {
@@ -146,6 +159,11 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
         <div className="lookup-bar">
           <input type="text" placeholder="Search by decedent name or case ID…" value={search}
             onChange={e => setSearch(e.target.value)} />
+          <button className="btn btn-ghost" style={{ fontSize: 12, whiteSpace: 'nowrap' }}
+            onClick={() => { setShowBodyMap(true); logMorgueAction('View Body Map', `${records.length} records`); }}
+            title="Show a map of body counts per street">
+            <i className="fas fa-map-location-dot me-1" /> Body Map
+          </button>
         </div>
       </div>
 
@@ -189,7 +207,7 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
               {r.name || 'Unknown'}
               <div className="sub">{r.location || '—'}</div>
             </div>
-            <div className="date">{r.timeOfDeath ? r.timeOfDeath.split(' ').slice(0, 4).join(' ') : '—'}</div>
+            <div className="date">{r.timeOfDeath ? r.timeOfDeath.split(' ').slice(0, 5).join(' ') : '—'}</div>
             <div style={{ display: 'flex', justifyContent: 'center', gap: 6 }}>
               <button className="btn-view" onClick={() => { setSelectedRecord(r); setShowDetailModal(true); logMorgueAction('View Record', `#${r.caseId} — ${r.name || 'Unknown'}`); }}>
                 <i className="fas fa-eye me-1" style={{ fontSize: 10 }} /> View Record
@@ -350,6 +368,15 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
         </div>
       )}
       </>)}
+      {showBodyMap && (
+        <MorgueBodyMapModal
+          show={showBodyMap}
+          onClose={() => setShowBodyMap(false)}
+          records={records}
+          isLoading={isLoading}
+          accessLevel={accessLevel}
+        />
+      )}
       {requestingAutopsy && (
         <RequestAutopsyModal
           show={!!requestingAutopsy}

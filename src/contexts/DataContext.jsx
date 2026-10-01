@@ -216,6 +216,11 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
     const firebaseListeners = useRef({});
     const morgueRecordsLoadedRef = useRef(false);
   const morgueFetchInFlightRef = useRef(null);
+  // Latest values for the morgue loader's telemetry/cache calls. Held in a ref
+  // so `loadMorgueRecords` can stay referentially stable — unstable deps
+  // (webhooks re-created each render) made every consumer effect re-run and
+  // produced an unbounded reload loop when the fetch left `records` empty.
+  const morgueLoaderDepsRef = useRef({});
 
     // Cache configuration
     const CACHE_PREFIX = 'firebaseCache';
@@ -225,7 +230,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
     // Version configuration for each segment, some versions are dynamic updated in Firebase but manually bump if required
     const SEGMENT_VERSIONS = {
         [CACHE_SEGMENTS.FACTIONS]: '1.2',
-        [CACHE_SEGMENTS.AGENCIES]: '1.1',
+        [CACHE_SEGMENTS.AGENCIES]: '1.2', // bumped 2026-10-01 — SAAA added to /agencies, invalidate stale client caches
         [CACHE_SEGMENTS.FORMS]: '1.2.3', 
         [CACHE_SEGMENTS.LSCC]: '1.0',
         [CACHE_SEGMENTS.VERIFIED_ADMINS]: '1.0',
@@ -395,8 +400,13 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
         await refreshSegments(segments);
     }, [pendingRefreshInfo, refreshSegments]);
 
+    // Keep the loader's dynamic deps current without making the callback unstable.
+    morgueLoaderDepsRef.current = { updateCacheSegment, webhooks, isAuthenticated, user };
+
     // Lazy-load morgue records on demand (not fetched during initial app load)
     const loadMorgueRecords = useCallback(async () => {
+        // Read the latest deps at call time (see ref note above).
+        const { updateCacheSegment, webhooks, isAuthenticated, user } = morgueLoaderDepsRef.current;
         // In-flight dedup: concurrent callers (auth init + sidebar + autopsy modal)
         // share one fetch instead of each firing a fresh Cloud Function call.
         if (morgueFetchInFlightRef.current) return morgueFetchInFlightRef.current;
@@ -501,7 +511,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
         }
         })().finally(() => { morgueFetchInFlightRef.current = null; setMorgueLoading(false); });
         return morgueFetchInFlightRef.current;
-    }, [updateCacheSegment, webhooks, isAuthenticated, user]);
+    }, []);
 
     // Remove a single morgue record from in-memory cache + state (no re-fetch)
     const removeMorgueRecord = useCallback((caseId) => {

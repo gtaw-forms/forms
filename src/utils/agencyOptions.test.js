@@ -13,12 +13,13 @@ const RTDB_SHAPED_STORE = {
     DAO: { fullName: "District Attorney's Office", logo: 'dao.png', url: 'https://example.test/dao' },
     LSFD: { fullName: 'Los Santos Fire Department', logo: 'lsfd.png', url: 'https://example.test/lsfd' },
     PHMC: { fullName: 'Pillbox Hill Medical Center', logo: 'phmc.png', url: 'https://example.test/phmc' },
+    SAAA: { fullName: 'San Andreas Aviation Administration' },
 };
 
 describe('mapAgencyOptions', () => {
     it('every returned option has a DEFINED value (the regression)', () => {
         const options = mapAgencyOptions(RTDB_SHAPED_STORE);
-        expect(options.length).toBe(6);
+        expect(options.length).toBe(7);
         for (const opt of options) {
             expect(opt.value).toBeDefined();
             expect(typeof opt.value).toBe('string');
@@ -27,7 +28,7 @@ describe('mapAgencyOptions', () => {
 
     it('value === lowercase record key when shortCode is missing', () => {
         const options = mapAgencyOptions(RTDB_SHAPED_STORE);
-        expect(options.map(o => o.value)).toEqual(['lspd', 'lssd', 'sadcr', 'dao', 'lsfd', 'phmc']);
+        expect(options.map(o => o.value)).toEqual(['lspd', 'lssd', 'sadcr', 'dao', 'lsfd', 'phmc', 'saaa']);
     });
 
     it('value === lowercase shortCode when present', () => {

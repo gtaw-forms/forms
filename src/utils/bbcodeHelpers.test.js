@@ -36,6 +36,8 @@ describe('getDepartmentFullName', () => {
     it('falls back to the static agency name when the store is undefined', () => {
         expect(getDepartmentFullName('PHMC', undefined)).toBe('Pillbox Hill Medical Center');
         expect(getDepartmentFullName('SANFIRE', null)).toBe('State Fire Marshal');
+        expect(getDepartmentFullName('SAAA', {})).toBe('San Andreas Aviation Administration');
+        expect(getDepartmentFullName('saaa', {})).toBe('San Andreas Aviation Administration');
     });
 
     it('returns the raw code when it is known nowhere', () => {
