@@ -1,5 +1,18 @@
 # PHMC Discord Bot — Changelog
 
+## 2026-10-01 — Per-topic multi agency crosspost no longer overwrites body 1
+
+### Fixed
+- **Per-topic multi autopsies (`caseState: 'multi'` with distinct `cases/<idx>/caseTopicId`) now keep agency crosspost state per body.** `postLssdCombinedReply` accepts `caseIdx`; for non-shared collections it reads/writes `<fx>CrosspostReplyPostId/Url/BbCode/Ooc/Status` under `cases/<idx>` and tracks `lssdCombinedReply@<idx>` instead of the shared request-level `lssdCombinedReply`. This stops body 2 from editing body 1's LSSD/SADCR/DAO reply in place. Shared-thread mass collections keep their single collection-level reply.
+- **Retry sweep understands `@<caseIdx>` steps.** It resolves the base step name plus that body's `completedBbCode` and stored reply id, and persists retry results back under the same case.
+
+### Corrected live
+- **t=10308 / LSSD #84490:** Jamarion Bates's completed report was missing after Stefano Marchetti's later completion edited the shared LSSD reply. Posted Jamarion's completion + report as a new LSSD reply and backfilled Stefano's existing reply under its own case (`cases/0` = p=401168, `cases/1` = p=401435).
+- **t=10308 / PHMC DM:** also forwarded Jamarion's completion + report to the requester, Iris Winter, by PHMC forum PM (recorded under `cases/1/dmResend`).
+
+### Deployed
+- 2026-10-01 live: `npm run bot:imports` OK, `npm run bot:check` showed only `services/deployAutopsyReply.js` pending, `npm run bot:deploy` mirrored + verified with 0 pending; `phmc-bot` restarted clean.
+
 ## 2026-09-26 — Passive CK listener cold-start prime (kills boot fetch storm)
 
 ### Fixed

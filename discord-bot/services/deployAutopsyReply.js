@@ -248,7 +248,7 @@ export async function postOrEditReply(client, { topicId, forumId, bbCode, baseUr
  * @param {object} opts.stepFailed — shared step-failure tracker
  * @returns {Promise<{ok: boolean, url: string|null, skipped?: boolean}>}
  */
-async function postLssdCombinedReply({ key, entry, reportData, completionBb, bbCode, bodies = null, batchedBbCode = null, progress, stepFailed }) {
+async function postLssdCombinedReply({ key, entry, reportData, completionBb, bbCode, bodies = null, batchedBbCode = null, progress, stepFailed, caseIdx = null }) {
     // ── Faction resolution FIRST so status/failure writers key per faction ──
     // The REQUEST record is authoritative for faction — the report's department
     // field is only a hint (MEs sometimes leave it on the wrong agency mid-batch).
@@ -273,6 +273,23 @@ async function postLssdCombinedReply({ key, entry, reportData, completionBb, bbC
     // faction so retryFailedCompletionSteps keeps a single branch.
     const fx = effFaction ? effFaction.toLowerCase() : 'lssd';
 
+    // ── Per-case scoping for per-topic multi records ──
+    // Legacy multi records give each body its OWN f=266 caseTopicId, and each
+    // body posts its OWN agency reply to the shared LSSD/SADCR/DAO request
+    // topic. Their crosspost bookkeeping (reply post id, stored BBCode, step
+    // status) must live under cases/<idx> — otherwise body 2 reads body 1's
+    // reply id and EDITS body 1's post instead of posting its own. That is the
+    // 2026-10-01 t=10308 regression: Jamarion's report was overwritten by
+    // Stefano's. Shared-thread mass collections deliberately keep ONE
+    // collection-level reply, so they stay request-scoped (isSharedThreadCollection).
+    const caseScoped = caseIdx !== null && caseIdx !== undefined && !isSharedThreadCollection(entry);
+    const crossRef = caseScoped ? `autopsy-requested/${key}/cases/${caseIdx}` : `autopsy-requested/${key}`;
+    const readCross = (name) => {
+        const v = caseScoped ? entry?._caseRec?.[name] : entry?.[name];
+        return v || null;
+    };
+    const agencyStepName = caseScoped ? `lssdCombinedReply@${caseIdx}` : 'lssdCombinedReply';
+
     // Faction mismatch sanity — trust the REQUEST record.
     if ((entryFaction === 'lssd' && deptStr.includes('lspd') && !deptStr.includes('lssd') && !deptStr.includes('sheriff'))
         || (entryFaction === 'lspd' && (deptStr.includes('lssd') || deptStr.includes('sheriff')))) {
@@ -281,13 +298,13 @@ async function postLssdCombinedReply({ key, entry, reportData, completionBb, bbC
 
     const markLssdFailure = async (reason) => {
         console.warn(`[AUTO-COMPLETE] ${fx.toUpperCase()} crosspost for #${key} — ${reason}`);
-        await finishCompletionStep(key, 'lssdCombinedReply', false, reason);
+        await finishCompletionStep(key, agencyStepName, false, reason);
         if (state.dbRef) {
-            state.dbRef.child(`autopsy-requested/${key}`).update({
+            state.dbRef.child(crossRef).update({
                 [`${fx}CrosspostStatus`]: 'failed',
                 [`${fx}CrosspostError`]: reason,
                 [`${fx}CrosspostBbCode`]: bbCode,
-                [`${fx}CrosspostOoc`]: entry.oocName || reportData.data?.decedentOOC || '',
+                [`${fx}CrosspostOoc`]: (caseScoped ? entry?._caseRec?.oocName : entry?.oocName) || reportData.data?.decedentOOC || '',
             }).catch(() => {});
         }
     };
@@ -299,13 +316,13 @@ async function postLssdCombinedReply({ key, entry, reportData, completionBb, bbC
     // Private cases (confidential autopsies) never crosspost to any agency forum.
     if (entry.isPrivate === true) {
         console.log(`[AUTO-COMPLETE] Private case #${key} — skipping LSSD crosspost`);
-        await finishCompletionStep(key, 'lssdCombinedReply', true, 'Private case — agency crosspost skipped');
+        await finishCompletionStep(key, agencyStepName, true, 'Private case — agency crosspost skipped');
         return { ok: true, url: null, skipped: true };
     }
 
     // Not a registry faction (and no LSSD dept hint) — nothing to do here.
     if (!cfgA) {
-        await finishCompletionStep(key, 'lssdCombinedReply', true, `No agency request topic (${effFaction || 'no registry faction'})`);
+        await finishCompletionStep(key, agencyStepName, true, `No agency request topic (${effFaction || 'no registry faction'})`);
         return { ok: true, url: null };
     }
 
@@ -345,7 +362,7 @@ async function postLssdCombinedReply({ key, entry, reportData, completionBb, bbC
             // Edit-in-place when this crosspost reply already exists (re-run after
             // a successful post) — the reply post id is persisted below on success.
             // Over-cap batched payloads split via the optional 55k chunk fallback.
-            const existingCrosspostPostId = entry[`${fx}CrosspostReplyPostId`] || null;
+            const existingCrosspostPostId = readCross(`${fx}CrosspostReplyPostId`);
             const crosspostParts = await chunkMassPayloadIfNeeded(lssdCombinedBb);
             if (crosspostParts.length > 1) console.log(`[AUTO-COMPLETE] ${effFaction} combined reply — ${crosspostParts.length} part(s) (55k chunk fallback)`);
             let r = null;
@@ -358,20 +375,21 @@ async function postLssdCombinedReply({ key, entry, reportData, completionBb, bbC
                     baseUrl: agencyBaseUrl,
                     // Edit-in-place only for the single-part case.
                     existingPostId: crosspostParts.length === 1 ? existingCrosspostPostId : null,
-                    logTag: `${effFaction}-CROSSPOST${crosspostParts.length > 1 ? `-P${pi + 1}` : ''}`,
+                    logTag: `${effFaction}-CROSSPOST${crosspostParts.length > 1 ? `-P${pi + 1}` : ''}${caseScoped ? `-C${caseIdx}` : ''}`,
                 });
                 if (!rFirst) rFirst = r;
                 if (!r.ok) break;
             }
             r = r || { ok: false, reason: 'No payload' };
             console.log(`[AUTO-COMPLETE] ${effFaction} combined reply — ` + (r.ok ? (r.edited ? 'EDITED #' : 'OK #') + lssdRequestTopicId : 'FAILED: ' + (r.reason || 'Unknown')));
-            await finishCompletionStep(key, 'lssdCombinedReply', r.ok, r.ok ? `${r.edited ? 'Edited' : 'Completion + report to'} ${effFaction} #` + lssdRequestTopicId : (r.reason || 'Unknown'));
+            await finishCompletionStep(key, agencyStepName, r.ok, r.ok ? `${r.edited ? 'Edited' : 'Completion + report to'} ${effFaction} #` + lssdRequestTopicId : (r.reason || 'Unknown'));
             await progress.addStep(`${effFaction} Completion + Report`, r.ok ? 'ok' : 'fail', r.ok ? '#' + lssdRequestTopicId : (r.reason || 'Failed'));
             if (!r.ok) stepFailed.LSSD = true;
             // Persist the reply post id so future re-runs edit instead of duplicating.
             // One completion URL set per collection (first part of a chunked batch).
+            // Per-case scoped for per-topic multi (each body owns its own reply).
             if (r.ok && (rFirst || r).postId && state.dbRef) {
-                await state.dbRef.child(`autopsy-requested/${key}`).update({
+                await state.dbRef.child(crossRef).update({
                     [`${fx}CrosspostReplyPostId`]: (rFirst || r).postId,
                     [`${fx}CrosspostReplyUrl`]: (rFirst || r).url || null,
                 }).catch(() => {});
@@ -379,7 +397,7 @@ async function postLssdCombinedReply({ key, entry, reportData, completionBb, bbC
             return { ok: r.ok, url: r.ok ? ((rFirst || r).url || null) : null };
         } catch (e) {
             console.error(`[AUTO-COMPLETE] ${effFaction} operation error: ` + e.message);
-            await finishCompletionStep(key, 'lssdCombinedReply', false, e.message);
+            await finishCompletionStep(key, agencyStepName, false, e.message);
             await progress.addStep(`${effFaction} Completion + Report`, 'fail', e.message);
             stepFailed.LSSD = true;
             return { ok: false, url: null };
@@ -407,7 +425,7 @@ async function postLssdCombinedReply({ key, entry, reportData, completionBb, bbC
             if (state.dbRef) {
                 state.dbRef.child(`autopsy-requested/${key}/${savedKeyField()}`).set(String(fallbackTopicId)).catch(() => {});
             }
-            const existingFallbackPostId = entry[`${fx}CrosspostReplyPostId`] || null;
+            const existingFallbackPostId = readCross(`${fx}CrosspostReplyPostId`);
             const fallbackParts = await chunkMassPayloadIfNeeded(lssdCombinedBb);
             let r = null;
             let rFirst = null;
@@ -419,17 +437,17 @@ async function postLssdCombinedReply({ key, entry, reportData, completionBb, bbC
                     baseUrl: agencyBaseUrl,
                     // Edit-in-place only for the single-part case.
                     existingPostId: fallbackParts.length === 1 ? existingFallbackPostId : null,
-                    logTag: `${effFaction}-CROSSPOST-FALLBACK${fallbackParts.length > 1 ? `-P${pi + 1}` : ''}`,
+                    logTag: `${effFaction}-CROSSPOST-FALLBACK${fallbackParts.length > 1 ? `-P${pi + 1}` : ''}${caseScoped ? `-C${caseIdx}` : ''}`,
                 });
                 if (!rFirst) rFirst = r;
                 if (!r.ok) break;
             }
             r = r || { ok: false, reason: 'No payload' };
-            await finishCompletionStep(key, 'lssdCombinedReply', r.ok, r.ok ? `${r.edited ? 'Edited fallback' : 'Fallback'} completion + report to #${fallbackTopicId}` : (r.reason || 'Unknown'));
+            await finishCompletionStep(key, agencyStepName, r.ok, r.ok ? `${r.edited ? 'Edited fallback' : 'Fallback'} completion + report to #${fallbackTopicId}` : (r.reason || 'Unknown'));
             await progress.addStep(`${effFaction} Completion + Report`, r.ok ? 'ok' : 'fail', r.ok ? '#' + fallbackTopicId : (r.reason || 'Failed'));
             if (!r.ok) { stepFailed.LSSD = true; await markLssdFailure('Completion + report reply failed: ' + (r.reason || 'Unknown')); }
             if (r.ok && state.dbRef) {
-                state.dbRef.child(`autopsy-requested/${key}`).update({
+                state.dbRef.child(crossRef).update({
                     [`${fx}CrosspostStatus`]: 'completed',
                     [`${fx}CrosspostError`]: null,
                     [savedKeyField()]: String(fallbackTopicId),
@@ -446,7 +464,7 @@ async function postLssdCombinedReply({ key, entry, reportData, completionBb, bbC
         }
     } catch (e) {
         console.error(`[AUTO-COMPLETE] ${effFaction} fallback error: ` + e.message);
-        await finishCompletionStep(key, 'lssdCombinedReply', false, e.message);
+        await finishCompletionStep(key, agencyStepName, false, e.message);
         await progress.addStep(`${effFaction} Completion + Report`, 'fail', e.message);
         stepFailed.LSSD = true;
         await markLssdFailure(e.message);
@@ -1240,10 +1258,14 @@ export async function handleAutopsyReply(report) {
 
                         // Save the report BBCode + OOC name so retryFailedLssdCrossposts /
                         // the force script can re-post if these steps fail or are skipped.
+                        // Per-topic multi records scope this to the body's own case so
+                        // body 2 never overwrites body 1's stored report.
                         if (state.dbRef) {
-                            state.dbRef.child(`autopsy-requested/${key}`).update({
+                            const caseScoped = isMulti && !isSharedThreadCollection(entry) && caseIdx !== null;
+                            const bbScope = caseScoped ? `autopsy-requested/${key}/cases/${caseIdx}` : `autopsy-requested/${key}`;
+                            state.dbRef.child(bbScope).update({
                                 lssdCrosspostBbCode: bbCode,
-                                lssdCrosspostOoc: entry.oocName || reportData.data?.decedentOOC || '',
+                                lssdCrosspostOoc: (caseScoped ? caseRec?.oocName : entry.oocName) || reportData.data?.decedentOOC || '',
                             }).catch(() => {});
                         }
 
@@ -1286,12 +1308,14 @@ export async function handleAutopsyReply(report) {
                             await finishCompletionStep(key, 'lssdCombinedReply', true, 'Deferred — not all bodies complete');
                             await progress.addStep('Agency Completion + Report', 'ok', 'Deferred until all bodies complete');
                         } else if (!isPrivateEntry) {
+                            const caseScoped = isMulti && !isSharedThreadCollection(entry) && caseIdx !== null;
                             const lssdRes = await postLssdCombinedReply({
-                                key, entry, reportData, completionBb, bbCode, bodies: agencyBodies, progress, stepFailed,
+                                key, entry, reportData, completionBb, bbCode, bodies: agencyBodies, progress, stepFailed, caseIdx,
                             });
                             agencyCompletionUrl = lssdRes.url;
                             if (lssdRes.ok && agencyCompletionUrl && state.dbRef) {
-                                await state.dbRef.child(`autopsy-requested/${key}`).update({
+                                const urlScope = caseScoped ? `autopsy-requested/${key}/cases/${caseIdx}` : `autopsy-requested/${key}`;
+                                await state.dbRef.child(urlScope).update({
                                     [`${completionFx}CompletionUrl`]: agencyCompletionUrl,
                                     [`${completionFx}CrosspostStatus`]: 'completed',
                                     [`${completionFx}CrosspostedAt`]: new Date().toISOString(),
@@ -1839,12 +1863,23 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
         for (const { key, entry, stepName, stepData, caseLabel } of failedEntries) {
             console.log(`[AUTO-COMPLETE] Retrying ${stepName} for ${caseLabel}...`);
 
+            // Per-case completion steps (per-topic multi bodies) carry an
+            // `@<caseIdx>` suffix so each body tracks its own agency reply.
+            // Resolve the base name + the body's case record here so the retry
+            // posts THAT body's report with THAT body's stored reply id — never
+            // the shared request-level copy (which is the last body to run).
+            // ('@' is used because '#' is an illegal Firebase key character.)
+            const stepCaseIdx = /@\d+$/.test(stepName) ? parseInt(stepName.slice(stepName.lastIndexOf('@') + 1), 10) : null;
+            const stepBase = stepCaseIdx !== null ? stepName.replace(/@\d+$/, '') : stepName;
+            const stepCaseRec = (stepCaseIdx !== null && entry.cases && typeof entry.cases === 'object')
+                ? (entry.cases[stepCaseIdx] || null) : null;
+
             // Mass-collection gating: partial collections never emit premature
             // singles — collection-level steps retry only when every body is
             // done. Markers are kept so the next sweep picks them up.
             const retryShared = isSharedThreadCollection(entry);
             const retryAllDone = collectionCasesDone(entry);
-            if (retryShared && !retryAllDone && (stepName === 'phmcCompletionReply' || stepName === 'dmSent' || stepName === 'requesterWebhook' || stepName === 'lssdCombinedReply' || stepName === 'lspdCrosspost')) {
+            if (retryShared && !retryAllDone && (stepBase === 'phmcCompletionReply' || stepBase === 'dmSent' || stepBase === 'requesterWebhook' || stepBase === 'lssdCombinedReply' || stepBase === 'lspdCrosspost')) {
                 console.log(`[AUTO-COMPLETE] ${stepName} for ${caseLabel} — collection partial, deferring (no premature single)`);
                 continue;
             }
@@ -1852,8 +1887,8 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
             const retryBatch = (retryShared && retryAllDone) ? buildBatchedBodiesPayload(entry.cases || {}) : null;
 
             // Private cases never crosspost to LSPD/LSSD — mark crosspost steps as resolved.
-            if (entry.isPrivate === true && (stepName === 'lssdCombinedReply' || stepName === 'lssdCompletionReply'
-                || stepName === 'lssdAutopsyReport' || stepName === 'lspdCrosspost')) {
+            if (entry.isPrivate === true && (stepBase === 'lssdCombinedReply' || stepBase === 'lssdCompletionReply'
+                || stepBase === 'lssdAutopsyReport' || stepBase === 'lspdCrosspost')) {
                 console.log(`[AUTO-COMPLETE] [OK] ${stepName} for ${caseLabel} — private case, crosspost skipped`);
                 await finishCompletionStep(key, stepName, true, 'Private case — crosspost skipped');
                 continue;
@@ -1861,7 +1896,7 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
 
             try {
                 const requesterName = entry.parsed?.requesterName || 'Requesting Party';
-                const caseTitle = entry.caseUrl || entry.title || 'Autopsy Case';
+                const caseTitle = stepCaseRec?.caseTitle || entry.caseUrl || entry.title || 'Autopsy Case';
                 const retryFaction = entry.isPrivate === true
                     ? 'private'
                     : (String(entry.faction || '').toLowerCase()
@@ -1872,11 +1907,13 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
                 // sadcrCompletionUrl / daoCompletionUrl for the newer registry factions).
                 const retryAgencyCfg = isAgencyFaction(retryFaction) ? getAgencyForum(retryFaction) : null;
                 const retryFx = retryAgencyCfg ? String(retryFaction).toLowerCase() : 'lssd';
-                const completionBb = buildCompletionBb(caseTitle, requesterName, { faction: retryFaction, lssdUrl: entry[`${retryFx}CompletionUrl`], lspdUrl: retryLspdUrl, formsAutopsy: entry.formsAutopsy });
+                // Per-case step: prefer that body's own stored completion URL.
+                const retryCompletionUrl = stepCaseRec ? stepCaseRec[`${retryFx}CompletionUrl`] : entry[`${retryFx}CompletionUrl`];
+                const completionBb = buildCompletionBb(caseTitle, requesterName, { faction: retryFaction, lssdUrl: retryCompletionUrl, lspdUrl: retryLspdUrl, formsAutopsy: entry.formsAutopsy });
 
                 let success = false;
 
-                if (stepName === 'phmcCompletionReply') {
+                if (stepBase === 'phmcCompletionReply') {
                     if (!entry.topicId) {
                         console.warn(`[AUTO-COMPLETE] Cannot retry ${stepName} for ${caseLabel}: no topicId`);
                         stillFailed++;
@@ -1922,7 +1959,7 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
                         console.warn(`[AUTO-COMPLETE] [ERR] Retry failed — ${stepName} for ${caseLabel}: ${r.reason || 'Unknown'}`);
                     }
 
-                } else if (stepName === 'lssdCombinedReply') {
+                } else if (stepBase === 'lssdCombinedReply') {
                     // Registry-faction branch — LSSD keeps legacy keys; SADCR/DAO resolve
                     // their own subforum/topic-field via the agencyForums registry.
                     const rCfg = isAgencyFaction(retryFaction) ? getAgencyForum(retryFaction)
@@ -1934,7 +1971,14 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
                         success = true;
                     } else {
                         // Shared-thread collection: ONE batched payload on retry.
-                        const reportBb = retryBatch ? retryBatch.text : (entry.completedBbCode || '');
+                        // Per-case step (per-topic multi): THAT body's own report +
+                        // stored reply id, never the shared request-level copy.
+                        const reportBb = retryBatch
+                            ? retryBatch.text
+                            : (stepCaseRec ? (stepCaseRec.completedBbCode || '') : (entry.completedBbCode || ''));
+                        const existingRetryPostId = stepCaseRec
+                            ? (stepCaseRec[`${rFx}CrosspostReplyPostId`] || null)
+                            : (entry[`${rFx}CrosspostReplyPostId`] || null);
                         if (!reportBb) {
                             console.warn(`[AUTO-COMPLETE] Cannot retry ${stepName} for ${caseLabel}: no completedBbCode`);
                             // Mark as resolved — can't retry without the report content
@@ -1952,8 +1996,8 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
                                     forumId: rCfg.forumId,
                                     bbCode: agencyRetryParts[pi],
                                     baseUrl: rCfg.baseUrl,
-                                    existingPostId: agencyRetryParts.length === 1 ? (entry[`${rFx}CrosspostReplyPostId`] || null) : null,
-                                    logTag: `${String(retryFaction).toUpperCase()}-CROSSPOST-RETRY${agencyRetryParts.length > 1 ? `-P${pi + 1}` : ''}`,
+                                    existingPostId: agencyRetryParts.length === 1 ? existingRetryPostId : null,
+                                    logTag: `${String(retryFaction).toUpperCase()}-CROSSPOST-RETRY${agencyRetryParts.length > 1 ? `-P${pi + 1}` : ''}${stepCaseIdx !== null ? `-C${stepCaseIdx}` : ''}`,
                                 });
                                 if (!rFirst) rFirst = r;
                                 if (!r.ok) break;
@@ -1962,7 +2006,10 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
                             success = r.ok;
                             console.log(`[AUTO-COMPLETE] Agency completion + report retry — ${r.ok ? (r.edited ? 'EDITED' : 'OK') : 'FAILED: ' + (r.reason || 'Unknown')}`);
                             if (r.ok && (rFirst || r).url && state.dbRef) {
-                                await state.dbRef.child(`autopsy-requested/${key}`).update({
+                                const retryUrlScope = stepCaseIdx !== null
+                                    ? `autopsy-requested/${key}/cases/${stepCaseIdx}`
+                                    : `autopsy-requested/${key}`;
+                                await state.dbRef.child(retryUrlScope).update({
                                     [`${rFx}CompletionUrl`]: (rFirst || r).url,
                                     ...((rFirst || r).postId ? { [`${rFx}CrosspostReplyPostId`]: (rFirst || r).postId, [`${rFx}CrosspostReplyUrl`]: (rFirst || r).url } : {}),
                                 }).catch(() => {});
@@ -1970,7 +2017,7 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
                         }
                     }
 
-                } else if (stepName === 'requesterWebhook') {
+                } else if (stepBase === 'requesterWebhook') {
                     // Stateless resend from entry fields — notifyRequesterOfCompletion
                     // self-resolves faction topic deep-link, ME ping and requester tag.
                     // Worst case (crash after send) is one duplicate message, the same
@@ -2003,7 +2050,7 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
                         success = false;
                     }
 
-                } else if (stepName === 'lssdCompletionReply' || stepName === 'lssdAutopsyReport') {
+                } else if (stepBase === 'lssdCompletionReply' || stepBase === 'lssdAutopsyReport') {
                     // Legacy steps — entries completed before the combined-reply change.
                     const lssdTopicId = entry.lssdRequestTopicId;
                     if (!lssdTopicId) {
@@ -2011,7 +2058,7 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
                         success = true;
                     } else {
                         await retryClient.login(process.env.FORUM_LSSD_USERNAME, process.env.FORUM_LSSD_PASSWORD, { force: false, baseUrl: 'https://lssd.gta.world' });
-                        const isReport = stepName === 'lssdAutopsyReport';
+                        const isReport = stepBase === 'lssdAutopsyReport';
                         const content = isReport ? (entry.completedBbCode || '') : completionBb;
                         const label = isReport ? 'autopsy report' : 'confirmation reply';
                         if (isReport && !content) {
@@ -2026,7 +2073,7 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
                         }
                     }
 
-                } else if (stepName === 'lspdCrosspost') {
+                } else if (stepBase === 'lspdCrosspost') {
                     const lspdTopicId = entry.lspdTopicId;
                     if (!lspdTopicId) {
                         console.log(`[AUTO-COMPLETE] [OK] Retry OK — ${stepName} for ${caseLabel}: not an LSPD case`);
@@ -2046,7 +2093,7 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
                         console.log(`[AUTO-COMPLETE] LSPD crosspost retry — ${r.ok ? 'OK' : 'FAILED: ' + (r.reason || 'Unknown')}`);
                     }
 
-                } else if (stepName === 'dmSent') {
+                } else if (stepBase === 'dmSent') {
                     // Shared-thread collection: ONE batched DM on retry.
                     const bbCodeToSend = retryBatch ? retryBatch.text : entry.completedBbCode;
                     if (!bbCodeToSend) {
@@ -2121,7 +2168,7 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
                     }
 
                 } else {
-                    console.warn(`[AUTO-COMPLETE] Unknown step "${stepName}" for ${caseLabel} — skipped`);
+                    console.warn(`[AUTO-COMPLETE] Unknown step "${stepBase}" for ${caseLabel} — skipped`);
                     stillFailed++;
                     continue;
                 }
