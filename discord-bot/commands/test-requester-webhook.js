@@ -67,7 +67,6 @@ export async function execute(interaction) {
         const { topicId, entry } = found;
         const caseTitle = entry.caseTitle || entry.title || `Case ${topicId}`;
         const caseNum = entry.caseNum || '';
-        const caseTopicUrl = entry.caseUrl || null;
 
         // Routing preview — where THIS send will land
         const routeKey = factionOverride || String(entry.faction || '').toUpperCase();

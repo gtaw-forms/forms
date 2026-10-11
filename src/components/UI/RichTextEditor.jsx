@@ -79,7 +79,6 @@ const RichTextEditor = ({ value, onChange, minHeight = 200 }) => {
   }), [tableAction]);
 
   const insertColumn = useCallback((position) => tableAction((ctx) => {
-    const colIdx = position === 'left' ? ctx.colIndex : ctx.colIndex + 1;
     Array.from(ctx.tbody.rows).forEach((row) => {
       const refCell = position === 'left' ? row.cells[ctx.colIndex] : row.cells[ctx.colIndex]?.nextSibling || null;
       const td = document.createElement('td');

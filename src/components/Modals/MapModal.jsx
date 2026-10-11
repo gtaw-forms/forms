@@ -5,10 +5,8 @@ import L from 'leaflet';
 import { captureMapScreenshot } from '../../utils/mapImageUploadUtils';
 import { useImageUpload } from '../../hooks/useImageUpload';
 import 'leaflet/dist/leaflet.css';
-import { ref, set, get } from 'firebase/database';
-import { useGtaWorldAuth } from '../../hooks/useGtaWorldAuth';
+import { ref, get } from 'firebase/database';
 
-import { useAuth } from '../../contexts/AuthContext';
 import { database } from '../../firebase';
 import { useNotification } from '../../contexts/NotificationContext';
 import phmcLogo from '../../assets/hospital_logo.png';
@@ -37,10 +35,6 @@ const BodyIcon = L.divIcon({
 const BuildingIcon = L.divIcon({
     html: '<div style="background-color: #4a5568; border-radius: 50%; width: 30px; height: 30px; display: flex; justify-content: center; align-items: center; border: 2px solid #cbd5e0; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"><i class="fas fa-building" style="color: #fff; font-size: 16px;"></i></div>',
     className: 'custom-building-icon', iconSize: [30, 30], iconAnchor: [15, 15], popupAnchor: [0, -15]
-});
-const FireStationIcon = L.divIcon({
-    html: '<div style="background-color: #fd7e14; border-radius: 50%; width: 30px; height: 30px; display: flex; justify-content: center; align-items: center; border: 2px solid #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"><i class="fas fa-fire" style="color: #fff; font-size: 16px;"></i></div>',
-    className: 'custom-fire-icon', iconSize: [30, 30], iconAnchor: [15, 15], popupAnchor: [0, -15]
 });
 const LawEnforcementIcon = L.divIcon({
     html: '<div style="background-color: #16337a; border-radius: 50%; width: 30px; height: 30px; display: flex; justify-content: center; align-items: center; border: 2px solid #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"><svg viewBox="0 0 24 24" width="15" height="15" fill="#ffffff" aria-hidden="true"><path d="M12 1.8 20 5v6.2c0 4.9-3.3 8.4-8 10.2-4.7-1.8-8-5.3-8-10.2V5l8-3.2z"/><path d="M12 6.5l1.3 2.7 2.9.4-2.1 2.1.5 2.9L12 13l-2.6 1.6.5-2.9-2.1-2.1 2.9-.4L12 6.5z"/></svg></div>',
@@ -72,22 +66,6 @@ const getDistSeg = (p, a, b) => {
 const getDistPath = (g, path) => {
     let min = Infinity; for(let i=0; i<path.length-1; i++) { const d=getDistSeg(g,path[i],path[i+1]); if(d<min) min=d; } return min;
 };
-const findClosestBetween = (l1, l2) => {
-    const src = l1.path ? l1.path : [{x:l1.x, y:l1.y}]; let best=null; let minD2=Infinity;
-    src.forEach(p1 => {
-        let cand = l2.path ? (function(p, path) {
-            let mD2=Infinity; let bp=null; for(let i=0; i<path.length-1; i++) {
-                const a=path[i]; const b=path[i+1]; const l2=Math.pow(a.x-b.x,2)+Math.pow(a.y-b.y,2);
-                let t=l2===0?0:Math.max(0,Math.min(1,((p.x-a.x)*(b.x-a.x)+(p.y-a.y)*(b.y-a.y))/l2));
-                const pr={x:a.x+t*(b.x-a.x), y:a.y+t*(b.y-a.y)}; const d2=Math.pow(p.x-pr.x,2)+Math.pow(p.y-pr.y,2);
-                if(d2<mD2){mD2=d2; bp=pr;}
-            } return bp;
-        })(p1, l2.path) : {x:l2.x, y:l2.y};
-        let d2 = cand ? Math.pow(p1.x-cand.x,2)+Math.pow(p1.y-cand.y,2) : Infinity;
-        if(d2<minD2){minD2=d2; best=cand;}
-    }); return best;
-};
-
 const MapEvents = ({ onMapClick, onMapDblClick, onMapRightClick, onMouseMove }) => {
     useMapEvents({ 
         click(e){if(onMapClick) onMapClick(e);},
@@ -120,29 +98,27 @@ const Info = () => {
 }
 
 const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapImage: _setIsUploadingMapImage, mapTargetField: _mapTargetField, selectedForm }) => {
-    const { user: gtawUser, isAuthenticated, characterName } = useGtaWorldAuth();
-    const { currentUser } = useAuth();
     const [debugMode, setDebugMode] = useState(false);
     const [adminFixMode, setAdminFixMode] = useState(false);
     const [isDrawing, setIsDrawing] = useState(false);
     const [tempPath, setTempPath] = useState([]);
     const [markers, setMarkers] = useState([]);
-    const [fixMarkers, setFixMarkers] = useState([]);
+    const [, setFixMarkers] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
     const [searchQuery, setSearchQuery] = useState(initialQuery);
-    const [savePathModalVisible, setSavePathModalVisible] = useState(false);
-    const [savePathName, setSavePathName] = useState('');
-    const [reporting, setReporting] = useState(null);
+    const [, setSavePathModalVisible] = useState(false);
+    const [, setSavePathName] = useState('');
+    const [, setReporting] = useState(null);
     const [isSnapshotting, setIsSnapshotting] = useState(false);
-    const [selectedStreetForEditing, setSelectedStreetForEditing] = useState(null);
+    const [selectedStreetForEditing] = useState(null);
     const [liveMapData, setLiveMapData] = useState({ streets: [], hospitals: [], buildings: [], regions: [], leo: [] });
     
     // --- EXPERIMENTAL: Regional Zones ---
     const [isDrawingRegion, setIsDrawingRegion] = useState(false);
     const [regionStart, setRegionStart] = useState(null);
-    const [tempRegion, setTempRegion] = useState(null);
-    const [isDrawingPolygon, setIsDrawingPolygon] = useState(false);
-    const [tempPolygonPath, setTempPolygonPath] = useState([]);
+    const [, setTempRegion] = useState(null);
+    const [isDrawingPolygon] = useState(false);
+    const [, setTempPolygonPath] = useState([]);
 
     const [strobeOpacity, setStrobeOpacity] = useState(1.0);
     const isProduction = import.meta.env.PROD;
@@ -224,24 +200,6 @@ const MapModal = ({ show, onHide, onSelect, initialQuery='', setIsUploadingMapIm
     const handleSavePath = () => {
         setSavePathName(selectedStreetForEditing ? selectedStreetForEditing.name : '');
         setSavePathModalVisible(true);
-    };
-
-    const confirmSavePath = async () => {
-        const name = selectedStreetForEditing ? selectedStreetForEditing.name : savePathName;
-        if (!name) return showNotification("Name required!", "warning");
-        const key = name.toLowerCase().trim().replace(/[.#$[\\\]/]/g, "_");
-        const pathData = tempPath.map(p => ({ x: p.x, y: p.y }));
-        try {
-            await set(ref(database, `verified_locations/${key}`), { name, type: 'Street', path: pathData, updatedAt: Date.now() });
-            setLiveMapData(p => {
-                const idx = p.streets.findIndex(x => x.name === name);
-                const u = [...p.streets];
-                if (idx !== -1) { u[idx] = { ...u[idx], path: pathData }; return { ...p, streets: u }; }
-                return { ...p, streets: [...p.streets, { name, type: 'Street', path: pathData }] };
-            });
-            setTempPath([]); setIsDrawing(false); setSavePathModalVisible(false); setSelectedStreetForEditing(null);
-            showNotification("Saved!", "success");
-        } catch (err) { showNotification(`Failed to save path: ${err.message}`, "error"); }
     };
 
     const searchResults = useMemo(() => {

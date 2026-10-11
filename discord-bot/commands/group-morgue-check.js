@@ -206,7 +206,6 @@ export async function execute(interaction) {
     }
 
     let members = [];
-    let scanSource = null;
     if (useSavedFile) {
         const saved = loadSavedScanFile(forumKey, groupId);
         if (!saved) {
@@ -216,7 +215,6 @@ export async function execute(interaction) {
             return;
         }
         members = saved.members;
-        scanSource = `saved file \`${saved.filename}\` (scanned ${saved.scannedAt ? new Date(saved.scannedAt).toLocaleDateString() : 'unknown date'})`;
         console.log(`[CMD] group-morgue-check: loaded ${members.length} members from saved file ${saved.filename}`);
     } else {
         try {
@@ -234,7 +232,6 @@ export async function execute(interaction) {
             });
 
             await client.close();
-            scanSource = 'live scrape';
         } catch (err) {
             console.error(`[CMD] group-morgue-check error scraping forum: ${err.message}`);
             await interaction.editReply({

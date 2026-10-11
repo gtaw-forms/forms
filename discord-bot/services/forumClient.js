@@ -1472,105 +1472,10 @@ class ForumClient {
         };
     }
 
-    // ── Medical Record Search & Reply ──
+    // ── Forum Search & Reply ──
 
     /**
-     * Search the PHMC Medical Records forum (f=97) for a patient by their patientID.
-     * @param {string} patientID - e.g. "0192"
-     * @returns {Promise<{topicId: number|null, title: string|null}>}
-     */
-    async searchForPatientTopic(patientID) {
-        const lock = await this._acquire('searchForPatientTopic');
-        let result = { topicId: null, title: null };
-        let _candidates = []; // hoisted outside try block for return access
-        try {
-        await this.ensureBrowser();
-
-        const searchUrl = `https://phmc.gta.world/search.php?keywords=${encodeURIComponent(patientID)}&fid[]=97&sf=all`;
-        console.log(`[FORUM] 🔍 Searching for patientID "${patientID}"...`);
-        console.log(`[FORUM] 🌐 ${searchUrl}`);
-
-        await this.page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
-        await this.page.waitForTimeout(2000);
-
-        const pageUrl = this.page.url();
-        const pageTitle = await this.page.title().catch(() => '(no title)');
-        console.log(`[FORUM] 🔍 Search page: "${pageTitle}" — ${pageUrl}`);
-
-        // Check if no results
-        const noResults = await this.page.evaluate(() =>
-            document.body?.innerText?.includes('No suitable matches were found') ?? false
-        ).catch(() => false);
-
-        if (noResults) {
-            console.log(`[FORUM] 📭 No existing thread found for patientID "${patientID}"`);
-            return result;
-        }
-
-        // Collect candidate topic links from search results.
-        // Use a[href*="viewtopic.php"] (no topictitle class in this phpBB version),
-        // then filter to only keep links that reference a topic (t=) and not a specific post (p=).
-        // This avoids matching "Re:" replies, "Jump to post" links, or post body references.
-        _candidates = await this.page.evaluate((_searchId) => {
-            const links = document.querySelectorAll('a[href*="viewtopic.php"]');
-            const results = [];
-            for (const link of links) {
-                const href = link.getAttribute('href') || '';
-                const text = link.textContent?.trim() || '';
-                // Skip post-specific links (p=) and navigation links
-                if (href.includes('p=') || text === 'Jump to post' || text.startsWith('Re:')) continue;
-                const match = href.match(/[?&]t=(\d+)/);
-                if (match && !results.some(r => r.topicId === parseInt(match[1], 10))) {
-                    results.push({
-                        topicId: parseInt(match[1], 10),
-                        title: text || null,
-                        href,
-                    });
-                }
-            }
-            return results;
-        }).catch(() => []);
-
-        // Debug: log every candidate result
-        console.log(`[FORUM] 🔍 Search for "${patientID}" — ${_candidates.length} candidate topic(s) found`);
-        for (const c of _candidates) {
-            console.log(`[FORUM]   Candidate: #${c.topicId} — "${c.title}"`);
-        }
-
-        // Filter: first try exact title match, then all-words match
-        const searchLower = patientID.toLowerCase();
-        const searchWords = searchLower.split(/\s+/).filter(w => w.length > 2);
-
-        result = _candidates.find(c => c.title?.includes(patientID)) || null;
-        if (result) {
-            console.log(`[FORUM] ✅ Exact match: #${result.topicId} — "${result.title}"`);
-        } else {
-            // Fallback: all significant words must appear in the title
-            // This prevents "David Tao" from matching "Nicole Tao" (shared last name)
-            result = _candidates.find(c => {
-                if (!c.title) return false;
-                const t = c.title.toLowerCase();
-                return searchWords.length > 0 && searchWords.every(w => t.includes(w));
-            }) || null;
-            if (result) {
-                console.log(`[FORUM] ✅ Word-match: #${result.topicId} — "${result.title}"`);
-            } else {
-                console.log(`[FORUM] ⚠️ No candidate matched all search words: [${searchWords.join(', ')}]`);
-            }
-        }
-
-        if (result?.topicId) {
-            console.log(`[FORUM] ✅ Found topic #${result.topicId}: "${result.title}"`);
-        } else {
-            console.log('[FORUM] ⚠️ Search returned results but could not parse topic link');
-        }
-        } finally { lock.release(); }
-
-        return { ...(result || { topicId: null, title: null }), candidates: _candidates };
-    }
-
-    /**
-     * Search any phpBB forum by keyword. Generic alternative to searchForPatientTopic / searchCaseManagement.
+     * Search any phpBB forum by keyword. Generic alternative to searchCaseManagement.
      *
      * @param {string} searchTerm - Keyword to search for
      * @param {number|string} forumId - Forum section ID to search in
@@ -2051,7 +1956,7 @@ class ForumClient {
             // Dump full page HTML for debugging submit failures (no truncation)
             const pageHtml = await this.page.content().catch(() => '(unable to capture page content)');
             const dumpPath = resolve(__dirname, '..', 'debug', 'debug-reply-page.html');
-            try { mkdirSync(dirname(dumpPath), { recursive: true }); writeFileSync(dumpPath, pageHtml, 'utf-8'); console.log(`[FORUM] 💾 Full page HTML saved to ${dumpPath} for debugging`); } catch (e) { /* [OK] debug-dump ignored: best-effort diagnostics only; must never break the reply path */ }
+            try { mkdirSync(dirname(dumpPath), { recursive: true }); writeFileSync(dumpPath, pageHtml, 'utf-8'); console.log(`[FORUM] 💾 Full page HTML saved to ${dumpPath} for debugging`); } catch { /* [OK] debug-dump ignored: best-effort diagnostics only; must never break the reply path */ }
         }
         console.log(`[FORUM] 📬 Reply ${ok ? '✅ Posted' : '⚠️ Unknown'} — ${finalUrl}`);
         } finally { lock.release(); }
@@ -2974,14 +2879,6 @@ class ForumClient {
         'death_record':      { forumId: 404, name: 'Death Records', url: 'https://phmc.gta.world/posting.php?mode=post&f=404' },
         'mass-ftality-test': { forumId: 267, name: 'Mass Fatality Reports', url: 'https://phmc.gta.world/posting.php?mode=post&f=267' },
         'autopsy':           { forumId: 267, name: 'Autopsy Requests', url: 'https://phmc.gta.world/posting.php?mode=post&f=267' },
-        'patient_notes':         { forumId: 97, name: 'Medical Records', url: 'https://phmc.gta.world/posting.php?mode=post&f=97' },
-        'er_protocol':           { forumId: 97, name: 'Medical Records', url: 'https://phmc.gta.world/posting.php?mode=post&f=97' },
-        'physical_evaluation':   { forumId: 97, name: 'Medical Records', url: 'https://phmc.gta.world/posting.php?mode=post&f=97' },
-        'staff-patient-file':    { forumId: 97, name: 'Medical Records', url: 'https://phmc.gta.world/posting.php?mode=post&f=97' },
-        'surgical':              { forumId: 97, name: 'Medical Records', url: 'https://phmc.gta.world/posting.php?mode=post&f=97' },
-        'session_notes':         { forumId: 97, name: 'Medical Records', url: 'https://phmc.gta.world/posting.php?mode=post&f=97' },
-        'intensive_treatment':   { forumId: 97, name: 'Medical Records', url: 'https://phmc.gta.world/posting.php?mode=post&f=97' },
-        'psych-eval':            { forumId: 97, name: 'Medical Records', url: 'https://phmc.gta.world/posting.php?mode=post&f=97' },
     };
 
     static resolveForumId(formId, formName) {

@@ -3,36 +3,6 @@ import React, { useState, useEffect } from "react";
 import { Button, Form } from "react-bootstrap";
 import BaseModal from "../Modals/BaseModal";
 
-const inputStyle = {
-    width: "100%",
-    padding: "0.75rem",
-    marginBottom: "1rem",
-    background: "#1e293b",
-    border: "1px solid #334155",
-    color: "#e2e8f0",
-    borderRadius: 8,
-    fontSize: "1rem"
-};
-
-const frequentlyUsedIcons = [
-  { class: 'fas fa-id-card', label: 'Identification' },
-  { class: 'fas fa-notes-medical', label: 'Medical Findings' },
-  { class: 'fas fa-camera', label: 'Scene Evidence' },
-  { class: 'fas fa-file-medical', label: 'Morgue / CDNA' },
-  { class: 'fas fa-user', label: 'User' },
-  { class: 'fas fa-hospital', label: 'Hospital' },
-  { class: 'fas fa-ambulance', label: 'Ambulance' },
-  { class: 'fas fa-heartbeat', label: 'Heartbeat' },
-  { class: 'fas fa-pills', label: 'Medicine' },
-  { class: 'fas fa-clipboard-list', label: 'Clipboard' },
-  { class: 'fas fa-map-marker-alt', label: 'Location' },
-  { class: 'fas fa-clock', label: 'Clock' },
-  { class: 'fas fa-exclamation-triangle', label: 'Warning' },
-  { class: 'fas fa-info-circle', label: 'Info' },
-  { class: 'fas fa-user-ghost', label: 'Decedent' },
-  { class: 'fas fa-microscope', label: 'Laboratory' },
-];
-
 const BulkAddFieldsModal = ({ show, onBulkAdd, onClose, existingFields: _existingFields = [], bbcodeTemplate = "" }) => {
     const createDefaultNewField = () => ({
         type: "input", label: "", name: "", placeholder: "", layout: "full", rows: 4, maxImages: 6,

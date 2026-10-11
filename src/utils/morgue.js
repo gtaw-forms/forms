@@ -44,7 +44,6 @@ export const parseMorgueRecord = (text) => {
     const sanitizedText = sanitizeMorgueText(text);
 
     const record = {};
-    const lines = sanitizedText.split('\n').map(line => line.trim());
 
     const caseMatch = sanitizedText.match(/CASE\s+#(\d+)/i);
     record.caseId = caseMatch ? caseMatch[1] : 'Unknown';

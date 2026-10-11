@@ -61,8 +61,6 @@ export async function execute(interaction) {
 
             await db.ref().update(updates);
 
-            const status = await getRotationStatus(db);
-
             const embed = new EmbedBuilder()
                 .setColor(0x28a745)
                 .setTitle('Rotation List Updated')

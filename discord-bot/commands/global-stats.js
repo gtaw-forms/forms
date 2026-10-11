@@ -14,6 +14,7 @@
 import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from 'discord.js';
 import { isOwnerOrWhitelisted } from '../services/permissions.js';
 import { firstApiKey } from '../services/apiKeyUtil.js';
+import { isExcludedAuthor, EXCLUDED_DISPLAY } from '../services/statsExclusions.js';
 import firebase from '../services/firebase.js';
 
 const FORM_NAMES = {
@@ -22,26 +23,16 @@ const FORM_NAMES = {
     'autopsy': 'Autopsy Report',
     'mass-ftality-test': 'Mass Fatality Report',
     'death_record': 'Death Record',
-    'patient_notes': 'Patient Notes',
-    'er_protocol': 'ER Protocol',
-    'physical_evaluation': 'Physical Evaluation',
-    'staff-patient-file': 'Staff Patient File',
-    'surgical': 'Surgical',
-    'session_notes': 'Session Notes',
-    'intensive_treatment': 'Intensive Treatment',
-    'psych-eval': 'Psych Evaluation',
-    'general_consultation': 'General Consultation',
     'obgyn_consult': 'OB/GYN Consult',
 };
 
-// Section grouping mirrors the app's consent-wizard taxonomy (useConsent FORM_SECTIONS),
-// with the clinical bucket split out as "ER / Clinical" per request.
+// Section grouping mirrors the app's consent-wizard taxonomy (useConsent FORM_SECTIONS).
+// Medical sections were retired with the medical-records sunset —
+// unsectioned forms fall through to 'Other / Unclassified'.
 const FORM_SECTIONS = {
     'Coroners': ['coroner-report', 'coroner_email', 'autopsy', 'mass-ftality-test', 'death_record'],
-    'ER / Clinical': ['er_protocol', 'patient_notes', 'physical_evaluation', 'staff-patient-file', 'surgical', 'general_consultation', 'obgyn_consult'],
-    'Mental Health': ['session_notes', 'intensive_treatment', 'psych-eval'],
 };
-const SECTION_ICONS = { 'Coroners': '🩺', 'ER / Clinical': '🚑', 'Mental Health': '🧠', 'Other / Unclassified': '📦' };
+const SECTION_ICONS = { 'Coroners': '🩺', 'Other / Unclassified': '📦' };
 
 const sectionOf = (fid) => {
     for (const [name, ids] of Object.entries(FORM_SECTIONS)) {
@@ -77,6 +68,9 @@ async function gatherStats(db) {
 
     const addReport = (author, r) => {
         if (!r || typeof r !== 'object' || !(r.formId || r.originalKey || r.data)) return;
+        // Leadership-excluded authors (the VPS stats leg filters them at the
+        // source in morgue-api; this covers the live RTDB queue leg).
+        if (isExcludedAuthor(author) || isExcludedAuthor(r.authorName)) return;
         const fid = r.formId || 'unknown';
         byForm.set(fid, (byForm.get(fid) || 0) + 1);
         total++;
@@ -115,7 +109,9 @@ async function gatherStats(db) {
         for (const [fid, count] of Object.entries(forms)) {
             const section = sectionOf(fid);
             if (!sectionAuthors.has(section)) sectionAuthors.set(section, new Map());
-            sectionAuthors.get(section).set(author, Number(count) || 0);
+            // Accumulate across the author's form types (was: last form won).
+            const sm = sectionAuthors.get(section);
+            sm.set(author, (sm.get(author) || 0) + (Number(count) || 0));
         }
     }
     for (const [day, hours] of (vpsStats.heat || []).entries()) {
@@ -163,7 +159,7 @@ function buildOverviewEmbed(stats) {
             return `${icon} **${name}** — ${fmt(subtotal)} (${stats.total > 0 ? Math.round((subtotal / stats.total) * 100) : 0}%)\n${bar(subtotal, maxSection)} \`${detail}\``;
         }).join('\n');
 
-    const monthList = [...stats.byMonth.entries()].sort().slice(-6);
+    const monthList = [...stats.byMonth.entries()].sort();
     const maxMonth = Math.max(...monthList.map(([, c]) => c), 1);
     const monthLines = monthList.map(([m, c]) => `${bar(c, maxMonth)} ${m}: ${fmt(c)}`).join('\n');
 
@@ -174,12 +170,10 @@ function buildOverviewEmbed(stats) {
         .setDescription(`**${fmt(stats.total)}** reports · **${stats.allAuthors.size}** users`)
         .addFields(
             { name: '🗂️ Report Volume by Section', value: volumeLines || '—', inline: false },
-            { name: '📈 By Month (last 6)', value: monthLines || '—', inline: false },
+            { name: '📈 By Month (all time)', value: monthLines || '—', inline: false },
             { name: '🩺 Top Coroners', value: topField(stats.sectionAuthors.get('Coroners'), 5), inline: false },
-            { name: '🚑 Top ER / Clinical', value: topField(stats.sectionAuthors.get('ER / Clinical'), 5), inline: false },
-            { name: '🧠 Top Mental Health', value: topField(stats.sectionAuthors.get('Mental Health'), 5), inline: false },
         )
-        .setFooter({ text: 'PHMC Forms — global stats · use the buttons below for more' })
+        .setFooter({ text: `PHMC Forms — global stats · excludes ${EXCLUDED_DISPLAY.join(', ')} · use the buttons below for more` })
         .setTimestamp();
 }
 
@@ -201,10 +195,8 @@ function buildBreakdownEmbed(stats) {
             { name: '🗂️ Every Form Type', value: allForms || '—', inline: false },
             { name: '🏅 Top 10 Users (overall)', value: overallLines, inline: false },
             { name: '🩺 Top Coroners', value: topField(stats.sectionAuthors.get('Coroners'), 8), inline: false },
-            { name: '🚑 Top ER / Clinical', value: topField(stats.sectionAuthors.get('ER / Clinical'), 8), inline: false },
-            { name: '🧠 Top Mental Health', value: topField(stats.sectionAuthors.get('Mental Health'), 8), inline: false },
         )
-        .setFooter({ text: 'PHMC Forms — full breakdown' })
+        .setFooter({ text: `PHMC Forms — full breakdown · excludes ${EXCLUDED_DISPLAY.join(', ')}` })
         .setTimestamp();
 }
 

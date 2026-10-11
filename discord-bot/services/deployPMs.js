@@ -54,7 +54,6 @@ function lssdUrl()    { return process.env.FORUM_LSSD_URL || 'http://lssd.gta.wo
 function lssdUser()   { return process.env.FORUM_LSSD_USERNAME; }
 function lssdPass()   { return process.env.FORUM_LSSD_PASSWORD; }
 
-function sadcrUrl()   { return process.env.FORUM_SADCR_URL || 'http://sadcr.gta.world'; }
 function sadcrUser()  { return process.env.FORUM_SADCR_USERNAME; }
 function sadcrPass()  { return process.env.FORUM_SADCR_PASSWORD; }
 
@@ -137,7 +136,7 @@ function getRecipient(report) {
  * @returns {Promise<{ok: boolean, url: string|null, recipient: string, subject: string}>}
  */
 async function deploySingleReport(report, bbCode, client, forumUrl) {
-    const { authorId, key, report: reportData } = report;
+    const { key, report: reportData } = report;
     const recipient = getRecipient(reportData);
     const subject = reportData.originalKey || key;
 

@@ -46,15 +46,6 @@ export const WebhookProvider = ({ children, commitInfo }) => {
         localStorage.setItem('mediaUrls', JSON.stringify(mediaUrls));
     }, [mediaUrls]);
 
-    const clearSavedWebhookState = useCallback(() => {
-        setWebhookTitle('');
-        setWebhookMessage('');
-        setMediaUrls([]);
-        localStorage.removeItem('webhookTitle');
-        localStorage.removeItem('webhookMessage');
-        localStorage.removeItem('mediaUrls');
-    }, []);
-
     const handleLocalImageUpload = async (event) => {
         const files = event.target.files;
         if (!files || files.length === 0) return;

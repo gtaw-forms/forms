@@ -344,27 +344,6 @@ const useBbcodeGenerator = (selectedForm, formValues, finalSelectOptions, agency
           processedFormValues.decedents = decedentsOverride;
       }
 
-      // Custom handling for request-medical-files form to inject OAuth names
-      if (selectedForm?.id === 'request-medical-files' && gtaWorldUser) {
-        let oauthFirstName = gtaWorldUser?.faction?.firstname || gtaWorldUser?.activeCharacter?.firstname || null;
-        let oauthLastName = gtaWorldUser?.faction?.lastname || gtaWorldUser?.activeCharacter?.lastname || null;
-
-        if ((!oauthFirstName || !oauthLastName) && processedFormValues.patientName) {
-          const patientNameParts = String(processedFormValues.patientName).trim().split(' ');
-          if (patientNameParts.length > 0) {
-            oauthFirstName = patientNameParts[0];
-            oauthLastName = patientNameParts.slice(1).join(' '); 
-          }
-        }
-
-        if (oauthFirstName && !processedFormValues.patientFirstName) {
-          processedFormValues.patientFirstName = oauthFirstName;
-        }
-        if (oauthLastName && !processedFormValues.patientLastName) {
-          processedFormValues.patientLastName = oauthLastName;
-        }
-      }
-
       if ((selectedForm?.name === 'Coroner Report' || selectedForm?.id === 'death_record') && !processedFormValues.placeOfDeath) {
           if (Array.isArray(processedFormValues.decedents) && processedFormValues.decedents.length > 0) {
               const firstDecedent = processedFormValues.decedents[0];

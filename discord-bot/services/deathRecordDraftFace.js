@@ -6,7 +6,7 @@
  * Buttons:  face_approve_<shortId>, face_edit_<shortId>, face_deny_<shortId>
  * Modal:    face_edit_modal_<shortId>
  */
-import { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, EmbedBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, EmbedBuilder } from 'discord.js';
 import { shortId, findMorgueRecord } from './deathRecordDraftCache.js';
 import { getDraftClient, updateDraftFaceField } from './deathRecordDraftUI.js';
 import { generateDraft, baseReportKey, decedentFromReport, buildVirtualReportData } from './deathRecordDraftGenerator.js';
@@ -143,7 +143,7 @@ export async function createFaceDraft(db, draftInfo, reportKey, { forumUrl } = {
         createdAt: Date.now(),
     });
 
-    try { await db.ref(`${FACE_TRACK_PATH}/_ids/${shortId(reportKey)}`).set(reportKey); } catch (e) { /* _ids index write best-effort ignored: Face draft already persisted, lookup falls back */ }
+    try { await db.ref(`${FACE_TRACK_PATH}/_ids/${shortId(reportKey)}`).set(reportKey); } catch { /* _ids index write best-effort ignored: Face draft already persisted, lookup falls back */ }
 
     console.log(`[FACE] [OK] ${reportKey} — Face post scheduled for ${new Date(publishAt).toUTCString()} (+${FACE_PUBLISH_DELAY_HOURS}h)`);
     return { scheduled: true, publishAt };
@@ -320,47 +320,6 @@ async function runFacePublishSweep(db) {
     }
 }
 
-async function sendFaceDraftMessage(channel, content, draftInfo, reportKey, forumUrl) {
-    const dryRun = isFaceDryRun();
-    const bbPreview = content.length > 800 ? content.slice(0, 800) + '...' : content;
-
-    const fields = [
-        { name: 'Decedent', value: draftInfo.decedentName || 'Unknown', inline: true },
-        { name: 'Forum Record', value: forumUrl || 'Pending', inline: false },
-        { name: 'Key', value: `\`${reportKey}\``, inline: false },
-    ];
-    if (dryRun) {
-        fields.push({ name: 'Dry Run', value: '[WARN] FACE_DRY_RUN=true — approve will simulate, nothing posts to Face.', inline: false });
-    }
-
-    const embed = new EmbedBuilder()
-        .setTitle('Facebrowser Post Draft — Pending Review')
-        .setColor(dryRun ? 0xffc107 : 0xffa500)
-        .setDescription(`**${draftInfo.title || 'Public Death Record'}**\n\n\`\`\`${bbPreview}\`\`\``)
-        .addFields(fields)
-        .setFooter({ text: dryRun ? 'Face post draft — DRY RUN | Full text below' : 'Face post draft | Full text below' })
-        .setTimestamp();
-
-    const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-            .setCustomId(`${PREFIX_APPROVE}${shortId(reportKey)}`)
-            .setLabel('Approve & Post to Face')
-            .setStyle(ButtonStyle.Success),
-        new ButtonBuilder()
-            .setCustomId(`${PREFIX_EDIT}${shortId(reportKey)}`)
-            .setLabel('Edit')
-            .setStyle(ButtonStyle.Primary),
-        new ButtonBuilder()
-            .setCustomId(`${PREFIX_DENY}${shortId(reportKey)}`)
-            .setLabel('Deny')
-            .setStyle(ButtonStyle.Danger),
-    );
-
-    const msg = await channel.send({ embeds: [embed], components: [row] });
-    console.log(`[FACE] [OK] Face draft sent to #${channel.name} (${msg.id})`);
-    return msg;
-}
-
 // ── Button router ──
 
 export async function handleFaceButton(interaction) {
@@ -380,7 +339,7 @@ async function resolveReportKey(db, shortKey) {
     try {
         const snap = await db.ref(`${FACE_TRACK_PATH}/_ids/${shortKey}`).once('value');
         if (snap.exists()) return snap.val();
-    } catch (e) { /* _ids index read best-effort ignored: falls back to shortKey, caller reports not-found */ }
+    } catch { /* _ids index read best-effort ignored: falls back to shortKey, caller reports not-found */ }
     return shortKey;
 }
 
@@ -394,7 +353,7 @@ async function markDeathRecordFaceField(db, reportKey, text) {
         if (snap.exists() && snap.val()) {
             await updateDraftFaceField(snap.val(), text);
         }
-    } catch (e) { /* draft-embed reflect best-effort ignored: Face state already persisted, embed is cosmetic */ }
+    } catch { /* draft-embed reflect best-effort ignored: Face state already persisted, embed is cosmetic */ }
 }
 
 // ── Approve ──
@@ -468,7 +427,7 @@ async function handleApprove(interaction, shortKey) {
         try {
             const { default: firebase } = await import('./firebase.js');
             await firebase.db.ref(`${FACE_TRACK_PATH}/${shortKey}`).update({ lastError: err.message.slice(0, 300) }).catch(() => {});
-        } catch (e) { /* lastError write best-effort ignored: user already got the error reply */ }
+        } catch { /* lastError write best-effort ignored: user already got the error reply */ }
         await interaction.editReply({
             content: `Error: ${err.message.slice(0, 200)}`,
         });

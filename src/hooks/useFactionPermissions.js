@@ -16,8 +16,8 @@ import {
  */
 const useFactionPermissions = () => {
     const [factionData, setFactionData] = useState(null);
-    const [permissions, setPermissions] = useState([]);
-    const [accessLevel, setAccessLevel] = useState('none');
+    const [, setPermissions] = useState([]);
+    const [, setAccessLevel] = useState('none');
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
 

@@ -3,9 +3,7 @@ import { Button, Spinner } from 'react-bootstrap';
 
 // Forms whose forum posts can be edited in place. Autopsy + coroner_email are
 // deliberately excluded — those flows are heavily automated / PM-based.
-const EDIT_FORMS = ['coroner-report', 'death_record', 'mass-ftality-test',
-    'patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical',
-    'session_notes', 'intensive_treatment', 'psych-eval', 'general_consultation'];
+const EDIT_FORMS = ['coroner-report', 'death_record', 'mass-ftality-test'];
 
 const statusColor = (status) => {
     const s = String(status || '').toLowerCase();

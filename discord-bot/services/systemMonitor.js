@@ -140,7 +140,7 @@ async function checkGtawUcp(db, previousState) {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 45000);
 
-        const response = await fetch('https://ucp.gta.world/', {
+        await fetch('https://ucp.gta.world/', {
             method: 'GET',
             headers: { 'User-Agent': 'PHMC-Tools/HealthCheck' },
             signal: controller.signal,

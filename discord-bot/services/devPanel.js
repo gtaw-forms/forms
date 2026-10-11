@@ -97,7 +97,7 @@ async function runDirectAction(interaction, action) {
                 await interaction.deferReply({ flags: MessageFlags.Ephemeral });
             }
             await interaction.editReply({ content: `Error running ${action.label}: ${e.message}` });
-        } catch (e2) { /* interaction already resolved */ }
+        } catch { /* interaction already resolved */ }
     }
 }
 
@@ -201,7 +201,6 @@ export async function handleDevButton(interaction) {
     const modalAction = MODAL_ACTIONS.find(a => a.id === id);
     if (modalAction) {
         await interaction.showModal(buildActionModal(modalAction));
-        return;
     }
 }
 
@@ -266,6 +265,6 @@ export async function handleDevActionModal(interaction) {
                 await interaction.deferReply({ flags: MessageFlags.Ephemeral });
             }
             await interaction.editReply({ content: `Error running ${action.label}: ${e.message}` });
-        } catch (e2) { /* interaction already resolved */ }
+        } catch { /* interaction already resolved */ }
     }
 }

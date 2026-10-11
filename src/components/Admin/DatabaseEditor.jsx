@@ -8,12 +8,6 @@ import { logAdminAction, getUserContext, logDataVersionBump } from '../../utils/
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import { triggerGetSavedReportStats, triggerCreateSavedReportsBackup, triggerRestoreSavedReportsBackup } from '../../services/firebaseFunctions';
 
-const versionToNameMap = new Map([
-    [1, 'Coroner Report'],
-    [4, 'Mass Fatality Report'],
-    [11, 'Mass Fatality Report (v11)']
-]);
-
 const DatabaseEditor = ({ showNotification, currentUser: propCurrentUser, gtawUser: _propGtawUser }) => {
     const { user: gtawUser, username: gtawUsername } = useGtaWorldAuth();
     const currentUser = propCurrentUser || gtawUser;
@@ -21,7 +15,6 @@ const DatabaseEditor = ({ showNotification, currentUser: propCurrentUser, gtawUs
     const [jsonData, setJsonData] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
-    const [restoreFile, setRestoreFile] = useState(null);
     const [isRestoring, setIsRestoring] = useState(false);
     const [backupId, setBackupId] = useState('');
     const [isCreatingBackup, setIsCreatingBackup] = useState(false);
@@ -82,7 +75,7 @@ const DatabaseEditor = ({ showNotification, currentUser: propCurrentUser, gtawUs
                 if (snapshot.exists()) {
                     setOptionCategories(Object.keys(snapshot.val()));
                 }
-            } catch (e) {
+            } catch {
                 // Silently fail — user can still type a category name manually
             }
         })();
@@ -175,7 +168,7 @@ const DatabaseEditor = ({ showNotification, currentUser: propCurrentUser, gtawUs
         let dataToSave;
         try {
             dataToSave = JSON.parse(jsonData);
-        } catch (e) {
+        } catch {
             setError('Invalid JSON format.');
             showNotification('Invalid JSON format. Please correct it before saving.', 'error');
             return;
@@ -204,54 +197,6 @@ const DatabaseEditor = ({ showNotification, currentUser: propCurrentUser, gtawUs
         } finally {
             setIsLoading(false);
         }
-    };
-
-    const handleRestoreReports = async () => {
-        if (!restoreFile) {
-            showNotification('Please select a JSON file to restore.', 'warning');
-            return;
-        }
-
-        setIsRestoring(true);
-        const reader = new FileReader();
-        reader.onload = async (e) => {
-            try {
-                const { userAgent, timeZone } = getUserContext();
-                logAdminAction(
-                    currentUser?.email || gtawUsername,
-                    'Restored Reports from Backup',
-                    `File: ${restoreFile.name}`,
-                    'Database Editor',
-                    userAgent,
-                    timeZone,
-                    gtawUsername,
-                    gtawUser
-                );
-                const fileContent = e.target.result;
-                const parsedData = JSON.parse(fileContent);
-
-                if (!parsedData.savedReports) {
-                    showNotification('Invalid JSON: File must contain a "savedReports" key to restore reports.', 'error');
-                    setIsRestoring(false);
-                    return;
-                }
-
-                const reportsRef = ref(database, '/savedReports');
-                await update(reportsRef, parsedData.savedReports);
-                
-                showNotification('Successfully restored saved reports from backup!', 'check-circle');
-            } catch (err) {
-                showNotification(`Error processing file: ${err.message}`, 'error');
-                console.error(err);
-            } finally {
-                setIsRestoring(false);
-            }
-        };
-        reader.onerror = (err) => {
-            showNotification(`Error reading file: ${err.message}`, 'error');
-            setIsRestoring(false);
-        };
-        reader.readAsText(restoreFile);
     };
 
     // NOTE: legacy BBCode restore (wrote to /savedReportBBCode) removed

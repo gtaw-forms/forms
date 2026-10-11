@@ -55,7 +55,6 @@ function sectionBody(section) {
             return [
                 '**Everyday commands**',
                 '`/morgue` — search the morgue database',
-                '`/patient-search` — find a patient thread (medical records forum)',
                 '`/card` — generate a PHMC business card',
                 '`/rotation-list` — see who\u2019s up next and current caseloads',
                 '`/autopsy-loa` — put YOURSELF on/off LOA',

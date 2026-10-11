@@ -7,7 +7,6 @@ import { shortId } from './deathRecordDraftCache.js';
 import { generateFacePostContent, isFaceConfigured } from './facePost.js';
 
 let _client = null;
-let _forumClient = null;
 
 export const DRAFT_CHANNEL_ID = process.env.DEATH_RECORD_DRAFT_CHANNEL_ID || process.env.DASHBOARD_CHANNEL_ID;
 
@@ -23,8 +22,8 @@ export function setDraftClient(client) {
 /**
  * Register the forum client (called from autoDeploy.js setup).
  */
-export function setDraftForumClient(fc) {
-    _forumClient = fc;
+export function setDraftForumClient(_fc) {
+    // No-op retained for API compatibility — the draft UI posts via the bot client.
 }
 
 /**

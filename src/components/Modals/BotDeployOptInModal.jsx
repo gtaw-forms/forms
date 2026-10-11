@@ -35,7 +35,7 @@ const BotDeployOptInModal = ({
         setStep(0);
         consentAtOpenRef.current = consent ? { ...consent } : {};
         const defaults = {};
-        DEPLOY_TRACKED_FORMS.forEach((f) => { defaults[f] = f === 'autopsy' ? true : false; });
+        DEPLOY_TRACKED_FORMS.forEach((f) => { defaults[f] = f === 'autopsy'; });
         if (consent && Object.keys(consent).length > 0) {
             setLocal({ ...defaults, ...consent, autopsy: true });
         } else {
@@ -97,7 +97,7 @@ const BotDeployOptInModal = ({
     const disableSection = useCallback(() => {
         setLocal((prev) => {
             const next = { ...prev };
-            sectionFormIds.filter(f => DEPLOY_TRACKED_FORMS.includes(f)).forEach((f) => { next[f] = f === 'autopsy' ? true : false; });
+            sectionFormIds.filter(f => DEPLOY_TRACKED_FORMS.includes(f)).forEach((f) => { next[f] = f === 'autopsy'; });
             return next;
         });
     }, [sectionFormIds]);

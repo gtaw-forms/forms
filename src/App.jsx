@@ -92,11 +92,12 @@ function UpdateBanner() {
 const GtaLogin = lazy(() => import('./components/Auth/GtaLogin.jsx'));
 const GtaCallback = lazy(() => import('./components/Auth/GtaCallback.jsx'));
 const NewUIPrototype = lazy(() => import('./components/ui-new/index.jsx'));
+const MigrationUI = lazy(() => import('./components/migration-ui/index.jsx'));
 
 function App() {
     const [formData, setFormData] = useState({});
-    const [lastWebhookIdentifier, setLastWebhookIdentifier] = useState(null);
-    const { showNotification, removeNotification } = useNotification();
+    const [, setLastWebhookIdentifier] = useState(null);
+    const { showNotification } = useNotification();
 
     // GLOBAL SECURITY KILL-SWITCH LISTENER
     useEffect(() => {
@@ -282,6 +283,7 @@ function App() {
                                 <Route path="/admin" element={<ProtectedRoute><Admin formData={formData} setFormData={setFormData} showNotification={showNotification} /></ProtectedRoute>} />
                                 <Route path="/ui-prototype" element={<NewUIPrototype />} />
                                 <Route path="/prototype-basic" element={<NewUIPrototype basicMode />} />
+                                <Route path="/migration-ui" element={<MigrationUI />} />
                                 {/* Deep links used by the Discord link-preview buttons */}
                                 <Route path="/morgue" element={<NewUIPrototype initialView="morgue" />} />
                                 <Route path="/tow" element={<NewUIPrototype initialView="tow" />} />

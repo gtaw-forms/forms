@@ -18,9 +18,9 @@ const FactionDataUpload = ({ showNotification }) => {
     const { user: gtawUser, username: gtawUsername } = useGtaWorldAuth();
     const { permissions } = useFactionPermissions();
     const [uploadStatus, setUploadStatus] = useState('idle'); // idle, uploading, preview, success, error
-    const [uploadedFile, setUploadedFile] = useState(null);
+    const [, setUploadedFile] = useState(null);
     const [parsedData, setParsedData] = useState(null);
-    const [uploadResult, setUploadResult] = useState(null);
+    const [, setUploadResult] = useState(null);
     const [error, setError] = useState(null);
     
     // Database content state

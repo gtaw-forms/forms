@@ -4,6 +4,13 @@ import * as functions from "firebase-functions";
 import { getDatabase } from "firebase-admin/database";
 import { initializeApp, getApps } from "firebase-admin/app";
 import { syncFactionMembers } from './src/maintenance/factionSync.js';
+import { createRateLimiter } from './src/utils/rateLimit.js';
+
+// Burst guard for full-dump reads (2026-10-01: a client render loop fired
+// 4,534 getMorgueRecords calls in one hour): 10 calls per rolling 60s per
+// UID, fail-closed, no retry. Human use (session load + explicit lookups) is
+// far below this; a loop trips it within seconds.
+const checkMorgueRecordsRateLimit = createRateLimiter({ windowMs: 60000, maxCalls: 10 });
 
 const MORGUE_API_URL = process.env.MORGUE_API_URL || 'http://88.208.243.254';
 const MORGUE_API_KEY = process.env.MORGUE_API_KEY;
@@ -129,6 +136,11 @@ export const getMorgueRecords = onCall({
         throw new functions.https.HttpsError('unauthenticated', 'Authentication required.');
     }
 
+    if (!checkMorgueRecordsRateLimit(request.auth.uid)) {
+        console.warn(`[getMorgueRecords] Rate limit exceeded for uid ${request.auth.uid}`);
+        throw new functions.https.HttpsError('resource-exhausted', 'Morgue lookup rate limit exceeded. Try again in a minute.');
+    }
+
     if (!MORGUE_API_KEY) {
         console.error('[getMorgueRecords] MORGUE_API_KEY environment variable is not set.');
         throw new functions.https.HttpsError('internal', 'Server configuration error.');
@@ -142,6 +154,7 @@ export const getMorgueRecords = onCall({
 
     const url = `${MORGUE_API_URL}/api/morgue?${params.toString()}`;
 
+    const t0 = Date.now();
     try {
         const response = await fetch(url, {
             headers: morgueRequesterHeaders(request),
@@ -154,54 +167,18 @@ export const getMorgueRecords = onCall({
         }
 
         const data = await response.json();
+        // Access attribution: who pulled what (Cloud Logging retains 30d; the
+        // VPS appends the same identity to data/morgue-access.log).
+        const via = morgueRequesterHeaders(request);
+        // eslint-disable-next-line no-control-regex -- strips control chars from untrusted search term before logging (log-injection defense)
+        const safeQ = String(q || '').replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, 80);
+        const count = Array.isArray(data?.records) ? data.records.length : 0;
+        console.log(`[getMorgueRecords] uid=${request.auth.uid} character="${via['x-phmc-requester-character']}" oauth="${via['x-phmc-requester-oauth']}" q="${safeQ}" limit=${limit || '-'} -> ${count} records (${Date.now() - t0}ms)`);
         return data;
     } catch (err) {
         if (err instanceof functions.https.HttpsError) throw err;
         console.error('[getMorgueRecords] Error:', err.message);
         throw new functions.https.HttpsError('internal', `Failed to fetch morgue records: ${err.message}`);
-    }
-});
-
-/**
- * getProtocolsDev — Returns the dev EMS protocols dataset (for localhost
- * preview). Hosted on the VPS (data/protocols-dev.json) to keep the heavy
- * base64 images out of RTDB.
- *
- * Security: any signed-in user may fetch it — it is dev-only content.
- */
-export const getProtocolsDev = onCall({
-    region: "europe-west2",
-    memory: "256MiB",
-    cors: [
-        'https://gtaw-forms.github.io',
-        'https://phmc-tools.gta.world',
-        'http://localhost:3000',
-        'http://localhost:5173'
-    ]
-}, async (request) => {
-    if (!request.auth) {
-        throw new functions.https.HttpsError('unauthenticated', 'Authentication required.');
-    }
-    if (!MORGUE_API_KEY) {
-        console.error('[getProtocolsDev] MORGUE_API_KEY environment variable is not set.');
-        throw new functions.https.HttpsError('internal', 'Server configuration error.');
-    }
-
-    const url = `${MORGUE_API_URL}/api/protocols-dev`;
-    try {
-        const response = await fetch(url, {
-            headers: { 'x-api-key': MORGUE_API_KEY },
-        });
-        if (!response.ok) {
-            const text = await response.text();
-            console.error(`[getProtocolsDev] VPS API returned ${response.status}: ${text}`);
-            throw new functions.https.HttpsError('internal', 'Failed to fetch dev protocols.');
-        }
-        return await response.json();
-    } catch (err) {
-        if (err instanceof functions.https.HttpsError) throw err;
-        console.error('[getProtocolsDev] Error:', err.message);
-        throw new functions.https.HttpsError('internal', `Failed to fetch dev protocols: ${err.message}`);
     }
 });
 
@@ -481,144 +458,6 @@ export const syncMorgueFile = onCall({
 });
 
 /**
- * getCctvData — Returns CCTV camera data from the VPS.
- *
- * Proxies to the morgue-api's /api/cctv/* endpoints.
- *
- * Request data:
- *   { cameraId?: number | 'cameras' | 'stats' }
- *     omitted / 'cameras'  →  list all cameras with metadata
- *     'stats'              →  aggregate statistics
- *     <number>             →  logs for a specific camera
- */
-export const getCctvData = onCall({
-    region: "europe-west2",
-    memory: "256MiB",
-    cors: [
-        'https://gtaw-forms.github.io',
-        'https://phmc-tools.gta.world',
-        'http://localhost:3000'
-    ]
-}, async (request) => {
-    if (!request.auth) {
-        throw new functions.https.HttpsError('unauthenticated', 'Authentication required.');
-    }
-
-    if (!MORGUE_API_KEY) {
-        console.error('[getCctvData] MORGUE_API_KEY environment variable is not set.');
-        throw new functions.https.HttpsError('internal', 'Server configuration error.');
-    }
-
-    const { cameraId, search } = request.data || {};
-    let url;
-
-    if (search) {
-        url = `${MORGUE_API_URL}/api/cctv/search?q=${encodeURIComponent(search)}`;
-    } else if (cameraId === 'stats') {
-        url = `${MORGUE_API_URL}/api/cctv/stats`;
-    } else if (cameraId && cameraId !== 'cameras') {
-        url = `${MORGUE_API_URL}/api/cctv/cameras/${cameraId}`;
-    } else {
-        url = `${MORGUE_API_URL}/api/cctv/cameras`;
-    }
-
-    const t0 = Date.now();
-    console.log(`[getCctvData] Fetching: ${url}`);
-
-    try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 15000); // 15s timeout
-
-        const response = await fetch(url, {
-            headers: { 'x-api-key': MORGUE_API_KEY },
-            signal: controller.signal,
-        });
-        clearTimeout(timeout);
-
-        const t1 = Date.now();
-        console.log(`[getCctvData] VPS responded in ${t1 - t0}ms with status ${response.status}`);
-
-        if (!response.ok) {
-            const text = await response.text();
-            console.error(`[getCctvData] VPS API returned ${response.status}: ${text}`);
-            throw new functions.https.HttpsError('internal', 'Failed to fetch CCTV data from data source.');
-        }
-
-        const data = await response.json();
-        console.log(`[getCctvData] Parsed JSON, total ${Date.now() - t0}ms`);
-        return data;
-    } catch (err) {
-        if (err instanceof functions.https.HttpsError) throw err;
-        if (err.name === 'AbortError') {
-            console.error(`[getCctvData] VPS API timed out after 15s`);
-            throw new functions.https.HttpsError('deadline-exceeded', 'CCTV data source timed out.');
-        }
-        console.error(`[getCctvData] Error after ${Date.now() - t0}ms:`, err.message);
-        throw new functions.https.HttpsError('internal', `Failed to fetch CCTV data: ${err.message}`);
-    }
-});
-
-/**
- * triggerCctvFetch — Triggers a manual CCTV data fetch on the VPS.
- * Calls POST /api/cctv/fetch which spawns fetch-all.js --headless in the
- * background and returns immediately.
- */
-export const triggerCctvFetch = onCall({
-    region: "europe-west2",
-    memory: "256MiB",
-    cors: [
-        'https://gtaw-forms.github.io',
-        'https://phmc-tools.gta.world',
-        'http://localhost:3000'
-    ]
-}, async (request) => {
-    if (!request.auth) {
-        throw new functions.https.HttpsError('unauthenticated', 'Authentication required.');
-    }
-
-    if (!MORGUE_API_KEY) {
-        console.error('[triggerCctvFetch] MORGUE_API_KEY environment variable is not set.');
-        throw new functions.https.HttpsError('internal', 'Server configuration error.');
-    }
-
-    console.log('[triggerCctvFetch] Triggering manual CCTV fetch...');
-
-    const t0 = Date.now();
-    console.log('[triggerCctvFetch] Calling VPS...');
-
-    try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 10000); // 10s timeout
-
-        const response = await fetch(`${MORGUE_API_URL}/api/cctv/fetch`, {
-            method: 'POST',
-            headers: { 'x-api-key': MORGUE_API_KEY },
-            signal: controller.signal,
-        });
-        clearTimeout(timeout);
-
-        console.log(`[triggerCctvFetch] VPS responded in ${Date.now() - t0}ms with status ${response.status}`);
-
-        if (!response.ok) {
-            const text = await response.text();
-            console.error(`[triggerCctvFetch] VPS API returned ${response.status}: ${text}`);
-            throw new functions.https.HttpsError('internal', 'Failed to trigger CCTV fetch.');
-        }
-
-        const data = await response.json();
-        return data;
-    } catch (err) {
-        if (err instanceof functions.https.HttpsError) throw err;
-        if (err.name === 'AbortError') {
-            console.error('[triggerCctvFetch] VPS API timed out after 10s');
-            throw new functions.https.HttpsError('deadline-exceeded', 'CCTV fetch trigger timed out.');
-        }
-        console.error(`[triggerCctvFetch] Error after ${Date.now() - t0}ms:`, err.message);
-        throw new functions.https.HttpsError('internal', `Failed to trigger CCTV fetch: ${err.message}`);
-    }
-});
-
-/**
  * checkOfficerName — Checks a requesting officer name against LSPD/LSSD rosters.
  * Proxies to the VPS morgue-api's /api/roster/check endpoint.
  *
@@ -756,78 +595,6 @@ export const getAgencyCredentials = onCall({
     }
 });
 
-/**
- * getPatientNames — Patient Name autocomplete lookup for medical record forms.
- * Proxies to the VPS morgue-api's /api/patients endpoint (the patient index is
- * built by the bot's services/patientIndex.js).
- *
- * Request data: { q?: string }
- *   q — partial name to search (min 2 chars). Omitted → full index.
- *
- * Returns:
- *   with q: { count, matches: [{ name, id, lastSeen }] }
- *   without q: { version, lastUpdated, lastFullBuild, count, patients }
- *
- * Auth: any signed-in PHMC staff (same gate as getAgencyCredentials).
- */
-export const getPatientNames = onCall({
-    region: "europe-west2",
-    memory: "256MiB",
-    cors: [
-        'https://gtaw-forms.github.io',
-        'https://phmc-tools.gta.world',
-        'http://localhost:3000',
-        'http://localhost:5173'
-    ]
-}, async (request) => {
-    if (!request.auth) {
-        throw new functions.https.HttpsError('unauthenticated', 'Authentication required.');
-    }
-
-    const t = request.auth.token || {};
-    const email = String(t.email || '').toLowerCase();
-    const isPhmcStaff = t.isFactionMember === true
-        || t.isSuperAdmin === true
-        || (t.accessLevel || 0) >= 1
-        || email.endsWith('@gmail.com');
-    if (!isPhmcStaff) {
-        throw new functions.https.HttpsError('permission-denied', 'PHMC staff access required.');
-    }
-
-    if (!MORGUE_API_KEY) {
-        console.error('[getPatientNames] MORGUE_API_KEY environment variable is not set.');
-        throw new functions.https.HttpsError('internal', 'Server configuration error.');
-    }
-
-    const q = typeof request.data?.q === 'string' ? request.data.q.trim() : '';
-    if (q && q.length < 2) {
-        throw new functions.https.HttpsError('invalid-argument', 'q must be at least 2 characters');
-    }
-
-    const url = q
-        ? `${MORGUE_API_URL}/api/patients?q=${encodeURIComponent(q)}`
-        : `${MORGUE_API_URL}/api/patients`;
-
-    try {
-        const response = await fetch(url, {
-            headers: { 'x-api-key': MORGUE_API_KEY },
-            signal: AbortSignal.timeout(10000),
-        });
-
-        if (!response.ok) {
-            const text = await response.text();
-            console.error(`[getPatientNames] VPS API returned ${response.status}: ${text}`);
-            throw new functions.https.HttpsError('internal', 'Failed to fetch patient names.');
-        }
-
-        return await response.json();
-    } catch (err) {
-        if (err instanceof functions.https.HttpsError) throw err;
-        console.error('[getPatientNames] Error:', err.message);
-        throw new functions.https.HttpsError('internal', `Failed to fetch patient names: ${err.message}`);
-    }
-});
-
 // ── VPS saved-report proxies ──
 // Normal saved reports live on morgue-api. Scheduled/deployment-tracked reports
 // continue using RTDB so the Discord bot queue remains unchanged.
@@ -871,9 +638,12 @@ function requireSignedIn(request) {
 // claim values (same comprehensiveSanitize rule as the client,
 // src/utils/textUtils.js:161-167) and never trusts the client string alone.
 // Superadmin (isSuperAdmin claim or accessLevel 'superadmin', same convention
-// as getSavedReportStats) bypasses. Reads additionally allow faction admins
-// (accessLevel 'admin'/'management' = scriptRank >= 12); writes/deletes do
-// not — admin tools never write user reports.
+// as getSavedReportStats) bypasses.
+// 2026-10-02: READS (listSavedReports/getSavedReport) are now open to any
+// signed-in user — staff need to view each other's reports (e.g. coroner
+// email attachments, duplicate checks, team review). ONLY signed-in is
+// required; the per-author check below remains for writes/deletes
+// (saveSavedReport/deleteSavedReport) so reports stay tamper-proof.
 function savedReportSanitize(str) {
     if (!str || typeof str !== 'string') return '';
     let sanitized = str.trim().replace(/[.#$[/ \]]+/g, '_');
@@ -891,11 +661,7 @@ function savedReportCaller(request) {
     );
     const accessLevel = token.accessLevel;
     const isSuperAdmin = token.isSuperAdmin === true || accessLevel === 'superadmin';
-    const isFactionAdmin = isSuperAdmin
-        || accessLevel === 'admin'
-        || accessLevel === 'management'
-        || (typeof accessLevel === 'number' && accessLevel >= 12);
-    return { allowed, isSuperAdmin, isFactionAdmin, uid: request.auth?.uid || null };
+    return { allowed, isSuperAdmin, uid: request.auth?.uid || null };
 }
 
 // Localhost dev escape hatch: useFormSaver saves under the FIXED author
@@ -904,18 +670,17 @@ function savedReportCaller(request) {
 // localhost dev without weakening per-user isolation.
 const SAVED_REPORT_DEV_AUTHOR = 'GTAW_Dev';
 
-function requireSavedReportAuthor(request, fnName, author, allowAdminRead) {
+function requireSavedReportAuthor(request, fnName, author) {
     const requested = savedReportSanitize(author);
     const caller = savedReportCaller(request);
     if (caller.isSuperAdmin) return;
     if (requested === SAVED_REPORT_DEV_AUTHOR) return;
     if (requested && caller.allowed.has(requested)) return;
-    if (allowAdminRead && caller.isFactionAdmin) return;
     // Warn-level, diagnosable, no raw tokens/keys: requested author vs the
     // caller's identity CLASS (booleans + uid only).
     console.warn(`[${fnName}] author gate denied: requested="${requested}" ` +
         `identityClass={hasIdentity:${caller.allowed.size > 0},` +
-        `isSuperAdmin:${caller.isSuperAdmin},isFactionAdmin:${caller.isFactionAdmin},` +
+        `isSuperAdmin:${caller.isSuperAdmin},` +
         `uid:${caller.uid || 'none'}}`);
     throw new functions.https.HttpsError('permission-denied', 'You can only access your own saved reports.');
 }
@@ -924,7 +689,7 @@ export const listSavedReports = onCall({ region: 'europe-west2', memory: '256MiB
     requireSignedIn(request);
     const author = String(request.data?.author || '').trim();
     if (!author) throw new functions.https.HttpsError('invalid-argument', 'author is required.');
-    requireSavedReportAuthor(request, 'listSavedReports', author, true);
+    // Read: any signed-in user may list any author's reports (2026-10-02).
     // Paginated list: limit/offset optional, no limit = all (count/exists checks).
     const rawLimit = Number(request.data?.limit);
     const rawOffset = Number(request.data?.offset);
@@ -936,12 +701,30 @@ export const listSavedReports = onCall({ region: 'europe-west2', memory: '256MiB
     return callSavedReportsApi(path);
 });
 
+export const listRecentSavedReports = onCall({ region: 'europe-west2', memory: '256MiB' }, async (request) => {
+    requireSignedIn(request);
+    // Global feed for the migration UI: newest first across ALL authors.
+    // Always paginated (default 25, max 100) — no unbounded reads.
+    const rawLimit = Number(request.data?.limit);
+    const rawOffset = Number(request.data?.offset);
+    const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(Math.floor(rawLimit), 100) : 25;
+    const offset = Number.isFinite(rawOffset) && rawOffset > 0 ? Math.floor(rawOffset) : 0;
+    const params = new URLSearchParams();
+    params.set('limit', String(limit));
+    params.set('offset', String(offset));
+    const formId = String(request.data?.formId || '').trim();
+    if (formId) params.set('formId', formId);
+    const q = String(request.data?.q || '').trim();
+    if (q) params.set('q', q);
+    return callSavedReportsApi(`/api/reports/recent?${params.toString()}`);
+});
+
 export const getSavedReport = onCall({ region: 'europe-west2', memory: '256MiB' }, async (request) => {
     requireSignedIn(request);
     const author = String(request.data?.author || '').trim();
     const key = String(request.data?.key || '').trim();
     if (!author || !key) throw new functions.https.HttpsError('invalid-argument', 'author and key are required.');
-    requireSavedReportAuthor(request, 'getSavedReport', author, true);
+    // Read: any signed-in user may fetch any author's report (2026-10-02).
     return callSavedReportsApi(`/api/reports/${encodeURIComponent(author)}/${encodeURIComponent(key)}`);
 });
 

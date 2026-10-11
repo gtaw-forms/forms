@@ -153,7 +153,7 @@ export const processGtaWorldAuth = onCall({
         'https://global.gta.world'
     ]
 }, async (request) => {
-    const { code, redirectUri, clientId: providedClientId } = request.data || {};
+    const { code, redirectUri } = request.data || {};
     const startTime = Date.now();
     const perf = { start: startTime, last: startTime };
 
@@ -243,7 +243,7 @@ export const processGtaWorldAuth = onCall({
         let userData;
         try {
             userData = JSON.parse(userResponseText);
-        } catch (e) {
+        } catch {
             console.error('[UnifiedAuth] Failed to parse user profile JSON (first 500 chars):', userResponseText.substring(0, 500));
             throw new functions.https.HttpsError('internal', 'Failed to parse user profile from GTA World API: invalid JSON response.');
         }
@@ -583,7 +583,7 @@ export const refreshGtawUser = onCall({
         let userData;
         try {
             userData = JSON.parse(responseText);
-        } catch (e) {
+        } catch {
             console.error('[refreshGtawUser] Failed to parse user profile JSON (first 500 bytes):', responseText.substring(0, 500));
             throw new functions.https.HttpsError('internal', 'GTA World API returned invalid JSON for user profile.');
         }

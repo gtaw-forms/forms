@@ -4,17 +4,15 @@ import { ref, get } from 'firebase/database';
 import { triggerListSavedReports, triggerGetSavedReport } from '../services/firebaseFunctions';
 import * as Sentry from "@sentry/react";
 import { useNotification } from '../contexts/NotificationContext';
-import { useData, telemetryUserLabel } from '../contexts/DataContext';
+import { useData } from '../contexts/DataContext';
 import { comprehensiveSanitize } from '../utils/textUtils';
-import useGtaWorldAuth from './useGtaWorldAuth';
 
 // Note: all non-scheduled reads go through the VPS after the Task 3b
 // cutover — no RTDB report paths are read here anymore.
 
 export const useReportLoader = () => {
     const { showNotification, removeNotification } = useNotification();
-    const { factionListData, sendDataRequestLog } = useData();
-    const { user: gtaWorldUser, isAuthenticated: isGtaAuthenticated } = useGtaWorldAuth();
+    const { factionListData } = useData();
 
     const [savedReports, setSavedReports] = useState([]);
     const [isLoadingUserReports, setIsLoadingUserReports] = useState(false);
@@ -185,7 +183,6 @@ export const useReportLoader = () => {
 
             if (reportSnapshot.exists()) {
                 const reportData = reportSnapshot.val();
-                const bbCodeData = bbCodeSnapshot.exists() ? bbCodeSnapshot.val() : null;
                 let loadedVersion = reportData.bbCodeVersion;
 
                 // Fallback: Infer version from title if missing
@@ -195,32 +192,6 @@ export const useReportLoader = () => {
                         reportData.bbCodeVersion = 11; // Update object
                         console.log(`[useReportLoader] Inferred version 11 (${reportData.originalKey.includes('[Mass Fatality Report]') ? 'Mass' : 'Multi'} Fatality) from title.`);
                     }
-                }
-                
-                if (sendDataRequestLog) {
-                    const reportSize = new TextEncoder().encode(JSON.stringify(reportData)).length;
-                    const bbCodeSize = bbCodeData ? new TextEncoder().encode(JSON.stringify(bbCodeData)).length : 0;
-                    const totalSize = reportSize + bbCodeSize;
-
-                    const reportSizeKb = reportSize / 1024;
-                    const bbCodeSizeKb = bbCodeSize / 1024;
-                    sendDataRequestLog(
-                        'useReportLoader.js/loadReportForUser',
-                        false,
-                        report._src === 'scheduled' ? 'Firebase Read' : 'VPS Report API',
-                        0,
-                        reportSizeKb + bbCodeSizeKb,
-                        isGtaAuthenticated,
-                        telemetryUserLabel(gtaWorldUser),
-                        ['saved-report'],
-                        [],
-                        { 'saved-report': reportSizeKb + bbCodeSizeKb },
-                        null,
-                        {
-                            route: window.location.hash || '#/',
-                            trigger: 'load-report',
-                        },
-                    );
                 }
 
                 reportData.bbCode = bbCodeSnapshot.exists() ? bbCodeSnapshot.val().bbCode : '';
@@ -400,7 +371,7 @@ export const useReportLoader = () => {
                 removeNotification(loadingNotifId);
             }
         }
-    }, [showNotification, removeNotification, sendDataRequestLog, isGtaAuthenticated, gtaWorldUser, findEmployeeDetails]);
+    }, [showNotification, removeNotification, findEmployeeDetails]);
 
     const countAllUserReports = useCallback(async (userId) => {
         if (!userId) return 0;

@@ -37,7 +37,7 @@ async function checkKillSwitch() {
         const response = await fetch(url, { cache: 'no-store' });
         if (!response.ok) return null;
         return await response.json();
-    } catch (err) {
+    } catch {
         return null;
     }
 }

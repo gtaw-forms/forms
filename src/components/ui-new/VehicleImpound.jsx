@@ -328,7 +328,8 @@ const VehicleImpound = ({ showNotification, isAuthenticated, characterName, ucpN
                     // Function not deployed/reachable — stay browser-local.
                     // Server-owned ids can't be edited locally; save a copy.
                     if (payload.id && !String(payload.id).startsWith('local-') && !String(payload.id).startsWith('demo-')) {
-                        const { id, ...rest } = payload;
+                        const rest = { ...payload };
+                        delete rest.id;
                         saveLocal(rest);
                     } else {
                         saveLocal(payload);

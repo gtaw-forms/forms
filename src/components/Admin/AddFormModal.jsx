@@ -121,7 +121,7 @@ const AddFormModal = ({ show, onClose: onHide, editingForm = null, isDuplicate =
   const [conditionalField, setConditionalField] = useState("");
   const [conditionalValue, setConditionalValue] = useState("");
   const [tempConditions, setTempConditions] = useState([]);
-  const [conditionMode, setConditionMode] = useState("and");
+  const [conditionMode] = useState("and");
   const [exactValue, setExactValue] = useState("");
 
   const templateVars = useMemo(() => {

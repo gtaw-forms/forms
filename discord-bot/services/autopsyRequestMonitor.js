@@ -24,6 +24,7 @@ import { DeployProgressEmbed } from './deployLogger.js';
 import { state as deployState } from './deployState.js';
 import { registerTick, unregisterTick } from './scheduler.js';
 import { mutateState } from './vpsState.js';
+import { DOE_PAREN_RE, isDoePlaceholder } from './doePlaceholders.js';
 
 /**
  * Bump a faction intake counter (VPS-local, off RTDB — the totals are only
@@ -60,7 +61,6 @@ async function getMassChunker() {
 
 const PHMC_FORUM_ID = 265;
 const PHMC_BASE = 'https://phmc.gta.world';
-const LSSD_BASE = 'https://lssd.gta.world';
 const CHECK_INTERVAL_MS = parseInt(process.env.AUTOPSY_MONITOR_INTERVAL || '', 10) || 15 * 60 * 1000;
 
 // Ack status field names in Firebase. Kebab-case for visibility when browsing
@@ -306,7 +306,11 @@ function parseTopicTitle(title) {
     const match = title.trim().match(TITLE_REGEX);
     if (!match) return null;
     const parsed = {
-        name: (match[1] || '').trim(),
+        // The name group is greedy, so a title written with dashes instead of
+        // brackets ("Autopsy Request - John Doe - LSPD") captures the trailing
+        // separator too ("John Doe - "). Strip that cruft so a title-only
+        // fallback never files a name ending in "-" (t=10364 / Case 538).
+        name: (match[1] || '').trim().replace(/[\s\-–—]+$/, '').trim(),
         oocName: (match[2] || '').trim(),
         faction: match[3] ? match[3].toUpperCase() : '',
     };
@@ -637,6 +641,11 @@ export async function checkForNewRequests() {
                         } else if ((hasDept && deptLooksReal) || (hasName && nameLooksReal)) {
                             console.log(`[AUTOPSY-MON] Body confirmed autopsy request for #${topic.topicId} (dept="${deptRaw}", name="${nameRaw}")`);
                             const oocMatch = topic.title.match(/\(\(\s*(.*?)\s*\)\)/) || topic.title.match(/\(\s*(.*?)\s*\)/);
+                            // A DOE placeholder in the title ("DOE and DOE", "(J. DOE)")
+                            // is not an OOC identity — adopting it files cases like
+                            // "Trinity Dalton J. DOE ((DOE and DOE))" (t=10328).
+                            const titleOocRaw = (oocMatch && oocMatch[1] ? oocMatch[1].trim() : '');
+                            const titleOoc = isDoePlaceholder(titleOocRaw) ? '' : titleOocRaw;
                             // The body's Name field sometimes already includes "(OOC)" —
                             // strip it so the case title doesn't show a duplicate.
                             let cleanName = (nameLooksReal ? nameRaw : '');
@@ -652,7 +661,7 @@ export async function checkForNewRequests() {
                             }
                             parsed = {
                                 name: cleanName,
-                                oocName: (oocMatch && oocMatch[1] ? oocMatch[1].trim() : ''),
+                                oocName: titleOoc,
                                 faction: resolvedFaction,
                             };
                             splitDecedents(parsed);
@@ -901,8 +910,23 @@ export async function checkForNewRequests() {
                 // the body names the real decedent (decedentName "John Weber").
                 // Filing the case under the requester misnames the case topic
                 // and every downstream artifact (assignment pings, dashboard).
-                let caseName = parsed.name;
-                let caseOoc = parsed.oocName;
+                // The request BODY is the authoritative decedent source, but the
+                // title can also carry identity (IC name + ((OOC))) that the body
+                // omits or writes into the wrong field. So use the body's single
+                // decedent only to FILL GAPS the title left — never to wholesale
+                // replace a title that already parsed. A hand-written title that
+                // omits the ((OOC)) ("Autopsy Request - John Doe - LSPD") parses
+                // to name "John Doe" / OOC "" while Section 2 still holds
+                // "1.) Name: John Doe ((Ilya Baranov))"; adopting the body OOC
+                // restores the assignment embed, the case title, the morgue match
+                // (record "Unknown (( Ilya Baranov ))" #84785 was missed →
+                // "NOT FOUND") and the web Load-Case fill (t=10364 / Case 538).
+                const singleBody = (Array.isArray(parsedBbFields.decedentNames) && parsedBbFields.decedentNames.length === 1)
+                    ? parsedBbFields.decedentNames[0] : null;
+                const singleBodyName = singleBody ? String(singleBody.name || '').trim() : '';
+                const singleBodyOoc = singleBody ? String(singleBody.oocName || '').trim() : '';
+                let caseName = parsed.name || singleBodyName;
+                let caseOoc = parsed.oocName || singleBodyOoc;
                 try {
                     const r = resolveCaseDecedent({
                         titleName: parsed.name,
@@ -914,11 +938,16 @@ export async function checkForNewRequests() {
                         console.log(`[AUTOPSY-MON] Requester-titled request #${topic.topicId}: title names "${parsed.name}" (requester) — filing case as decedent "${r.name}"`);
                         caseName = r.name;
                         caseOoc = r.oocName;
-                        // Batched: overridden decedent identity in one update (same values, same overridden-only condition).
-                        await caseRef.update({ name: caseName, oocName: caseOoc }).catch(() => {});
                     }
                 } catch (e) {
                     console.warn(`[AUTOPSY-MON] Decedent-title guard failed for #${topic.topicId}: ${e.message} — using title name`);
+                }
+                // Persist the derived identity whenever it differs from the entry's
+                // stored name/oocName (e.g. the body supplied the OOC the title
+                // lacked), so every later read — web app, dashboard, next cycle —
+                // carries the real decedent too.
+                if (caseName !== entry.name || caseOoc !== entry.oocName) {
+                    await caseRef.update({ name: caseName, oocName: caseOoc }).catch(() => {});
                 }
 
                 const caseNumStr = caseNum ? ` ${caseNum}` : '';
@@ -1042,8 +1071,8 @@ export async function checkForNewRequests() {
                                     try {
                                         const { notifyAssignment } = await import('./meDiscordNotify.js');
                                         await notifyAssignment(_db, assignedName, newTitle || caseTitle, caseUrl, {
-                                            decedent: parsed.name,
-                                            ooc: parsed.oocName,
+                                            decedent: caseName,
+                                            ooc: caseOoc,
                                             caseNumber: caseNum,
                                             deathType: parsedBbFields.deathType || parsed.deathType,
                                             requestTopicId: topic.topicId,
@@ -1085,7 +1114,7 @@ export async function checkForNewRequests() {
                         // whose PHMC poster positively resolves to a human account (never duplicate a
                         // CASELINK topic; unresolvable posters defer to recovery/manual).
                         // The raw request BBCode goes in verbatim inside the certified-copy shell.
-                        if (isAgencyFaction(parsed.faction) && (parsed.oocName || parsed.name)) {
+                        if (isAgencyFaction(parsed.faction) && (caseOoc || caseName)) {
                             const cfgA = getAgencyForum(parsed.faction);
                             const existingAgencyTopicId = existingEntry[cfgA.topicField]
                                 || (await caseRef.child(cfgA.topicField).once('value')).val()
@@ -1094,8 +1123,8 @@ export async function checkForNewRequests() {
                                 db: _db,
                                 topicId: topic.topicId,
                                 faction: parsed.faction,
-                                oocName: parsed.oocName,
-                                name: parsed.name,
+                                oocName: caseOoc,
+                                name: caseName,
                                 requestBbCode,
                                 caseLabelLine: caseTitle,
                                 existingTopicId: existingAgencyTopicId,
@@ -1119,10 +1148,10 @@ export async function checkForNewRequests() {
                             try {
                                 const lspdClient = getForumClient();
                                 await lspdClient.login(process.env.FORUM_LSPD_USERNAME, process.env.FORUM_LSPD_PASSWORD, { force: false, baseUrl: 'https://lspd.gta.world' });
-                                const lspdTopicTitle = 'Autopsy Request - ' + parsed.name + (parsed.oocName ? ' ((' + parsed.oocName + '))' : '') + ' [LSPD]';
+                                const lspdTopicTitle = 'Autopsy Request - ' + caseName + (caseOoc ? ' ((' + caseOoc + '))' : '') + ' [LSPD]';
                                 const lspdTopicBody = requestBbCode
                                     ? '[divbox=white][center][b][size=170]AUTOPSY REQUEST — CERIFIED COPY [/size][/b][/center][hr][/hr]\n' + requestBbCode + '\n[hr][/hr][b]Case:[/b] ' + caseTitle + '\n[b]Status:[/b] Under Investigation\n[/divbox]'
-                                    : '[divbox=white][b]Autopsy Request[/b]\n[b]Decedent:[/b] ' + parsed.name + (parsed.oocName ? ' ((' + parsed.oocName + '))' : '') + '\n[b]Case:[/b] ' + caseTitle + '\n[b]Status:[/b] Under Investigation\n[/divbox]';
+                                    : '[divbox=white][b]Autopsy Request[/b]\n[b]Decedent:[/b] ' + caseName + (caseOoc ? ' ((' + caseOoc + '))' : '') + '\n[b]Case:[/b] ' + caseTitle + '\n[b]Status:[/b] Under Investigation\n[/divbox]';
                                 const lspdResult = await lspdClient.postTopic(1361, lspdTopicTitle, lspdTopicBody, 'https://lspd.gta.world/posting.php?mode=post&f=1361');
                                 if (lspdResult.ok) {
                                     const tM = lspdResult.url.match(/[?&]t=(\d+)/);
@@ -1927,6 +1956,14 @@ async function processMultiDecedentRequest({ db, topic, parsed, decedents, reque
     await rootRef.child('caseState').set('multi').catch(() => {});
     await rootRef.child('decedentCount').set(decedents.length).catch(() => {});
 
+    // Flag bodies with no OOC identity (requester omitted ((OOC)) or wrote a
+    // DOE placeholder that was stripped). Leadership-visible, same
+    // bodyWarnings convention as the mass path.
+    const oocWarnings = decedents
+        .map((d, i) => (!d.oocName ? `Body ${i + 1} (${d.name || 'unnamed'}): OOC name missing — requester omitted ((OOC identity))` : null))
+        .filter(Boolean);
+    if (oocWarnings.length) await rootRef.child('bodyWarnings').set(oocWarnings).catch(() => {});
+
     // Consolidated live progress embed (one self-updating message per request).
     const progress = isDryRun ? null : await getAutopsyProgress(db, topicId, `Autopsy Case — ${parsed.name}${parsed.oocName ? ` ((${parsed.oocName}))` : ''}`, existing);
     if (progress) await progress.addStep('Autopsy Case Detected', 'ok', `Fetching Information — ${decedents.length} decedent(s)`);
@@ -2119,7 +2156,6 @@ async function processMultiDecedentRequest({ db, topic, parsed, decedents, reque
         if (multiAckState !== 'ack_sent') {
             try {
                 const requesterName = parsedBbFields.requesterName || parsed.name || '';
-                const displayTitle = caseTitles[0] || `Case - ${parsed.name} ((${parsed.oocName}))`;
                 let agencyAckTopicId = null;   // request topic on the faction's own forum
                 let agencyFactionKey = null;   // 'LSSD' | 'SADCR' | 'DAO'
                 let lspdTopicId = null;
@@ -2282,6 +2318,15 @@ async function processMultiDecedentRequest({ db, topic, parsed, decedents, reque
  * @param {string} raw — the value after "Decedent Name:" (already trimmed)
  * @returns {{ raw: string, name: string, marker: string, oocName: string } | null}
  */
+/**
+ * Unidentified-person placeholders (shared module) — requesters write these
+ * in place of a real name or OOC identity. They are NOT identities: adopting
+ * them as name/OOC files mangled cases like "Trinity Dalton J. DOE
+ * ((DOE and DOE))" (t=10328, Oct 2026).
+ */
+
+/** True when a parsed name/OOC candidate is a DOE placeholder, not an identity. */
+
 function parseDecedentNameLine(raw) {
     if (!raw) return null;
     let rest = String(raw).trim();
@@ -2291,6 +2336,10 @@ function parseDecedentNameLine(raw) {
         oocName = oocMatch[1].trim();
         rest = rest.replace(oocMatch[0], '').trim();
     }
+    // Strip unidentified-person markers — "(J. DOE)" qualifies Jane/John Doe
+    // status, it is not part of the name. Without this, the bracket-strip
+    // below glues it on ("Trinity Dalton J. DOE", t=10328).
+    rest = rest.replace(DOE_PAREN_RE, '').trim();
     let marker = '';
     const markerMatch = rest.match(/\[(\d+)\]|\((\d+)\)\s*$/);
     if (markerMatch) {
@@ -2575,24 +2624,6 @@ function unwrapContact(value) {
 export function parseAutopsyRequestBbcode(bbcode) {
     const fields = {};
     if (!bbcode) return fields;
-
-    // Section 2: Decedent info
-    const patterns = {
-        decedentName: /1\.\)\s*Name:\s*(.+)/i,
-        sex: /2\.\)\s*Gender:\s*(.+)/i,
-        ethnicity: /3\.\)\s*Ethnicity:\s*(.+)/i,
-        dateOfDeath: /4\.\)\s*Date of Death:\s*(.+)/i,
-        timeOfDeath: /5\.\)\s*Time of Death:\s*(.+)/i,
-        placeOfDeath: /6\.\)\s*Location:\s*(.+)/i,
-        // Requester info (Section 1)
-        requesterName: /1\.\)\s*Name:\s*(.+)/i,
-        requesterDept: /3\.\)\s*Department\s*\/\s*Assignment:\s*(.+)/i,
-        // Details (Section 3)
-        synopsis: /1\.\)\s*Synopsis:\s*(.+)/i,
-        causeDetail: /2\.\)\s*Reason for Autopsy:\s*(.+)/i,
-        // OOC (Section 4)
-        deathType: /1\.\)\s*PK\/CK:\s*(.+)/i,
-    };
 
     // Simple line-by-line extraction
     const lines = bbcode.split('\n');

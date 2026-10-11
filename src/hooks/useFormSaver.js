@@ -13,7 +13,6 @@ import { findDuplicateCandidate } from '../utils/duplicateCheck';
 import * as Sentry from "@sentry/react";
 import { getCharacterName, getCharacterID, resolveEmployeeCredentials, getOAuthShapeFlags } from '../utils/identityUtils';
 import { cleanRankText, comprehensiveSanitize } from '../utils/textUtils';
-import { triggerGetPatientNames } from '../services/firebaseFunctions';
 import { useNotification } from '../contexts/NotificationContext';
 import { reportLogicalError } from '../utils/logging';
 import { useAuth } from '../contexts/AuthContext';
@@ -24,9 +23,7 @@ const isLocalHost = window.location.hostname === 'localhost' || window.location.
 
 // Duplicate matching lives in utils/duplicateCheck (pure, unit-tested).
 
-const deployTrackedForms = ['coroner-report', 'coroner_email', 'death_record', 'autopsy', 'mass-ftality-test',
-    'patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical',
-    'session_notes', 'intensive_treatment', 'psych-eval', 'general_consultation'];
+const deployTrackedForms = ['coroner-report', 'coroner_email', 'death_record', 'autopsy', 'mass-ftality-test'];
 
 export function getReportBasePath(formFirebaseKey, botDeployOptedIn = false) {
   if (deployTrackedForms.includes(formFirebaseKey)) {
@@ -214,14 +211,6 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated, rosterData = {}) 
             const dateSource = anyDecWithDate?.dateOfDeath || formValues.dateTime;
             const formattedMFDate = formatToNorthAmericanDate(dateSource);
             finalTitle = `[${label}] ${nameSummary} - ${formattedMFDate}`;
-        } else if (['patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical', 'session_notes', 'intensive_treatment', 'psych-eval'].includes(selectedForm.firebaseKey)) {
-            // Medical record title — uniform preset matching the patient-file
-            // thread naming (`<patientID> - <patientName>`, e.g. "1424 - Alyson
-            // Frost"). Ignores the form's own (often verbose) titleGeneratorCode
-            // so every medical report saves with a short, consistent title.
-            const pName = formValues.decedentName || formValues.patientName || 'Unknown Patient';
-            const pId = (formValues.patientID || '').trim();
-            finalTitle = pId ? `${pId} - ${pName}` : pName;
         } else if (selectedForm.firebaseKey === 'coroner_email' && !title) {
             // Only use fallback when saved without BBCode generation (title is empty)
             const reqOfficer = formValues.requestingOfficer || formValues.requesting_officer || '';
@@ -416,29 +405,6 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated, rosterData = {}) 
             }
         }
 
-        // ── Medical record: validate/fill the patient name from the ID ──
-        // If a patientID was provided but the authoritative subject name
-        // (decedentName) is missing — e.g. the old legacy auto-fill stamped the
-        // author's name into patientName only (Paolina Russo / 1919 incident) —
-        // resolve the name from the patient index by ID. Never blocks saving.
-        const MEDICAL_SAVE_IDS = ['patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical', 'session_notes', 'intensive_treatment', 'psych-eval', 'general_consultation'];
-        const isMedicalSave = MEDICAL_SAVE_IDS.includes(selectedForm.firebaseKey);
-        if (isMedicalSave && !String(dataToSave.decedentName || '').trim() && String(dataToSave.patientID || '').trim().length >= 2) {
-            try {
-                const res = await triggerGetPatientNames({ q: String(dataToSave.patientID).trim() });
-                const matches = res?.matches || [];
-                const exact = matches.find((m) => m.id != null && String(m.id) === String(dataToSave.patientID).trim());
-                if (exact && exact.name) {
-                    dataToSave.decedentName = exact.name;
-                    dataToSave.patientName = exact.name;
-                    dataToSave.patientID = String(exact.id);
-                    console.warn(`[useFormSaver] Patient name resolved from ID ${dataToSave.patientID} -> ${exact.name}`);
-                }
-            } catch (err) {
-                console.warn('[useFormSaver] Patient-ID lookup failed (saving without name resolution):', err?.message || err);
-            }
-        }
-
         // ── Edit & Repost: apply changes to an already-deployed report in place ──
         // The ME fixed the form after a deploy; instead of enqueueing a fresh deploy,
         // write the updated data + BBCode and queue a `reportEdits` request that the
@@ -545,13 +511,6 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated, rosterData = {}) 
                 const when = dupMatch.timestamp
                     ? new Date(dupMatch.timestamp).toLocaleString()
                     : 'recently';
-                window.dispatchEvent(new CustomEvent('phmc-telemetry', {
-                    detail: {
-                        file: 'useFormSaver.js/duplicateCheck', trigger: 'duplicate-warn',
-                        user: currentAuthor || null, loggedIn: !!isGtaAuthenticated,
-                        detail: `shown:${dupMatch.reason}`,
-                    },
-                }));
                 const proceed = await new Promise((resolve) => {
                     showNotification(
                         `Possible duplicate of "${String(dupMatch.title).slice(0, 80)}" (saved ${when}, ${dupMatch.reason}).`,
@@ -568,13 +527,6 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated, rosterData = {}) 
                         ] }
                     );
                 });
-                window.dispatchEvent(new CustomEvent('phmc-telemetry', {
-                    detail: {
-                        file: 'useFormSaver.js/duplicateCheck', trigger: 'duplicate-warn',
-                        user: currentAuthor || null, loggedIn: !!isGtaAuthenticated,
-                        detail: `decision:${proceed ? 'override' : 'cancel'}:${dupMatch.reason}`,
-                    },
-                }));
                 if (!proceed) {
                     showNotification('Save cancelled — possible duplicate kept as draft in the form.', 'info');
                     return { success: false, error: 'cancelled-duplicate' };
@@ -815,20 +767,6 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated, rosterData = {}) 
                 console.error("Fatal error constructing or sending Discord webhook.", err);
                 Sentry.captureException(err, { extra: { context: 'saveReport - Webhook' } });
             }
-
-            // Telemetry: a successful save is the core user action — feed the
-            // hourly beacon so the rollup reflects real activity. Previously the
-            // save contributed nothing (only loads/opens did), so "load, fill,
-            // save, close" sessions left no trace.
-            try {
-                window.dispatchEvent(new CustomEvent('phmc-telemetry', {
-                    detail: {
-                        file: 'useFormSaver.js/save', trigger: 'report-save',
-                        user: currentAuthor || null, loggedIn: !!isGtaAuthenticated,
-                        detail: `${selectedForm?.name || ''}:${finalTitle || ''}`,
-                    },
-                }));
-            } catch { /* telemetry must never break saving */ }
 
             // ── Body Tampered incident logging ──
             // P1 (c) cost plan: previously one alert webhook PER ticked field.

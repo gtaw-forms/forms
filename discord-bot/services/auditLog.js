@@ -42,7 +42,6 @@ const DISCORD_COMMANDS = new Set([
     'sync-autopsy-requests',
     'sync-autopsy-poster',
     'fix-autopsy',
-    'patient-search',
     'morgue',
     'user',
     'autopsy-request',

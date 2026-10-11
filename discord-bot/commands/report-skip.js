@@ -21,7 +21,7 @@ export async function execute(interaction) {
         return;
     }
 
-    const { getQueuedDeployments, getStuckReports, skipReport } = await import('../services/autoDeploy.js');
+    const { getQueuedDeployments, getStuckReports } = await import('../services/autoDeploy.js');
     let queue = getQueuedDeployments();
     let skippable = queue.filter(e => e.status === 'queued');
 

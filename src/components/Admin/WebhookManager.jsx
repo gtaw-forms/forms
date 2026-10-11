@@ -171,10 +171,6 @@ const WebhookManager = () => {
         return typeof url === 'string' && (/\.(jpg|jpeg|png|gif)$/i.test(url) || url.includes('ibb.co'));
     };
 
-    const isStreamableUrl = (url) => {
-        return typeof url === 'string' && url.includes('streamable.com');
-    };
-
     const titlePlaceholder = "Major Update / Minor Update / Hotfix";
     const messagePlaceholder = "- Added: \n- Fixed: \n- Updated: ";
 

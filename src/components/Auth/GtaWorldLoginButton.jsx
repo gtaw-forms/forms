@@ -19,7 +19,7 @@ const GtaWorldLoginButton = ({
     role = "employee",
     ...props 
 }) => {
-    const { login, isLoading, error, isAuthenticated, user } = useGtaWorldAuth();
+    const { login, isLoading, isAuthenticated, user } = useGtaWorldAuth();
     const lastClickTimeRef = useRef(0);
     const clickDebounceMs = 500; // 500ms debounce for faster response
 

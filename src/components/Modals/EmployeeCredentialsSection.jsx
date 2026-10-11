@@ -41,7 +41,7 @@ const EmployeeCredentialsSection = ({
   logout: propLogout
 }) => {
   const authHook = useGtaWorldAuth();
-  const { showNotification: notifyFromContext, removeNotification: removeNotifFromContext } = useNotification?.() || {};
+  const { showNotification: notifyFromContext } = useNotification?.() || {};
   const [loginRole, setLoginRole] = useState('employee');
 
   const gtaWorldUser = propUser !== undefined ? propUser : authHook.user;

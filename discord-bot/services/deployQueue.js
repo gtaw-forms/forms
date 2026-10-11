@@ -6,12 +6,12 @@
  *   - setMaintenanceMode() re-scans and calls enqueue() / consentGateAndEnqueue()
  */
 
-import { getForumClient } from './forumClient.js';
 import { logFnCall, sendWebhook, DeployProgressEmbed } from './deployLogger.js';
 import { state, C } from './deployState.js';
 import { checkUserConsent, skipDueToConsent } from './deployConsent.js';
 import { setDeployStatus } from './deployStatus.js';
 import { writeChild } from './vpsState.js';
+import { getEntityKey } from './deployEntityKey.js';
 
 //  Import runDeploy lazily to avoid circular dependency (autoDeploy imports deployQueue which uses runDeploy)
 let _runDeploy = null;
@@ -100,10 +100,9 @@ export async function setMaintenanceMode(enabled, db) {
                     state.knownReportKeys.delete(reportKey);
                     state.knownReportKeys.add(reportKey);
                     const item = { authorId, key: reportKey, report: reportData, db };
-                    const formId = reportData.formId === 'testing-compact-mode' ? 'general_consultation' : reportData.formId;
+                    const formId = reportData.formId;
                     if (formId === 'coroner_email') consentGateAndEnqueue('pm', item, formId);
                     else if (['death_record', 'mass-ftality-test', 'coroner-report'].includes(formId)) consentGateAndEnqueue('topic', item, formId);
-                    else if (['patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical', 'session_notes', 'intensive_treatment', 'psych-eval', 'general_consultation'].includes(formId)) consentGateAndEnqueue('medical-record', item, formId);
                     else if (formId === 'autopsy') consentGateAndEnqueue('autopsy-reply', item, formId);
                     requeued++;
                 });
@@ -117,97 +116,77 @@ export async function setMaintenanceMode(enabled, db) {
 
 // ── Timed Queue ──
 
-function getEntityKey(data) {
-    logFnCall('deployQueue', 'getEntityKey', 'Getting entity key');
-    const r = data.report || {};
-    const d = r.data || {};
-    const recipient = d.requestingOfficer || d.requesting_officer || d.officerName || d.recipient || '';
-    const deptRaw = d.department;
-    const dept = (deptRaw && typeof deptRaw === 'object' ? (deptRaw.label || deptRaw.value || '') : (deptRaw || ''));
-    const parts = [
-        r.formId || '',
-        d.decedentName || d.patientName || '',
-        d.decedentOOC || d.decendentOOC || d.decedent_ooc || '',
-        d.dateTime || d.dateOfDeath || '',
-        recipient,
-        dept,
-        d.caseNumber || d.caseId || d.caseNum || d.morgueCaseId || d.morgueId || '',
-    ].map((p) => String(p ?? '').trim());
-    // The old `|| data.key` fallback never fired (a pipe-joined string is always
-    // truthy, so all-empty reports collided on `"||"`). Only fall back when
-    // EVERY field is empty; same content still yields the same key.
-    if (!parts.some(Boolean)) return data.key;
-    const raw = parts.join('|');
-    if (raw.length > 90) {
-        let hash = 0;
-        for (let i = 0; i < raw.length; i++) { hash = ((hash << 5) - hash) + raw.charCodeAt(i); hash |= 0; }
-        return `sk_${Math.abs(hash).toString(36)}`;
-    }
-    return raw;
-}
+// Monotonic claim sequence for the synchronous slot reservation below.
+// Module-local (never reset): concurrent enqueues compare tokens to tell who
+// owns a pendingDeployments slot after interleaved awaits.
+let _enqueueSeq = 0;
 
 export async function enqueue(type, data) {
     logFnCall('deployQueue', 'enqueue', 'Enqueueing deploy', { type, key: data.key });
     const firebaseKey = data.key;
-    if (await isMaintenanceMode()) {
-        console.log(`[AUTO] Maintenance mode — skipping ${data.report?.originalKey || data.key}`);
-        // Let the maintenance-off rescan pick this report up later.
-        state.knownReportKeys?.delete(firebaseKey);
-        return;
-    }
-
     const entityKey = getEntityKey(data);
     const label = data.report?.originalKey || data.key;
-    const fireTime = Date.now() + C.DEFER_MS;
-    const deployTime = new Date(fireTime).toLocaleTimeString();
 
     // Extract patient info early for progress embed enrichment
     const d = data.report?.data || {};
     const patientName = d.decedentName || d.patientName || d.decedentOOC || '';
 
-    if (state.pendingDeployments.has(entityKey)) {
-        const existing = state.pendingDeployments.get(entityKey);
-        clearTimeout(existing.timer);
+    const fireTime = Date.now() + C.DEFER_MS;
+    const deployTime = new Date(fireTime).toLocaleTimeString();
+
+    // ── Synchronous slot claim (double-save race guard, 2026-10-03) ──
+    // Everything above this point is synchronous, so two saves landing in the
+    // same tick both pass through here before either hits its first await
+    // below: the second always sees the first's reservation. Previously the
+    // has() check and the set() were separated by awaits (maintenance check,
+    // status write, progress embed), so a double-save saw an empty map twice,
+    // armed TWO live timers under one map entry, and deployed twice
+    // (Emilio Ochoa ...0024 created the topic, ...2091 replied to it).
+    _enqueueSeq += 1;
+    const mySeq = _enqueueSeq;
+    const superseded = state.pendingDeployments.get(entityKey);
+    if (superseded) {
+        if (superseded.timer) clearTimeout(superseded.timer);
         console.log(`[AUTO] ${label} replaced by newer version, timer reset`);
-        // Mark the OLD report as trashed so it's not picked up on restart
-        if (existing.data?.authorId && existing.data?.key) {
-            const oldDb = existing.data.db || state.dbRef;
+        // Mark the OLD report as trashed so it's not picked up on restart —
+        // unless it IS this same report re-queued (e.g. maintenance-off
+        // rescan), in which case there is nothing to retire.
+        if (superseded.data?.authorId && superseded.data?.key && superseded.data.key !== data.key) {
+            const oldDb = superseded.data.db || state.dbRef;
             if (oldDb) {
-                oldDb.ref(`scheduledReports/${existing.data.authorId}/${existing.data.key}`).update({
+                oldDb.ref(`scheduledReports/${superseded.data.authorId}/${superseded.data.key}`).update({
                     hasdeployed: true,
                     deployStatus: 'trashed_duplicate',
                     deployMessage: `Replaced by newer save ${firebaseKey}.`,
                     deployedAt: new Date().toISOString(),
                     deployedBy: 'autoDeploy',
-                }).catch((err) => console.warn(`[AUTO] Failed to trash old duplicate ${existing.data.key}: ${err.message}`));
+                }).catch((err) => console.warn(`[AUTO] Failed to trash old duplicate ${superseded.data.key}: ${err.message}`));
             }
         }
-        // Update user-facing status with new timeline
-        const minutes = Math.round(C.DEFER_MS / 60000);
-        const msg = `Queued — will auto-deploy around ${deployTime} (${minutes} min). Re-save to make edits before then.`;
-        setDeployStatus(data.db || state.dbRef, data.authorId, data.key, 'queued', msg).catch(() => {});
     } else {
         const enrichedLabel = patientName ? `${label} — ${patientName}` : label;
         console.log(`[AUTO] ${enrichedLabel} queued, will deploy at ${deployTime}`);
-        let queueDetail = '';
-        if (type === 'pm') {
-            const recipient = d.requestingOfficer || d.requesting_officer || d.officerName || d.recipient || 'Unknown';
-            const rawDept = d.department || '';
-            const deptStr = (typeof rawDept === 'object' ? (rawDept.label || rawDept.value || '') : String(rawDept)) || '?';
-            queueDetail = `\n**To:** ${recipient} (${deptStr})`;
-        } else if (type === 'topic') {
-            const fInfo = getForumClient().constructor.FORUM_MAP[data.report?.formId];
-            queueDetail = `\n**Forum:** ${fInfo?.name || 'PHMC Forum'}`;
-        } else if (type === 'autopsy-reply') {
-            queueDetail = `\n**Forum:** Case Management (reply)`;
-        }
         // (no standalone webhook — the progress embed below covers queue status)
-
-        // Write user-facing status so the web app shows a clear notification
-        const minutes = Math.round(C.DEFER_MS / 60000);
-        const msg = `Queued — will auto-deploy around ${deployTime} (${minutes} min). Re-save to make edits before then.`;
-        setDeployStatus(data.db || state.dbRef, data.authorId, data.key, 'queued', msg).catch(() => {});
     }
+    // Reserve the slot synchronously; the timer is armed after the async
+    // setup below (which yields). A concurrent enqueue for the same entity
+    // replaces this reservation instead of slipping past it.
+    state.pendingDeployments.set(entityKey, { timer: null, type, data, label, fireTime, progressMessageId: null, seq: mySeq });
+
+    if (await isMaintenanceMode()) {
+        console.log(`[AUTO] Maintenance mode — skipping ${data.report?.originalKey || data.key}`);
+        // Release our reservation only if nobody replaced us meanwhile.
+        const cur = state.pendingDeployments.get(entityKey);
+        if (cur && cur.seq === mySeq) state.pendingDeployments.delete(entityKey);
+        // Let the maintenance-off rescan pick this report up later.
+        state.knownReportKeys?.delete(firebaseKey);
+        return;
+    }
+
+    // Update user-facing status with new timeline
+    const minutes = Math.round(C.DEFER_MS / 60000);
+    const msg = `Queued — will auto-deploy around ${deployTime} (${minutes} min). Re-save to make edits before then.`;
+    setDeployStatus(data.db || state.dbRef, data.authorId, data.key, 'queued', msg).catch(() => {});
 
     // Post a unified progress embed (will be edited by the deploy handler later)
     let progressMessageId = null;
@@ -238,9 +217,20 @@ export async function enqueue(type, data) {
                 });
             }
         }
-    } catch (e) { /* progress embed is optional */ }
+    } catch { /* progress embed is optional */ }
+
+    // A newer save may have claimed our slot while we awaited above — its
+    // trash-update already retired our report. Arming a timer now would deploy
+    // a superseded copy, so stand down instead of overwriting the owner.
+    const current = state.pendingDeployments.get(entityKey);
+    if (!current || current.seq !== mySeq) {
+        console.log(`[AUTO] ${label} superseded by newer save while queueing — timer not armed`);
+        return;
+    }
 
     const timer = setTimeout(async () => {
+        const cur = state.pendingDeployments.get(entityKey);
+        if (cur && cur.seq !== mySeq) return; // replaced after arming; the owner handles it
         state.pendingDeployments.delete(entityKey);
         if (progressMessageId) {
             data._progressMessageId = progressMessageId;
@@ -250,7 +240,7 @@ export async function enqueue(type, data) {
         runDeploy(type, data);
     }, C.DEFER_MS);
 
-    state.pendingDeployments.set(entityKey, { timer, type, data, label, fireTime, progressMessageId });
+    state.pendingDeployments.set(entityKey, { timer, type, data, label, fireTime, progressMessageId, seq: mySeq });
 }
 
 export async function skipReport(entityKey, skippedBy = 'unknown') {
@@ -333,8 +323,7 @@ export function getQueuedDeployments() {
         const remaining = Math.max(0, Math.round((entry.fireTime - now) / 1000));
         const formId = entry.data.report?.formId || '';
         let forumLabel;
-        if (['patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical', 'session_notes', 'intensive_treatment', 'psych-eval', 'general_consultation'].includes(formId)) forumLabel = 'Medical Records';
-        else if (entry.type === 'topic' || entry.type === 'medical-record') {
+        if (entry.type === 'topic') {
             const MAP = { 'coroner-report': 'Coroner Reports', 'death_record': 'Death Records', 'mass-ftality-test': 'Mass Fatality', 'autopsy': 'Autopsy' };
             forumLabel = MAP[formId] || 'PHMC Forum';
         } else if (entry.type === 'autopsy-reply') forumLabel = 'Case Management';

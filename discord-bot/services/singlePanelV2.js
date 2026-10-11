@@ -40,6 +40,7 @@ import { getChannelId, channelSendEnabled } from './phmcChannels.js';
 import { deathTypeWindow } from './assignmentWebhook.js';
 import { measureV2Text, countV2Components, V2_TEXT_BUDGET, V2_COMPONENT_BUDGET } from './massPanelV2.js';
 import { readChild, writeChild, removeChild } from './vpsState.js';
+import { DOE_PAREN_RE, DOE_BARE_RE, isDoePlaceholder } from './doePlaceholders.js';
 
 export const SINGLE_V2_PREFIX = 'singlev2_';
 export const SINGLE_V2_INFO_SLOT = 'info';
@@ -102,8 +103,15 @@ function loadLocalMorgueRecords() {
 }
 export async function resolveMorgueStatus(db, { ooc = '', decedent = '' } = {}) {
     try {
-        const oocL = String(ooc || '').toLowerCase().trim();
-        const decL = String(decedent || '').toLowerCase().trim();
+        // DOE placeholder twin lives in services/doePlaceholders.js (shared with
+        // the monitor + deploy flows): placeholders are never identities.
+        const NORM_STOP = new Set(['unknown', 'doe', 'john', 'jane', 'j']);
+        // norm also strips BARE glued placeholders ("Trinity Dalton J. DOE" as
+        // stored pre-fix) so legacy rows exact-match their morgue OOC too.
+        const norm = (v) => String(v || '').replace(DOE_PAREN_RE, '').replace(DOE_BARE_RE, '').replace(/[[\]()]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+        const isPlaceholder = (v) => isDoePlaceholder(norm(v));
+        const oocL = isPlaceholder(ooc) ? '' : norm(ooc);
+        const decL = isPlaceholder(decedent) ? '' : norm(decedent);
         if (!oocL && !decL) return null;
         let recs = loadLocalMorgueRecords();
         if (!recs && db) {
@@ -112,13 +120,30 @@ export async function resolveMorgueStatus(db, { ooc = '', decedent = '' } = {}) 
             recs = Object.values(snap.val() || {});
         }
         if (!recs || recs.length === 0) return null;
+        // Morgue OOC lives embedded in the record name ("Unknown (( X ))") or
+        // in a dedicated oocName field — extract both for comparison.
+        const morgueOoc = (r) => {
+            const direct = norm(r.oocName || r.ooc || '');
+            if (direct && !isPlaceholder(direct)) return direct;
+            const m = String(r.name || '').match(/\(\(\s*([^()]*)\s*\)\)/);
+            const inner = m ? norm(m[1]) : '';
+            return inner && !isPlaceholder(inner) ? inner : '';
+        };
         // Exact OOC-name hit (strongest signal — mirrors the web matcher).
         if (oocL) {
             const hit = recs.find((r) => String(r.name || '').toLowerCase().includes(oocL));
             if (hit) return { status: 'FOUND', caseId: String(hit.caseId ?? hit.firebaseKey ?? '') || null };
         }
-        // Token overlap on either name (weak signal).
-        const toks = `${oocL} ${decL}`.split(/[^a-z0-9]+/).filter((t) => t.length >= 4 && t !== 'unknown' && t !== 'doe');
+        // Exact IC-name ↔ morgue-OOC hit (e.g. request "Trinity Dalton" vs
+        // record "Unknown (( Trinity Dalton ))" #84217 — t=10328).
+        if (decL) {
+            const hit = recs.find((r) => morgueOoc(r) === decL);
+            if (hit) return { status: 'FOUND', caseId: String(hit.caseId ?? hit.firebaseKey ?? '') || null };
+        }
+        // Token overlap on either name (weak signal). Placeholder iterations
+        // (John/Jane/J/Doe/Unknown) never count — "John Doe" must not match
+        // "Unknown (( John Weber ))" on a shared throwaway token.
+        const toks = `${oocL} ${decL}`.split(/[^a-z0-9]+/).filter((t) => t.length >= 4 && !NORM_STOP.has(t));
         if (toks.length > 0) {
             const hit = recs.find((r) => {
                 const hay = String(r.name || '').toLowerCase();

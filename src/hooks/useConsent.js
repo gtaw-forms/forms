@@ -3,9 +3,8 @@ import { database } from '../firebase';
 import { ref, get, set } from 'firebase/database';
 import { useAuth } from '../contexts/AuthContext';
 
-// Complete list of deploy-tracked forms.
-// Clinical Department and Mental Health forms beyond patient_notes are disabled
-// pending further development.
+// Deploy-tracked forms. Medical Records + Patient Files were retired (new
+// platform owns medical/patient now) — only coroner/autopsy/death/mass remain.
 export const DEPLOY_TRACKED_FORMS = [
     // Coroners
     'coroner-report',
@@ -13,17 +12,6 @@ export const DEPLOY_TRACKED_FORMS = [
     'death_record',
     'autopsy',
     'mass-ftality-test',
-    // Clinical Department
-    'patient_notes',
-    'er_protocol',
-    'physical_evaluation',
-    'staff-patient-file',
-    'surgical',
-    'general_consultation',
-    // Mental Health
-    'session_notes',
-    'intensive_treatment',
-    'psych-eval',
 ];
 
 export const FORM_LABELS = {
@@ -33,17 +21,6 @@ export const FORM_LABELS = {
     death_record:         'Death Record',
     autopsy:              'Autopsy',
     'mass-ftality-test':  'Mass Fatality',
-    // Clinical Department
-    patient_notes:          'Patient Notes',
-    er_protocol:            'ER Protocol',
-    physical_evaluation:    'Physical Evaluation',
-    'staff-patient-file':   'Staff-Patient File',
-    surgical:               'Surgical',
-    'general_consultation': 'General Consultation',
-    // Mental Health
-    session_notes:        'Session Notes',
-    intensive_treatment:  'Intensive Treatment',
-    'psych-eval':           'Psych Evaluation',
 };
 
 /** Section grouping for the consent modal UI (multi-step wizard) */
@@ -54,19 +31,6 @@ export const FORM_SECTIONS = {
         'death_record',
         'mass-ftality-test',
         'autopsy',
-    ],
-    'Clinical Department': [
-        'patient_notes',
-        'er_protocol',
-        'physical_evaluation',
-        'staff-patient-file',
-        'surgical',
-        'general_consultation',
-    ],
-    'Mental Health': [
-        'session_notes',
-        'intensive_treatment',
-        'psych-eval',
     ],
 };
 
@@ -90,17 +54,6 @@ export async function checkConsentDirect(uid, formId) {
         return snap.val() !== false;
     } catch {
         return true;
-    }
-}
-
-/**
- * Check the legacy localStorage opt-in (existing users before migration).
- */
-function getLegacyPref() {
-    try {
-        return localStorage.getItem('botDeployOptIn') === 'true';
-    } catch {
-        return false;
     }
 }
 

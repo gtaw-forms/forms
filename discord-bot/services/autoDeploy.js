@@ -31,7 +31,6 @@ export { resolveAutopsyTopic } from './deployInteraction.js';
 export { crosspostAutopsyToLssd } from './deployLssd.js';
 export { handlePM } from './deployPM.js';
 export { handleTopic } from './deployTopic.js';
-export { handleMedicalRecord } from './deployMedicalRecord.js';
 export { handleAutopsyReply } from './deployAutopsyReply.js';
 
 import { retryFailedCompletionSteps } from './deployAutopsyReply.js';
@@ -249,7 +248,7 @@ export function buildStartupStatusV2({ caseCount = 0, desc = '', loaDesc = 'None
             console.warn('[AUTO]  Could not start death record recovery:', err.message);
         }
 
-        //  NOTE: faction roster sync + patient index are started from the
+        //  NOTE: faction roster sync is started from the
         //  phased boot queue in index.js (forum-heavy — never at T+0).
         //  Listen for new reports at scheduledReports — event-driven deltas.
         // Shape: ONE `once('value')` cold-load at boot, then per-author
@@ -266,7 +265,6 @@ export function buildStartupStatusV2({ caseCount = 0, desc = '', loaDesc = 'None
         // bot's own status writes (several full downloads per deploy).
         state.knownReportKeys = new Set();
         const _autoDeployStartupTime = Date.now();
-        const CK_EPOCH = 1782864000000; // 2026-07-01T00:00:00Z  reports saved before this are skipped for CK drafting
         console.log(`[AUTO]  CK drafting: skipping reports saved before 01/JUL/2026`);
 
         // Shared per-report pickup — the old `on('value')` loop body,
@@ -317,16 +315,13 @@ export function buildStartupStatusV2({ caseCount = 0, desc = '', loaDesc = 'None
             };
 
             // Legacy key alias: reports saved before the form rename
-            // carry formId 'testing-compact-mode'.
-            if (reportData.formId === 'testing-compact-mode') reportData.formId = 'general_consultation';
-
+            // carry formId 'testing-compact-mode' (retired with medical records —
+            // left unmapped so such rows are ignored, never deployed).
             if (reportData.formId === 'coroner_email') {
                 consentGateAndEnqueue('pm', item, reportData.formId);
             } else if (['death_record', 'mass-ftality-test', 'coroner-report'].includes(reportData.formId)) {
                 consentGateAndEnqueue('topic', item, reportData.formId);
                 // Coroner email fires inside handleTopic — after topic post completes
-            } else if (['patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical', 'session_notes', 'intensive_treatment', 'psych-eval', 'general_consultation'].includes(reportData.formId)) {
-                consentGateAndEnqueue('medical-record', item, reportData.formId);
             } else if (reportData.formId === 'autopsy') {
                 consentGateAndEnqueue('autopsy-reply', item, reportData.formId);
             }
@@ -466,8 +461,6 @@ export function buildStartupStatusV2({ caseCount = 0, desc = '', loaDesc = 'None
                     const reportData = reportSnap.val();
                     if (!reportData || reportData._devMode !== true) return;
                     console.log(`[AUTO]  Dev report: ${reportData.originalKey || reportKey}`);
-                    if (reportData.formId === 'testing-compact-mode') reportData.formId = 'general_consultation'; // legacy rename alias
-                    const isMedicalForm = ['patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical', 'session_notes', 'intensive_treatment', 'psych-eval', 'general_consultation'].includes(reportData.formId);
                     const item = { authorId, key: reportKey, report: reportData, db };
 
                     if ((reportData.formId === 'coroner-report' || reportData.formId === 'mass-ftality-test') &&
@@ -478,12 +471,8 @@ export function buildStartupStatusV2({ caseCount = 0, desc = '', loaDesc = 'None
                         }).catch(err => console.error('[CORONER-EMAIL] Failed to import handler:', err.message));
                     }
 
-                    if (isMedicalForm) {
-                        console.log('[AUTO]  Dev medical record — processing...');
-                        import('./deployMedicalRecord.js').then(({ handleMedicalRecord }) => {
-                            handleMedicalRecord(item).catch(err => console.error('[MEDICAL-RECORD] Dev handler error:', err.message));
-                        }).catch(err => console.error('[MEDICAL-RECORD] Failed to import handler:', err.message));
-                    }
+                    // Medical forms retired — dev-reports listener handles
+                    // coroner-email dry runs only; anything else is ignored.
                 });
             });
         });

@@ -48,7 +48,7 @@ const SavedReportsModal = ({
     const [searchQuery, setSearchQuery] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
     const reportsPerPage = 10;
-    const [selectedReportKeys, setSelectedReportKeys] = useState([]);
+    const [, setSelectedReportKeys] = useState([]);
     const [selectedForms, setSelectedForms] = useState([]);
     const [isFilterActive, setIsFilterActive] = useState(false);
 

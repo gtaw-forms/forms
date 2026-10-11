@@ -6,7 +6,6 @@ import { clearAssignment } from '../services/autopsyRotation.js';
 import { buildCompletionBb } from '../services/completionTemplate.js';
 
 const AUTOPSY_REQUEST_FORUM_ID = 265;
-const CASE_MGMT_FORUM_ID = 266;
 const PHMC_BASE = 'https://phmc.gta.world';
 
 export const data = new SlashCommandBuilder()

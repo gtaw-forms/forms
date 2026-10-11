@@ -11,6 +11,7 @@ import { crosspostAutopsyToLssd } from './deployLssd.js';
 import { crosspostAutopsyToLspd } from './deployLspd.js';
 import { clearAssignment } from './autopsyRotation.js';
 import { buildCompletionBb } from './completionTemplate.js';
+import { isDoePlaceholder } from './doePlaceholders.js';
 
 const AUTOPSY_DRY_RUN = process.env.AUTOPSY_DRY_RUN !== 'false';
 
@@ -139,7 +140,12 @@ export async function resolveAutopsyTopic(interaction) {
                                         break outer;
                                     }
                                 }
-                                if (!matched && name && !/^john\s*doe$/i.test(name)) {
+                                // Placeholder names ("John/Jane Doe", "J. DOE",
+                                // "DOE and DOE") are not identities — t=10328's
+                                // "Jane Doe" matched test collection #10161 and
+                                // skipped Trinity Dalton's completion as
+                                // "already completed".
+                                if (!matched && name && !isDoePlaceholder(name)) {
                                     const nameL = name.toLowerCase();
                                     for (const [ci, c] of Object.entries(entry.cases)) {
                                         if (!c || !/^\d+$/.test(ci)) continue;

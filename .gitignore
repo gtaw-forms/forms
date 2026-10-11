@@ -51,6 +51,8 @@ tools/*
 !tools/check-bot-imports.mjs
 # morgue street-bubble coverage checker (read-only probe; reused by the feature)
 !tools/morgue-street-coverage.mjs
+# targeted autopsy duplicate marker (see tools/mark-autopsy-duplicate.mjs)
+!tools/mark-autopsy-duplicate.mjs
 tools/service-account.json
 docs/
 
@@ -69,3 +71,4 @@ discord-bot/aghMetrics.js
 discord-bot/services/aghMetrics.js
 discord-bot/commands/agh-dashboard.js
 
+.openchamber/

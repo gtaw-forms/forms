@@ -22,16 +22,6 @@ const FORM_LABELS = {
     death_record:         'Death Record',
     autopsy:              'Autopsy',
     'mass-ftality-test':  'Mass Fatality',
-    // Clinical Department
-    patient_notes:        'Patient Notes',
-    er_protocol:          'ER Protocol',
-    physical_evaluation:  'Physical Evaluation',
-    'staff-patient-file': 'Patient File',
-    surgical:             'Surgical',
-    // Mental Health
-    session_notes:        'Session Notes - Consultation',
-    intensive_treatment:  'Intensive Treatment Certification',
-    'psych-eval':           'Psych Eval',
 };
 
 function getTimeAgo(isoString) {
@@ -102,7 +92,6 @@ const BotStatus = () => {
     useEffect(() => { fetchReports(); }, [fetchReports]);
 
     // ── Summary counts ──
-    const total = reports.length;
     const queued = reports.filter(r => !r.hasDeployed && (!r.deployStatus || r.deployStatus === 'queued')).length;
     const processing = reports.filter(r => !r.hasDeployed && r.deployStatus && r.deployStatus !== 'queued' && r.deployStatus !== 'deploy_failed' && r.deployStatus !== 'error').length;
     const failed = reports.filter(r => r.deployStatus === 'deploy_failed' || r.deployStatus === 'error' || r.deployStatus === 'reply_failed').length;

@@ -72,6 +72,89 @@
   color: var(--amber);
 }
 
+/* Goodbye (retirement) card additions — same overlay/card, teal accent. */
+.goodbye-icon {
+  color: var(--teal, #2dd4bf);
+}
+
+.splash-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.splash-actions .splash-dismiss {
+  margin-top: 18px;
+}
+
+.splash-dismiss.splash-primary {
+  border-color: var(--teal, #2dd4bf);
+}
+
+.splash-dismiss.splash-primary:hover {
+  border-color: var(--teal, #2dd4bf);
+  color: var(--teal, #2dd4bf);
+}
+
+.splash-note {
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.5;
+  margin: 12px 0 0;
+}
+
+/* Goodbye (retirement) card — larger and more prominent than the maintenance
+   card. Width caps at 680px; on narrow screens it fills the overlay padding. */
+.splash-card.goodbye-card {
+  max-width: 680px;
+  padding: 40px 44px;
+}
+
+.goodbye-card .splash-title {
+  font-size: 34px;
+}
+
+.goodbye-card .splash-message {
+  font-size: 16px;
+  line-height: 1.7;
+}
+
+.goodbye-card .splash-note {
+  font-size: 12.5px;
+}
+
+.splash-dismiss.splash-quiet {
+  opacity: 0.75;
+}
+
+.splash-dismiss.splash-quiet:hover {
+  opacity: 1;
+}
+
+@media (max-width: 560px) {
+  .splash-card.goodbye-card {
+    padding: 28px 22px;
+  }
+
+  .goodbye-card .splash-title {
+    font-size: 28px;
+  }
+
+  .goodbye-card .splash-message {
+    font-size: 15px;
+  }
+
+  .splash-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .splash-actions .splash-dismiss {
+    width: 100%;
+  }
+}
+
 /* Neutral loading cover shown while the splash status is still loading (before
    the first RTDB read resolves). Uses the app's own background (not the dark
    maintenance backdrop) so a normal load just looks like the app booting. */

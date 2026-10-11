@@ -23,6 +23,7 @@ import { clearAssignment } from './autopsyRotation.js';
 import { readState, mutateState } from './vpsState.js';
 
 import { COMPLETION_TEMPLATE, buildCompletionBb } from './completionTemplate.js';
+import { isDoePlaceholder } from './doePlaceholders.js';
 
 // ── Constants ──
 export const CASE_MGMT_FORUM_ID = 266;
@@ -80,8 +81,9 @@ export function isSharedThreadCollection(entry) {
 }
 
 /**
- * Match a report to one cases/<idx> member, OOC-exact-first, never a generic
- * "John Doe" name match. Mirrors the 553-607 lookup semantics (same pass
+ * Match a report to one cases/<idx> member, OOC-exact-first, never a DOE
+ * placeholder name match ("John Doe", "Jane Doe", "J. DOE", "DOE and DOE" —
+ * placeholders are not identities). Mirrors the 553-607 lookup semantics (same pass
  * order, same prefer-uncompleted-then-highest-caseNum tie-break) but also
  * matches shared-thread members that carry no individual caseTopicId.
  * @param {object} allReq — autopsy-requested node value
@@ -93,7 +95,7 @@ export function matchCollectionCase(allReq, ooc, name) {
     if (!allReq || typeof allReq !== 'object') return null;
     const oocL = String(ooc || '').trim().toLowerCase();
     const nameL = String(name || '').trim().toLowerCase();
-    const nameUsable = !!nameL && !/^john\s*doe$/i.test(String(name || '').trim());
+    const nameUsable = !!nameL && !isDoePlaceholder(name);
     const pickBest = (cur, cand) => {
         if (!cur) return cand;
         if (!!cur.caseRec.completedAt && !cand.caseRec.completedAt) return cand;
@@ -248,7 +250,7 @@ export async function postOrEditReply(client, { topicId, forumId, bbCode, baseUr
  * @param {object} opts.stepFailed — shared step-failure tracker
  * @returns {Promise<{ok: boolean, url: string|null, skipped?: boolean}>}
  */
-async function postLssdCombinedReply({ key, entry, reportData, completionBb, bbCode, bodies = null, batchedBbCode = null, progress, stepFailed, caseIdx = null }) {
+export async function postLssdCombinedReply({ key, entry, reportData, completionBb, bbCode, bodies = null, batchedBbCode = null, progress, stepFailed, caseIdx = null }) {
     // ── Faction resolution FIRST so status/failure writers key per faction ──
     // The REQUEST record is authoritative for faction — the report's department
     // field is only a hint (MEs sometimes leave it on the wrong agency mid-batch).
@@ -329,7 +331,7 @@ async function postLssdCombinedReply({ key, entry, reportData, completionBb, bbC
     // Searchable only if we have an OOC name or a non-generic decedent name.
     // The actual search (scoped to the faction's autopsy subforum, trying
     // "Name (( OOC ))" then the plain name) lives in searchLssdRequestTopic.
-    const searchable = oocName || (decedentName && !/^john\s*doe$/i.test(decedentName) ? decedentName : '');
+    const searchable = oocName || (decedentName && !isDoePlaceholder(decedentName) ? decedentName : '');
 
     if (!searchable) {
         await markLssdFailure(`${effFaction} case but no searchable name (no OOC / generic name) — force crosspost manually`);
@@ -519,7 +521,7 @@ async function startCompletionStep(topicId, stepName, detail = '') {
         await state.dbRef
             .child(`autopsy-requested/${topicId}/completionSteps/${stepName}`)
             .set({ status: 'attempting', startedAt: new Date().toISOString(), detail });
-    } catch (e) {
+    } catch {
         // Fire-and-forget
     }
 }
@@ -605,7 +607,7 @@ async function finishCompletionStep(topicId, stepName, ok, detail = '') {
             await state.dbRef
                 .child(`autopsy-requested/${topicId}/completionSteps/${stepName}`)
                 .set({ status, updatedAt: new Date().toISOString(), detail });
-        } catch (e) {
+        } catch {
             // Fire-and-forget — don't let tracking failures block anything
         }
         // Keep the tiny retry index in sync so the sweep never scans the full node.
@@ -771,9 +773,10 @@ export async function handleAutopsyReply(report) {
                     if (byName.exists()) arSnap = byName;
                 }
             }
-            // Fallback: decedent name field — but NEVER a generic "John Doe" placeholder.
+            // Fallback: decedent name field — but NEVER a DOE placeholder
+            // ("John/Jane Doe", "J. DOE", "DOE and DOE" are not identities).
             // Skipped entirely on a shared-thread hit (topic already resolved).
-            if (!sharedHit && (!arSnap || !arSnap.exists()) && name && !/^john\s*doe$/i.test(name)) {
+            if (!sharedHit && (!arSnap || !arSnap.exists()) && name && !isDoePlaceholder(name)) {
                 arSnap = await db.ref("autopsy-requested").orderByChild("name").equalTo(name).once("value");
                 if (!arSnap.exists()) {
                     const byOoc = await db.ref("autopsy-requested").orderByChild("oocName").equalTo(name).once("value");
@@ -817,7 +820,7 @@ export async function handleAutopsyReply(report) {
             const name = (reportData.data?.decedentName || "").trim();
             const oocL = ooc.toLowerCase();
             const nameL = name.toLowerCase();
-            const nameUsable = !!name && !/^john\s*doe$/i.test(name);
+            const nameUsable = !!name && !isDoePlaceholder(name);
             const allReqSnap = await db.ref("autopsy-requested").once("value");
             const allReq = allReqSnap.val() || {};
             const pickBest = (cur, cand) => {
@@ -844,7 +847,7 @@ export async function handleAutopsyReply(report) {
                     bestMulti = pickBest(bestMulti, { rkey, ci: parseInt(ci, 10), caseRec: c });
                 }
             }
-            // Pass 2 — name match (only if no OOC hit; never a generic "john doe").
+            // Pass 2 — name match (only if no OOC hit; never a DOE placeholder).
             if (!bestMulti) {
                 for (const [rkey, entry] of Object.entries(allReq)) {
                     if (String(entry.caseState || '') !== 'multi' || !entry.cases || typeof entry.cases !== 'object') continue;
@@ -1012,15 +1015,15 @@ export async function handleAutopsyReply(report) {
     // ── Mass-collection per-body reply target (best-effort, never fatal) ──
     // Shared-thread collections hold one reply PER BODY inside the one f=266
     // thread: resolve this report's cases/<idx> member (OOC-exact-first, never
-    // generic John Doe) so the post below edits that body's own reply, and
-    // point the reply at the shared thread when the members carry no
-    // individual caseTopicId. Per-topic records skip the override entirely.
+    // a DOE placeholder) and point the reply at the shared thread when the
+    // members carry no individual caseTopicId. Per-topic records skip the
+    // override entirely.
     let massBodyCtx = null; // { rkey, ci, caseRec, entry }
     let massReplyTopicId = topicId;
     try {
         const mOoc = (reportData.data?.decedentOOC || '').trim();
         const mName = (reportData.data?.decedentName || '').trim();
-        if (mOoc || (mName && !/^john\s*doe$/i.test(mName))) {
+        if (mOoc || (mName && !isDoePlaceholder(mName))) {
             const mSnap = await db.ref('autopsy-requested').once('value');
             const hit = matchCollectionCase(mSnap.val() || {}, mOoc, mName);
             if (hit && isSharedThreadCollection(hit.entry)) {
@@ -1063,7 +1066,6 @@ export async function handleAutopsyReply(report) {
         const completed = await markReportComplete(db, authorId, key, label, 'autopsy-reply', completeUrl);
         if (completed) {
             let completedTopicId = null;
-            let completedLssdTopicId = null;
             let completedLspdTopicId = null;
             let completedCaseTitle = null;
             try {
@@ -1097,10 +1099,11 @@ export async function handleAutopsyReply(report) {
                     }
                 }
 
-                // 3. Last resort: match by the decedent name, but NEVER a generic "John Doe"
-                //    placeholder — that matches every unrelated test entry.
+                // 3. Last resort: match by the decedent name, but NEVER a DOE
+                //    placeholder — that matches unrelated test entries sharing
+                //    one (e.g. t=10328's "Jane Doe" hit test collection #10161).
                 if (!arSnap || !arSnap.exists()) {
-                    if (name && !/^john\s*doe$/i.test(name)) {
+                    if (name && !isDoePlaceholder(name)) {
                         let by = await db.ref("autopsy-requested").orderByChild("name").equalTo(name).once("value");
                         if (!by.exists()) by = await db.ref("autopsy-requested").orderByChild("oocName").equalTo(name).once("value");
                         if (by.exists()) console.log('[AUTO-COMPLETE] Matched by name "' + name + '"');
@@ -1183,7 +1186,6 @@ export async function handleAutopsyReply(report) {
 
                     for (const { key, entry, ref } of entries) {
                         completedTopicId = key;
-                        completedLssdTopicId = entry.lssdRequestTopicId;
                         completedLspdTopicId = entry.lspdTopicId;
                         // Multi-decedent records: use the per-case record for
                         // identity/state so each case completes independently.
@@ -1684,7 +1686,7 @@ export async function handleAutopsyReply(report) {
                         }
 
 // Wait for all completion steps, then finalize
-                        const results = await Promise.allSettled(stepPromises);
+                        await Promise.allSettled(stepPromises);
                         const anyFailed = Object.keys(stepFailed).length > 0;
                         if (anyFailed) {
                             const failedList = Object.keys(stepFailed).join(', ');
@@ -2205,7 +2207,7 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
         }
 
         // Cleanup
-        try { await retryClient.close(); } catch (e) { /* ignore */ }
+        try { await retryClient.close(); } catch { /* ignore */ }
 
         // ── Summary webhook ──
         if (stillFailed === 0) {
@@ -2224,7 +2226,7 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
                     if (s.exists() && s.val()?.status === 'failed') {
                         remaining.push(`• **${f.stepName}** for ${f.caseLabel}: ${f.stepData.detail || 'No details'}`);
                     }
-                } catch (e) {
+                } catch {
                     remaining.push(`• **${f.stepName}** for ${f.caseLabel}: (unable to check status)`);
                 }
             }

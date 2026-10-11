@@ -335,7 +335,7 @@ Deleted: ${maintenanceResults.duplicateCleanup.duplicatesDeleted}`, inline: true
 }
 
 // --- Scheduled Cloud Function (v2) ---
-const dailyMaintenanceTask = onSchedule({
+export const dailyMaintenanceTask = onSchedule({
     schedule: "every day 09:00",
     timeZone: "UTC",
     region: "europe-west2",
@@ -354,7 +354,7 @@ const dailyMaintenanceTask = onSchedule({
 });
 
 // --- Manual Trigger ---
-const triggerManualMaintenance = onCall({
+export const triggerManualMaintenance = onCall({
     region: "europe-west2",
     secrets: ["PHMC_CONFIG"],
     memory: "512MiB",

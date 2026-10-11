@@ -442,29 +442,6 @@ function buildRefreshingVpsField() {
     ].join('\n');
 }
 
-/**
- * Build a "refreshing" embed from the live message: keeps every current field,
- * but swaps the VPS Resources field for the REFRESHING placeholder. Used to flip
- * the field state transiently during the auto-refresh gather, so it never shows stale data.
- */
-function buildRefreshingEmbed(msg) {
-    const fields = (msg.embeds[0]?.fields || []).map(f => ({
-        name: f.name,
-        value: f.value,
-        inline: f.inline === true,
-    }));
-    const vpsIdx = fields.findIndex(f => f.name === '🖥️ VPS Resources');
-    const refreshing = { name: '🖥️ VPS Resources', value: buildRefreshingVpsField(), inline: false };
-    if (vpsIdx !== -1) fields[vpsIdx] = refreshing;
-    else fields.push(refreshing);
-
-    return new EmbedBuilder()
-        .setColor(0xffc107)
-        .setTitle('🖥️ PHMC System Dashboard')
-        .setDescription('🔄 Refreshing data…')
-        .addFields(fields);
-}
-
 function buildVpsField(vps) {
     if (refreshing) return buildRefreshingVpsField();
     const { cpuPct, mem, swap, load, uptime, procs } = vps;

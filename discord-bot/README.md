@@ -67,7 +67,6 @@ index.js  (entry point — registers commands, starts services)
 ├── autopsyRequestMonitor.js   Scans f=265 every 60s, parses BBCode, stores in Firebase
 ├── autopsyRotation.js         Round-robin ME assignment (LOA-aware)
 ├── deathRecordDraft.js        CK listener → draft → Discord approval → post
-├── cctvScheduler.js           Runs CCTV fetch every 6 hours
 ├── factionRosterSync.js       Syncs faction member list from forum
 ├── dashoardManager.js         Live system status Discord embed
 ├── systemMonitor.js           60-minute health checks (CPU/RAM/disk)

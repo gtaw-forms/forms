@@ -336,7 +336,7 @@ export async function deliverCoronerEmail({ recipient, subject, bbCode, departme
             await progress.addStep('Filling PM Form', 'fail', dryResult.reason || 'Form fill failed');
         }
         await progress.finalize(dryResult.ok ? 'complete' : 'failed');
-        try { await client.close(); } catch (e) { /* ignore */ }
+        try { await client.close(); } catch { /* ignore */ }
         // A failed form fill is NOT ok — returning ok:true here used to make the
         // queue worker record the email `sent`. The worker maps ok+dryRun to the
         // terminal `dry_run` state; !ok flows to its normal retry path.
@@ -349,7 +349,7 @@ export async function deliverCoronerEmail({ recipient, subject, bbCode, departme
         console.warn(`[CORONER-EMAIL] BLOCKED — ${forum.forumUrl} not in CORONER_EMAIL_ALLOWED`);
         await progress.addStep('Blocked', 'fail', `${forum.forumLabel} not in ALLOWED list`);
         await progress.finalize('failed');
-        try { await client.close(); } catch (e) { /* ignore */ }
+        try { await client.close(); } catch { /* ignore */ }
         return { ok: false, reason: `${forum.forumLabel} not in ALLOWED list` };
     }
 
@@ -401,6 +401,6 @@ export async function deliverCoronerEmail({ recipient, subject, bbCode, departme
         await progress.addStep('Retry Scheduled', 'warn', 'Worker will retry with backoff');
         await progress.finalize('failed');
     }
-    try { await client.close(); } catch (e) { /* ignore */ }
+    try { await client.close(); } catch { /* ignore */ }
     return { ok: result.ok, url: result.url || null, reason: result.reason || null, sentTo: sendTo };
 }

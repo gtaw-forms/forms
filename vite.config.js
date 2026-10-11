@@ -27,7 +27,9 @@ export default defineConfig({
     include: [],
   },
   server: {
-    port: 3000,
+    // 3000 collides with AdGuard Home's web UI (127.0.0.1:3000 on this desktop),
+    // so `localhost:3000` intermittently resolved to AdGuard and returned 401.
+    port: 5173,
     open: true
   }
 });

@@ -5,6 +5,7 @@ import { useNotification } from '../../contexts/NotificationContext';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import { evaluateFieldVisibility } from '../../utils/formValidation';
 import { resolveEmployeeCredentials } from '../../utils/identityUtils';
+import { oocFromParsedName } from '../../utils/doePlaceholders';
 import useBbcodeGenerator from '../../hooks/useBbcodeGenerator';
 import { useFormSaver } from '../../hooks/useFormSaver';
 import { useReportAttachment } from '../../hooks/useReportAttachment';
@@ -18,7 +19,6 @@ import AssignedAutopsiesModal from '../Modals/AssignedAutopsiesModal';
 import MapModal from '../Modals/MapModal';
 import PrototypeFieldRenderer from './PrototypeFieldRenderer';
 import SurgicalDiagramModal from './SurgicalDiagramModal';
-import PatientSearch from './PatientSearch';
 import MorgueBrowser from './MorgueBrowser';
 import VehicleImpound from './VehicleImpound';
 import { useTowAccess } from '../../hooks/useTowAccess';
@@ -27,7 +27,6 @@ import TimeDisplay from './TimeDisplay';
 import ServiceStatusTicker from './ServiceStatusTicker';
 import BusinessCardModal from '../UI/BusinessCard';
 import { useImageUpload } from '../../hooks/useImageUpload';
-import { triggerGetPatientNames } from '../../services/firebaseFunctions';
 import { ref, onValue, get, query, orderByChild, equalTo } from 'firebase/database';
 import { database } from '../../firebase';
 import './styles.css';
@@ -92,8 +91,8 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
   const [emsOpen, setEmsOpen] = useState(false);
   const [emsCollapsed, setEmsCollapsed] = useState(new Set());
 
-  const { formsData, morgueRecords, isLoadingData, morgueLoading, morgueRecordsError, loadMorgueRecords, factionsData, agencyDataStore, selectOptions: dataContextSelectOptions, factionListData, lsccData } = useData();
-  const { user: realUser, isAuthenticated: realIsAuthenticated, characterName, swappableCharacters, factionData, isPhmcMember: realIsPhmcMember, accessLevel: realAccessLevel, login, logout, swapCharacter, canSwapCharacters, isLoading: authLoading, error: authError, credentialsLoading, identityRefreshStatus } = useGtaWorldAuth();
+  const { formsData, morgueRecords, isLoadingData, morgueLoading, loadMorgueRecords, factionsData, agencyDataStore, selectOptions: dataContextSelectOptions, factionListData, lsccData } = useData();
+  const { user: realUser, isAuthenticated: realIsAuthenticated, characterName, swappableCharacters, factionData, isPhmcMember: realIsPhmcMember, accessLevel: realAccessLevel, login, logout, swapCharacter, canSwapCharacters, isLoading: authLoading, credentialsLoading, identityRefreshStatus } = useGtaWorldAuth();
 
   // Tow Reports sidebar visibility: dev-open on localhost, otherwise PHMC
   // members auto-pass and contractors pass via UCP grant (shared hook).
@@ -251,11 +250,9 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
     const a = findAgency(code);
     if (!a) return null;
     let domain = '';
-    try { domain = new URL(a.url).hostname; } catch (e) { /* malformed agency URL ignored: faction shows without stored credentials */ }
+    try { domain = new URL(a.url).hostname; } catch { /* malformed agency URL ignored: faction shows without stored credentials */ }
     return domain ? (agencyCreds[domain] || null) : null;
   };
-  const displayCreds = displayFactions.map(credsForFaction).filter(Boolean);
-
   const isFormOptedIn = useCallback((formId) => consent[formId] !== false, [consent]);
 
   const groupedForms = useMemo(() => {
@@ -392,61 +389,11 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
   );
 
   // ── BBCode Generator ──
-  const { generatedBBCode, generatedTitle, showBBCode, setShowBBCode, generateBBCode, clearBBCode } = useBbcodeGenerator(
+  const { generatedBBCode, generatedTitle, showBBCode, generateBBCode, clearBBCode } = useBbcodeGenerator(
     selectedForm, formValues, finalSelectOptions, agencyDataStore, user, factionsData, factionListData, resolvedCredentials
   );
 
   const { saveReport, validateMembership } = useFormSaver(user, isAuthenticated, { factionListData, resolvedCredentials });
-
-  // ── Medical record patient name gate ──
-  const MEDICAL_FORM_IDS = ['patient_notes', 'er_protocol', 'physical_evaluation', 'staff-patient-file', 'surgical', 'session_notes', 'intensive_treatment', 'psych-eval', 'general_consultation'];
-  const isMedicalRecord = selectedForm?.firebaseKey && MEDICAL_FORM_IDS.includes(selectedForm.firebaseKey);
-
-  // ── Patient ID → name validation (bidirectional patient lookup) ──
-  // If the ME typed a patient ID but no patient name is set, resolve the name
-  // from the patient index by ID (the /api/patients lookup now matches ids).
-  // Prevents the "patientName = author name" leak (Paolina Russo / 1919).
-  const patientIdFilledRef = useRef(false);
-  useEffect(() => {
-    const id = String(formValues.patientID || '').trim();
-    const hasName = !!String(formValues.patientName || formValues.decedentName || '').trim();
-    if (!isMedicalRecord || !id || id.length < 2 || hasName) {
-      patientIdFilledRef.current = !!id && !hasName;
-      return;
-    }
-    // Only auto-fill once per ID entry — don't fight the user's typing.
-    if (patientIdFilledRef.current) return;
-    patientIdFilledRef.current = true;
-
-    let cancelled = false;
-    triggerGetPatientNames({ q: id })
-      .then((res) => {
-        if (cancelled) return;
-        const matches = res?.matches || [];
-        const exact = matches.find((m) => m.id != null && String(m.id) === id);
-        if (exact) {
-          setFormValues(prev => ({
-            ...prev,
-            decedentName: exact.name,
-            patientName: exact.name,
-            patientID: String(exact.id),
-          }));
-        }
-      })
-      .catch((err) => {
-        console.warn('[PatientID] lookup by id failed (save will still work):', err?.message || err);
-      });
-    return () => { cancelled = true; };
-  }, [formValues.patientID, formValues.patientName, formValues.decedentName, isMedicalRecord, setFormValues]);
-  const patientName = formValues.decedentName || formValues.decedentname || formValues.patientName || '';
-
-  // ── "That's YOUR name, doc" validator ──
-  // Catches the patientName = author-name leak (Paolina Russo / patient 1919)
-  // with a friendly warning before save. Exact case-insensitive match against
-  // the signed-in character name / username.
-  const signedInIdentity = characterName || user?.faction?.characterName || user?.activeCharacter?.characterName || user?.username || '';
-  const isOwnNameAsPatient = !!patientName.trim() && !!signedInIdentity &&
-    patientName.trim().toLowerCase() === String(signedInIdentity).trim().toLowerCase();
 
   // ── Progress stamp ──
   const { totalFields, filledFields } = useMemo(() => {
@@ -472,8 +419,6 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
     return { totalFields: total, filledFields: filled };
   }, [selectedForm, formValues]);
   const pct = totalFields > 0 ? Math.round((filledFields / totalFields) * 100) : 0;
-  const circumference = 251.2;
-  const dashOffset = circumference - (circumference * pct / 100);
 
   const searchRef = useRef(null);
   useEffect(() => { searchRef.current?.focus(); }, []);
@@ -846,8 +791,12 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
           const fullName = p.decedentName || morgue?.name || '';
           const icMatch = fullName.match(/^(.+?)\s*\(\(/);
           const icName = icMatch ? icMatch[1].trim() : fullName.replace(/\(\(.+?\)\)/g, '').trim() || fullName;
+          // OOC: entry.oocName is authoritative, but a hand-written forum title
+          // that omitted the ((OOC)) left it blank — recover it from the parsed
+          // "Decedent Name" ((...)) so the filled form shows the real identity
+          // (t=10364 / Case 538).
           updates.decedentName = icName;
-          updates.decedentOOC = entry?.oocName || '';
+          updates.decedentOOC = entry?.oocName || oocFromParsedName(p.decedentName) || '';
           if (p.requesterName) updates.Requester = p.requesterName;
           if (p.sex || morgue?.sex) updates.sex = p.sex || morgue.sex;
           if (p.placeOfDeath || morgue?.location) updates.placeOfDeath = p.placeOfDeath || morgue.location;
@@ -942,7 +891,12 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
         try {
           const result = await loadMorgueRecords();
           const records = result?.records || (Array.isArray(result) ? result : Object.values(result || {}));
-          const terms = [String(entry.oocName || '').toLowerCase(), String(entry.name || '').toLowerCase()].filter(Boolean);
+          // OOC term: entry.oocName, else the ((OOC)) inside the parsed
+          // "Decedent Name" — a hand-written title can omit it from the entry
+          // while Section 2 still carries it (t=10364 / Case 538), and without
+          // it the morgue record "Unknown (( Ilya Baranov ))" never matches.
+          const parsedOoc = oocFromParsedName(entry.parsed?.decedentName);
+          const terms = [String(entry.oocName || parsedOoc || '').toLowerCase(), String(entry.name || '').toLowerCase()].filter(Boolean);
           let bestScore = 0;
           for (const rec of records) {
             const rn = String(rec.name || '').toLowerCase();
@@ -972,7 +926,7 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
   const [showMapModal, setShowMapModal] = useState(false);
   const [mapTargetField, setMapTargetField] = useState(null);
   const [isUploadingMapImage, setIsUploadingMapImage] = useState({});
-  const [isUploading, setIsUploading] = useState(false);
+  const [isUploading] = useState(false);
   const modalCloseTimer = useRef(null);
 
   // ── Deploy Countdown ──
@@ -1082,7 +1036,6 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
     preselectedEmployeeType,
     reportSelectionFilter,
     pendingReportAttachmentCallback,
-    currentAttachmentTargetFieldRef,
     isAttachMode,
   } = useReportAttachment(
     loadReportForUser,
@@ -1155,7 +1108,6 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
 
   const activeForm = selectedForm;
   const displayName = characterName || user?.username || 'Guest';
-  const userRole = cleanRankText(factionData?.rank) || cleanRankText(user?.faction?.rank) || 'Employee';
 
   // ── Employee image signature (non-DMEC PHMC Staff forms) ──
   // Toggle at the top of the form -> modal to paste the signature URL -> preview
@@ -1918,55 +1870,6 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
                   <i className="fas fa-code" /> {generatedTitle || 'Generated BBCode will appear here'}
                   {generatedTitle && <i className="fas fa-copy" style={{ marginLeft: 'auto', fontSize: 11, opacity: 0.6 }} />}
                 </div>
-                )}
-                {isMedicalRecord && (
-                  <div style={{ marginBottom: 8 }}>
-                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4 }}>
-                      <i className="fas fa-user" style={{ color: 'var(--teal)', fontSize: 11 }} />
-                      <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Patient Name</span>
-                      <span style={{ color: 'var(--danger)' }}>*</span>
-                    </div>
-                    <PatientSearch
-                      value={patientName}
-                      onSelect={(name, id) => {
-                        // Write the patient name to BOTH decedentName and patientName —
-                        // decedentName is what the bot's thread search + BBCode use for
-                        // the subject, patientName keeps {{patientName}} placeholders and
-                        // older consumers accurate. A selected match sets patientID; typing
-                        // (id === null) CLEARS it so a new patient never inherits a previous
-                        // selection's ID (e.g. "Alyson Test" must not reuse Alyson Frost's 1424).
-                        setFormValues(prev => ({
-                          ...prev,
-                          decedentName: name,
-                          patientName: name,
-                          patientID: id ? String(id) : '',
-                        }));
-                      }}
-                    />
-                    {!patientName.trim() && (
-                      <div style={{
-                        marginTop: 6, padding: '6px 8px', borderRadius: 5, fontSize: 10.5,
-                        background: 'var(--amber-dim)', border: '1px solid var(--amber)',
-                        color: 'var(--amber)', display: 'flex', gap: 5, alignItems: 'flex-start',
-                      }}>
-                        <i className="fas fa-exclamation-triangle" style={{ marginTop: 1 }} />
-                        <span>Enter a patient name above — the bot needs this to find the correct forum thread.</span>
-                      </div>
-                    )}
-                    {isOwnNameAsPatient && (
-                      <div style={{
-                        marginTop: 6, padding: '6px 8px', borderRadius: 5, fontSize: 10.5,
-                        background: 'var(--amber-dim)', border: '1px solid var(--amber)',
-                        color: 'var(--amber)', display: 'flex', gap: 5, alignItems: 'flex-start',
-                      }}>
-                        <i className="fas fa-user-md" style={{ marginTop: 1 }} />
-                        <span>
-                          Ahem, please don&apos;t use your own name as the patient — it&apos;s a otherwise the bot will post the report to your own thread.
-                          Enter the <strong>patient&apos;s</strong> name (or pick one from the dropdown) before saving!
-                        </span>
-                      </div>
-                    )}
-                  </div>
                 )}
                 {bbcodeToolsVisible && (() => {
                   const tpl = String(activeForm?.template || '');

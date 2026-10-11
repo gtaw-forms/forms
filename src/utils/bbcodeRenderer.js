@@ -150,11 +150,6 @@ export function renderBbcode({ template, form, values, coronerInfo, agencyDataSt
     ctx.department = getDepartmentFullName(ctx.department, agencyDataStore);
   }
   
-  // DEBUG: Check template for coroner placeholders
-  const hasCoronerRank = bbcode.includes('{{coronerRank}}');
-  const hasCoronerEmployee = bbcode.includes('{{coronerEmployee}}');
-  const hasCoronerBadge = bbcode.includes('{{coronerBadge}}');
-  
   ctx.generateDecedentBBCode = (arr) => generateDecedentBBCode(arr, coronerInfo);
 
   const decedents_bbcode = generateDecedentBBCode(values.decedents, coronerInfo);
@@ -524,13 +519,6 @@ export function renderBbcode({ template, form, values, coronerInfo, agencyDataSt
       }
       if (/Signature$/i.test(key)) { console.log('[SIGTRACE] generator DROPPED/left', placeholder, '— value empty/invalid'); return; }
 
-      // Preserve patientID/PATIENT_ID/patientId placeholder if empty —
-      // the bot fills it later via handleMedicalRecord (auto-assign or extract from topic title).
-      if ((key === 'patientID' || key === 'PATIENT_ID' || key === 'patientId') && (!value || value === '')) {
-          console.log(`[useBbcodeGenerator] Preserving {{${key}}} placeholder (empty) for bot to fill later`);
-          return;
-      }
-
       let replacement = String(value ?? '');
       // Department codes resolve to full names HERE (not just in the later
       // expression-eval stage): plain {{department}} placeholders substitute
@@ -596,17 +584,13 @@ export function renderBbcode({ template, form, values, coronerInfo, agencyDataSt
 
   bbcode = bbcode.replace(/{{(.+?)}}/g, (match, expr) => {
     const trimmed = expr.trim();
-    // Preserve patientID placeholder for the bot to fill later
-    if ((trimmed === 'patientID' || trimmed === 'PATIENT_ID' || trimmed === 'patientId') && (!ctx[trimmed] || ctx[trimmed] === '')) {
-        return match;
-    }
     if (trimmed.includes(":") && !/[+\-*/()=?<>!&|]/g.test(trimmed)) return trimmed;
     try {
       const fn = new Function('ctx', 'getDepartmentFullName', 'agencyDataStore', 'generateDecedentBBCode', `with (ctx) { return ${trimmed}; }`);
       const result = fn(ctx, getDepartmentFullName, agencyDataStore, generateDecedentBBCode);
       if (typeof result === 'object' && result !== null && Object.prototype.hasOwnProperty.call(result, 'confirmedAt')) return String(result.confirmedAt);
       return Array.isArray(result) ? result.join(", ") : String(result || "");
-    } catch (e) { return ""; }
+    } catch { return ""; }
   });
 
   const isCoronerEmailFinal = form.name === "Coroner Email" || form.id === "coroner_email";

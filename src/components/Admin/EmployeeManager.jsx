@@ -18,14 +18,6 @@ const EmployeeManager = () => {
     const [activeTab, setActiveTab] = useState('overview');
     const [expandedRow, setExpandedRow] = useState(null);
 
-    const getCategoryBadgeClass = (category) => {
-        if (category === 'DMEC') return 'admin-badge-danger';
-        if (category === 'PHMC Staff') return 'admin-badge-indigo';
-        if (category === 'OBGYN') return 'admin-badge-warning';
-        if (category === 'Mental Health') return 'admin-badge-success';
-        return '';
-    };
-
     const formMetaMap = useMemo(() => {
         if (!formsData) return {};
         return formsData.reduce((acc, form) => {

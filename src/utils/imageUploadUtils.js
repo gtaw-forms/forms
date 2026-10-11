@@ -1,6 +1,5 @@
 import * as Sentry from "@sentry/react";
 import { httpsCallableFromURL, getFunctions } from 'firebase/functions';
-import { triggerWebhookProxy } from '../services/firebaseFunctions';
 
 const uploadImageProxyCallable = () => {
   const url = 'https://europe-west4-gtaw-forms.cloudfunctions.net/uploadImageProxy';
@@ -17,28 +16,6 @@ const assertUploadableSize = (base64Image, what) => {
     throw new Error(
       `${what || 'Image'} is too large (${(base64Image.length / 1024 / 1024).toFixed(1)} MB). Please use an image under ~5 MB.`
     );
-  }
-};
-
-const logUploadFailureToDiscord = async (error, service, context) => {
-  const payload = {
-    embeds: [{
-      title: "🚨 Image Upload Failure",
-      color: 0xff0000,
-      fields: [
-        { name: "Service", value: service, inline: true },
-        { name: "Context", value: context, inline: true },
-        { name: "Error", value: error.message || String(error), inline: false },
-        { name: "User", value: window.location.hostname, inline: true },
-        { name: "Timestamp", value: new Date().toISOString(), inline: true }
-      ]
-    }]
-  };
-
-  try {
-    await triggerWebhookProxy('error', payload);
-  } catch (e) {
-    console.error("Failed to log upload failure to Discord:", e);
   }
 };
 

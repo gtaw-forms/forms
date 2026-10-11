@@ -90,7 +90,6 @@ export function splitAtBodyBoundaries(fullBbcode, maxChars = DEFAULT_MAX_CHARS) 
         return bodies;
     }
 
-    const sep = `\n${BODY_SEPARATOR}\n`;
     const joiner = '\n';
     const chunks = [];
     let current = [];

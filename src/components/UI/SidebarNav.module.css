@@ -124,14 +124,3 @@
   margin-top: 15px;
   font-weight: 700;
 }
-
-.cctvBadge {
-  position: absolute;
-  top: -5px;
-  right: -5px;
-  background: #f59e0b;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  border: 2px solid #1e1b4b;
-}

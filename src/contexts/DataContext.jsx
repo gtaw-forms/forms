@@ -2,11 +2,10 @@ import React, { createContext, useState, useEffect, useContext, useCallback, use
 import { database } from '../firebase';
 import { ref, get, onValue } from 'firebase/database';
 import { useNotification } from './NotificationContext.jsx';
-import { useWebhooks } from '../hooks/useWebhooks';
 import { useInactivityReload } from '../hooks/useInactivityReload';
 import useGtaWorldAuth from '../hooks/useGtaWorldAuth';
-import { triggerGetMorgueRecords, triggerGetProtocolsDev, triggerGetFormsData } from '../services/firebaseFunctions';
-import { isStagingMode, resolveStagingPath, resolveVersionRef, resolveVersionKey } from '../utils/stagingPath';
+import { triggerGetMorgueRecords, triggerGetFormsData } from '../services/firebaseFunctions';
+import { isStagingMode, resolveStagingPath, resolveVersionKey } from '../utils/stagingPath';
 import { idbGet, idbSet } from '../utils/idbCache';
 
 // Cache versions below this threshold are considered dead/broken and force a fresh fetch.
@@ -31,36 +30,13 @@ const EXCLUDED_FROM_CACHE = ['savedReports', 'morgue-records'];
 // ── Staging Mode ──
 // Resolves forms → forms_staging via the shared stagingPath utility.
 // Localhost defaults to staging; see ../utils/stagingPath.js for rules.
-const IS_STAGING = isStagingMode();
 const resolveFormsPath = (segment) => resolveStagingPath(segment);
 const FORMS_VERSION_KEY = resolveVersionKey('formsDataVersion');
-const FORMS_VERSION_REF_PATH = resolveVersionRef('appMetadata/formsDataVersion');
 
-// ── Localhost dev override ──
-// On dev hosts, EMS Protocols load from the VPS-hosted dev dataset (fetched via
-// the getProtocolsDev function) so dev content never touches production and the
-// heavy base64 images stay out of RTDB. Falls back to prod protocols on error.
-const IS_DEV_HOST = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.'));
-// P2 (l) cost plan: memoize the dev protocols blob per session — repeated
-// LSCC segment updates re-ran a full getProtocolsDev invocation each.
-let cachedDevProtocols = null;
-const applyLsccDevOverride = async (data) => {
-    if (!IS_DEV_HOST || !data || typeof data !== 'object') return data;
-    try {
-        if (!cachedDevProtocols) {
-            const res = await triggerGetProtocolsDev();
-            if (Array.isArray(res?.protocols) && res.protocols.length > 0) {
-                cachedDevProtocols = res.protocols;
-            }
-        }
-        if (cachedDevProtocols) {
-            return { ...data, protocols: cachedDevProtocols };
-        }
-    } catch (err) {
-        console.warn('[DataContext] Failed to load dev protocols:', err?.message || err);
-    }
-    return data;
-};
+// ── Localhost dev override (REMOVED 2026-10-08) ──
+// The dev EMS protocols dataset (getProtocolsDev → VPS data/protocols-dev.json)
+// was retired with the CCTV removal: applyLsccDevOverride deleted, LSCC loads
+// prod data everywhere now.
 
 const DataContext = createContext();
 
@@ -68,13 +44,8 @@ export const useData = () => {
     return useContext(DataContext);
 };
 
-// Telemetry identity label: "username (character)" for the hourly Visited
-// list (matches the V2 rollup format). Falls back gracefully when only one
-// identity is known. Moved to src/utils/identityUtils.js (pure helper);
-// re-exported here so existing importers keep working unchanged. Also
-// imported locally because DataContext itself calls it (lines below).
-import { telemetryUserLabel } from '../utils/identityUtils';
-export { telemetryUserLabel } from '../utils/identityUtils';
+// Telemetry identity label re-export removed 2026-10-08 (hourly rollup
+// retired). Import it directly from src/utils/identityUtils.js if needed.
 
 // Rank-string keywords that classify a PHMC faction member as Coroner staff.
 // Used only where the coroner distinction is still needed (legacy UI grouping,
@@ -86,7 +57,7 @@ export const isCoronerMember = (member) => CORONER_KEYWORDS.some((kw) => (member
 export const DataProvider = ({ children }) => {
     const { user, isAuthenticated } = useGtaWorldAuth();
         const { showNotification, removeNotification } = useNotification();
-    const { getIsInactivityWarningTriggered } = useInactivityReload();
+    useInactivityReload(); // singleton timers side effect; return value was telemetry-only
         const [factionsData, setFactionsData] = useState({});
     const [agencyDataStore, setAgencyDataStore] = useState({});
     const [selectOptions, setSelectOptions] = useState({});
@@ -97,7 +68,6 @@ export const DataProvider = ({ children }) => {
 
     const debounceTimers = useRef({});
 
-const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarningTriggered);
     const updateCacheSegment = useCallback(async (segment, data) => {
         // Update memory cache
         dataCache.current[segment] = data;
@@ -145,7 +115,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                     localStorage.setItem(getCacheKey(segment), JSON.stringify(data));
                     localStorage.setItem(getTimestampKey(segment), Date.now().toString());
                     localStorage.setItem(getVersionKey(segment), version);
-                } catch (retryError) {
+                } catch {
                     console.warn(`Retry failed for ${segment}: localStorage still full.`);
                 }
             }
@@ -173,8 +143,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                 break;
             }
             case CACHE_SEGMENTS.LSCC: {
-                const finalLscc = await applyLsccDevOverride(data);
-                setLsccData(finalLscc || {});
+                setLsccData(data || {});
                 break;
             }
             case CACHE_SEGMENTS.VERIFIED_ADMINS:
@@ -189,7 +158,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                 console.warn(`Unknown cache segment: ${segment}`);
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- getCacheKey/getSegmentVersion/getTimestampKey/getVersionKey intentionally omitted: pure per-render key builders; adding them cascades identity churn through refreshSegments/debouncedRefresh/listeners and causes refetch loops.
-    }, [isAuthenticated, user, webhooks]);
+    }, []);
 
     const updateStateWithData = (data) => {
         Object.entries(CACHE_SEGMENTS).forEach(([_key, segment]) => {
@@ -216,10 +185,8 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
     const firebaseListeners = useRef({});
     const morgueRecordsLoadedRef = useRef(false);
   const morgueFetchInFlightRef = useRef(null);
-  // Latest values for the morgue loader's telemetry/cache calls. Held in a ref
-  // so `loadMorgueRecords` can stay referentially stable — unstable deps
-  // (webhooks re-created each render) made every consumer effect re-run and
-  // produced an unbounded reload loop when the fetch left `records` empty.
+  // Latest values for the morgue loader's cache calls. Held in a ref
+  // so `loadMorgueRecords` can stay referentially stable.
   const morgueLoaderDepsRef = useRef({});
 
     // Cache configuration
@@ -276,9 +243,10 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
         return isVersionValid && isTimeValid;
     };
 
-    const refreshSegments = useCallback(async (segments = []) => {
+    const refreshSegments = useCallback(async (segments = [], opts = {}) => {
+        const { forceRtdb = false } = opts;
         const segmentsToRefresh = segments.length > 0 ? segments : Object.values(CACHE_SEGMENTS);
-        console.log(`[refreshSegments] Refreshing: ${segmentsToRefresh.join(', ')}`);
+        console.log(`[refreshSegments] Refreshing: ${segmentsToRefresh.join(', ')}${forceRtdb ? ' (force RTDB)' : ''}`);
         
         for (const segment of segmentsToRefresh) {
             if (!Object.values(CACHE_SEGMENTS).includes(segment)) {
@@ -315,7 +283,11 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                     // The VPS blob is the raw forms/forms_staging node value (same
                     // shape as snapshot.val()). Fall back to RTDB on failure or an
                     // empty blob so the forms never blank out.
+                    // forceRtdb (version-mismatch path): the VPS blob lags a
+                    // version bump by ~5s (bot formsCacheSync debounce), so a
+                    // blob read here would serve stale flags. Read RTDB directly.
                     let servedFromVps = false;
+                    if (!forceRtdb) {
                     try {
                         const vpsBlob = await triggerGetFormsData({ staging: isStagingMode() });
                         const elapsed = (performance.now() - t0).toFixed(1);
@@ -328,6 +300,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                         }
                     } catch (err) {
                         console.warn(`[WARN] [refreshSegments] forms VPS cache fetch failed (${err?.message || err}) — falling back to RTDB`);
+                    }
                     }
                     if (!servedFromVps) {
                         const snapshot = await get(segmentRef);
@@ -401,12 +374,12 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
     }, [pendingRefreshInfo, refreshSegments]);
 
     // Keep the loader's dynamic deps current without making the callback unstable.
-    morgueLoaderDepsRef.current = { updateCacheSegment, webhooks, isAuthenticated, user };
+    morgueLoaderDepsRef.current = { updateCacheSegment };
 
     // Lazy-load morgue records on demand (not fetched during initial app load)
     const loadMorgueRecords = useCallback(async () => {
         // Read the latest deps at call time (see ref note above).
-        const { updateCacheSegment, webhooks, isAuthenticated, user } = morgueLoaderDepsRef.current;
+        const { updateCacheSegment } = morgueLoaderDepsRef.current;
         // In-flight dedup: concurrent callers (auth init + sidebar + autopsy modal)
         // share one fetch instead of each firing a fresh Cloud Function call.
         if (morgueFetchInFlightRef.current) return morgueFetchInFlightRef.current;
@@ -473,21 +446,6 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                 morgueRecordsLoadedRef.current = true;
                 console.debug(`[DataContext] Fetched morgue records from VPS API via Cloud Function (${segmentSize} KB) — cached to IndexedDB`);
 
-                // Log the lazy load for observability
-                try {
-                    const loadingMode = {};
-                    Object.values(CACHE_SEGMENTS).forEach(s => {
-                        loadingMode[s] = s === CACHE_SEGMENTS.MORGUE_RECORDS ? 'network' : 'not_loaded';
-                    });
-                    webhooks.sendDataRequestLog('DataContext.jsx', false, 'Cloud Function', 0, parseFloat(segmentSize), isAuthenticated, telemetryUserLabel(user), ['morgue-records'], [], { 'morgue-records': parseFloat(segmentSize) }, null, {
-                        route: window.location.hash || '/',
-                        trigger: 'lazy',
-                        segmentSources: loadingMode
-                    });
-                } catch (logError) {
-                    console.warn('[DataContext] Failed to send morgue data request log:', logError);
-                }
-
                 return data;
             } else {
                 console.warn('[DataContext] Morgue records API returned empty.');
@@ -552,7 +510,6 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                             localStorage.setItem(storageKey, String(initialMeta[k]));
                         } else if (k === formsKey) {
                             // no server key — clear
-                            const storageKey = FORMS_VERSION_KEY;
                             // keep old if missing
                         }
                     }
@@ -565,7 +522,6 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
             // Offline version changed — refresh those segments immediately (before onValue)
             const offlineToRefresh = [];
             for (const k of keys) {
-                const storageKey = k === formsKey ? FORMS_VERSION_KEY : k;
                 const oldV = oldLocals[k];
                 const newV = initialMeta[k] !== undefined ? String(initialMeta[k]) : null;
                 if (oldV !== null && newV !== null && oldV !== newV) {
@@ -591,6 +547,10 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                 const val = snapshot.val() || {};
                 const toRefreshImmediate = [];
                 const toRefreshDebounced = [];
+                // Forms bypass the debounce: a toggle (e.g. /manage-forms disable)
+                // must hide/show within seconds, not after DEBOUNCE_DELAY_MS.
+                // forceRtdb skips the ~5s-lagging VPS blob (see refreshSegments).
+                const toRefreshFormsNow = [];
                 const handleVersion = (key, seg, versionKey) => {
                     const serverVersion = val[key] !== undefined ? String(val[key]) : null;
                     const localVersion = localStorage.getItem(versionKey);
@@ -600,7 +560,8 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                         localStorage.removeItem(getTimestampKey(resolveFormsPath(seg)));
                         localStorage.removeItem(getVersionKey(resolveFormsPath(seg)));
                         localStorage.setItem(versionKey, serverVersion);
-                        (firstFire ? toRefreshImmediate : toRefreshDebounced).push(seg);
+                        if (seg === CACHE_SEGMENTS.FORMS) toRefreshFormsNow.push(seg);
+                        else (firstFire ? toRefreshImmediate : toRefreshDebounced).push(seg);
                     } else if (serverVersion === null && localVersion !== null) {
                         console.log(`🗑️ ${key} deleted`);
                         localStorage.removeItem(getCacheKey(resolveFormsPath(seg)));
@@ -623,13 +584,14 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                     morgueRecordsLoadedRef.current = false;
                 }
 
+                if (toRefreshFormsNow.length) await refreshSegments(toRefreshFormsNow, { forceRtdb: true });
                 if (toRefreshImmediate.length) await refreshSegments(toRefreshImmediate);
                 else if (toRefreshDebounced.length) await debouncedRefresh(toRefreshDebounced);
                 firstFire = false;
             });
         })();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- getCacheKey/getTimestampKey/getVersionKey intentionally omitted: per-render key builders over the same render's version trackers; adding them re-subscribes the appMetadata listener every render.
-    }, [updateCacheSegment, showNotification, refreshSegments, debouncedRefresh, webhooks, isAuthenticated, user]);
+    }, [updateCacheSegment, showNotification, refreshSegments, debouncedRefresh, isAuthenticated, user]);
 
 
 
@@ -652,8 +614,6 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
     
         const segmentsToFetch = [];
         const cachedSegments = {};
-        const segmentSizes = {};
-        let totalCachedSize = 0;
     
         if (forceRefresh) {
             segmentsToFetch.push(...Object.values(CACHE_SEGMENTS).filter(s => s !== CACHE_SEGMENTS.MORGUE_RECORDS));
@@ -670,9 +630,6 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                 if (cachedData && isCacheValid(cacheSegment)) {
                     try {
                         cachedSegments[segment] = JSON.parse(cachedData);
-                        const segmentSize = (cachedData.length || 0) / 1024;
-                        segmentSizes[segment] = segmentSize;
-                        totalCachedSize += segmentSize;
                     } catch (error) {
                         console.error(`Error parsing cached data for ${segment}, refetching.`, error);
                         segmentsToFetch.push(segment);
@@ -704,11 +661,6 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                         loadingMode[s] = 'not_loaded';
                     }
                 });
-                webhooks.sendDataRequestLog('DataContext.jsx', true, 'Local Storage', totalCachedSize, 0, isAuthenticated, telemetryUserLabel(user), Object.keys(cachedSegments), [], segmentSizes, null, {
-                    route: window.location.hash || '/',
-                    trigger: 'initial',
-                    segmentSources: loadingMode
-                });
                 hasLoggedInitialLoad.current = true;
             }
             setDataLoaded(true);
@@ -725,7 +677,6 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
             const results = await Promise.allSettled(promises);
     
             const fetchedData = {};
-            let totalNetworkTransferSize = 0;
     
             results.forEach((result, idx) => {
                 const segment = segmentsToFetch[idx];
@@ -740,35 +691,13 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
                         data = Object.keys(data).map(key => ({ ...data[key], firebaseKey: key }));
                     }
                     fetchedData[segment] = data;
-                    const segmentSize = (JSON.stringify(data).length || 0) / 1024;
-                    segmentSizes[segment] = segmentSize;
-                    totalNetworkTransferSize += segmentSize;
                 } else {
                     console.warn(`Segment "${segment}" does not exist in Firebase.`);
                 }
             });
     
             if (Object.keys(fetchedData).length > 0) {
-                if (!hasLoggedInitialLoad.current) {
-                    const loadingMode = {};
-                    Object.values(CACHE_SEGMENTS).forEach(s => {
-                        if (s === CACHE_SEGMENTS.MORGUE_RECORDS) {
-                            loadingMode[s] = 'not_loaded';
-                        } else if (cachedSegments[s]) {
-                            loadingMode[s] = 'cache';
-                        } else if (fetchedData[s]) {
-                            loadingMode[s] = 'network';
-                        } else {
-                            loadingMode[s] = 'not_loaded';
-                        }
-                    });
-                    webhooks.sendDataRequestLog('DataContext.jsx', didLoadFromCache.current, didLoadFromCache.current ? 'Partial Cache' : 'Firebase', totalCachedSize + totalNetworkTransferSize, totalNetworkTransferSize, isAuthenticated, telemetryUserLabel(user), Object.keys(cachedSegments).concat(segmentsToFetch), segmentsToFetch.filter(s => !fetchedData[s]), segmentSizes, null, {
-                        route: window.location.hash || '/',
-                        trigger: 'initial',
-                        segmentSources: loadingMode
-                    });
-                    hasLoggedInitialLoad.current = true;
-                }
+                hasLoggedInitialLoad.current = true;
     
                 Object.entries(fetchedData).forEach(([segment, data]) => {
                     updateCacheSegment(segment, data);
@@ -784,23 +713,6 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
             showNotification("An error occurred while fetching data.", 'error');
             console.error("Error fetching data from Realtime Database:", error);
             if (!hasLoggedInitialLoad.current) {
-                const loadingMode = {};
-                Object.values(CACHE_SEGMENTS).forEach(s => {
-                    if (s === CACHE_SEGMENTS.MORGUE_RECORDS) {
-                        loadingMode[s] = 'not_loaded';
-                    } else if (cachedSegments[s]) {
-                        loadingMode[s] = 'cache';
-                    } else if (segmentsToFetch.includes(s)) {
-                        loadingMode[s] = 'network';
-                    } else {
-                        loadingMode[s] = 'not_loaded';
-                    }
-                });
-                webhooks.sendDataRequestLog('DataContext.jsx', didLoadFromCache.current, 'Firebase Error', totalCachedSize, 0, isAuthenticated, telemetryUserLabel(user), Object.keys(cachedSegments), segmentsToFetch, segmentSizes, error.message || 'Unknown Fetch Error', {
-                    route: window.location.hash || '/',
-                    trigger: 'initial',
-                    segmentSources: loadingMode
-                });
                 hasLoggedInitialLoad.current = true;
             }
             setHasFirebaseError(true);
@@ -816,7 +728,7 @@ const webhooks = useWebhooks(null, null, showNotification, getIsInactivityWarnin
         showNotification, removeNotification, updateCacheSegment, // Added updateCacheSegment
         setFactionsData, setAgencyDataStore, setSelectOptions,
         setIsLoadingData, setFormsData,
-        isAuthenticated, user, webhooks // Replaced sendDataRequestLog with webhooks
+        isAuthenticated, user
     ]);
 
 
@@ -1060,7 +972,6 @@ isLoadingData,
         refreshSegments,
         updateNow,
         pendingRefreshInfo,
-        sendDataRequestLog: webhooks.sendDataRequestLog,
         lsccData,
         morgueRecords,
         morgueRecordsError,

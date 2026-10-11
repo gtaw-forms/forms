@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync, createWriteStream, renameSync, mkdirSync,
+import { readFileSync, writeFileSync, existsSync, renameSync, mkdirSync,
 readdirSync, rmSync, statSync, appendFileSync } from 'fs';
 import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
@@ -47,6 +47,7 @@ if (!process.env.MORGUE_API_KEYS && !process.env.MORGUE_WRITE_API_KEYS) {
 }
 
 import { API_KEY_LABEL_RE } from './services/apiKeyUtil.js';
+import { isExcludedAuthor } from './services/statsExclusions.js';
 
 // ── Labeled API keys ──
 // MORGUE_API_KEYS="forms-functions:pmc_morgue_xxx,facebrowser:pmc_morgue_yyy"
@@ -727,6 +728,32 @@ function recordActivity(req, statusCode, ms, ip, ua, suspicious) {
     if (activityLog.length > MAX_ACTIVITY) activityLog.shift();
 }
 
+// ── Persistent morgue access audit (data/morgue-access.log) ──
+// Console/pm2 logs rotate and the in-memory activity log holds 200 entries,
+// so per-user attribution for a past incident ages out within days (this is
+// what lost the 2026-10-01 burst attribution). This append-only file keeps
+// one line per authenticated morgue access and rotates at 5 MB (one spare).
+// Only identified callers are recorded — anonymous probes stay in
+// console/activity as before.
+const MORGUE_AUDIT_PATH = resolve(__dirname, 'data', 'morgue-access.log');
+const MORGUE_AUDIT_MAX_BYTES = 5 * 1024 * 1024;
+
+function appendMorgueAccessAudit(line) {
+    try {
+        try {
+            const st = statSync(MORGUE_AUDIT_PATH);
+            if (st.size >= MORGUE_AUDIT_MAX_BYTES) {
+                renameSync(MORGUE_AUDIT_PATH, `${MORGUE_AUDIT_PATH}.1`);
+            }
+        } catch {
+            // Missing file (first write) — append creates it below.
+        }
+        appendFileSync(MORGUE_AUDIT_PATH, `${line}\n`);
+    } catch (err) {
+        console.warn(`[MORGUE-API] Access audit write failed: ${err.message}`);
+    }
+}
+
 // ── Discord webhook logging (batched) ──
 const webhookBatch = [];
 const WEBHOOK_FLUSH_INTERVAL = 30_000; // flush every 30 seconds
@@ -1142,6 +1169,17 @@ app.use((req, res, next) => {
 
         // Store in activity log with new fields
         recordActivity(req, res.statusCode, ms, ip, ua, suspiciousFinding?.label);
+
+        // Authenticated morgue access → persistent audit line (who + what).
+        // Loopback health probes carry no identity and are skipped here.
+        if ((req.path === '/api/morgue' || req.path.startsWith('/api/morgue/')) &&
+            requester !== 'external/unknown') {
+            const aq = req.query.q ? ` q=${JSON.stringify(sanitize(String(req.query.q)).slice(0, 80))}` : '';
+            appendMorgueAccessAudit(
+                `${new Date().toISOString()} ${req.method} ${req.path} → ${res.statusCode} ` +
+                `(${ms}ms) requestedBy="${requester}" ip=${ip}${source}${aq}`
+            );
+        }
 
         // Queue webhook log
         queueWebhookLog({
@@ -1822,106 +1860,6 @@ app.post('/api/notify', validateApiKey, rateLimiter, async (req, res) => {
     res.json({ success: true, messageId: result.messageId });
 });
 
-// ── Client telemetry intake (hourly rollup source) ──
-// Browser clients flush an hourly aggregate beacon through the
-// appendTelemetry Cloud Function (browsers never hold an API key).
-// Lines are JSONL: { at, events, cacheHits, network, errors, inactive,
-// totalKb, netKb, byTrigger, routes, users, errorSamples }.
-// The bot's telemetryRollup tick reads + truncates this file hourly.
-// Rotation: single 5 MB cap with one .1 backup — the file can never grow
-// unbounded, even if the rollup stalls.
-const TELEMETRY_PATH = resolve(__dirname, 'data', 'telemetry.jsonl');
-const TELEMETRY_MAX_BYTES = 5 * 1024 * 1024;
-
-const TELEMETRY_NUM_FIELDS = ['events', 'cacheHits', 'network', 'errors', 'inactive', 'totalKb', 'netKb'];
-const TELEMETRY_STR_ARRAYS = ['routes', 'users', 'errorSamples'];
-
-function sanitizeTelemetryStr(value, max = 200) {
-    // eslint-disable-next-line no-control-regex -- strips control chars from untrusted telemetry strings (ban-evasion + log-injection defense)
-    return String(value ?? '').replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, max);
-}
-
-app.post('/api/telemetry', validateApiKey, rateLimiter, async (req, res) => {
-    const body = req.body || {};
-    const clean = {};
-    for (const field of TELEMETRY_NUM_FIELDS) {
-        const num = Number(body[field]);
-        if (!Number.isFinite(num) || num < 0 || num > 1e7) {
-            return res.status(400).json({ success: false, error: `bad field: ${field}` });
-        }
-        clean[field] = num;
-    }
-    if (body.byTrigger !== undefined) {
-        if (!body.byTrigger || typeof body.byTrigger !== 'object' || Array.isArray(body.byTrigger)) {
-            return res.status(400).json({ success: false, error: 'bad field: byTrigger' });
-        }
-        const triggers = {};
-        for (const [key, val] of Object.entries(body.byTrigger).slice(0, 20)) {
-            const count = Number(val);
-            if (!Number.isFinite(count) || count < 0 || count > 1e6) {
-                return res.status(400).json({ success: false, error: 'bad field: byTrigger value' });
-            }
-            const cleanKey = sanitizeTelemetryStr(key, 80);
-            if (cleanKey) triggers[cleanKey] = count;
-        }
-        clean.byTrigger = triggers;
-    } else {
-        clean.byTrigger = {};
-    }
-    // Per-user activity ("who did what") for the V2 rollup. Tolerant: bad user
-    // rows default to zeros rather than rejecting the whole beacon.
-    if (body.userActivity !== undefined) {
-        if (body.userActivity && typeof body.userActivity === 'object' && !Array.isArray(body.userActivity)) {
-            const ua = {};
-            const n = (v) => { const x = Number(v); return Number.isFinite(x) && x >= 0 && x <= 1e7 ? x : 0; };
-            for (const [user, act] of Object.entries(body.userActivity).slice(0, 20)) {
-                const cleanUser = sanitizeTelemetryStr(user, 80);
-                if (!cleanUser || !act || typeof act !== 'object') continue;
-                ua[cleanUser] = {
-                    events: n(act.events),
-                    errors: n(act.errors),
-                    cacheHits: n(act.cacheHits),
-                    network: n(act.network),
-                    totalKb: n(act.totalKb),
-                    netKb: n(act.netKb),
-                    routes: (Array.isArray(act.routes) ? act.routes : []).slice(0, 10)
-                        .map((v) => sanitizeTelemetryStr(v, 80)).filter(Boolean),
-                };
-            }
-            clean.userActivity = ua;
-        } else {
-            clean.userActivity = {};
-        }
-    } else {
-        clean.userActivity = {};
-    }
-    for (const field of TELEMETRY_STR_ARRAYS) {
-        const arr = body[field];
-        if (arr !== undefined && !Array.isArray(arr)) {
-            return res.status(400).json({ success: false, error: `bad field: ${field}` });
-        }
-        clean[field] = (Array.isArray(arr) ? arr : []).slice(0, 30)
-            .map((v) => sanitizeTelemetryStr(v))
-            .filter(Boolean);
-    }
-    clean.at = Date.now();
-    try {
-        try {
-            const stat = statSync(TELEMETRY_PATH);
-            if (stat.size > TELEMETRY_MAX_BYTES) {
-                renameSync(TELEMETRY_PATH, `${TELEMETRY_PATH}.1`);
-            }
-        } catch (err) {
-            if (err.code !== 'ENOENT') throw err;
-        }
-        appendFileSync(TELEMETRY_PATH, `${JSON.stringify(clean)}\n`);
-        return res.json({ success: true });
-    } catch (err) {
-        console.warn(`[MORGUE-API] /api/telemetry append failed: ${err.message}`);
-        return res.status(500).json({ success: false, error: 'telemetry store failed' });
-    }
-});
-
 /**
  * POST /api/morgue/push-to-firebase
  * Push all records from the local file into Firebase, overwriting everything.
@@ -2015,27 +1953,6 @@ function loadAgencyCredentials() {
 app.get('/api/agency-credentials', validateApiKey, rateLimiter, (req, res) => {
     const data = loadAgencyCredentials();
     if (!data) return res.status(404).json({ error: 'No agency credentials configured' });
-    return res.json(data);
-});
-
-/**
- * GET /api/protocols-dev
- * Returns the dev EMS protocols dataset ({ protocols: [...] }). Hosted on the
- * VPS (data/protocols-dev.json) to keep the heavy base64 images out of RTDB.
- * Auth: x-api-key header (the web client goes through the Firebase function).
- */
-const PROTOCOLS_DEV_PATH = resolve(__dirname, 'data', 'protocols-dev.json');
-
-function loadProtocolsDev() {
-    try {
-        if (!existsSync(PROTOCOLS_DEV_PATH)) return null;
-        return JSON.parse(readFileSync(PROTOCOLS_DEV_PATH, 'utf-8'));
-    } catch { return null; }
-}
-
-app.get('/api/protocols-dev', validateApiKey, rateLimiter, (req, res) => {
-    const data = loadProtocolsDev();
-    if (!data) return res.status(404).json({ error: 'No dev protocols configured' });
     return res.json(data);
 });
 
@@ -2154,66 +2071,6 @@ app.get('/api/roster/check', validateApiKey, rateLimiter, (req, res) => {
     });
 });
 
-// ── Patient Index Endpoints ──
-// Served from data/medical-records-index.json, built by services/patientIndex.js
-// (startup incremental refresh + write-through on medical-record deploy + a
-// paginated f=97 full rebuild every 3 days).
-
-const PATIENT_INDEX_PATH = resolve(__dirname, 'data', 'medical-records-index.json');
-
-function loadPatientIndex() {
-    try {
-        if (!existsSync(PATIENT_INDEX_PATH)) return null;
-        return JSON.parse(readFileSync(PATIENT_INDEX_PATH, 'utf-8'));
-    } catch { return null; }
-}
-
-/**
- * GET /api/patients?q=<name>
- * Case-insensitive substring search over the patient index (min 2 chars),
- * newest-seen first, limited to 10. Returns [{ name, id, lastSeen }].
- *
- * GET /api/patients
- * Returns the whole index { version, lastUpdated, lastFullBuild, count, patients }.
- *
- * Auth: x-api-key header
- */
-app.get('/api/patients', validateApiKey, rateLimiter, (req, res) => {
-    const index = loadPatientIndex();
-    if (!index || !Array.isArray(index.patients)) {
-        return res.status(404).json({ error: 'Patient index not built yet' });
-    }
-
-    const q = (req.query.q || '').trim().toLowerCase();
-    if (!q) {
-        return res.json({
-            version: index.version,
-            lastUpdated: index.lastUpdated,
-            lastFullBuild: index.lastFullBuild,
-            count: index.count ?? index.patients.length,
-            patients: index.patients,
-        });
-    }
-    if (q.length < 2) {
-        return res.status(400).json({ error: 'q must be at least 2 characters' });
-    }
-
-    // Match by NAME (substring) or by PATIENT ID (exact or substring of the
-    // numeric id) — lets the web app validate/fill a patient name from the ID
-    // the ME typed (bidirectional lookup).
-    const matches = index.patients
-        .filter((p) => {
-            if ((p.name || '').toLowerCase().includes(q)) return true;
-            const pid = p.id;
-            return pid != null && String(pid).toLowerCase().includes(q);
-        })
-        .sort((a, b) => (b.lastSeen || 0) - (a.lastSeen || 0))
-        .slice(0, 10)
-        .map((p) => ({ name: p.name, id: p.id || null, lastSeen: p.lastSeen || null }));
-
-    return res.json({ count: matches.length, matches });
-});
-
 /**
  * GET /api/roster/lspd
  * GET /api/roster/lssd
@@ -2233,197 +2090,6 @@ app.get('/api/roster/:faction', validateApiKey, rateLimiter, (req, res) => {
         return res.status(503).json({ error: 'Roster not yet synced. Try again after the next sync cycle.' });
     }
     res.json(data);
-});
-
-// ──────────────────────────────────────────
-// CCTV Data Routes
-// ──────────────────────────────────────────
-const CCTV_DATA_PATH = '/opt/phmc-bot/cctv-script/output/cctv-data.json';
-const CCTV_CAMERAS_PATH = '/opt/phmc-bot/cctv-script/cameras.json';
-
-function loadCctvData() {
-    if (!existsSync(CCTV_DATA_PATH)) return null;
-    try { return JSON.parse(readFileSync(CCTV_DATA_PATH, 'utf-8')); }
-    catch { return null; }
-}
-
-function loadCctvCameras() {
-    if (!existsSync(CCTV_CAMERAS_PATH)) return null;
-    try { return JSON.parse(readFileSync(CCTV_CAMERAS_PATH, 'utf-8')); }
-    catch { return null; }
-}
-
-/**
- * GET /api/cctv/cameras
- * Returns list of all cameras with metadata (log count, latestId, recent activity)
- */
-app.get('/api/cctv/cameras', validateApiKey, rateLimiter, (req, res) => {
-    const cameras = loadCctvCameras();
-    const data = loadCctvData();
-
-    if (!cameras) {
-        return res.status(503).json({ success: false, error: 'Camera config not available.' });
-    }
-
-    const result = cameras.map(cam => {
-        const stored = data?.cameras?.[String(cam.id)];
-        return {
-            id: cam.id,
-            name: cam.name,
-            logCount: stored?.logs?.length ?? 0,
-            latestId: stored?.latestId ?? 0,
-            hasLogs: (stored?.logs?.length ?? 0) > 0,
-        };
-    });
-
-    res.json({ success: true, data: result });
-});
-
-/**
- * GET /api/cctv/search?q=keyword
- * Searches all camera logs for a keyword (case-insensitive).
- * Returns matches grouped by camera.
- */
-app.get('/api/cctv/search', validateApiKey, rateLimiter, (req, res) => {
-    const data = loadCctvData();
-    if (!data) {
-        return res.status(503).json({ success: false, error: 'CCTV data not available.' });
-    }
-
-    const query = (req.query.q || '').trim().toLowerCase();
-    if (!query) {
-        return res.status(400).json({ success: false, error: 'Search query "q" is required.' });
-    }
-
-    const cameras = data.cameras || {};
-    const results = [];
-
-    for (const [camId, camData] of Object.entries(cameras)) {
-        const matches = (camData.logs || []).filter(
-            (entry) =>
-                (entry.message || '').toLowerCase().includes(query) ||
-                (entry.date || '').toLowerCase().includes(query)
-        );
-        if (matches.length > 0) {
-            results.push({
-                cameraId: parseInt(camId, 10),
-                cameraName: camData.name || `Camera ${camId}`,
-                matchCount: matches.length,
-                logs: matches,
-            });
-        }
-    }
-
-    // Sort by cameraId for consistent ordering
-    results.sort((a, b) => a.cameraId - b.cameraId);
-
-    const totalMatches = results.reduce((sum, r) => sum + r.matchCount, 0);
-
-    res.json({
-        success: true,
-        data: {
-            query: req.query.q,
-            totalMatches,
-            camerasWithMatches: results.length,
-            results,
-        },
-    });
-});
-
-/**
- * GET /api/cctv/cameras/:id
- * Returns full log entries for a specific camera.
- */
-app.get('/api/cctv/cameras/:id', validateApiKey, rateLimiter, (req, res) => {
-    const data = loadCctvData();
-    if (!data) {
-        return res.status(503).json({ success: false, error: 'CCTV data not available.' });
-    }
-
-    const camData = data.cameras?.[req.params.id];
-    if (!camData) {
-        return res.status(404).json({ success: false, error: `Camera ${req.params.id} not found.` });
-    }
-
-    res.json({
-        success: true,
-        data: {
-            id: parseInt(req.params.id, 10),
-            name: camData.name,
-            latestId: camData.latestId,
-            logs: camData.logs || [],
-        },
-    });
-});
-
-/**
- * GET /api/cctv/stats
- * Aggregate statistics for all cameras.
- */
-app.get('/api/cctv/stats', validateApiKey, rateLimiter, (req, res) => {
-    const data = loadCctvData();
-    if (!data) {
-        return res.status(503).json({ success: false, error: 'CCTV data not available.' });
-    }
-
-    const cameras = data.cameras || {};
-    const camIds = Object.keys(cameras);
-    let totalEntries = 0;
-    let camerasWithData = 0;
-
-    for (const id of camIds) {
-        const count = cameras[id]?.logs?.length ?? 0;
-        totalEntries += count;
-        if (count > 0) camerasWithData++;
-    }
-
-    res.json({
-        success: true,
-        data: {
-            totalCameras: camIds.length,
-            camerasWithData,
-            totalLogEntries: totalEntries,
-            lastFetched: data.metadata?.lastFetched || null,
-        },
-    });
-});
-
-/**
- * POST /api/cctv/fetch
- * Triggers fetch-all.js on the VPS to pull latest CCTV data.
- * Returns immediately — the script runs in the background.
- * (Firebase callable functions have a 60s timeout, so we can't wait.)
- */
-app.post('/api/cctv/fetch', validateApiKey, rateLimiter, async (req, res) => {
-    const scriptPath = '/opt/phmc-bot/cctv-script';
-    const logFile = 'output/fetch-trigger.log';
-
-    try {
-        const { spawn } = await import('child_process');
-        const child = spawn('node', ['fetch-all.js', '--headless'], {
-            cwd: scriptPath,
-            detached: true,
-            stdio: ['ignore', 'pipe', 'pipe'],
-        });
-
-        const timestamp = new Date().toISOString();
-        const logStream = createWriteStream(`${scriptPath}/${logFile}`, { flags: 'a' });
-        logStream.write(`\n[${timestamp}] Manual fetch triggered via API\n`);
-        child.stdout.pipe(logStream);
-        child.stderr.pipe(logStream);
-        child.unref();
-
-        console.log('[CCTV] Manual fetch triggered via API');
-        req.fetchSummary = 'Fetch triggered';
-
-        res.json({
-            success: true,
-            message: 'Fetch triggered in background.',
-        });
-    } catch (err) {
-        console.error('[CCTV] Failed to trigger fetch:', err.message);
-        res.status(500).json({ success: false, error: `Failed to trigger fetch: ${err.message}` });
-    }
 });
 
 // ── Saved-report store (P3: report metadata + BBCode off RTDB) ──
@@ -2539,6 +2205,61 @@ app.post('/api/reports/bulk', validateApiKey, rateLimiter, (req, res) => {
     } catch (err) {
         console.error('[MORGUE-API] Bulk saved report write error:', err.message);
         return res.status(500).json({ success: false, error: 'Bulk report write failed.' });
+    }
+});
+
+app.get('/api/reports/recent', validateApiKey, rateLimiter, (req, res) => {
+    // Global recent-reports feed for the migration UI. Scans the local VPS
+    // store across ALL authors, newest first. Always paginated (default 25,
+    // max 100) so no client can pull the whole ~17MB store. Returns
+    // lightweight listing rows only — open a report via GET
+    // /api/reports/:author/:key for the full payload.
+    // MUST stay above /:author/:key or Express parses "recent" as an author.
+    try {
+        const rawLimit = Number(req.query.limit);
+        const rawOffset = Number(req.query.offset);
+        const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(Math.floor(rawLimit), 100) : 25;
+        const offset = Number.isFinite(rawOffset) && rawOffset > 0 ? Math.floor(rawOffset) : 0;
+        const formId = String(req.query.formId || '').trim();
+        const q = String(req.query.q || '').trim().toLowerCase();
+        if (!existsSync(REPORTS_DIR)) return res.json({ success: true, reports: [], total: 0, limit, offset });
+        const rows = [];
+        for (const author of readdirSync(REPORTS_DIR)) {
+            const authorDir = join(REPORTS_DIR, author);
+            let files = [];
+            try {
+                if (!existsSync(authorDir)) continue;
+                files = readdirSync(authorDir).filter(name => name.endsWith('.json'));
+            } catch { continue; }
+            for (const file of files) {
+                const payload = readSavedReport(author, file.slice(0, -5));
+                const report = payload?.report;
+                if (!report || typeof report !== 'object') continue;
+                const rFormId = report.formId || '';
+                if (formId && rFormId !== formId) continue;
+                const title = report.originalKey || 'Untitled';
+                const decedent = report?.data?.decedentName || report?.data?.patientName || '';
+                if (q && !(title.toLowerCase().includes(q)
+                    || String(author).toLowerCase().includes(q)
+                    || String(report.authorName || '').toLowerCase().includes(q)
+                    || String(decedent).toLowerCase().includes(q))) continue;
+                rows.push({
+                    key: payload.key,
+                    author: payload.author,
+                    authorName: report.authorName || author,
+                    formId: rFormId || 'unknown',
+                    formName: report.formName || rFormId || 'unknown',
+                    title,
+                    timestamp: Number(report.timestamp) || 0,
+                    hasBbCode: typeof payload.bbCode === 'string' && payload.bbCode.length > 0,
+                });
+            }
+        }
+        rows.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+        return res.json({ success: true, reports: rows.slice(offset, offset + limit), total: rows.length, limit, offset });
+    } catch (err) {
+        console.error('[MORGUE-API] Recent reports error:', err.message);
+        return res.status(500).json({ success: false, error: 'Recent reports failed.' });
     }
 });
 
@@ -2675,6 +2396,9 @@ app.get('/api/reports/stats', validateApiKey, rateLimiter, (_req, res) => {
             for (const author of readdirSync(REPORTS_DIR)) {
                 const authorDir = join(REPORTS_DIR, author);
                 if (!existsSync(authorDir)) continue;
+                // Leadership-excluded authors (see services/statsExclusions.js) —
+                // skipped here so byForm/byAuthor/byMonth/heat/total stay consistent.
+                if (isExcludedAuthor(author)) continue;
                 const files = readdirSync(authorDir).filter(name => name.endsWith('.json'));
                 if (files.length === 0) continue;
                 authors++;

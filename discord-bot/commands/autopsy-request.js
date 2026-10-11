@@ -308,7 +308,7 @@ export async function handleModal(interaction) {
             await interaction.editReply({ content: `[ERR] Failed to save preview draft: ${err.message}` });
             return;
         }
-        try { await db.ref(`${DRAFT_PATH}/_ids/${shortId(nonce)}`).set(nonce); } catch (e) { /* _ids index write best-effort ignored: draft already saved, lookup falls back */ }
+        try { await db.ref(`${DRAFT_PATH}/_ids/${shortId(nonce)}`).set(nonce); } catch { /* _ids index write best-effort ignored: draft already saved, lookup falls back */ }
 
         const bbPreview = bbcode.length > 800 ? bbcode.slice(0, 800) + '...' : bbcode;
 
@@ -374,7 +374,7 @@ async function resolveNonce(db, shortKey) {
     try {
         const snap = await db.ref(`${DRAFT_PATH}/_ids/${shortKey}`).once('value');
         if (snap.exists()) return snap.val();
-    } catch (e) { /* _ids index read best-effort ignored: falls back to shortKey, caller reports not-found */ }
+    } catch { /* _ids index read best-effort ignored: falls back to shortKey, caller reports not-found */ }
     return shortKey;
 }
 
@@ -526,8 +526,7 @@ export async function handleButton(interaction) {
                 doneRow.components.forEach(btn => btn.setDisabled(true));
                 await msg.edit({ embeds: [doneEmbed], components: [doneRow] });
             }
-        } catch (msgErr) { /* deny-preview edit best-effort ignored: draft already discarded, discard reply still sent */ }
+        } catch { /* deny-preview edit best-effort ignored: draft already discarded, discard reply still sent */ }
         await interaction.reply({ content: 'Preview discarded.', flags: MessageFlags.Ephemeral });
-        return;
     }
 }

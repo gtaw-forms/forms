@@ -19,7 +19,7 @@ const overlayStyles = {
   phoneNumber: { position: 'absolute', top: '53.03%', left: '12.06%', color: 'black', fontSize: '15px', cursor: 'default', pointerEvents: 'none', whiteSpace: 'nowrap', fontFamily: 'LufgaMedium, Arial, sans-serif' }
 };
 
-const BusinessCardModal = ({ show, onHide, showNotification, handleImageUpload }) => {
+const BusinessCardModal = ({ show, onHide, showNotification: _showNotification, handleImageUpload }) => {
   const [name, setName] = useState('');
   const [rank, setRank] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');

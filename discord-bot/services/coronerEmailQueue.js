@@ -28,7 +28,6 @@ const PRUNE_SENT_MS = 7 * 24 * 60 * 60 * 1000;
 const SWEEP_MS = 10 * 60 * 1000;
 
 let _db = null;
-let _sweepTimer = null;
 const _inFlight = new Set();
 
 export function emailKey(authorId, reportKey) {
@@ -204,11 +203,9 @@ export function startCoronerEmailWorker(db) {
     processEmailQueue().catch(() => {});
     unregisterTick('coroner-email-sweep');
     registerTick('coroner-email-sweep', { intervalMs: SWEEP_MS, fn: () => processEmailQueue().catch(() => {}) });
-    _sweepTimer = true;
 }
 
 /** Stop the worker (cleanup on shutdown). */
 export function stopCoronerEmailWorker() {
     unregisterTick('coroner-email-sweep');
-    _sweepTimer = null;
 }

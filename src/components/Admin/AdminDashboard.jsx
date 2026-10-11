@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Spinner } from 'react-bootstrap';
-import { useNavigate } from 'react-router-dom';
 import './AdminDashboard.css';
 import { formatAccessLevel } from '../../utils/textUtils';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import useFactionPermissions from '../../hooks/useFactionPermissions';
 import { getDatabase, ref, get, set } from 'firebase/database';
-import { isGoogleAuthenticated, getGoogleUser } from '../../services/gtaWorldAuth';
+import { isGoogleAuthenticated } from '../../services/gtaWorldAuth';
 // P2 (g): firebaseDebug imports removed with their dead handlers.
 import { triggerFetchExternalUrl } from '../../services/firebaseFunctions';
 import { logAdminAction, getUserContext } from '../../utils/logging';
@@ -20,7 +19,6 @@ import EmployeeManager from './EmployeeManager';
 import LsccManager from './LsccManager';
 import FormsManager from './FormsManager';
 import MorgueManager from './MorgueManager';
-import CctvViewer from './CctvViewer';
 
 const AdminDashboard = ({
 
@@ -39,9 +37,7 @@ const AdminDashboard = ({
 
     const [selectedSection, setSelectedSection] = useState('serviceStatus');
     // P2 (g): diagnostics + phmc-auth-state state removed with dead handlers.
-    const [lsccModalActive, setLsccModalActive] = useState(null);
-    const [showMigrator, setShowMigrator] = useState(false);
-    const [mapEnabled, setMapEnabled] = useState(false);
+    const [, setMapEnabled] = useState(false);
     const [maintenanceActive, setMaintenanceActive] = useState(false);
     const [maintenanceMessage, setMaintenanceMessage] = useState('');
     const [splashActive, setSplashActive] = useState(false);
@@ -53,7 +49,6 @@ const AdminDashboard = ({
     const [morgueBannerText, setMorgueBannerText] = useState('');
     const [morgueBannerType, setMorgueBannerType] = useState('info');
     const [isSavingMorgueBanner, setIsSavingMorgueBanner] = useState(false);
-    const navigate = useNavigate();
 
     const [externalStatuses, setExternalStatuses] = useState({
         github: { status: 'checking', description: 'Checking...' },
@@ -107,7 +102,6 @@ const AdminDashboard = ({
                                 ? prev[key]
                                 : { status: 'unknown', description: 'Unable to reach' },
                         }));
-                        return;
                     }
                 })
             );
@@ -169,47 +163,33 @@ const AdminDashboard = ({
     // any onClick). mapEnabled state + mount load above stay live.
 
     // Use the unified GTA World auth hook
-    const { 
-        user: gtaWorldUser, 
-        isAuthenticated: isGtaAuthenticated, 
-        error: gtaAuthError,
-        isLoading: gtaAuthLoading 
+    const {
+        user: gtaWorldUser,
+        isAuthenticated: isGtaAuthenticated,
     } = useGtaWorldAuth();
-    
+
     // Use faction permissions hook
     const {
         isMember: isFactionMember,
         factionData,
         accessLevel,
         permissions,
-        canAccessAdmin,
-        canUploadFactionData,
-        canAccessDatabase,
-        canManageWebhooks,
-        refresh: refreshFactionData,
-        isLoading: factionLoading
     } = useFactionPermissions();
-    
+
     // Check for Google authentication override
     const isGoogleAdmin = isGoogleAuthenticated();
-    const googleUser = getGoogleUser();
-    
+
     // Google Admin toggle for testing
-    const [googleAdminToggle, setGoogleAdminToggle] = useState(false);
+    const [googleAdminToggle] = useState(false);
     const isGoogleAdminActive = (isGoogleAdmin || googleAdminToggle) && currentUser;
     
     // Permission helper functions based on ranks and auth type
-    const isEmailSignin = currentUser && !currentUser.isGtaAuth && !currentUser.isGoogleAuth;
     const scriptRank = gtaWorldUser?.faction?.scriptRank;
     const isSuperAdminAccess = accessLevel === 'superadmin' || permissions.includes('superadmin_access');
 
     // Simplified: Rank 11+ sees everything. Rank Permissions stays hardcoded at 15+.
     const isRank11OrHigher = scriptRank >= 11;
-    const isRank15OrHigher = scriptRank >= 15;
     const hasAdminPageAccess = isGoogleAdminActive || isSuperAdminAccess || isRank11OrHigher;
-    const hasRankPermissionsAccess = isGoogleAdminActive || isSuperAdminAccess || isRank15OrHigher;
-
-    const canUseGoogleAdminOverride = isEmailSignin;
 
     // -----------------------------------------------------------------------
     // Rank check helpers for admin action logging
@@ -222,7 +202,6 @@ const AdminDashboard = ({
             case 'factions': return hasAdminPageAccess;
             case 'database': return hasAdminPageAccess;
             case 'morgue': return hasAdminPageAccess;
-            case 'cctv': return hasAdminPageAccess;
             case 'dev': return hasAdminPageAccess;
             default: return true;
         }
@@ -236,7 +215,6 @@ const AdminDashboard = ({
             case 'factions': return 10;
             case 'database': return 12;
             case 'morgue': return 12;
-            case 'cctv': return 11;
             case 'dev': return 11;
             default: return null;
         }
@@ -274,7 +252,7 @@ const AdminDashboard = ({
                 maintenanceActive ? '🔧 Maintenance mode enabled.' : '✅ Maintenance mode disabled.',
                 'success'
             );
-        } catch (error) {
+        } catch {
             showInAppNotification('Failed to save maintenance settings.', 'error');
         } finally {
             setIsSavingMaintenance(false);
@@ -303,7 +281,7 @@ const AdminDashboard = ({
                 updatedAt: Date.now(),
             });
             showInAppNotification('Morgue banner updated.', 'success');
-        } catch (error) {
+        } catch {
             showInAppNotification('Failed to save morgue banner.', 'error');
         } finally {
             setIsSavingMorgueBanner(false);
@@ -317,7 +295,7 @@ const AdminDashboard = ({
             setMorgueBannerText('');
             setMorgueBannerType('info');
             showInAppNotification('Morgue banner cleared.', 'success');
-        } catch (error) {
+        } catch {
             showInAppNotification('Failed to clear morgue banner.', 'error');
         }
     };
@@ -386,9 +364,6 @@ const AdminDashboard = ({
                         </div>
 
                         <div className="cat-head" style={{ cursor: 'default', marginTop: 12 }}><span>System</span></div>
-                        <div className={`form-item ${selectedSection === 'cctv' ? 'active' : ''}`} onClick={() => handleSectionChange('cctv', 'CCTV')}>
-                            <span className="dot" />CCTV
-                        </div>
                         <div className={`form-item ${selectedSection === 'maintenance' ? 'active' : ''}`} onClick={() => handleSectionChange('maintenance', 'System Maintenance')}>
                             <span className="dot" />System Maintenance
                         </div>
@@ -489,10 +464,6 @@ const AdminDashboard = ({
 
                         {selectedSection === 'morgue' && (
                             hasAdminPageAccess ? <MorgueManager showNotification={showInAppNotification} /> : <div className="admin-section"><div className="alert alert-warning border-0 bg-opacity-25 shadow-sm p-4">Denied</div></div>
-                        )}
-
-                        {selectedSection === 'cctv' && (
-                            hasAdminPageAccess ? <CctvViewer showInAppNotification={showInAppNotification} /> : <div className="admin-section"><div className="alert alert-danger border-0 bg-opacity-25 shadow-sm p-4">Access Denied</div></div>
                         )}
 
                         {selectedSection === 'maintenance' && (

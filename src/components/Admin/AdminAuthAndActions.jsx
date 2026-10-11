@@ -57,7 +57,7 @@ const AdminAuthAndActions = ({ formData: _formData, setFormData, showNotificatio
     const [formGeneratorStatus, setFormGeneratorStatus] = useState('');
     const [alternativeFormGeneratorStatus, setAlternativeFormGeneratorStatus] = useState('');
     const [localHostStatus, setLocalHostStatus] = useState('');
-    const [isLoadingStatus, setIsLoadingStatus] = useState(true);
+    const [isLoadingStatus] = useState(true);
 
 
     const logWebhookToFirebase = async (type, payload) => {
@@ -365,41 +365,8 @@ const AdminAuthAndActions = ({ formData: _formData, setFormData, showNotificatio
     };
 
 
-    const handleAdminCustomWebhookSubmit = async (payloadFromModal) => {
-        const { userAgent, timeZone } = getUserContext();
-        try {
-            await triggerWebhookProxy('admin', payloadFromModal);
-            if (showInAppNotification) showInAppNotification('Admin webhook message sent successfully!', "check-circle");
-            logAdminAction(unifiedCurrentUser?.email || "Unknown User", "Sent Admin Custom Webhook", "Admin successfully sent a custom webhook to the Admin Action channel.", null, userAgent, timeZone, gtaAuthUsername);
-            logWebhookToFirebase('Admin Custom Webhook Sent', { admin: authEmail, title: payloadFromModal.embeds[0].title });
-            return true;
-        } catch (error) {
-            console.error('Error sending admin custom webhook:', error);
-            Sentry.captureException(error, { extra: { context: 'Admin Custom Webhook Submission via Proxy' } });
-            if (showInAppNotification) showInAppNotification('Failed to send admin webhook.', 'error');
-            logAdminAction(unifiedCurrentUser?.email || "Unknown User", "Failed to Send Admin Custom Webhook", `Error: ${error.message}`, null, userAgent, timeZone, gtaAuthUsername);
-            return false;
-        }
-    };
     // Bingo Activity Log Functions
-    const [showMarkdownModal, setShowMarkdownModal] = useState(false);
-
-    const handleCoronerWebhookSubmit = async (payloadFromModal) => {
-        const { userAgent, timeZone } = getUserContext();
-        try {
-            await triggerWebhookProxy('coroner', payloadFromModal);
-            if (showInAppNotification) showInAppNotification('Coroner webhook message sent successfully!', "check-circle");
-            logAdminAction(unifiedCurrentUser?.email || "Unknown User", "Sent Coroner Custom Webhook", "Admin successfully sent a custom webhook to the Coroner Updates channel.", null, userAgent, timeZone);
-            logWebhookToFirebase('Coroner Custom Webhook Sent', { admin: authEmail, title: payloadFromModal.embeds[0].title });
-            return true;
-        } catch (error) {
-            console.error('Error sending Coroner webhook:', error);
-            Sentry.captureException(error, { extra: { context: 'Coroner Webhook via Proxy' } });
-            if (showInAppNotification) showInAppNotification('Failed to send Coroner webhook.', 'error');
-            logAdminAction(unifiedCurrentUser?.email || "Unknown User", "Failed to Send Coroner Custom Webhook", `Error: ${error.message}`, null, userAgent, timeZone);
-            return false;
-        }
-    };
+    const [, setShowMarkdownModal] = useState(false);
 
 
     // CRITICAL SECURITY FIX: Check if user is logging out first

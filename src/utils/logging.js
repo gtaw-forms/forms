@@ -110,10 +110,6 @@ export const logAdminAction = async (adminEmail, action, details, context = null
             return `${index + 1}. ${char.name || 'Unknown'} (ID: ${char.id || 'N/A'})`;
         }).join('\n');
 
-        const factionMembers = characterData.debugInfo.charactersChecked.filter(char =>
-            characterData.faction && char.id === characterData.faction.characterId
-        );
-
         let characterField = `**All Characters (${characterData.debugInfo.charactersChecked.length}):**\n${characterDetails}`;
 
         if (characterData.debugInfo.foundMember) {
@@ -197,46 +193,12 @@ export const logAuthErrorToDiscord = async (error, context) => {
 // Identity Refresh Logger
 // ---------------------------------------------------------------------------
 
-let lastIdentityRefreshLog = { username: '', at: 0 };
-const IDENTITY_REFRESH_LOG_COOLDOWN_MS = 60 * 1000;
-
 /**
- * Log a background identity profile refresh into client telemetry (hourly V2
- * rollup) instead of a standalone Discord post. Fired on each attempt so the
- * sequence is traceable; deduped per user (60s) so a page-load loop can't
- * flood the accumulator. Delivery is via a window event consumed by
- * useWebhooks — best-effort, never throws, never awaits.
+ * Identity-refresh trace hook (telemetry retired 2026-10-08 — now a no-op kept
+ * for its 3 callers in GtaWorldAuthContext; the hourly rollup is gone).
  */
-export const logIdentityRefresh = async ({ username, characterName, trigger, attempt, maxAttempts, matchedBy, success, promptedReauth = false }) => {
-  const now = Date.now();
-  if (username && lastIdentityRefreshLog.username === username && (now - lastIdentityRefreshLog.at) < IDENTITY_REFRESH_LOG_COOLDOWN_MS) {
+export const logIdentityRefresh = async () => {
     return;
-  }
-  lastIdentityRefreshLog = { username: username || '', at: now };
-
-  try {
-    const label = characterName && characterName !== username
-      ? `${username || 'Unknown'} (${characterName})`
-      : (username || characterName || 'Unknown');
-    const detail = [
-      `trigger=${trigger || 'unknown'}`,
-      `attempt=${attempt}/${maxAttempts}`,
-      `matchedBy=${matchedBy || 'none'}`,
-      `success=${success ? 'yes' : 'no'}`,
-      ...(promptedReauth ? ['reauthPrompt=yes'] : []),
-    ].join(' ');
-    window.dispatchEvent(new CustomEvent('phmc-telemetry', {
-      detail: {
-        file: 'logging.js/logIdentityRefresh',
-        trigger: 'identity-refresh',
-        user: label,
-        loggedIn: true,
-        detail,
-      },
-    }));
-  } catch (err) {
-    console.warn('[IdentityRefresh] Failed to queue telemetry:', err?.message || err);
-  }
 };
 
 // ---------------------------------------------------------------------------
@@ -344,7 +306,6 @@ export const initConsoleInterceptor = (isSentryBlockedProvider) => {
 let lastDiscordErrorMessage = '';
 let lastDiscordErrorTimestamp = 0;
 const recentDiscordErrors = new Map(); // message -> last-sent timestamp (dedupes alternating/repeated errors)
-let lastDiscordErrorStack = '';
 let isProcessingDiscordQueue = false;
 let discordErrorWebhookQueue = [];
 let errorTimestamps = [];
@@ -392,7 +353,6 @@ export const sendDiscordErrorWebhook = (errorDetails, sentryBlocked = false) => 
     }
 
     const errorMessage = String(errorDetails.message || '').substring(0, 1000);
-    const errorStack = String(errorDetails.stack || '').substring(0, 1000);
 
     // Suppress the Firebase IndexedDB cascade (same root cause every time) —
     // the startup probe reports it once as a tagged event instead.
@@ -433,7 +393,6 @@ export const sendDiscordErrorWebhook = (errorDetails, sentryBlocked = false) => 
     errorTimestamps.push(now);
 
     lastDiscordErrorMessage = errorMessage;
-    lastDiscordErrorStack = errorStack;
     lastDiscordErrorTimestamp = now;
 
     let sentryEventId = null;

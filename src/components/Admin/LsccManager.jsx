@@ -139,7 +139,7 @@ const LsccManager = () => {
         setItems(normalized);
         setCategories(normalized.map(c => c.category));
       }
-    } catch (err) { setError('Failed to load protocols'); }
+    } catch { setError('Failed to load protocols'); }
     finally { setLoading(false); }
   }, []);
 
@@ -195,12 +195,10 @@ const LsccManager = () => {
 
     // Find destination
     let destCatIdx = -1;
-    let destProtoIdx = -1;
     for (let c = 0; c < newData.length; c++) {
       const idx = newData[c].protocols.findIndex(p => p.id === over.id);
       if (idx !== -1) {
           destCatIdx = c;
-          destProtoIdx = idx;
           newData[c].protocols.splice(idx + 1, 0, draggedItem); 
           break; 
       }

@@ -3,15 +3,11 @@ import { database } from '../firebase';
 import { ref, remove } from 'firebase/database';
 import * as Sentry from "@sentry/react";
 import { useNotification } from '../contexts/NotificationContext';
-import { useData, telemetryUserLabel } from '../contexts/DataContext';
 import { comprehensiveSanitize } from '../utils/textUtils';
-import useGtaWorldAuth from './useGtaWorldAuth';
 import { triggerDeleteSavedReport } from '../services/firebaseFunctions';
 
 export const useReportActions = () => {
     const { showNotification } = useNotification();
-    const { sendDataRequestLog } = useData();
-    const { user: gtaWorldUser, isAuthenticated: isGtaAuthenticated } = useGtaWorldAuth();
 
     const deleteReportForUser = useCallback(async (report, userId, onSuccess) => {
         const reportFirebaseKey = report?.key;
@@ -59,38 +55,14 @@ export const useReportActions = () => {
             
             await Promise.all(promises);
 
-            if (sendDataRequestLog) {
-                sendDataRequestLog(
-                    'useReportActions.js/deleteReportForUser',
-                    false,
-                    'Firebase Delete',
-                    0,
-                    isGtaAuthenticated,
-                    telemetryUserLabel(gtaWorldUser),
-                    `Report: ${reportPath}${bbCodePath ? `, BBCode: ${bbCodePath}` : ''}`
-                );
-            }
-
             showNotification(`${isRecovery ? 'Recovery snapshot' : 'Report'} deleted successfully.`, 'trash');
             if (onSuccess) onSuccess();
         } catch (error) {
-            if (sendDataRequestLog) {
-                sendDataRequestLog(
-                    'useReportActions.js/deleteReportForUser',
-                    false,
-                    'Firebase Delete Error',
-                    0,
-                    isGtaAuthenticated,
-                    telemetryUserLabel(gtaWorldUser),
-                    `Report: ${reportPath}, BBCode: ${bbCodePath}`,
-                    error.message || 'Unknown Delete Error'
-                );
-            }
             console.error(`Error deleting report ${reportFirebaseKey} for user ${userId}:`, error);
             Sentry.captureException(error, { extra: { context: 'deleteReportForUser', userId, reportFirebaseKey } });
             showNotification(`Failed to delete report: ${error.message}`, 'error');
         }
-    }, [showNotification, sendDataRequestLog, isGtaAuthenticated, gtaWorldUser]);
+    }, [showNotification]);
 
     // P2 (h) cost plan: backupUserReports passthrough removed — zero UI
     // callers (admin backups run from DatabaseEditor via

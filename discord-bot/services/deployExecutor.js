@@ -14,16 +14,14 @@ import { checkBbcodeSanity } from './bbcodeSanity.js';
 let _handlers = null;
 async function getHandlers() {
     if (!_handlers) {
-        const [pm, topic, med, autopsy] = await Promise.all([
+        const [pm, topic, autopsy] = await Promise.all([
             import('./deployPM.js'),
             import('./deployTopic.js'),
-            import('./deployMedicalRecord.js'),
             import('./deployAutopsyReply.js'),
         ]);
         _handlers = {
             handlePM: pm.handlePM,
             handleTopic: topic.handleTopic,
-            handleMedicalRecord: med.handleMedicalRecord,
             handleAutopsyReply: autopsy.handleAutopsyReply,
         };
     }
@@ -86,16 +84,6 @@ export async function runDeploy(type, data) {
         'death_record': 'coronerEmployee',
         'mass-ftality-test': 'coronerEmployee',
         'autopsy': 'coronerEmployee',
-        'patient_notes': 'phmcEmployee',
-        'er_protocol': 'phmcEmployee',
-        'physical_evaluation': 'phmcEmployee',
-        'staff-patient-file': 'phmcEmployee',
-        'surgical': 'phmcEmployee',
-        'session_notes': 'phmcEmployee',
-        'intensive_treatment': 'phmcEmployee',
-        'psych-eval': 'phmcEmployee',
-        'general_consultation': 'phmcEmployee',
-        'testing-compact-mode': 'phmcEmployee', // legacy rename alias
     };
     const expectedField = EMPLOYEE_FIELD_BY_FORM[formId] || null;
     let employeeMissing = false;
@@ -229,7 +217,7 @@ export async function runDeploy(type, data) {
 
     // Determine forum label based on deploy type
     let forumLabel;
-    if (type === 'topic' || type === 'medical-record' || type === 'patient_notes') {
+    if (type === 'topic') {
         const fInfo = getForumClient().constructor.FORUM_MAP[data.report?.formId];
         forumLabel = fInfo?.name || 'PHMC Forum';
     } else if (type === 'autopsy-reply') {
@@ -327,7 +315,6 @@ export async function runDeploy(type, data) {
             const h = await getHandlers();
             if (type === 'pm') await h.handlePM(data);
             else if (type === 'topic') await h.handleTopic(data);
-            else if (type === 'patient_notes' || type === 'medical-record') await h.handleMedicalRecord(data);
             else if (type === 'autopsy-reply') await h.handleAutopsyReply(data);
         } finally {
             clearTimeout(slowWarning);

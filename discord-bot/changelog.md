@@ -1,5 +1,129 @@
 # PHMC Discord Bot — Changelog
 
+## 2026-10-10 — Autopsy decedent OOC dropped for hand-written titles (Case 538)
+
+### Fixed
+- **Single-body intake now fills the ((OOC)) from the request body when the title omits it.** A hand-written title ("Autopsy Request - John Doe - LSPD") parsed to name `"John Doe -"` / OOC `""` while Section 2 still held `John Doe ((Ilya Baranov))`; the case filed from the title alone, so the assignment panel showed `Decedent — John Doe -`, the morgue record `Unknown (( Ilya Baranov ))` (#84785) never matched (`NOT FOUND`), and the case title lost the identity. `autopsyRequestMonitor.js` single path now derives `caseName`/`caseOoc` with the body's one parsed decedent filling gaps the title left (never overwriting a title that already parsed), persists the corrected `name`/`oocName`, and uses them for the assignment embed + LSPD/agency crosspost titles.
+- **`parseTopicTitle` strips the trailing separator** the greedy title regex captured (`"John Doe - "` → `"John Doe"`), so a title-only fallback never files a name ending in `-` (same shape seen on Case 536, `"Joe Russo-"`).
+- Web app recovers the same OOC from `parsed.decedentName` defensively (see root `changelog.md`).
+- Checks: `check-bot-imports` OK (145 modules).
+
+## 2026-10-08 — Retire client telemetry + dead commands
+
+### Removed
+- **Telemetry intake + rollup deleted**: `POST /api/telemetry` + JSONL store removed from morgue-api; `services/telemetryRollup.js` + `commands/telemetry-now.js` deleted; startup wiring removed from `index.js` (both registration blocks). Hourly admin-channel rollup stops. Follow-up on the VPS after deploy: delete `data/telemetry.jsonl` (+`.1` spare).
+- **Dead commands deleted**: `commands/autopsy.js`, `commands/user.js` (retired 2026-09-10, files kept until now), `commands/phmc-dashboard.js` (never wired). Stale commented import blocks removed from `index.js`. Ships with the normal whole-tree `npm run bot:deploy`.
+
+## 2026-10-08 — Retire CCTV + dev protocols
+
+### Removed
+- **CCTV routes deleted from morgue-api** (`GET /api/cctv/cameras|search|cameras/:id|stats`, `POST /api/cctv/fetch`) + **`/api/protocols-dev`**. **Deleted `services/cctvScheduler.js`** (daily fetch + bot-spam posts) and its startup wiring in `index.js`. Follow-up on the VPS after deploy: delete `data/protocols-dev.json` + the whole `/opt/phmc-bot/cctv-script/` tree (data + fetcher). Ships with the normal whole-tree `npm run bot:deploy`.
+
+## 2026-10-08 — Persistent morgue access audit
+
+### Added
+- **`data/morgue-access.log` (morgue-api):** one line per authenticated `/api/morgue*` access (`time method path → status (ms) requestedBy="character | oauth | uid" ip q`), appended in the request-finish middleware, rotated at 5 MB with one spare. Console/pm2 logs + the 200-entry in-memory activity log age out within days (which lost the 2026-10-01 burst attribution); this file is the durable who-accessed record. Anonymous/loopback probes stay in console/activity only. Audit writes are best-effort and never break responses. Ships with the normal whole-tree `npm run bot:deploy`.
+
+## 2026-10-07 — /api/reports/recent for the migration UI
+
+### Added
+- **`GET /api/reports/recent` (morgue-api):** global newest-first feed across ALL report authors for the new `/migration-ui` records list. Always paginated (default 25, max 100; `limit`/`offset`/`formId`/`q` params), listing rows only (key/author/titles/timestamps — full payloads stay on `GET /api/reports/:author/:key`). Placed above `/:author/:key` so Express never parses "recent" as an author. Deploy with the normal whole-tree `npm run bot:deploy`.
+- Checks: `check-bot-imports` OK (151 modules), full suite 134 green, `vite build` green.
+
+## 2026-10-06 — CodeQL findings hygiene sweep (dead code)
+
+### Fixed
+- **62 `no-unused-vars` warnings cleared across 34 bot modules** (unused imports, dead helpers incl. `buildRefreshingEmbed`/`sendFaceDraftMessage`/`sadcrUrl`, write-only timers/flags, unused catch params → bare `catch`) + 3 tail `return;` removals (`autopsy-request.js`, `devPanel.js`, `testRunReporter.js`). Every deletion grep-verified to zero other references; exports and handler registrations untouched.
+- **Checks:** `check-bot-imports` OK (151 modules), full suite 130 green. No behavior change intended — redeploy with the normal whole-tree `npm run bot:deploy` when convenient.
+
+## 2026-10-06 — Retire Medical Records + Patient Files (new platform owns them)
+
+### Removed
+- **Deleted `services/deployMedicalRecord.js`, `services/patientIndex.js`, `commands/patient-search.js`.** No new medical forum deploys (f=97 entries out of `FORUM_MAP`), no new patient-index entries (3-day f=97 rebuild + deploy write-through gone, `patient-index` boot job removed), no `GET /api/patients` (morgue/roster/reports/forms endpoints untouched). Medical routing branches removed from `autoDeploy.js` / `deployExecutor.js` / `deployQueue.js` (coroner/topic/pm/autopsy routing intact); ER + Mental Health blocks out of `manage-forms.js` and `global-stats.js`; `MEDICAL_RECORD_*` env + boot validation removed. `data/medical-records-index.json` verified absent from disk — nothing to archive.
+- **Functions:** `getPatientNames` callable removed (`functions/index.js`); `MORGUE_API_URL/KEY` kept for morgue + saved-reports proxies.
+- **Checks:** `check-bot-imports` OK (151 modules), full suite 130 green. Existing `scheduledReports` medical rows drain via normal 24h cleanup; f=97 topics stay as read-only archive.
+
+## 2026-10-06 — Autopsy-reply matched placeholder name to test collection
+
+### Fixed
+- **Anne Carter's "Jane Doe ((Trinity Dalton))" report tried to EDIT a Sept test reply in case #10166 instead of posting to real case #10329 (`deployAutopsyReply.js`).** The shared-thread fast path matched IC name "Jane Doe" against test collection #10161's body — every "John Doe" guard in the file was John-only, so Jane sailed through. All seven guards now use shared `isDoePlaceholder` (new leaf module `services/doePlaceholders.js`; monitor + panels refactored onto it, no more tripled regexes). With the fix the report falls through to forum search for "Trinity Dalton" → #10329 → fresh reply.
+- **The "No form" edit failure was the fail-closed path working:** phpBB served no edit form for the stranger's old post, so the bot refused to overwrite a test reply with a real report. No code change needed there.
+
+### Tests
+- **Headless `matchCollectionCase` on incident fixtures:** (Trinity Dalton/Jane Doe) → null, (Jane Doe) → null, (John Doe) → null, real OOC "Test Account" → still hits 10161/1, real "Trinity Dalton" → still hits its own case. Deployed; the queued retry will resolve correctly on its next attempt.
+
+### Fixed (follow-up, same incident)
+- **Trinity Dalton never crossposted because its *completion* matched the same test body (`deployInteraction.js` staff-pick path).** After you picked #10329, the completion matcher hit #10161 case 1 on IC name "Jane Doe" (John-only guard again) and skipped as "already completed" — so no `completedAt`, no LSSD crosspost, no panel flip, no request-topic reply for case 533. Same one-line guard generalization. Alfonso's completion worked because his reply target resolved first and the caseTopicId scan is exact. Trinity's completion now needs a manual run (report is deployed-terminal, nothing re-triggers it) — see `/fix-autopsy refreshpanels` note below or ask for a `/complete-case`.
+- **Recovered via one-shot (deleted after):** case 533 marked completed + rotation cleared, LSSD combined crosspost posted ([p=402508](https://lssd.gta.world/viewtopic.php?p=402508#p402508)), PHMC request-topic completion reply posted ([p=25602](https://phmc.gta.world/viewtopic.php?p=25602#p25602)), forum DM sent to topic poster Gregory Masario ("Benjamin Schiff" is not a forum user — the normal flow's poster fallback covers this), entry closed. First PHMC-reply attempt silently dry-ran (`replyToTopic` defaults to env dry-run; LSSD path posts live) — re-ran with `dryRun:false`.
+- **`/fix-autopsy` gains `flippanels`:** flips posted panels of completed cases to their completed summary in place (reads Firebase truth at call time; registry refs cleaned on flip). Covers cases whose completion ran outside the normal flow (e.g. 10328/0, whose panel still showed outstanding after the manual completion above) — `/fix-autopsy name:10328 flippanels:true`.
+- **`/fix-autopsy` topicId search crashed before doing anything:** the numeric-search wrapper faked a child snapshot without `ref`, so `child.ref.update(...)` threw `Cannot read properties of undefined (reading 'update')` — for name searches AND the new refresh/flip passes. Wrapper now provides the real ref.
+
+## 2026-10-04 — Autopsy naming mangled by DOE placeholders (t=10328)
+
+### Fixed
+- **Requesters writing `(J. DOE)` instead of `((OOC name))` filed cases like "Trinity Dalton J. DOE ((DOE and DOE))" (`autopsyRequestMonitor.js`).** Two guards: `parseDecedentNameLine` now strips unidentified-person parentheticals (`(J. DOE)`/`(John Doe)`/`(Jane Doe)`) instead of gluing them into the case name, and the title-OOC fallback rejects DOE-ish candidates (`DOE`, `J. DOE`, `DOE and DOE`) via new exported `isDoePlaceholder` — unknown stays empty instead of adopting the placeholder. Multi-decedent requests now record `bodyWarnings` when a body has no OOC identity (same convention as the mass path).
+- **Assignment itself was correct** (Anne Carter + Alyson Frost, neither on LOA) — only the naming was mangled, for both MEs' cases.
+
+### Corrected live
+- **`autopsy-requested/10328`:** display-only repair (names → "Trinity Dalton"/"Alfonso Murphy", `oocName` cleared, `bodyWarnings` set; assignment/ME/panels/completion untouched). **Forum case topics 10329/10330 still carry "J. DOE" in their titles — needs a manual forum rename** (bot never retro-fixes posted topics, per standing rule).
+
+### Tests
+- **Headless repro on the real 10328 BBCode:** before → `Trinity Dalton J. DOE`/ooc `""`; after → `Trinity Dalton`/ooc `""`, placeholder matrix (DOE/J. DOE/John/Jane Doe vs real names) all correct. Deployed via `bot:deploy`, bot clean.
+
+## 2026-10-04 — Morgue match: name→OOC exact matching, placeholders excluded
+
+### Fixed
+- **Assignment embeds showed "POSSIBLY FOUND (low confidence)" for matchable cases (`singlePanelV2.js resolveMorgueStatus`).** The intake matcher never looked at morgue OOC names and let placeholder tokens (`john`, `jane`) count — "John Doe" could match "Unknown (( John Weber ))", while real "Trinity Dalton → Unknown (( Trinity Dalton ))" (#84217) only scored token-overlap. Now: DOE-aware normalization both sides, exact IC-name ↔ morgue-OOC hit returns FOUND, placeholder iterations (John/Jane/J/Doe/Unknown, incl. pre-fix glued "X J. DOE" names) never count. Verified live on VPS: Trinity Dalton → FOUND #84217, legacy "Trinity Dalton J. DOE" → FOUND #84217, Alfonso Murphy → FOUND #84216 (same-incident record, Rancho/Jamestown, +10s), "John Doe" → no match (line omitted).
+- **`/fix-autopsy` gains `refreshpanels`** — re-resolves morgue for open paneled cases and upgrades posted panels to FOUND in place (upgrade-only, never downgrades/reposts/re-pings), e.g. `/fix-autopsy name:10328 refreshpanels:true`.
+- Fixed a `decendent` typo that nulled every resolve (caught live by the VPS harness, not by syntax check — the try/catch converts it to silent null).
+
+### Changed
+- **New shared `services/statsExclusions.js`** (normalized name matching) — Roger Rose + Roger McFarlane are out of all stats.
+- **`morgue-api.js` `/api/reports/stats` skips their report dirs at the source**, so byForm/byAuthor/byMonth/heat/total stay mutually consistent (McFarlane alone had 192 reports — server-side filtering was required; client-side alone would have left months/heatmap inflated ~11%).
+- **`global-stats.js`:** "By Month (last 6)" → **"By Month (all time)"** (was `slice(-6)`); RTDB queue leg skips excluded authors too; footers note the exclusions.
+
+### Tests
+- **VPS mock-interaction run:** 1,491 reports (1,687 files − 202 excluded + 4 queued — exact), 75 users (77 − 2), no Roger in any Top list, 10 all-time months, exclusion footer present. `morgue-api` restarted on deploy.
+
+### Fixed
+- **Per-section Top lists showed one form type's count, not the author's total (`global-stats.js`).** The VPS leg did `sectionAuthors[section].set(author, count)` per form type, so the last-processed form won — Alyson Frost showed 51 (her Mass Fatality count) against 403 actual reports. Now accumulates (`+=`). Verified live: Alyson 392 (her exact coroner-section sum), Sadie Voss 234. Section subtotals were always correct; only the Top-attribution was wrong.
+
+### Added
+- **Automatic goodbye sync:** non-silent `/manage-forms disable` sets `appMetadata/goodbye` active naming that block; `enable` lifts the block (inactive when none remain). Derived from live managed-key states, so the excluded dev-only `physical_evaluation` can never trigger it. New `silent` boolean on enable/disable skips the goodbye update (tests/maintenance). `status` now also reports goodbye state.
+- Audit pushes and the log-channel line record the `silent` flag.
+
+### Tests
+- **Live cycle (mock interaction, state restored):** disable mental-health → forms hidden + goodbye `{active:true, blocks:{mental-health:true}}`; enable → restored + goodbye lifted; version 175 → 177. Reply embeds carry the goodbye line ("ACTIVE (naming Mental Health)" / "lifted").
+
+## 2026-10-04 — `/manage-forms`: Senior Leadership form-block toggles
+
+### Added
+- **New owner-only slash command `/manage-forms`** (`commands/manage-forms.js`) — enables/disables website form blocks from the PHMC Discord by flipping the per-form `isHidden` flag in RTDB. Three blocks: `er` (5 PHMC Staff forms; `physical_evaluation` deliberately excluded — it stays dev-only), `mental-health` (3), `coroner` (5). Subcommands `status` (all three blocks, live read), `enable <block>`, `disable <block>`.
+- Writes use field-level `update({ isHidden })` (never whole-node `set`), then transaction-bump `appMetadata/formsDataVersion` so live site clients refresh. Missing form nodes abort before any write. Audit: `appMetadata/formVisibilityLog` push + best-effort bot-spam log embed.
+- Registered in `index.js` (REST push + dispatcher) and added to the PHMC-guild trimmed set default; VPS `.env` `PHMC_COMMANDS` extended with `manage-forms` (env edit, restart — secrets-excluded path per deploy rules).
+
+### Tests
+- **Mock-interaction harness against live RTDB (one-shot, removed after):** `status` returned all 13 forms ENABLED with correct display names (incl. `patient_notes` = Commentary Notes); disable+enable cycle on `mental-health` wrote `isHidden=true` on all 3 then restored all to `false`, version 173 → 175 (+2), audit entries present, sibling form fields untouched.
+
+## 2026-10-03 — Double-save race: identical reports both deployed (Emilio Ochoa)
+
+### Fixed
+- **Same report posted twice despite the 2026-10-02 dedup key (`Emilio_Ochoa_1791056250024` created topic #10325, `...2091` replied to it 30s later).** Both saves had byte-identical dedup identity, but `enqueue()` (`services/deployQueue.js`) checked `pendingDeployments.has(entityKey)` and called `set()` with three awaits in between (maintenance check, status write, progress embed). Two saves landing together both saw an empty map, armed two live timers under one map entry (queue dashboard showed 1 queued), and both fired. The slot is now **claimed synchronously** before the first await, with a monotonic sequence token: a concurrent save replaces the reservation (old timer cleared, old row trashed) instead of slipping past it; after the awaits, a superseded enqueue stands down without arming a timer, and timer callbacks verify ownership before firing. Same-key re-queues (e.g. maintenance-off rescan) no longer trash their own row.
+- **Deploy-time duplicate guard no longer rewrites history (`services/deployMedicalRecord.js`).** The `recentPatientRecords` backstop ran ~3 min after queueing and trashed the OLDER row after it had already posted — `...0024` read `trashed_duplicate` even though it created #10325, while the duplicate reply stood. It now reads the older row first: if that copy already deployed, THIS copy retires itself (`trashed_duplicate`, no post) and the deployed row is left untouched; the trash write is also skipped when the older row is already gone.
+
+### Corrected live
+- **`scheduledReports/Jayden_Edelman/Emilio_Ochoa_1791056250024`:** status restored to `deployed` (it created #10325; the guard's post-deploy trash write had flipped it). Forum cleanup was done manually; no bot re-posts involved.
+
+## 2026-10-02 — Duplicate deploy when a report is re-saved with a changed date
+
+### Fixed
+- **Same report posted twice (topics t=10319 & t=10320, John Doe / Ryan Schmidt).** The web app mints a new report key on every save, so a re-save is a second `scheduledReports` node; `enqueue()` is the only thing that collapses the two into one deploy, keyed by `getEntityKey()`. That key included `dateTime`/`dateOfDeath`, so a report queued first without a date (title `… - NO_DATE`) and re-saved with the date (`… 10/02/2026`) produced two different keys — neither replaced the other and both fired on their own 3-min timers.
+- **New `services/deployEntityKey.js`** builds the key from the report's *stable* identity only: `author | formId | decedent/patient name | OOC | patientID | PM recipient | department`. Volatile fields a user edits between saves (`dateTime`, `dateOfDeath`, `caseNumber`) are excluded; `authorId` is added so two staff members saving the same decedent don't collide. Falls back to the report key only when there is no subject/routing identity at all.
+- `deployQueue.js` now imports this pure helper (removed the inline copy). The replace-oldest path (`trashed_duplicate`) is unchanged — it now actually matches on re-save instead of missing.
+
+### Tests
+- **`tests/deployEntityKey.test.js`** — 11 dry-run scenarios (no network/Firebase/forum): the exact NO_DATE→dated regression collapses to one queue entry; changed case number still dedups; different decedent/OOC/author/recipient/patient stay distinct; empty-identity fallback; long-key hashing; malformed input. Full suite 111 passed.
+
 ## 2026-10-01 — Per-topic multi agency crosspost no longer overwrites body 1
 
 ### Fixed

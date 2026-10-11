@@ -99,7 +99,7 @@ async function refreshMassForMorgue(db, client, rkey, entry) {
  * Best-effort — never throws.
  * @returns {Promise<{checked:number, upgraded:number}>}
  */
-export async function refreshAutopsyPanelsForMorgue(db, client, morgueRecord) {
+export async function refreshAutopsyPanelsForMorgue(db, client, _morgueRecord) {
     if (!db) return { checked: 0, upgraded: 0 };
     let checked = 0;
     let upgraded = 0;

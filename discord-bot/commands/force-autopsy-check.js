@@ -15,7 +15,7 @@ export async function execute(interaction) {
 
     try {
         const { checkForNewRequests } = await import('../services/autopsyRequestMonitor.js');
-        const result = await checkForNewRequests();
+        await checkForNewRequests();
 
         const embed = new EmbedBuilder()
             .setColor(0x00bcd4)

@@ -17,10 +17,6 @@ export const useReportAttachment = (
     const pendingReportAttachmentCallback = useRef(null);
     const currentAttachmentTargetFieldRef = useRef(null);
 
-    const getCurrentReportAuthor = useCallback(() => {
-        return formData.phmcEmployee || formData.coronerEmployee || null;
-    }, [formData]);
-
     const handleReportSelectedForAttachment = useCallback(async (reportData, loadedFormData, loadedVersion, _loadedBbCode) => {
         const targetFieldName = currentAttachmentTargetFieldRef.current;
         

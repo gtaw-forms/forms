@@ -253,7 +253,6 @@ export const initiateGtaWorldLogin = async (options = {}) => {
  * Processes the OAuth callback
  */
 export const handleOAuthCallback = async (code, state, onSuccess, onError, onProgress) => {
-    const perfStart = performance.now();
     try {
         onProgress?.({ step: 'initializing', message: 'Starting authentication...', progress: 10 });
 
@@ -642,7 +641,7 @@ export const validateStoredSession = async () => {
         }
         
         return { valid: true, user };
-    } catch (err) {
+    } catch {
         // Network errors don't invalidate session
         return { valid: true, user, warning: 'Token validation skipped (network error)' };
     }

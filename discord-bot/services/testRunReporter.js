@@ -168,7 +168,6 @@ export async function startTestRunReporter(db, client) {
                 } catch (err) {
                     console.warn(`[${TAG}] [WARN] full-fill embed post failed: ${err?.message || err}`);
                 }
-                return;
             }
 
             // Anything else (stale node with a different runId, or a duplicate

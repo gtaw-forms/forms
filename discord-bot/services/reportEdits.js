@@ -7,8 +7,8 @@
  * BBCode + the stored deploy target, edits the forum post, and updates the
  * report status.
  *
- * Product scope: only topic/reply-posted forms (coroner-report, death_record,
- * mass-ftality-test, medical-record forms). Autopsy and coroner_email are
+ * Product scope: only topic-posted forms (coroner-report, death_record,
+ * mass-ftality-test). Autopsy and coroner_email are
  * excluded — their flows are heavily automated / PM-based and must not be touched.
  */
 
@@ -89,7 +89,7 @@ export async function processReportEdits(db) {
         return;
     }
 
-    for (const { author, key, req } of requests) {
+    for (const { author, key } of requests) {
         try {
             await db.ref(`reportEdits/${author}/${key}`).update({ checkedAt: new Date().toISOString() }).catch(() => {});
 

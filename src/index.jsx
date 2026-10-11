@@ -35,7 +35,7 @@ const recordNavigation = (url, type = 'push') => {
         };
         navigationHistory.unshift(entry);
         if (navigationHistory.length > 15) navigationHistory.pop();
-    } catch (e) {
+    } catch {
         // Silent fail for navigation tracking
     }
 };
@@ -206,7 +206,7 @@ const Root = () => {
             try {
                 await fetch(ingestUrl, { method: 'HEAD', mode: 'no-cors' });
                 isSentryBlocked = false;
-            } catch (error) {
+            } catch {
                 isSentryBlocked = true;
                 const adblockNotificationId = showNotification(
                     'Adblocker detected. Please consider disabling it to help us track bugs!',

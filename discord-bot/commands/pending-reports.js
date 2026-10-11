@@ -40,7 +40,7 @@ export async function execute(interaction) {
                 authorSnap.forEach(() => estimateTotal++);
             });
         }
-    } catch (e) {
+    } catch {
         // If we can't even count, proceed anyway
     }
 
@@ -89,7 +89,7 @@ export async function execute(interaction) {
         }
         confirmed = true;
         await btnInteraction.deferUpdate();
-    } catch (e) {
+    } catch {
         // Timed out or error
         if (!interaction.ephemeral) {
             await interaction.editReply({ content: 'Confirmation timed out.', components: [] });

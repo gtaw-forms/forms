@@ -89,7 +89,6 @@ async function registerCommands() {
     const assignAutopsy = await import('./commands/assign-autopsy.js');
     const testAutopsy = await import('./commands/test-autopsy.js');
     const forceAutopsyComplete = await import('./commands/force-autopsy-complete.js');
-    const autopsySkip = await import('./commands/autopsy-skip.js');
     const rotationList = await import('./commands/rotation-list.js');
     const rotationSet = await import('./commands/rotation-set.js');
     const massAutopsy = await import('./commands/mass-autopsy.js');
@@ -100,7 +99,6 @@ async function registerCommands() {
     const repostMassPanel = await import('./commands/repost-mass-panel.js');
     const outstandingAutopsies = await import('./commands/outstanding-autopsies.js');
     const testPing = await import('./commands/test-ping.js');
-    const patientSearch = await import('./commands/patient-search.js');
     const checkBackground = await import('./commands/background.js');
     const pmIntakeDryrun = await import('./commands/pm-intake-dryrun.js');
     const morgueAdd = await import('./commands/morgue-add.js');
@@ -118,8 +116,8 @@ async function registerCommands() {
     const webAutopsyAutopost = await import('./commands/web-autopsy-autopost.js');
     const forwardAutopsyComplete = await import('./commands/forward-autopsy-complete.js');
     const debugChannels = await import('./commands/debug-channels.js');
+    const manageForms = await import('./commands/manage-forms.js');
     const infoPanel = await import('./commands/info-panel.js');
-    const telemetryNow = await import('./commands/telemetry-now.js');
     // Personal AGH dashboard — optional. The files are gitignored/not part of a
     // fork; guard so the bot still boots when they're absent.
     let aghDashboard = null;
@@ -157,7 +155,6 @@ async function registerCommands() {
         repostMassPanel.data.toJSON(),
         outstandingAutopsies.data.toJSON(),
         testPing.data.toJSON(),
-        patientSearch.data.toJSON(),
         checkBackground.data.toJSON(),
         pmIntakeDryrun.data.toJSON(),
         morgueAdd.data.toJSON(),
@@ -174,15 +171,15 @@ async function registerCommands() {
         webAutopsyAutopost.data.toJSON(),
         forwardAutopsyComplete.data.toJSON(),
         debugChannels.data.toJSON(),
+        manageForms.data.toJSON(),
         infoPanel.data.toJSON(),
-        telemetryNow.data.toJSON(),
         ...(aghDashboard ? [aghDashboard.data.toJSON()] : []),
     ];
 
     // PHMC guild gets a trimmed public set (env-overridable); the primary
     // guild keeps the full arsenal. Guild IDs are committable, not secrets.
     const phmcGuildId = process.env.PHMC_GUILD_ID || '860254678653992992';
-    const phmcCommandNames = (process.env.PHMC_COMMANDS || 'reassign-autopsy,autopsy-loa,card,outstanding-autopsies,repost-mass-panel')
+    const phmcCommandNames = (process.env.PHMC_COMMANDS || 'reassign-autopsy,autopsy-loa,card,outstanding-autopsies,repost-mass-panel,manage-forms')
         .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
 
     const rest = new REST({ version: '10' }).setToken(token);
@@ -249,7 +246,6 @@ client.once('clientReady', async () => {
         'FORUM_SADCR_URL', 'FORUM_SADCR_USERNAME', 'FORUM_SADCR_PASSWORD',
         'FORUM_DAO_URL', 'FORUM_DAO_USERNAME', 'FORUM_DAO_PASSWORD',
         'CORONER_EMAIL_DRY_RUN', 'CORONER_EMAIL_ALLOWED',
-        'MEDICAL_RECORD_DRY_RUN', 'MEDICAL_RECORD_ALLOWED',
     ];
     for (const key of REQUIRED_ENV) {
         if (!process.env[key]) console.warn(`[BOT] ⚠️ Missing required env var: ${key}`);
@@ -337,15 +333,6 @@ client.once('clientReady', async () => {
         startScheduler();
     } catch (err) {
         console.warn('[BOT] ⚠️ Scheduler failed to start (non-fatal):', err.message);
-    }
-
-    // ── Start hourly client-telemetry rollup (V2 post to admin channel) ──
-    try {
-        const { setTelemetryClient, startTelemetryRollup } = await import('./services/telemetryRollup.js');
-        setTelemetryClient(client);
-        startTelemetryRollup();
-    } catch (err) {
-        console.warn('[BOT] ⚠️ Telemetry rollup failed to start (non-fatal):', err.message);
     }
 
     // ── Start dashboard manager (live status embed, 5-min refresh) ──
@@ -461,14 +448,6 @@ client.once('clientReady', async () => {
         console.warn('[BOT] ⚠️ Queue dashboard failed to start (non-fatal):', err.message);
     }
 
-    // ── Start CCTV scheduler (fetches all cameras every 6 hours) ──
-    try {
-        const { startCctvScheduler } = await import('./services/cctvScheduler.js');
-        startCctvScheduler();
-    } catch (err) {
-        console.warn('[BOT] ⚠️ CCTV scheduler failed to start (non-fatal):', err.message);
-    }
-
     // ── Start Face publish sweep (publishes scheduled Face posts after their delay) ──
     try {
         const { startFacePublishSweep } = await import('./services/deathRecordDraftFace.js');
@@ -508,17 +487,6 @@ client.once('clientReady', async () => {
                     const { checkForNewRequests, startAutopsyRequestMonitor } = await import('./services/autopsyRequestMonitor.js');
                     await checkForNewRequests();
                     startAutopsyRequestMonitor({ immediate: false });
-                },
-            },
-            {
-                // Fast return; the 45s self-delayed rebuild (if stale) runs
-                // afterwards under the global gate.
-                name: 'patient-index',
-                run: async () => {
-                    const firebase = (await import('./services/firebase.js')).default;
-                    firebase.init();
-                    const { startPatientIndex } = await import('./services/patientIndex.js');
-                    await startPatientIndex(firebase.db);
                 },
             },
             {
@@ -966,13 +934,6 @@ async function start() {
     const restartCmd = await import('./commands/restart.js');
     client.commands.set(restartCmd.data.name, { execute: restartCmd.execute });
 
-    // Retired (2026-09-10): /autopsy + /user unregistered (files kept on disk).
-    // Re-add the two blocks below to restore.
-    // const autopsyCmd = await import('./commands/autopsy.js');
-    // client.commands.set(autopsyCmd.data.name, { execute: autopsyCmd.execute });
-    // const userCmd = await import('./commands/user.js');
-    // client.commands.set(userCmd.data.name, { execute: userCmd.execute });
-
     const formQueuedCmd = await import('./commands/form-queued.js');
     client.commands.set(formQueuedCmd.data.name, { execute: formQueuedCmd.execute });
 
@@ -1049,9 +1010,6 @@ async function start() {
     const rotationSetCmd = await import('./commands/rotation-set.js');
     client.commands.set(rotationSetCmd.data.name, { execute: rotationSetCmd.execute, autocomplete: rotationSetCmd.autocomplete });
 
-    const patientSearchCmd = await import('./commands/patient-search.js');
-    client.commands.set(patientSearchCmd.data.name, { execute: patientSearchCmd.execute });
-
     const checkBackgroundCmd = await import('./commands/background.js');
     client.commands.set(checkBackgroundCmd.data.name, { execute: checkBackgroundCmd.execute });
 
@@ -1100,11 +1058,11 @@ async function start() {
     const debugChannelsCmd = await import('./commands/debug-channels.js');
     client.commands.set(debugChannelsCmd.data.name, { execute: debugChannelsCmd.execute });
 
+    const manageFormsCmd = await import('./commands/manage-forms.js');
+    client.commands.set(manageFormsCmd.data.name, { execute: manageFormsCmd.execute });
+
     const infoPanelCmd = await import('./commands/info-panel.js');
     client.commands.set(infoPanelCmd.data.name, { execute: infoPanelCmd.execute });
-
-    const telemetryNowCmd = await import('./commands/telemetry-now.js');
-    client.commands.set(telemetryNowCmd.data.name, { execute: telemetryNowCmd.execute });
 
     const testPingCmd = await import('./commands/test-ping.js');
     client.commands.set(testPingCmd.data.name, { execute: testPingCmd.execute });

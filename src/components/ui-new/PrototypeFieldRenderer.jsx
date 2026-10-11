@@ -191,9 +191,9 @@ const PrototypeFieldRenderer = ({
 
   // autopsy_import_button state
   const [step, setStep] = useState(0);
-  const [inputText, setInputText] = useState('');
+  const [, setInputText] = useState('');
   const [parsedData, setParsedData] = useState(null);
-  const [selectedSuggestions, setSelectedSuggestions] = useState([]);
+  const [, setSelectedSuggestions] = useState([]);
 
   useEffect(() => {
     if (field.type !== 'autopsy_import_button') return;

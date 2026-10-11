@@ -105,7 +105,7 @@ export const uploadImageProxy = onCall({
                 try {
                     const errData = JSON.parse(text);
                     return { success: false, error: errData.data?.error?.message || errData.data?.error || `Imgur error ${response.status}` };
-                } catch (e) {
+                } catch {
                     return { success: false, error: `Imgur API error (${response.status})` };
                 }
             }

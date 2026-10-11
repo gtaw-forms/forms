@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { database } from '../../firebase';
 import { ref, onValue, get, query, orderByChild, equalTo, push } from 'firebase/database';
 import { getUserOAuthIdentity } from '../../utils/logging';
+import { matchTerms, isUsableToken, oocFromParsedName } from '../../utils/doePlaceholders';
 
 const MOCK_ROTATION_LIST = ['Dr. Alyson Frost', 'Dr. Marcus Reed', 'Dr. Emily Hart', 'Dr. Sarah Mitchell', 'Dr. James Walker'];
 
@@ -16,6 +17,11 @@ const parseCaseTitle = (title) => {
     const name = rest.replace(/\(\([^()]*\)\)/g, '').replace(/\[(?:LSPD|LSSD|SADCR|DAO)\]/i, '').trim();
     return { name, oocName };
 };
+
+// Recover the ((OOC)) from a parsed request body — defined once in
+// utils/doePlaceholders (oocFromParsedName). A hand-written forum title can
+// omit the ((OOC)) while Section 2 still carries it (t=10364 / Case 538:
+// entry.oocName "" but parsed.decedentName "John Doe ((Ilya Baranov))").
 
 const AssignedAutopsiesModal = ({ show, onClose, onLoadCase, factionsData, loadMorgueRecords }) => {
     const [assignments, setAssignments] = useState([]);
@@ -32,14 +38,6 @@ const AssignedAutopsiesModal = ({ show, onClose, onLoadCase, factionsData, loadM
         // Localhost dev fallback — real data always wins; mocks only appear
         // when the live read fails or returns nothing (so end-to-end testing
         // on localhost sees real assignments, not fake rows).
-        const mockData = [
-            { id: 'dev-mock-01', name: 'Marcus Johnson', oocName: 'DevTest_Player', faction: 'LSPD', assignedTo: 'Dr. Alyson Frost', topicUrl: null, caseUrl: null, detectedAt: new Date(Date.now() - 60000).toISOString(), parsed: { requesterName: 'Sgt. Riley', placeOfDeath: 'Davis Avenue', deathType: 'PK', dateOfDeath: '10/JUL/2026', timeOfDeath: '22:45' } },
-            { id: 'dev-mock-02', name: 'Sarah Chen', oocName: 'AnotherDev', faction: 'LSSD', assignedTo: 'Dr. Marcus Reed', topicUrl: 'https://forum.gta.world/index.php?/topic/99999-mock/', caseUrl: 'https://forum.gta.world/index.php?/topic/100000-mock/', detectedAt: new Date(Date.now() - 120000).toISOString(), parsed: { requesterName: 'Deputy Williams', placeOfDeath: 'Paleto Bay', deathType: 'CK', dateOfDeath: '09/JUL/2026', timeOfDeath: '03:15' } },
-            { id: 'dev-mock-03', name: 'James Smith', oocName: 'ThirdTester', faction: 'SADCR', assignedTo: 'Dr. Emily Hart', topicUrl: 'https://forum.gta.world/index.php?/topic/100001-mock-request/', caseUrl: null, detectedAt: new Date(Date.now() - 180000).toISOString(), parsed: { requesterName: 'CO Martinez', placeOfDeath: 'Bolingbroke', deathType: 'PK', dateOfDeath: '08/JUL/2026', timeOfDeath: '14:30' } },
-            { id: 'dev-mock-04', name: 'Elena Rodriguez', oocName: 'FourthTester', faction: 'LSPD', assignedTo: 'Dr. Alyson Frost', topicUrl: null, caseUrl: null, detectedAt: new Date(Date.now() - 3600000).toISOString(), parsed: { requesterName: 'Officer Blake', placeOfDeath: 'Rockford Hills', deathType: 'PK', dateOfDeath: '07/JUL/2026', timeOfDeath: '19:50' } },
-            { id: 'dev-mock-05', name: 'Test Non-Morgue', oocName: 'NoMatchUser', faction: 'DAO', assignedTo: 'Dr. Sarah Mitchell', topicUrl: null, caseUrl: null, detectedAt: new Date().toISOString(), parsed: { requesterName: 'Agent Cross', placeOfDeath: 'Sandy Shores', deathType: 'PK', dateOfDeath: '11/JUL/2026', timeOfDeath: '08:00' } },
-        ];
-
         // Fetch the full ME rotation list + position
         Promise.all([
             get(ref(database, 'autopsy-requests/rotation/list')),
@@ -78,7 +76,7 @@ const AssignedAutopsiesModal = ({ show, onClose, onLoadCase, factionsData, loadM
                                 entries.push({
                                     id: `${k}/cases/${ci}`,
                                     name: c.name || parsedTitle.name || v.name || '?',
-                                    oocName: c.oocName || parsedTitle.oocName || v.oocName || '',
+                                    oocName: c.oocName || parsedTitle.oocName || v.oocName || oocFromParsedName(v.parsed?.decedentName) || '',
                                     faction: v.faction || '',
                                     assignedTo: c.assignedTo,
                                     topicUrl: v.topicUrl || '',
@@ -91,7 +89,7 @@ const AssignedAutopsiesModal = ({ show, onClose, onLoadCase, factionsData, loadM
                         }
                         if (!v.assignedTo) return [];
                         return [{
-                            id: k, name: v.name || '?', oocName: v.oocName || '',
+                            id: k, name: v.name || '?', oocName: v.oocName || oocFromParsedName(v.parsed?.decedentName) || '',
                             faction: v.faction || '', assignedTo: v.assignedTo,
                             topicUrl: v.topicUrl || '', caseUrl: v.caseUrl || '',
                             detectedAt: v.detectedAt || '',
@@ -161,7 +159,12 @@ const AssignedAutopsiesModal = ({ show, onClose, onLoadCase, factionsData, loadM
     const haystackMatchesTerm = (hay, term) => {
         if (!term) return false;
         if (hay.includes(term)) return true;
-        return term.split(/\s+/).filter(w => w.length >= 3).every(w => {
+        // Placeholder iterations (john/jane/doe/unknown) never count, even as
+        // substrings — "John Doe" must not match "Unknown (( John Weber ))".
+        // (Empty after filtering matches nothing — [].every() is vacuously true.)
+        const words = term.split(/\s+/).filter(isUsableToken);
+        if (words.length === 0) return false;
+        return words.every(w => {
             const variants = new Set([w]);
             for (let i = 0; i < w.length - 1; i++) {
                 if (w[i] !== w[i + 1]) variants.add(w.slice(0, i) + w[i + 1] + w[i] + w.slice(i + 2));
@@ -246,7 +249,11 @@ const AssignedAutopsiesModal = ({ show, onClose, onLoadCase, factionsData, loadM
             // 74896 beat 82864 at 110-110). Restore newest-first so ties break toward the
             // latest death.
             const ordered = [...records].sort((a, b) => (b.lastUpdated || 0) - (a.lastUpdated || 0));
-            const terms = [entry.oocName.toLowerCase(), entry.name.toLowerCase()].filter(Boolean);
+            // DOE-aware terms: placeholders ("J. DOE", "DOE and DOE", bare
+            // "John Doe") are never identities and must not match — t=10328
+            // filed "Trinity Dalton J. DOE ((DOE and DOE))" and its "doe"/"and"
+            // tokens false-positived across unrelated records.
+            const terms = matchTerms(entry.name, entry.oocName);
             let bestMatch = null;
             let bestScore = 0;
             const p = entry?.parsed || {};
