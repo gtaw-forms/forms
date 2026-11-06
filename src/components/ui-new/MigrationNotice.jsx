@@ -21,6 +21,17 @@ const DISMISS_KEY = `phmc-migration-notice-dismissed:${NOTICE_VERSION}`;
  * Records can still continue into the app for daily work.
  */
 const MigrationNoticeGate = ({ children }) => {
+  // Portal deep links (#/report/<author>/<key>) land here from outside
+  // notices — a first-time officer must reach the sign-in card, not an
+  // internal project notice they cannot dismiss past contextually.
+  let isShareLink = false;
+  try {
+    isShareLink = /^#\/report\/[^/]+\/[^/?#]+/.test(String(window.location.hash || ''));
+  } catch {
+    isShareLink = false;
+  }
+  if (isShareLink) return children;
+
   const [dismissed, setDismissed] = useState(() => {
     try {
       return localStorage.getItem(DISMISS_KEY) === '1';

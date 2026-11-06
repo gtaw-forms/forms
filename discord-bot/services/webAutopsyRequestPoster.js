@@ -33,6 +33,7 @@ import firebase from './firebase.js';
 import { getForumClient } from './forumClient.js';
 import { isDevTestActive, devWebhookUrl } from './devRouting.js';
 import { probeMsForHost } from './postingHealth.js';
+import { buildSubmittedNotification, buildPostedNotification } from './webAutopsyRequestEmbed.js';
 
 const PENDING_PATH = 'autopsy-requests/pending';
 const PHMC_BASE = 'https://phmc.gta.world';
@@ -86,38 +87,16 @@ async function postNotification(webhookUrl, payload) {
 async function sendSubmittedNotification(id, entry) {
     const url = getNotifyWebhookUrl();
     if (!url) return false;
-    const payload = {
-        username: 'PHMC Autopsy Requests',
-        content: '**New autopsy request submitted**',
-        embeds: [{
-            title: entry.topicTitle || 'Autopsy Request',
-            color: 0x00bcd4,
-            fields: [
-                { name: 'Decedent', value: `${entry.decedentName || 'Unknown'}${entry.oocName ? ` ((${entry.oocName}))` : ''}`, inline: true },
-                { name: 'Morgue Case #', value: entry.caseId || '—', inline: true },
-                { name: 'Requester', value: entry.requesterName || 'Unknown', inline: true },
-                ...(entry.requesterDept ? [{ name: 'Department', value: entry.requesterDept, inline: true }] : []),
-            ],
-            timestamp: new Date().toISOString(),
-        }],
-    };
+    const payload = buildSubmittedNotification(entry);
     const ok = await postNotification(url, payload);
-    console.log(`[WEB-REQ] ${ok ? 'Sent' : 'Failed to send'} submitted notification for #${id}`);
+    console.log(`[WEB-REQ] ${ok ? 'Sent' : 'Failed to send'} ${entry?.isMass ? 'mass ' : ''}submitted notification for #${id}`);
     return ok;
 }
 
-async function sendPostedNotification(topicUrl, title) {
+async function sendPostedNotification(topicUrl, title, entry = null) {
     const url = getNotifyWebhookUrl();
     if (!url) return false;
-    const payload = {
-        username: 'PHMC Autopsy Requests',
-        content: `**Autopsy request posted to the forum**${topicUrl ? ` — <${topicUrl}>` : ''}`,
-        embeds: [{
-            title,
-            color: 0x28a745,
-            timestamp: new Date().toISOString(),
-        }],
-    };
+    const payload = buildPostedNotification(entry || { topicTitle: title }, topicUrl);
     const ok = await postNotification(url, payload);
     console.log(`[WEB-REQ] ${ok ? 'Sent' : 'Failed to send'} posted notification`);
     return ok;
@@ -275,7 +254,7 @@ async function postOne(db, id, entry) {
         }).catch(() => {});
     }
     console.log(`[WEB-REQ] [OK] Posted #${id} "${title}" -> ${res.url}`);
-    await sendPostedNotification(res.url, title);
+    await sendPostedNotification(res.url, title, entry);
 }
 
 async function markFailed(db, id, entry, message, { paused = false } = {}) {

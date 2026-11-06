@@ -1,4 +1,4 @@
-﻿# Firebase Schema Reference
+# Firebase Schema Reference
 
 Field-level reference for the key RTDB nodes. `setup/DATA-MODEL.md` shows the
 tree; this is the per-node schema. Notation: `type · required? · description`.
@@ -104,9 +104,9 @@ A detected autopsy request being processed.
 | `assignedTo` | string | Assigned ME name |
 | `topicUrl` / `caseUrl` | string | Forum request / case topic URLs |
 | `detectedAt` | string | ISO |
-| `parsed` | object | `{ requesterName, requesterDept, placeOfDeath, deathType (PK/CK), dateOfDeath, timeOfDeath, synopsis, causeDetail }` |
+| `parsed` | object | `{ requesterName, requesterDept, placeOfDeath, deathType (PK/CK — for a mass request this is the requester's raw Section-4 line, which may name several types; per-body `cases/<idx>/deathType` is authoritative), dateOfDeath, timeOfDeath, synopsis, causeDetail }` |
 | `caseState` | string | `me_assigned` → `case_created` → … → `completed` |
-| `cases` | object | Multi-decedent: per-decedent sub-entries under `cases/<idx>` |
+| `cases` | object | Multi-decedent / mass: per-decedent sub-entries under `cases/<idx>` (`name`, `oocName`, `sex`, `ethnicity`, `dateOfDeath`, `timeOfDeath`, `placeOfDeath`, **`deathType`** — per-body PK/CK for mass requests, whose single Section-4 PK/CK line can mix types — `assignedTo`, `completedAt`, `replyPostId`) |
 
 ---
 

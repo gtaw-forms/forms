@@ -33,10 +33,20 @@ export const triggerDeleteMorgueRecords = (data) => triggerFunction('deleteMorgu
 export const triggerPurgeMorgueRecords = () => triggerFunction('purgeMorgueRecords', { confirmed: true });
 export const triggerSyncMorgueFile = () => triggerFunction('syncMorgueFile', {});
 export const triggerCheckOfficerName = (data) => triggerFunction('checkOfficerName', data);
+// Full roster snapshot (name-only, ~9 KB) cached in IndexedDB for 24 h — backs
+// the offline-safe officer autocomplete. See src/utils/officerRosterCache.js.
+export const triggerGetOfficerRoster = () => triggerFunction('getOfficerRoster', {});
 export const triggerGetAgencyCredentials = () => triggerFunction('getAgencyCredentials', {});
 export const triggerListSavedReports = (data) => triggerFunction('listSavedReports', data);
 export const triggerListRecentSavedReports = (data) => triggerFunction('listRecentSavedReports', data);
 export const triggerGetSavedReport = (data) => triggerFunction('getSavedReport', data);
+// LEO (law-enforcement) forwarded reports: list + audited open + cache-hit log.
+export const triggerListLeoReports = (data) => triggerFunction('listLeoReports', data);
+export const triggerGetLeoReport = (data) => triggerFunction('getLeoReport', data);
+export const triggerLogLeoReportView = (data) => triggerFunction('logLeoReportView', data);
+export const triggerLogLeoPanelAccess = (data) => triggerFunction('logLeoPanelAccess', data);
+// Migration UI / generic saved-report view audit (metadata only).
+export const triggerLogReportView = (data) => triggerFunction('logReportView', data);
 export const triggerSaveSavedReport = (data) => triggerFunction('saveSavedReport', data);
 export const triggerDeleteSavedReport = (data) => triggerFunction('deleteSavedReport', data);
 export const triggerGetSavedReportStats = () => triggerFunction('getSavedReportStats');

@@ -137,17 +137,16 @@ export async function generateBusinessCard(characterName, rank, phoneNumber = ''
 
 /**
  * Upload a rendered card buffer for a shareable URL, routed through the
- * uploadImageProxy Cloud Function (Google Cloud egress) using ImgBB —
- * proven working end-to-end (the earlier 103s were a degenerate 1px probe
- * image, not an account/network block). Fail-open: returns null on any
- * error — callers must still deliver the native attachment.
+ * uploadImageProxy Cloud Function (Google Cloud egress) which files it in the
+ * ImgLink.cc `Coroners` album. Fail-open: returns null on any error —
+ * callers must still deliver the native attachment.
  *
  * @param {Buffer} buffer — PNG bytes
  * @returns {Promise<string|null>} public URL or null
  */
 export async function uploadCardImage(buffer) {
     const { uploadViaProxy } = await import('./imageProxy.js');
-    const url = await uploadViaProxy(buffer, 'imgbb');
+    const url = await uploadViaProxy(buffer, 'imglink');
     if (!url) console.warn('[CARD] No shareable URL — native attachment only');
     return url;
 }

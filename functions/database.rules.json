@@ -94,6 +94,9 @@
     "autopsy-requested": {
     ".indexOn": ["oocName", "name", "completedAt", "caseTopicId", "lssdCrosspostStatus", "lspdCrosspostStatus", "lssdTopicId", "lspd-acknowledge-reply", "lssd-acknowledge-reply", "phmc-acknowledge-reply", "sadcr-acknowledge-reply", "dao-acknowledge-reply"]
     },
+    "deployNotifications": {
+      ".indexOn": ["createdAt"]
+    },
     "dev-reports": {
       ".read": true,
       ".write": true

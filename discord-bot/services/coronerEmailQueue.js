@@ -43,8 +43,15 @@ export async function enqueueCoronerEmail(db, {
     authorId, reportKey, topicId = null, topicUrl = null,
     recipient, department = '', forumLabel, subject, bbCode,
 }) {
-    if (!authorId || !reportKey || !recipient || !bbCode) {
-        console.warn('[CORONER-QUEUE] Refusing to enqueue — missing author/report/recipient/bbCode');
+    if (!authorId || !reportKey || !recipient) {
+        console.warn('[CORONER-QUEUE] Refusing to enqueue — missing author/report/recipient');
+        return null;
+    }
+    // Forum PM path carries the BBCode email — never queue a send with
+    // nothing to say. (The retired portal-notice channel took notice +
+    // reportUrl instead; no producer passes those anymore.)
+    if (!bbCode) {
+        console.warn('[CORONER-QUEUE] Refusing to enqueue — missing bbCode');
         return null;
     }
     const key = emailKey(authorId, reportKey);
@@ -116,12 +123,13 @@ export async function processEmailQueue() {
             _inFlight.delete(key);
         }
     }
-    // Prune old sent entities so the node stays small.
+    // Prune old terminal entities so the node stays small (sent + completed
+    // after 7 days; dry_run is kept as an audit trail).
     try {
         const updates = {};
         snap.forEach((child) => {
             const e = child.val() || {};
-            if (e.status === 'sent' && e.sentAt && now - new Date(e.sentAt).getTime() > PRUNE_SENT_MS) updates[`${EMAIL_NODE}/${child.key}`] = null;
+            if ((e.status === 'sent' || e.status === 'completed') && e.sentAt && now - new Date(e.sentAt).getTime() > PRUNE_SENT_MS) updates[`${EMAIL_NODE}/${child.key}`] = null;
         });
         if (Object.keys(updates).length > 0) {
             await _db.ref().update(updates);

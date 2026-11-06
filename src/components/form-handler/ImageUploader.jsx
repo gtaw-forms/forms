@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import * as Sentry from '@sentry/react';
 import { useNotification } from '../../contexts/NotificationContext';
-import { uploadImageWithFallback } from '../../utils/imageUploadUtils';
+import { uploadImageToImgLink } from '../../utils/imageUploadUtils';
 import ImagePreviewModal from '../Modals/ImagePreviewModal';
 
 const ImageUploader = ({ images: imagesProp, onImagesChange, notes, onNotesChange, maxImages = 6, fieldName }) => {
@@ -88,7 +88,8 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, notes, onNotesChang
     if (!url) return false;
 
     const isValid = (
-        /\.(jpeg|jpg|gif|png|webp|svg|bmp)(\?.*)?$/i.test(url) || 
+        /\.(jpeg|jpg|gif|png|webp|svg|bmp|tiff|avif)(\?.*)?$/i.test(url) || 
+        /imglink\.cc\//i.test(url) ||
         /puu\.sh\//i.test(url) || 
         /imgur\.com\//i.test(url) ||
         /postimg\.cc\//i.test(url) ||
@@ -115,7 +116,7 @@ const ImageUploader = ({ images: imagesProp, onImagesChange, notes, onNotesChang
 
     for (const file of files) {
       try {
-        const result = await uploadImageWithFallback(file);
+        const result = await uploadImageToImgLink(file);
         uploaded.push(result.url);
       } catch (err) {
         console.error(`[ImageUploader] Image upload failed:`, err);

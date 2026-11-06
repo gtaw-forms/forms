@@ -1,7 +1,8 @@
 /**
  * imageProxy.js — route bot image uploads through the deployed uploadImageProxy
  * Cloud Function (europe-west4) so traffic egresses from Google Cloud instead
- * of the VPS (direct api.imgbb.com calls from the VPS are forbidden/103).
+ * of the VPS. The function uploads to ImgLink.cc into the `Coroners` album;
+ * the API key lives server-side in PHMC_CONFIG and never reaches the bot.
  *
  * Auth: mint a Firebase custom token with the admin SDK, exchange it for an
  * ID token, then call the v2 callable endpoint ({ data } -> { result }).
@@ -40,13 +41,14 @@ async function mintIdToken() {
 }
 
 /**
- * Upload image bytes via the Cloud Function proxy.
+ * Upload image bytes via the Cloud Function proxy (ImgLink.cc).
  *
  * @param {Buffer} buffer — image bytes
- * @param {string} [service] — 'imgbb' (default) or 'imgur'
+ * @param {string} [service] — retained for call-site compatibility; the proxy
+ *   ignores it and always uploads to ImgLink.
  * @returns {Promise<string|null>} public URL or null
  */
-export async function uploadViaProxy(buffer, service = 'imgbb') {
+export async function uploadViaProxy(buffer, service = 'imglink') {
     try {
         const idToken = await mintIdToken();
         const res = await fetch(FUNCTION_URL, {

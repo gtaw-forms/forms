@@ -156,6 +156,12 @@ async function main() {
         '--no-default-browser-check',
         '--disable-popup-blocking',
         '--disable-dev-shm-usage',
+        // No extensions, ever: a component extension's background service
+        // worker (Hangouts thunk) races CDP attaches and intermittently kills
+        // playwright clients with a service_worker assertion. The bot needs
+        // no extensions (all auth is cookie-based).
+        '--disable-extensions',
+        '--disable-component-extensions-with-background-pages',
         'about:blank',
     ];
 

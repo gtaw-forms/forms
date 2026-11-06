@@ -10,6 +10,8 @@ const jstr = (obj) => {
 import { triggerSaveSavedReport } from '../services/firebaseFunctions';
 import { triggerListSavedReports } from '../services/firebaseFunctions';
 import { findDuplicateCandidate } from '../utils/duplicateCheck';
+import { ensureShareCode } from '../utils/shareCodes';
+import { buildShortReportUrl } from '../components/report-share/shareLink';
 import * as Sentry from "@sentry/react";
 import { getCharacterName, getCharacterID, resolveEmployeeCredentials, getOAuthShapeFlags } from '../utils/identityUtils';
 import { cleanRankText, comprehensiveSanitize } from '../utils/textUtils';
@@ -606,6 +608,36 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated, rosterData = {}) 
 
             await Promise.all(promises);
 
+            // Short share code for `#/r/` links — assigned once, best-effort
+            // and never fatal: a missing code only means the embed + result
+            // fall back to long links.
+            let shareCode = null;
+            try {
+                shareCode = await ensureShareCode({
+                    author: sanitizedAuthorId, key: sanitizedKey,
+                    formId: selectedForm?.firebaseKey || '',
+                });
+            } catch { /* index unavailable — long links still work */ }
+
+            // Deployment-tracked reports stay in scheduledReports for the bot
+            // queue — but the migration UI's live records/LEO feeds read the
+            // VPS saved-report store. Mirror the canonical record there too,
+            // otherwise a queued save is invisible to every other user (and to
+            // the author's own feed) until someone manually migrates it. The
+            // VPS write bumps appMetadata/reportsDataVersion, which refreshes
+            // other clients' IndexedDB feed caches. Best-effort: the queue
+            // entry is authoritative for deployment, so never fail the save.
+            if (!isLocalHost && reportBasePath === 'scheduledReports') {
+                triggerSaveSavedReport({
+                    author: sanitizedAuthorId,
+                    key: sanitizedKey,
+                    report: reportDataToSave,
+                    bbCode,
+                }).catch((mirrorError) => {
+                    console.warn(`[useFormSaver] VPS live-record mirror failed: ${mirrorError?.message || mirrorError}`);
+                });
+            }
+
             if (!options.silent) {
                 showNotification(`Report "${finalTitle}" saved successfully!`, 'save');
             }
@@ -727,6 +759,7 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated, rosterData = {}) 
                 }
 
                 const isDeathRecord = selectedForm.firebaseKey === 'death_record';
+                const shortUrl = shareCode ? buildShortReportUrl(shareCode) : '';
                 const discordPayload = {
                     embeds: [{
                         title: isDeathRecord ? '💀 Death Record Saved (CK)' : 'Report Saved',
@@ -738,18 +771,18 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated, rosterData = {}) 
                             { name: 'Author', value: webhookPayload.author, inline: true },
                             { name: 'Form Name', value: webhookPayload.formName, inline: true },
                             { name: 'Report Title', value: `\`${webhookPayload.originalKey}\``, inline: false },
+                            ...(shortUrl ? [{ name: 'Report Link', value: shortUrl, inline: false }] : []),
                         ],
                         timestamp: new Date().toISOString(),
                         footer: {
-                            text: `FormID: ${webhookPayload.formId} | ReportKey: ${webhookPayload.reportKey} | Build: ${getAppBuildId() || 'unknown'}`
+                            text: `FormID: ${webhookPayload.formId}${shareCode ? ` · r/${shareCode}` : ''} | Build: ${getAppBuildId() || 'unknown'}`
                         }
                     }]
                 };
 
                 if (webhookPayload.hasGtawData) {
                     discordPayload.embeds[0].fields.push(
-                        { name: 'GTAW Username', value: webhookPayload.gtawUsername, inline: true },
-                        { name: 'GTAW Character', value: `${webhookPayload.gtawCharacterName} (${webhookPayload.gtawCharacterId})`, inline: true }
+                        { name: 'GTAW Identity', value: `${webhookPayload.gtawUsername} · ${webhookPayload.gtawCharacterName} (${webhookPayload.gtawCharacterId})`, inline: true },
                     );
                 }
                 if (webhookPayload.requestingOfficer) {
@@ -813,7 +846,7 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated, rosterData = {}) 
                 Sentry.captureException(err, { extra: { context: 'saveReport - Body Tampered Webhook' } });
             }
 
-            return { success: true, reportKey: sanitizedKey, authorId: sanitizedAuthorId, reportPath, originalKey: finalTitle };
+            return { success: true, reportKey: sanitizedKey, authorId: sanitizedAuthorId, reportPath, originalKey: finalTitle, shareCode };
 
         } catch (error) {
             console.error("Error saving new report to Firebase:", error);

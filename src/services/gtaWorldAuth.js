@@ -1,5 +1,5 @@
 import { httpsCallable } from 'firebase/functions';
-import { signInWithCustomToken, signOut } from 'firebase/auth';
+import { signInWithCustomToken, signOut, onAuthStateChanged } from 'firebase/auth';
 import { ref, get } from 'firebase/database';
 import { functions, auth, database } from '../firebase';
 import * as Sentry from "@sentry/react";
@@ -110,6 +110,14 @@ const getRedirectUri = () => {
 
 const sendLoginWebhook = async (userData, role) => {
     try {
+        // The webhook proxy is auth-gated (P0 (c) lockdown). Never fire it
+        // before the Firebase custom-token sign-in has completed — it would
+        // silently skip and the login would never be announced.
+        if (!auth.currentUser) {
+            console.warn('Login webhook skipped — Firebase session not ready.');
+            return;
+        }
+
         const roleLabel = role === 'employee' ? 'PHMC Employee' : 'Non Employee';
         const embed = {
             title: 'GTAW User Login',
@@ -170,20 +178,66 @@ const sendLoginWebhook = async (userData, role) => {
 
         const payload = { username: 'Login Bot', embeds: [embed] };
 
-        triggerWebhookProxy('auth', payload).catch(error => {
-            // The proxy requires Firebase auth (P0 (c) lockdown), but this
-            // fires during the OAuth callback before custom-token sign-in
-            // completes — unauthenticated here is timing, not failure. Skip
-            // silently instead of feeding the error channel + Sentry.
+        try {
+            await triggerWebhookProxy('auth', payload);
+        } catch (error) {
+            // The proxy requires Firebase auth (P0 (c) lockdown). With the
+            // deferred caller this should only happen if the session/token is
+            // still settling; log it rather than failing the login.
             if (error?.code === 'unauthenticated') {
-                console.warn('Login webhook skipped (pre-auth session).');
+                console.warn('Login webhook skipped — Firebase session not ready.');
                 return;
             }
             console.error('Failed to send login webhook:', error);
             Sentry.captureException(error);
-        });
+        }
     } catch (error) {
         console.error('Failed to construct login webhook:', error);
+    }
+};
+
+/**
+ * Resolve once Firebase Auth has a current user, or after timeoutMs. The OAuth
+ * callback's signInWithCustomToken promise usually sets currentUser already;
+ * the observer covers restored sessions / transient persistence delays.
+ */
+const waitForFirebaseUser = (timeoutMs = 5000) => {
+    if (auth.currentUser) return Promise.resolve(true);
+    return new Promise((resolve) => {
+        let settled = false;
+        let unsubscribe = () => {};
+        let timer = null;
+        const finish = (ready) => {
+            if (settled) return;
+            settled = true;
+            try { unsubscribe(); } catch { /* ignore */ }
+            if (timer) clearTimeout(timer);
+            resolve(ready);
+        };
+        unsubscribe = onAuthStateChanged(auth, (user) => {
+            if (user) finish(true);
+        });
+        timer = setTimeout(() => finish(!!auth.currentUser), timeoutMs);
+    });
+};
+
+/**
+ * Send the login announcement only after Firebase Auth is ready. Used by the
+ * OAuth callback (post custom-token) and the restored-session path (which can
+ * have GTAW user data before Firebase persistence finishes restoring).
+ */
+const sendLoginWebhookWhenReady = async (userData, role) => {
+    try {
+        if (!auth.currentUser) {
+            const restored = await tryRestoreFirebaseAuth();
+            if (!restored && !(await waitForFirebaseUser())) {
+                console.warn('Login webhook skipped — no Firebase session after restore/wait.');
+                return;
+            }
+        }
+        await sendLoginWebhook(userData, role);
+    } catch (error) {
+        console.warn('Login webhook deferred send failed:', error?.message || error);
     }
 };
 
@@ -203,7 +257,7 @@ export const initiateGtaWorldLogin = async (options = {}) => {
                 ...(isNonEmp ? { isFactionMember: false, faction: null, allFactionCharacters: [] } : {}),
             };
             storeUser(userWithRole);
-            sendLoginWebhook(userWithRole, options.role);
+            await sendLoginWebhookWhenReady(userWithRole, options.role);
             if (options.onSuccess) {
                 options.onSuccess(userWithRole, options.returnPath || '#/');
             }
@@ -290,8 +344,6 @@ export const handleOAuthCallback = async (code, state, onSuccess, onError, onPro
                 throw new Error('Authentication failed: Invalid user data received');
             }
 
-            sendLoginWebhook(userData, storedOAuthData.role);
-            
             // Firebase Sign-in -- MUST succeed before proceeding with the login.
             // If this fails (e.g. auth/network-request-failed), we abort the entire
             // login so we never leave the user in a "half-logged-in" state where
@@ -341,6 +393,11 @@ export const handleOAuthCallback = async (code, state, onSuccess, onError, onPro
             // Persistence: Store token in localStorage for cross-session access (enabled by default)
             localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, result.accessToken);
             localStorage.setItem('phmc_gtaw_oauth_persist_enabled', 'true');
+
+            // Announce only after Firebase sign-in succeeded — the webhook
+            // proxy is auth-gated, and firing before signInWithCustomToken
+            // resolves was the bug that silently dropped every login notice.
+            await sendLoginWebhookWhenReady(userData, storedOAuthData.role);
 
             sessionStorage.removeItem(STORAGE_KEYS.OAUTH_STATE);
             sessionStorage.removeItem(STORAGE_KEYS.OAUTH_REQUEST_LOCK);

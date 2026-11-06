@@ -8,7 +8,6 @@ import { logFnCall, sendWebhook, logStep } from './deployLogger.js';
 import { state, C } from './deployState.js';
 import { setDeployStatus, markReportComplete } from './deployStatus.js';
 import { crosspostAutopsyToLssd } from './deployLssd.js';
-import { crosspostAutopsyToLspd } from './deployLspd.js';
 import { clearAssignment } from './autopsyRotation.js';
 import { buildCompletionBb } from './completionTemplate.js';
 import { isDoePlaceholder } from './doePlaceholders.js';
@@ -106,9 +105,7 @@ export async function resolveAutopsyTopic(interaction) {
             // Mark as completed in autopsy-requested
             let completedTopicId = null;
             let completedLssdTopicId = null;
-            let completedLspdTopicId = null;
             let completionCaseTitle = null;
-            let completionCaseTopicId = null;
             try {
                 const ooc = (reportData.data?.decedentOOC || '').trim();
                 const name = (reportData.data?.decedentName || '').trim();
@@ -203,9 +200,7 @@ export async function resolveAutopsyTopic(interaction) {
                         } else {
                             completedTopicId = key;
                             completedLssdTopicId = entry.lssdRequestTopicId || caseRec?.lssdRequestTopicId || null;
-                            completedLspdTopicId = entry.lspdTopicId || caseRec?.lspdTopicId || null;
                             completionCaseTitle = ((caseRec?.caseTitle || entry.caseUrl || entry.title || 'Autopsy Case')).replace(/\s*[-–—]\s*UNASSIGNED\s*$/i, '');
-                            completionCaseTopicId = caseRec?.caseTopicId || entry.caseTopicId || null;
 
                             // Private cases have no public request topic and never crosspost.
                             // Mark them completed but skip the public reply + crossposts.
@@ -234,10 +229,7 @@ export async function resolveAutopsyTopic(interaction) {
                                     : (String(entry.faction || '').toLowerCase()
                                         || (/\[(lssd|lspd)\]/i.exec(entry.title || '') || [])[1]?.toLowerCase()
                                         || null);
-                                const completionLspdUrl = completedLspdTopicId
-                                    ? `https://lspd.gta.world/viewtopic.php?t=${completedLspdTopicId}`
-                                    : null;
-                                const completionBb = buildCompletionBb(completionCaseTitle, requesterName, { faction: completionFaction, lspdUrl: completionLspdUrl, formsAutopsy: entry.formsAutopsy });
+                                const completionBb = buildCompletionBb(completionCaseTitle, requesterName, { faction: completionFaction, formsAutopsy: entry.formsAutopsy });
 
                                 const isMulti = caseRec != null;
                                 let allCasesDone = true;
@@ -321,15 +313,8 @@ export async function resolveAutopsyTopic(interaction) {
                 console.log('[AUTO-COMPLETE] LSSD cross-post triggered');
                 crosspostAutopsyToLssd(reportData, bbCode, completedTopicId, db, completedLssdTopicId).catch(() => {});
             }
-            // LSPD cross-post (was missing — posts the completed report to the
-            // LSPD certified-copy topic created at detection time).
-            if (completedTopicId) {
-                console.log('[AUTO-COMPLETE] LSPD cross-post triggered');
-                crosspostAutopsyToLspd(reportData, bbCode, completedTopicId, db, completedLspdTopicId, {
-                    caseTitle: completionCaseTitle || reportData.originalKey || 'Autopsy Case',
-                    caseTopicId: completionCaseTopicId || topicId,
-                }).catch(() => {});
-            }
+            // LSPD cross-post retired Nov 2026 (dead phpBB board) — delivery
+            // runs via the ME liaison form step plus the share link.
         } else {
             await logStep(' Autopsy Posted But Status Update Failed', 'Reply was posted at [View Reply](<' + result.url + '>) but the Firebase status update did not verify.', { color: 0xffc107, isFinal: true });
         }

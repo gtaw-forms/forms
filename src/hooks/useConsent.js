@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { database } from '../firebase';
-import { ref, get, set } from 'firebase/database';
+import { ref, get, set, onValue } from 'firebase/database';
 import { useAuth } from '../contexts/AuthContext';
 
 // Deploy-tracked forms. Medical Records + Patient Files were retired (new
@@ -43,6 +43,37 @@ export const SECTION_ICONS = {
 
 const CONSENT_ROOT = 'user-consent';
 
+// Localhost fallback: without a Firebase uid there is nowhere server-side to
+// persist consent, so opt-outs used to evaporate on reload and never reach
+// other hook instances. A localStorage mirror fixes both (same shape as RTDB).
+const LOCAL_CONSENT_KEY = 'phmc-consent-local';
+
+function readLocalConsent() {
+    try {
+        const raw = localStorage.getItem(LOCAL_CONSENT_KEY);
+        const parsed = raw ? JSON.parse(raw) : {};
+        return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+        return {};
+    }
+}
+
+function writeLocalConsent(patch) {
+    try {
+        localStorage.setItem(LOCAL_CONSENT_KEY, JSON.stringify({ ...readLocalConsent(), ...patch }));
+    } catch {
+        /* ignore quota/private-mode errors */
+    }
+}
+
+function withDefaults(data) {
+    const out = { ...(data || {}) };
+    for (const formId of DEPLOY_TRACKED_FORMS) {
+        if (out[formId] === undefined) out[formId] = true;
+    }
+    return out;
+}
+
 /**
  * Check consent directly from Firebase (no React hook needed).
  * Used by useFormSaver.js to determine deploy path.
@@ -70,41 +101,42 @@ export function useConsent() {
 
     useEffect(() => {
         if (!uid) {
-            // No Firebase user (e.g. localhost dev) — use defaults (all opted in)
-            const defaults = {};
-            for (const formId of DEPLOY_TRACKED_FORMS) defaults[formId] = true;
-            console.log('[useConsent] No uid — using defaults:', defaults);
-            setConsentState(defaults);
-            setHasSavedConsent(false);
+            // No Firebase user (e.g. localhost dev) — defaults over the local
+            // mirror so opt-outs survive reloads and remounts.
+            const data = withDefaults(readLocalConsent());
+            console.log('[useConsent] No uid — using local mirror:', data);
+            setConsentState(data);
+            setHasSavedConsent(Object.keys(readLocalConsent()).length > 0);
             setConsentLoaded(true);
             return;
         }
+        // Live subscription (not a one-time get): consent toggled in another
+        // tab, route or hook instance reflects here without a remount.
         const r = ref(database, `${CONSENT_ROOT}/${uid}`);
-        get(r).then((snap) => {
+        const unsubscribe = onValue(r, (snap) => {
             const raw = snap.val();
             const hasRealData = raw !== null && Object.keys(raw).length > 0;
-            const data = raw || {};
-            // Fill in defaults: all tracked forms default to true (opt-in)
-            for (const formId of DEPLOY_TRACKED_FORMS) {
-                if (data[formId] === undefined) data[formId] = true;
-            }
+            const data = withDefaults(raw || {});
             console.log('[useConsent] Loaded from Firebase:', { hasRealData, data });
             setConsentState(data);
             setHasSavedConsent(hasRealData);
             setConsentLoaded(true);
-        }).catch(() => {
-            const defaults = {};
-            for (const formId of DEPLOY_TRACKED_FORMS) defaults[formId] = true;
+        }, () => {
+            const defaults = withDefaults({});
             console.log('[useConsent] Firebase read failed — using defaults:', defaults);
             setConsentState(defaults);
             setHasSavedConsent(false);
             setConsentLoaded(true);
         });
+        return () => {
+            try { unsubscribe(); } catch { /* ignore */ }
+        };
     }, [uid]);
 
     const setConsent = useCallback(async (formId, value) => {
         if (!uid) {
-            console.log('[useConsent] No uid (localhost) — skipping Firebase write');
+            console.log('[useConsent] No uid (localhost) — writing to local mirror');
+            writeLocalConsent({ [formId]: value });
             setConsentState(prev => ({ ...prev, [formId]: value }));
             setHasSavedConsent(true);
             return;
@@ -116,8 +148,9 @@ export function useConsent() {
 
     const saveAllConsent = useCallback(async (all) => {
         if (!uid) {
-            // Localhost dev — no Firebase Auth, just update local state
-            console.log('[useConsent] No uid (localhost) — saving to local state only');
+            // Localhost dev — no Firebase Auth, mirror + local state only
+            console.log('[useConsent] No uid (localhost) — saving to local mirror only');
+            writeLocalConsent(all);
             setConsentState(prev => ({ ...prev, ...all }));
             setHasSavedConsent(true);
             return;

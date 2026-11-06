@@ -1,0 +1,190 @@
+/* LSPD staff guide modal — platform-themed, self-contained.
+   (Legacy .modal-* classes live outside the .pmc namespace; this builds its
+   own overlay so the guide looks right inside migration-ui and report-share.) */
+
+.pmc-guide-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(4, 4, 6, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.pmc-guide-card {
+  background: var(--panel, #121214);
+  border: 1px solid var(--border, #232327);
+  border-radius: 12px;
+  max-width: 520px;
+  width: 100%;
+  padding: 22px 24px 20px;
+  color: var(--text, #e9e9ec);
+  font-family: "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
+}
+
+.pmc-guide-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.pmc-guide-kicker {
+  font-size: 11px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--accent, #d63a3a);
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.pmc-guide-head h2 {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0;
+  line-height: 1.3;
+}
+
+.pmc-guide-x {
+  background: transparent;
+  border: 1px solid var(--border, #232327);
+  border-radius: 8px;
+  color: var(--muted, #8e8e96);
+  width: 30px;
+  height: 30px;
+  cursor: pointer;
+  flex-shrink: 0;
+  font-size: 13px;
+}
+
+.pmc-guide-x:hover {
+  color: var(--text, #e9e9ec);
+  border-color: #3a3a42;
+}
+
+.pmc-guide-dots {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.pmc-guide-dots span {
+  height: 4px;
+  flex: 1;
+  border-radius: 2px;
+  background: var(--chip, #26262c);
+}
+
+.pmc-guide-dots span.on {
+  background: var(--accent, #d63a3a);
+}
+
+.pmc-guide-body {
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--text, #e9e9ec);
+  margin: 0 0 10px;
+}
+
+.pmc-guide-count {
+  font-size: 12px;
+  color: var(--muted, #8e8e96);
+  margin: 0 0 14px;
+}
+
+.pmc-guide-warn {
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.55;
+  color: #ff6b6b;
+  background: rgba(214, 58, 58, 0.1);
+  border: 1px solid rgba(214, 58, 58, 0.45);
+  border-radius: 8px;
+  padding: 9px 12px;
+  margin: 0 0 10px;
+}
+
+.pmc-guide-linkrow {
+  margin: 0 0 10px;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.pmc-guide-linkrow a {
+  color: var(--teal, #3aa08a);
+}
+
+.pmc-guide-points {
+  margin: 0 0 12px 18px;
+  padding: 0;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--text, #e9e9ec);
+}
+
+.pmc-guide-points li {
+  margin-bottom: 6px;
+}
+
+.pmc-guide-points li:last-child {
+  margin-bottom: 0;
+}
+
+.pmc-guide-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.pmc-guide-btn {
+  padding: 9px 18px;
+  border-radius: 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--accent, #d63a3a);
+  background: var(--accent, #d63a3a);
+  color: #fff;
+  font-family: inherit;
+}
+
+.pmc-guide-btn:hover {
+  filter: brightness(1.1);
+}
+
+.pmc-guide-btn.ghost {
+  background: transparent;
+  color: var(--text, #e9e9ec);
+  border-color: var(--border, #232327);
+}
+
+.pmc-guide-btn.ghost:hover {
+  background: var(--panel-2, #17171a);
+  border-color: #3a3a42;
+}
+
+.pmc-guide-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+  filter: none;
+}
+
+.pmc-guide-link {
+  background: none;
+  border: none;
+  padding: 0;
+  margin-top: 8px;
+  font-size: 12.5px;
+  color: var(--teal, #3aa08a);
+  cursor: pointer;
+  text-align: left;
+  line-height: 1.5;
+}
+
+.pmc-guide-link:hover {
+  text-decoration: underline;
+}

@@ -62,6 +62,37 @@ function isStaffRole(roleId) {
 }
 
 /**
+ * Resolve the display character name for audit/telemetry. The PHMC `characterName`
+ * claim is null for non-PHMC users (most LEO users), so the custom token also
+ * carries this broader display name: active character, then PHMC faction
+ * character, then the first OAuth character. Names only — no ids.
+ */
+function resolveDisplayCharacterName(finalUser, factionCharacter = null) {
+    const nameOf = (entry) => {
+        if (!entry) return '';
+        const raw = entry.character || entry;
+        return String(
+            raw.characterName
+            || raw.name
+            || `${raw.firstname || ''} ${raw.lastname || ''}`.trim()
+            || ''
+        ).trim();
+    };
+    const activeName = nameOf(finalUser?.activeCharacter || finalUser?.active_character);
+    if (activeName) return activeName;
+    const factionName = nameOf(factionCharacter);
+    if (factionName) return factionName;
+    const chars = Array.isArray(finalUser?.character) ? finalUser.character
+        : Array.isArray(finalUser?.characters) ? finalUser.characters
+            : [];
+    const marked = chars.find((entry) => {
+        const raw = entry?.character || entry;
+        return raw?.active === true || raw?.isActive === true || raw?.is_active === true || raw?.selected === true;
+    });
+    return nameOf(marked || chars[0]) || null;
+}
+
+/**
  * Resolve a roster record for an OAuth character. The OAuth `character[].id` is
  * normally the real character id (which equals the roster record KEY), but for
  * some accounts it is the UCP account id / a stale id (e.g. Alyson Frost: OAuth
@@ -401,6 +432,7 @@ export const processGtaWorldAuth = onCall({
                 gtawUsername: finalUser.username,
                 oauthName: finalUser.username,
                 characterName: factionResult.character?.characterName || null,
+                displayCharacterName: resolveDisplayCharacterName(finalUser, factionResult.character),
                 isFactionMember: factionResult.isMember,
                 accessLevel: factionResult.accessLevel,
                 isSuperAdmin: isElevated,
@@ -678,6 +710,7 @@ export const refreshGtawUser = onCall({
                 gtawUsername: finalUser.username,
                 oauthName: finalUser.username,
                 characterName: factionResult.character?.characterName || null,
+                displayCharacterName: resolveDisplayCharacterName(finalUser, factionResult.character),
                 isFactionMember: factionResult.isMember,
                 accessLevel: factionResult.accessLevel,
                 isSuperAdmin: isElevated,

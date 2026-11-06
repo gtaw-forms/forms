@@ -11,6 +11,7 @@
  */
 
 import { EmbedBuilder } from 'discord.js';
+import { existsSync, statSync } from 'fs';
 import { sendLogMessage } from './logChannel.js';
 
 const TAG = 'DEPLOY';
@@ -171,6 +172,33 @@ export class DeployProgressEmbed {
             await channel.messages.edit(this.messageId, { embeds: [this._build()] });
         } catch (err) {
             console.warn(`[PROGRESS] Failed to finalize embed: ${err.message}`);
+        }
+    }
+
+    /**
+     * Post a captioned screenshot as a SEPARATE follow-up message (never an
+     * edit — Discord drops attachments on embed-only edits, so progress
+     * snapshots go out as their own messages to survive). Best-effort:
+     * missing/oversize files are skipped with a log line, never thrown.
+     * @param {string} caption - One-line caption shown above the image
+     * @param {string} imagePath - Local PNG path (VPS /tmp screenshots)
+     */
+    async snapshot(caption, imagePath) {
+        if (!this.client || !this.channelId || !imagePath) return;
+        try {
+            if (!existsSync(imagePath)) {
+                console.warn(`[PROGRESS] Snapshot skipped — no such file: ${imagePath}`);
+                return;
+            }
+            // Discord caps standard uploads at 8 MiB for safety here.
+            if (statSync(imagePath).size > 8 * 1024 * 1024) {
+                console.warn(`[PROGRESS] Snapshot skipped — oversize: ${imagePath}`);
+                return;
+            }
+            const channel = await this.client.channels.fetch(this.channelId);
+            await channel.send({ content: caption || '', files: [{ attachment: imagePath }] });
+        } catch (err) {
+            console.warn(`[PROGRESS] Failed to post snapshot: ${err.message}`);
         }
     }
 

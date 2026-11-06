@@ -1,0 +1,42 @@
+/* Report share page — chrome-free single-report layout.
+   Inherits the platform theme (.pmc); only the share-specific bits live here:
+   the sign-in card copy and the audit footer. The sidebar reuses the
+   migration-ui navigation styles verbatim. */
+
+.pmc .share-lead {
+  font-size: 14px;
+  line-height: 1.55;
+  margin-bottom: 12px;
+}
+
+/* Sidebar entries are Links (anchors), not buttons — kill the underline. */
+.pmc a.side-btn,
+.pmc a.nav-item {
+  text-decoration: none;
+}
+
+.pmc a.nav-item:hover {
+  background: #1d1d22;
+  color: var(--text);
+}
+
+.pmc .share-list {
+  margin: 0 0 16px 18px;
+  padding: 0;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.pmc .share-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.pmc .share-hint {
+  font-size: 12.5px;
+  color: var(--muted);
+  margin-top: 14px;
+  line-height: 1.6;
+}

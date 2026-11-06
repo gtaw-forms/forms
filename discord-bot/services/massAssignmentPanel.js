@@ -46,6 +46,7 @@ import { getChannelId, channelSendEnabled } from './phmcChannels.js';
 import { sendToChannel } from './logChannel.js';
 import firebase from './firebase.js';
 import { readChild, writeChild, removeChild } from './vpsState.js';
+import { normalizeDeathType } from './outstandingAutopsies.js';
 
 // ── Auto-refresh watcher ──
 // Watches autopsy-requested for changes on mass collections that have a live
@@ -190,7 +191,11 @@ export function normalizePanelAssignment(a = {}) {
     const dateOfDeath = cleanStr(a.dateOfDeath);
     const timeOfDeath = cleanStr(a.timeOfDeath);
     const dod = [cleanStr(a.dod || a.dateOfDeath), cleanStr(a.timeOfDeath)].filter(Boolean).join(' ').trim();
-    const deathType = cleanStr(a.deathType || a.pkck || a.pk_ck || a.pkCk).toUpperCase();
+    // A free-text manner ("CK FOR ISABELA SALAZAR, PK FOR THE OTHER TWO") is
+    // kept verbatim (legacy entries), but a single PK/CK collapses to the code
+    // so per-body rows render "CK"/"PK" instead of a sentence.
+    const deathTypeRaw = cleanStr(a.deathType || a.pkck || a.pk_ck || a.pkCk).toUpperCase();
+    const deathType = normalizeDeathType(deathTypeRaw) || deathTypeRaw;
     const synopsis = cleanStr(a.synopsis || a.synopsisText || a.details);
     const location = cleanStr(a.location || a.placeOfDeath || a.deathLocation);
     const caseUrl = cleanStr(a.caseUrl || a.topicUrl || a.caseLink || a.url);
@@ -760,7 +765,9 @@ export async function buildPanelAssignmentsFromEntry(db, entry) {
                 sex: c.sex,
                 dateOfDeath: c.dateOfDeath,
                 timeOfDeath: c.timeOfDeath,
-                deathType: shared.deathType,
+                // Per-body type wins; the shared Section-4 sentence is only the
+                // fallback for rows staged before per-body types existed.
+                deathType: c.deathType || shared.deathType,
                 synopsis: shared.synopsis,
                 placeOfDeath: c.placeOfDeath,
                 morgue: morgueByIdx[i] ?? null,

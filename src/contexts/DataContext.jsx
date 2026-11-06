@@ -1,5 +1,5 @@
 import React, { createContext, useState, useEffect, useContext, useCallback, useRef, useMemo } from 'react';
-import { database } from '../firebase';
+import { database, auth } from '../firebase';
 import { ref, get, onValue } from 'firebase/database';
 import { useNotification } from './NotificationContext.jsx';
 import { useInactivityReload } from '../hooks/useInactivityReload';
@@ -417,7 +417,24 @@ export const DataProvider = ({ children }) => {
 
         // Fetch from VPS API via Firebase Function (replaces direct Firebase RTDB read)
         try {
-            const result = await triggerGetMorgueRecords();  // no limit — VPS returns all records
+            // Localhost dev without a signed-in Firebase user: the callable is
+            // auth-gated (and CORS-listed to known origins), so this session
+            // could never load morgue records. The dev server proxies
+            // /dev-morgue to the VPS morgue-api with the read key injected
+            // server-side (vite.config.js). `import.meta.env.DEV` is false in
+            // every production build, so the branch and key cannot ship.
+            const useDevMorgueProxy = import.meta.env.DEV && !auth.currentUser;
+            let result;
+            if (useDevMorgueProxy) {
+                const res = await fetch('/dev-morgue');
+                const contentType = res.headers.get('content-type') || '';
+                if (!res.ok || !contentType.includes('application/json')) {
+                    throw new Error(`dev morgue proxy unavailable (HTTP ${res.status}) — see vite.config.js`);
+                }
+                result = await res.json();
+            } else {
+                result = await triggerGetMorgueRecords();  // no limit — VPS returns all records
+            }
 
             // Convert the records array back to the Firebase-style object for the cache layer
             const data = {};

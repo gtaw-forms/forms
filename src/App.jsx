@@ -93,6 +93,7 @@ const GtaLogin = lazy(() => import('./components/Auth/GtaLogin.jsx'));
 const GtaCallback = lazy(() => import('./components/Auth/GtaCallback.jsx'));
 const NewUIPrototype = lazy(() => import('./components/ui-new/index.jsx'));
 const MigrationUI = lazy(() => import('./components/migration-ui/index.jsx'));
+const ReportShare = lazy(() => import('./components/report-share/ReportShare.jsx'));
 
 function App() {
     const [formData, setFormData] = useState({});
@@ -284,11 +285,18 @@ function App() {
                                 <Route path="/ui-prototype" element={<NewUIPrototype />} />
                                 <Route path="/prototype-basic" element={<NewUIPrototype basicMode />} />
                                 <Route path="/migration-ui" element={<MigrationUI />} />
-                                {/* Deep links used by the Discord link-preview buttons */}
-                                <Route path="/morgue" element={<NewUIPrototype initialView="morgue" />} />
-                                <Route path="/tow" element={<NewUIPrototype initialView="tow" />} />
+                                {/* Deep links used by the Discord link-preview buttons.
+                                    `key` forces a fresh prototype instance when
+                                    moving between views (React would otherwise
+                                    reuse the component and keep its old activeView). */}
+                                <Route path="/morgue" element={<NewUIPrototype key="morgue" initialView="morgue" />} />
+                                <Route path="/leo" element={<NewUIPrototype key="leo" initialView="leo" />} />
                                 {/* Autopsy deep link from the bot (?#/load/<requestTopicId>/<caseIdx?>) */}
                                 <Route path="/load/:requestId/:caseIdx?" element={<LoadCaseRoute />} />
+                                {/* Portal deep link for LEO notices (#/report/<author>/<key>) */}
+                                <Route path="/report/:author/:key" element={<ReportShare />} />
+                                {/* Short share code (#/r/<code>, index in RTDB shortLinks) */}
+                                <Route path="/r/:code" element={<ReportShare />} />
                                 {/* Legacy form-handler DECOMMISSIONED — any attempt redirects to the new UI */}
                                 <Route path="/form-handler" element={<Navigate to="/ui-prototype" replace />} />
                                 <Route path="*" element={<Navigate to="/" replace />} />

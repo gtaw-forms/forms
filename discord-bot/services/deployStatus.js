@@ -5,6 +5,11 @@
  */
 
 import { logFnCall } from './deployLogger.js';
+import { mirrorScheduledReportToVps } from './vpsReportMirror.js';
+
+// Only real posts get the post-deploy VPS copy. Simulated/dry-run posts and
+// consent/skip terminal paths must never enter the live records/LEO feeds.
+const MIRRORED_DEPLOY_TYPES = new Set(['pm', 'topic', 'autopsy-reply', 'autopsy-lssd', 'medical-record']);
 
 /**
  * Mark a report as deployed (or failed) in Firebase.
@@ -78,6 +83,13 @@ export async function markReportComplete(db, authorId, key, label, type, resultU
         await markDeployed(db, authorId, key, true, { ...parseDeployUrl(resultUrl), deployType: type });
 
         await setDeployStatus(db, authorId, key, 'deployed', `Successfully deployed to ${type}.`);
+
+        // Durable VPS copy after the post actually succeeded. The web app
+        // mirrors at save time; this re-write stores the final deployed record
+        // (status/URL) and covers old builds and non-web queue writers.
+        if (MIRRORED_DEPLOY_TYPES.has(type) && !String(resultUrl || '').includes('dry_run=')) {
+            await mirrorScheduledReportToVps(db, authorId, key, { type });
+        }
 
         console.log(`[AUTO] ${key} marked as COMPLETED, removing from queue.`);
 

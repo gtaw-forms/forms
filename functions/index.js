@@ -12,6 +12,16 @@ import { createRateLimiter } from './src/utils/rateLimit.js';
 // far below this; a loop trips it within seconds.
 const checkMorgueRecordsRateLimit = createRateLimiter({ windowMs: 60000, maxCalls: 10 });
 
+// LEO forwarded-report limits: the list is cheap and polled on tab focus;
+// opens are audited per report, so cap both per UID to stop log flooding.
+const checkLeoListRateLimit = createRateLimiter({ windowMs: 60000, maxCalls: 30 });
+const checkLeoViewRateLimit = createRateLimiter({ windowMs: 60000, maxCalls: 60 });
+// Panel opens are one per navigation; 20/min per UID is generous while still
+// stopping embed spam from a scripted client.
+const checkLeoPanelRateLimit = createRateLimiter({ windowMs: 60000, maxCalls: 20 });
+// Every report open writes one audit line; 120/min per UID is far above human use.
+const checkReportViewRateLimit = createRateLimiter({ windowMs: 60000, maxCalls: 120 });
+
 const MORGUE_API_URL = process.env.MORGUE_API_URL || 'http://88.208.243.254';
 const MORGUE_API_KEY = process.env.MORGUE_API_KEY;
 // Write key for mutating VPS calls (PUT/DELETE). The VPS rejects those methods
@@ -27,8 +37,11 @@ function morgueRequesterHeaders(request) {
     return {
         'x-api-key': MORGUE_API_KEY,
         'x-phmc-requester-uid': clean(request.auth?.uid, 160),
-        'x-phmc-requester-character': clean(token.characterName),
+        'x-phmc-requester-character': clean(token.displayCharacterName || token.characterName),
         'x-phmc-requester-oauth': clean(token.oauthName || token.gtawUsername),
+        // Platform-observed client IP (the VPS otherwise sees Cloud Functions
+        // egress). Trustworthy because it is set server-side, like the claims.
+        'x-phmc-requester-ip': clean(request.rawRequest?.ip, 64),
     };
 }
 
@@ -61,7 +74,9 @@ export const getPublicConfig = onCall({
     cors: [
         'https://gtaw-forms.github.io',
         'https://phmc-tools.gta.world',
-        'http://localhost:3000'
+        'http://localhost:3000',
+        'http://localhost:5173',
+        'http://127.0.0.1:5173'
     ]
 }, async () => {
     const { getConfigValue } = await import('./src/utils/config.js');
@@ -126,10 +141,15 @@ export const triggerFactionSync = onCall({
 export const getMorgueRecords = onCall({
     region: "europe-west2",
     memory: "256MiB",
+    // Localhost 5173 is the Vite dev server. It is an origin allowlist only —
+    // the function still requires Firebase Auth, so this does not grant
+    // unsigned-in browsers access (see the /dev-morgue dev proxy in vite.config.js).
     cors: [
         'https://gtaw-forms.github.io',
         'https://phmc-tools.gta.world',
-        'http://localhost:3000'
+        'http://localhost:3000',
+        'http://localhost:5173',
+        'http://127.0.0.1:5173'
     ]
 }, async (request) => {
     if (!request.auth) {
@@ -526,6 +546,76 @@ export const checkOfficerName = onCall({
 });
 
 /**
+ * getOfficerRoster — Returns every LSPD/LSSD/SADCR/DAO roster name, grouped by
+ * department. Backs the web app's daily IndexedDB snapshot so officer-name
+ * autocomplete keeps working when a callable round trip is slow or unavailable
+ * (and stops costing one invocation per keystroke).
+ *
+ * Proxies the VPS morgue-api's /api/roster/:faction routes with the API key.
+ * Response: { departments: { lspd: string[], lssd: [...], sadcr: [...], dao: [...] },
+ *             count, fetchedAt, departmentsFailed: string[] }
+ */
+export const getOfficerRoster = onCall({
+    region: "europe-west2",
+    memory: "256MiB",
+    cors: [
+        'https://gtaw-forms.github.io',
+        'https://phmc-tools.gta.world',
+        'http://localhost:3000',
+        'http://localhost:5173'
+    ]
+}, async (request) => {
+    if (!request.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'Authentication required.');
+    }
+
+    if (!MORGUE_API_KEY) {
+        console.error('[getOfficerRoster] MORGUE_API_KEY environment variable is not set.');
+        throw new functions.https.HttpsError('internal', 'Server configuration error.');
+    }
+
+    const departments = ['lspd', 'lssd', 'sadcr', 'dao'];
+    const result = {};
+    const departmentsFailed = [];
+
+    await Promise.all(departments.map(async (faction) => {
+        try {
+            const response = await fetch(`${MORGUE_API_URL}/api/roster/${faction}`, {
+                headers: { 'x-api-key': MORGUE_API_KEY },
+            });
+            if (!response.ok) {
+                console.error(`[getOfficerRoster] VPS roster/${faction} returned ${response.status}`);
+                departmentsFailed.push(faction);
+                return;
+            }
+            const data = await response.json();
+            const names = (Array.isArray(data?.members) ? data.members : [])
+                .map((member) => String(member?.name || '').replace(/\s+/g, ' ').trim().slice(0, 120))
+                .filter(Boolean);
+            if (names.length > 0) result[faction] = names;
+        } catch (err) {
+            console.error(`[getOfficerRoster] roster/${faction} failed:`, err.message);
+            departmentsFailed.push(faction);
+        }
+    }));
+
+    const count = Object.values(result).reduce((total, names) => total + names.length, 0);
+    if (count === 0) {
+        throw new functions.https.HttpsError('internal', 'Officer roster is unavailable.');
+    }
+
+    console.log(`[getOfficerRoster] Returning ${count} names across ${Object.keys(result).length} department(s)`
+        + (departmentsFailed.length ? `; failed: ${departmentsFailed.join(',')}` : ''));
+
+    return {
+        departments: result,
+        count,
+        fetchedAt: Date.now(),
+        departmentsFailed,
+    };
+});
+
+/**
  * getAgencyCredentials — Returns the shared faction-forum account credentials
  * (keyed by forum hostname, e.g. "lspd.gta.world").
  *
@@ -598,20 +688,27 @@ export const getAgencyCredentials = onCall({
 // ── VPS saved-report proxies ──
 // Normal saved reports live on morgue-api. Scheduled/deployment-tracked reports
 // continue using RTDB so the Discord bot queue remains unchanged.
-async function callSavedReportsApi(path, options = {}) {
+async function callSavedReportsApi(path, options = {}, identityRequest = null) {
     if (!MORGUE_API_KEY) throw new functions.https.HttpsError('internal', 'Server configuration error.');
     const method = String(options.method || 'GET').toUpperCase();
     // PUT/DELETE require a write key on the VPS; GET/POST work with the read key.
     const apiKey = (method === 'PUT' || method === 'DELETE') && MORGUE_WRITE_API_KEY
         ? MORGUE_WRITE_API_KEY
         : MORGUE_API_KEY;
+    // Identity headers are server-derived (never client-supplied) so audited
+    // reads cannot be spoofed. `morgueRequesterHeaders` also carries x-api-key,
+    // which the explicit apiKey below overrides for write-key paths.
+    const identityHeaders = identityRequest ? morgueRequesterHeaders(identityRequest) : {};
+    const headers = {
+        'x-api-key': apiKey,
+        ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+        ...identityHeaders,
+        ...(options.headers || {}),
+    };
+    headers['x-api-key'] = apiKey;
     const response = await fetch(`${MORGUE_API_URL}${path}`, {
         ...options,
-        headers: {
-            'x-api-key': apiKey,
-            ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-            ...(options.headers || {}),
-        },
+        headers,
     });
     if (!response.ok) {
         const text = await response.text();
@@ -624,6 +721,16 @@ async function callSavedReportsApi(path, options = {}) {
 
 function requireSignedIn(request) {
     if (!request.auth) throw new functions.https.HttpsError('unauthenticated', 'Authentication required.');
+}
+
+// Display-only character hint from the signed-in client. The Auth custom claim
+// only carries a PHMC faction character, so non-PHMC LEO users otherwise audit
+// as "Unknown". UID/OAuth remain server-derived; this is never an auth gate.
+function displayCharacterHint(request) {
+    return String(request.data?.characterName || '')
+        .replace(/[\x00-\x1f\x7f]/g, '')
+        .trim()
+        .slice(0, 120);
 }
 
 // ── Saved-report author gate (Task 3b-8, design §3 auth tightening) ──
@@ -698,7 +805,7 @@ export const listSavedReports = onCall({ region: 'europe-west2', memory: '256MiB
     let path = `/api/reports?author=${encodeURIComponent(author)}`;
     if (limit > 0) path += `&limit=${limit}`;
     if (offset > 0) path += `&offset=${offset}`;
-    return callSavedReportsApi(path);
+    return callSavedReportsApi(path, {}, request);
 });
 
 export const listRecentSavedReports = onCall({ region: 'europe-west2', memory: '256MiB' }, async (request) => {
@@ -716,7 +823,7 @@ export const listRecentSavedReports = onCall({ region: 'europe-west2', memory: '
     if (formId) params.set('formId', formId);
     const q = String(request.data?.q || '').trim();
     if (q) params.set('q', q);
-    return callSavedReportsApi(`/api/reports/recent?${params.toString()}`);
+    return callSavedReportsApi(`/api/reports/recent?${params.toString()}`, {}, request);
 });
 
 export const getSavedReport = onCall({ region: 'europe-west2', memory: '256MiB' }, async (request) => {
@@ -725,7 +832,109 @@ export const getSavedReport = onCall({ region: 'europe-west2', memory: '256MiB' 
     const key = String(request.data?.key || '').trim();
     if (!author || !key) throw new functions.https.HttpsError('invalid-argument', 'author and key are required.');
     // Read: any signed-in user may fetch any author's report (2026-10-02).
-    return callSavedReportsApi(`/api/reports/${encodeURIComponent(author)}/${encodeURIComponent(key)}`);
+    return callSavedReportsApi(`/api/reports/${encodeURIComponent(author)}/${encodeURIComponent(key)}`, {}, request);
+});
+
+// ── LEO forwarded reports (list + audited opens) ──
+// Visible to any OAuth/Firebase-signed-in user (same read policy as
+// getSavedReport), but the feed only contains reports whose values carry
+// ReportRequested === true. Opens are audited on the VPS with identity
+// headers derived from verified Auth claims — never client-supplied strings.
+
+export const listLeoReports = onCall({ region: 'europe-west2', memory: '256MiB' }, async (request) => {
+    requireSignedIn(request);
+    if (!checkLeoListRateLimit(request.auth.uid)) {
+        throw new functions.https.HttpsError('resource-exhausted', 'LEO report list rate limit exceeded. Try again in a minute.');
+    }
+    const params = new URLSearchParams();
+    const rawLimit = Number(request.data?.limit);
+    const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(Math.floor(rawLimit), 100) : 50;
+    params.set('limit', String(limit));
+    const rawOffset = Number(request.data?.offset);
+    if (Number.isFinite(rawOffset) && rawOffset > 0) params.set('offset', String(Math.floor(rawOffset)));
+    const agency = String(request.data?.agency || '').trim();
+    if (agency) params.set('agency', agency);
+    const q = String(request.data?.q || '').trim();
+    if (q) params.set('q', q);
+    return callSavedReportsApi(`/api/reports/leo?${params.toString()}`, {}, request);
+});
+
+export const getLeoReport = onCall({ region: 'europe-west2', memory: '256MiB' }, async (request) => {
+    requireSignedIn(request);
+    if (!checkLeoViewRateLimit(request.auth.uid)) {
+        throw new functions.https.HttpsError('resource-exhausted', 'LEO report view rate limit exceeded. Try again in a minute.');
+    }
+    const author = String(request.data?.author || '').trim();
+    const key = String(request.data?.key || '').trim();
+    if (!author || !key) throw new functions.https.HttpsError('invalid-argument', 'author and key are required.');
+    // The VPS verifies the report is forwarded, appends the audit line, then
+    // returns the payload — one round trip for read + attribution. The viewer
+    // hint only affects the audit display name; UID/OAuth come from Auth.
+    const params = new URLSearchParams();
+    const hint = displayCharacterHint(request);
+    if (hint) params.set('viewer', hint);
+    const qs = params.toString();
+    return callSavedReportsApi(
+        `/api/reports/leo/${encodeURIComponent(author)}/${encodeURIComponent(key)}${qs ? `?${qs}` : ''}`,
+        {},
+        request,
+    );
+});
+
+export const logLeoReportView = onCall({ region: 'europe-west2', memory: '256MiB' }, async (request) => {
+    requireSignedIn(request);
+    if (!checkLeoViewRateLimit(request.auth.uid)) {
+        throw new functions.https.HttpsError('resource-exhausted', 'LEO report view rate limit exceeded. Try again in a minute.');
+    }
+    const author = String(request.data?.author || '').trim();
+    const key = String(request.data?.key || '').trim();
+    if (!author || !key) throw new functions.https.HttpsError('invalid-argument', 'author and key are required.');
+    const source = request.data?.source === 'cache' ? 'cache' : 'live';
+    return callSavedReportsApi(
+        `/api/reports/leo/${encodeURIComponent(author)}/${encodeURIComponent(key)}/view`,
+        { method: 'POST', body: JSON.stringify({ source, characterName: displayCharacterHint(request) }) },
+        request,
+    );
+});
+
+export const logLeoPanelAccess = onCall({ region: 'europe-west2', memory: '256MiB' }, async (request) => {
+    requireSignedIn(request);
+    if (!checkLeoPanelRateLimit(request.auth.uid)) {
+        throw new functions.https.HttpsError('resource-exhausted', 'LEO panel access rate limit exceeded. Try again in a minute.');
+    }
+    const source = ['migration-ui', 'prototype', 'panel'].includes(request.data?.source)
+        ? request.data.source
+        : 'panel';
+    // Display hint only: the client's active character (PHMC claim is null for
+    // most LEO users). UID/OAuth stay authoritative via the identity headers.
+    const characterName = displayCharacterHint(request);
+    // Stale-bundle diagnosis: which client build sent the panel event.
+    const appBuild = String(request.data?.appBuild || '')
+        .replace(/[\x00-\x1f\x7f]/g, '')
+        .trim()
+        .slice(0, 80);
+    return callSavedReportsApi(
+        '/api/reports/leo/access',
+        { method: 'POST', body: JSON.stringify({ source, characterName, appBuild }) },
+        request,
+    );
+});
+
+export const logReportView = onCall({ region: 'europe-west2', memory: '256MiB' }, async (request) => {
+    requireSignedIn(request);
+    if (!checkReportViewRateLimit(request.auth.uid)) {
+        throw new functions.https.HttpsError('resource-exhausted', 'Report view rate limit exceeded. Try again in a minute.');
+    }
+    const author = String(request.data?.author || '').trim();
+    const key = String(request.data?.key || '').trim();
+    if (!author || !key) throw new functions.https.HttpsError('invalid-argument', 'author and key are required.');
+    // Context is a fixed internal tag, never user-facing text.
+    const context = String(request.data?.context || 'migration-ui').replace(/[^\w-]/g, '').slice(0, 40) || 'migration-ui';
+    return callSavedReportsApi(
+        `/api/reports/${encodeURIComponent(author)}/${encodeURIComponent(key)}/view`,
+        { method: 'POST', body: JSON.stringify({ context, characterName: displayCharacterHint(request) }) },
+        request,
+    );
 });
 
 export const saveSavedReport = onCall({ region: 'europe-west2', memory: '256MiB' }, async (request) => {

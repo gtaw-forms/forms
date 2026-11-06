@@ -108,7 +108,7 @@ async function registerCommands() {
     const agencyCreds = await import('./commands/agency-creds.js');
     const dev = await import('./commands/dev.js');
     const autopsyRequest = await import('./commands/autopsy-request.js');
-    const autopsyStats = await import('./commands/autopsy-stats.js');
+    const formsStats = await import('./commands/forms-stats.js');
     const forwardAutopsyNotify = await import('./commands/forward-autopsy-notify.js');
     const globalStats = await import('./commands/global-stats.js');
     const testRequesterWebhook = await import('./commands/test-requester-webhook.js');
@@ -163,7 +163,7 @@ async function registerCommands() {
         agencyCreds.data.toJSON(),
         dev.data.toJSON(),
         autopsyRequest.data.toJSON(),
-        autopsyStats.data.toJSON(),
+        formsStats.data.toJSON(),
         forwardAutopsyNotify.data.toJSON(),
         globalStats.data.toJSON(),
         testRequesterWebhook.data.toJSON(),
@@ -413,6 +413,16 @@ client.once('clientReady', async () => {
         startCoronerEmailWorker(firebase.db);
     } catch (err) {
         console.warn('[BOT] ⚠️ Coroner-email worker failed to start (non-fatal):', err.message);
+    }
+
+    // ── Start portal-forms worker (lspd-portal-form-queue entity; same ──
+    // lifecycle as the coroner-email queue; dry-run verify only by default) ──
+    try {
+        firebase.init();
+        const { startPortalFormWorker } = await import('./services/lspdPortalFormQueue.js');
+        startPortalFormWorker(firebase.db);
+    } catch (err) {
+        console.warn('[BOT] ⚠️ Portal-forms worker failed to start (non-fatal):', err.message);
     }
 
     // ── Start forms cache sync (mirror RTDB forms/forms_staging to VPS disk) ──
@@ -985,8 +995,8 @@ async function start() {
     const autopsyRequestCmd = await import('./commands/autopsy-request.js');
     client.commands.set(autopsyRequestCmd.data.name, { execute: autopsyRequestCmd.execute, autocomplete: autopsyRequestCmd.autocomplete });
 
-    const autopsyStatsCmd = await import('./commands/autopsy-stats.js');
-    client.commands.set(autopsyStatsCmd.data.name, { execute: autopsyStatsCmd.execute });
+    const formsStatsCmd = await import('./commands/forms-stats.js');
+    client.commands.set(formsStatsCmd.data.name, { execute: formsStatsCmd.execute });
 
     const globalStatsCmd = await import('./commands/global-stats.js');
     client.commands.set(globalStatsCmd.data.name, { execute: globalStatsCmd.execute });

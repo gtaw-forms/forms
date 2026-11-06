@@ -53,6 +53,18 @@ tools/*
 !tools/morgue-street-coverage.mjs
 # targeted autopsy duplicate marker (see tools/mark-autopsy-duplicate.mjs)
 !tools/mark-autopsy-duplicate.mjs
+# re-arm a parked (caseState=skipped) autopsy request for intake re-run
+!tools/redrive-mass-request.mjs
+# read-only rehearsal of a web mass autopsy request (parser + ME preview, no writes)
+!tools/rehearse-mass-request.mjs
+# saved-report view audit reader (migration UI audit trail)
+!tools/report-view-log.mjs
+# mirror deployed scheduledReports into the VPS feed store (live-feed backfill)
+!tools/mirror-scheduled-reports.mjs
+# Cloud Functions gen2 post-incident triage (are containers starting?)
+!tools/probe-functions.mjs
+# authenticated smoke test of the image upload proxy (bot-style ID token)
+!tools/verify-upload-proxy.mjs
 tools/service-account.json
 docs/
 
@@ -61,8 +73,11 @@ plan/
 # ad-hoc debug/probe scripts (local + VPS via SCP only — never commit;
 # they routinely carry live credentials during incident work)
 discord-bot/debug-testing-scripts/
-# functions (Firebase Cloud Functions API/proxy endpoints)#
-functions
+# functions (Firebase Cloud Functions API/proxy endpoints)
+# The old blanket `functions` ignore hid deployed modules that functions/index.js
+# imports (src/utils/rateLimit.js, src/auth/ucpClient.js, src/utils/imageType.js),
+# so a fresh clone could not deploy. functions/.gitignore still keeps
+# node_modules/ and .env out of git.
 # AI context artifact
 changelog.md
 

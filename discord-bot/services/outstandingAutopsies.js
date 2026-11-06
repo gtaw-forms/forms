@@ -27,6 +27,29 @@ export function limitHoursFor(deathType) {
     return OUTSTANDING_LIMITS.defaultHours;
 }
 
+/**
+ * Collapse a free-text manner-of-death value to a single PK/CK code.
+ *
+ * The shared `parsed.deathType` field is whatever the requester typed into
+ * Section 4 — often a whole sentence ("CK FOR ISABELA SALAZAR, PK FOR THE OTHER
+ * TWO"). Feeding that to limitHoursFor() resolves to CK for EVERY body (it keys
+ * off the first "ck" substring), which is how the two PK bodies in that request
+ * inherited a 72h window (t=… Hawick, Oct 2026). Use this on a PER-BODY value
+ * (cases/<i>/deathType) so each body keeps its own window; '' means "not a
+ * single code" and callers should fall back to the shared text.
+ *
+ * @param {string} [raw]
+ * @returns {'CK'|'PK'|''}
+ */
+export function normalizeDeathType(raw) {
+    const t = String(raw || '').toLowerCase();
+    const ck = /\bck\b/.test(t);
+    const pk = /\bpk\b/.test(t);
+    if (ck && !pk) return 'CK';
+    if (pk && !ck) return 'PK';
+    return '';
+}
+
 export const TERMINAL_STATES = new Set(['dry_run', 'skipped', 'cancelled', 'denied']);
 
 /**
@@ -58,10 +81,14 @@ export async function getOutstandingCases(db) {
         const c = child.val() || {};
         if (c.completedAt) return;
         if (TERMINAL_STATES.has(String(c.caseState || '').toLowerCase())) return;
-        const deathType = String(c.parsed?.deathType || '').trim();
-        const limitH = limitHoursFor(deathType);
+        const sharedDeathType = String(c.parsed?.deathType || '').trim();
         const detected = c.detectedAt ? new Date(c.detectedAt).getTime() : 0;
         const mk = (me, label, decedent, caseUrl, extra = {}) => {
+            // Per-body PK/CK on mass collections (cases/<i>/deathType); the
+            // collection-level parsed sentence is only the fallback, so one
+            // body's type can't set every body's wait window.
+            const deathType = String(extra.deathType || sharedDeathType).trim();
+            const limitH = limitHoursFor(deathType);
             const assignedAt = extra.assignedAt || detected;
             const ageH = assignedAt ? Math.floor((now - assignedAt) / 3600000) : null;
             const remainingH = ageH == null ? null : limitH - ageH;
@@ -93,6 +120,7 @@ export async function getOutstandingCases(db) {
                 mk(cc.assignedTo, `Case ${num} (Body ${slot + 1}/${total})`, cc.oocName || cc.name || '', c.caseUrl || cc.caseUrl || null, {
                     topicId: c.caseTopicId || cc.caseTopicId || null,
                     assignedAt: assignTimes[`${String(cc.assignedTo).toLowerCase()}|${child.key}`] || 0,
+                    deathType: cc.deathType || '',
                 });
             });
             return;

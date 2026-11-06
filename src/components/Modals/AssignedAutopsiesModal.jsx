@@ -23,6 +23,20 @@ const parseCaseTitle = (title) => {
 // omit the ((OOC)) while Section 2 still carries it (t=10364 / Case 538:
 // entry.oocName "" but parsed.decedentName "John Doe ((Ilya Baranov))").
 
+// Collapse a manner-of-death value to a single PK/CK code. Mass collections
+// store ONE shared Section-4 sentence ("CK FOR ISABELA SALAZAR, PK FOR THE
+// OTHER TWO") on the request — rendering that as every row's badge painted all
+// bodies CK. Per-body types live on cases/<i>/deathType; the shared value is
+// only a fallback, and '' means "not a single code" (badge hidden).
+const collapseDeathType = (raw) => {
+    const t = String(raw || '').toLowerCase();
+    const ck = /\bck\b/.test(t);
+    const pk = /\bpk\b/.test(t);
+    if (ck && !pk) return 'CK';
+    if (pk && !ck) return 'PK';
+    return '';
+};
+
 const AssignedAutopsiesModal = ({ show, onClose, onLoadCase, factionsData, loadMorgueRecords }) => {
     const [assignments, setAssignments] = useState([]);
     const [rotationList, setRotationList] = useState([]);
@@ -82,6 +96,9 @@ const AssignedAutopsiesModal = ({ show, onClose, onLoadCase, factionsData, loadM
                                     topicUrl: v.topicUrl || '',
                                     caseUrl: c.caseUrl || v.caseUrl || '',
                                     detectedAt: v.detectedAt || '',
+                                    // Per-body PK/CK (mixed mass requests); the
+                                    // request-level sentence is only the fallback.
+                                    deathType: collapseDeathType(c.deathType) || collapseDeathType(v.parsed?.deathType) || '',
                                     parsed: v.parsed || null,
                                 });
                             });
@@ -93,6 +110,7 @@ const AssignedAutopsiesModal = ({ show, onClose, onLoadCase, factionsData, loadM
                             faction: v.faction || '', assignedTo: v.assignedTo,
                             topicUrl: v.topicUrl || '', caseUrl: v.caseUrl || '',
                             detectedAt: v.detectedAt || '',
+                            deathType: collapseDeathType(v.deathType) || collapseDeathType(v.parsed?.deathType) || '',
                             parsed: v.parsed || null,
                         }];
                     })
@@ -452,13 +470,13 @@ const AssignedAutopsiesModal = ({ show, onClose, onLoadCase, factionsData, loadM
                                                             <span style={{ fontSize: 10.5, fontFamily: 'var(--mono)', color: 'var(--text-faint)' }}>
                                                                 <i className="fas fa-clock" style={{ marginRight: 3, fontSize: 10 }} />{timeAgo(a.detectedAt)}
                                                             </span>
-                                                            {a.parsed?.deathType && (
+                                                            {a.deathType && (
                                                                 <span style={{
                                                                     fontSize: 9.5, fontWeight: 700, padding: '1px 6px', borderRadius: 4,
-                                                                    background: a.parsed.deathType === 'CK' ? 'var(--danger-dim)' : 'var(--teal-dim)',
-                                                                    color: a.parsed.deathType === 'CK' ? 'var(--danger)' : 'var(--teal)',
+                                                                    background: a.deathType === 'CK' ? 'var(--danger-dim)' : 'var(--teal-dim)',
+                                                                    color: a.deathType === 'CK' ? 'var(--danger)' : 'var(--teal)',
                                                                     fontFamily: 'var(--mono)', letterSpacing: 0.5,
-                                                                }}>{a.parsed.deathType}</span>
+                                                                }}>{a.deathType}</span>
                                                             )}
                                                         </div>
                                                     </div>

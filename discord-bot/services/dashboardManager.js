@@ -342,7 +342,10 @@ export async function gatherDashboardData(db, force = false) {
                                 topicId: sharedTopicId || cc.caseTopicId || null,
                                 requestId: child.key,
                                 detectedAt: c.detectedAt || null,
-                                deathType,
+                                // Per-body PK/CK (mass rows) — the collection-level
+                                // parsed sentence is only the fallback, so one body's
+                                // type can't drive every row's wait window.
+                                deathType: String(cc.deathType || deathType || '').trim(),
                                 assignedAt: assignTimes[`${String(cc.assignedTo).toLowerCase()}|${child.key}`] || null,
                             });
                         }

@@ -70,8 +70,7 @@ export async function execute(interaction) {
             : (String(matched.faction || '').toLowerCase()
                 || (/\[(lssd|lspd)\]/i.exec(matched.title || '') || [])[1]?.toLowerCase()
                 || null);
-        const forceLspdUrl = matched.lspdTopicId ? `https://lspd.gta.world/viewtopic.php?t=${matched.lspdTopicId}` : null;
-        const completionBb = buildCompletionBb(caseTitle, requesterName, { faction: forceFaction, lspdUrl: forceLspdUrl, formsAutopsy: matched.formsAutopsy });
+        const completionBb = buildCompletionBb(caseTitle, requesterName, { faction: forceFaction, formsAutopsy: matched.formsAutopsy });
 
         console.log(`[FORCE-AUTO] Posting completion reply to request topic #${matchedId}...`);
         const replyResult = await client.replyToTopic(matchedId, AUTOPSY_REQUEST_FORUM_ID, completionBb, { dryRun: false, baseUrl: PHMC_BASE });

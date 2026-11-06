@@ -4,6 +4,7 @@ import { useModal } from '../../contexts/ModalProvider';
 import { useNotification } from '../../contexts/NotificationContext';
 import useGtaWorldAuth from '../../hooks/useGtaWorldAuth';
 import { evaluateFieldVisibility } from '../../utils/formValidation';
+import { findStaticAgency, isPortalAgency, portalLoginUrl } from '../../utils/bbcodeHelpers';
 import { resolveEmployeeCredentials } from '../../utils/identityUtils';
 import { oocFromParsedName } from '../../utils/doePlaceholders';
 import useBbcodeGenerator from '../../hooks/useBbcodeGenerator';
@@ -18,11 +19,12 @@ import FixDeployedReportModal from '../Modals/FixDeployedReportModal';
 import AssignedAutopsiesModal from '../Modals/AssignedAutopsiesModal';
 import MapModal from '../Modals/MapModal';
 import PrototypeFieldRenderer from './PrototypeFieldRenderer';
-import SurgicalDiagramModal from './SurgicalDiagramModal';
 import MorgueBrowser from './MorgueBrowser';
-import VehicleImpound from './VehicleImpound';
-import { useTowAccess } from '../../hooks/useTowAccess';
-import EmsPanel from './EmsPanel';
+import LeoView from '../migration-ui/LeoView';
+import { useLeoReports } from '../migration-ui/useLeoReports';
+import LspdGuideModal from '../migration-ui/LspdGuideModal';
+import { hasSeenLspdGuide, markLspdGuideSeen } from '../migration-ui/lspdGuide';
+import { buildShortReportUrl } from '../report-share/shareLink';
 import TimeDisplay from './TimeDisplay';
 import ServiceStatusTicker from './ServiceStatusTicker';
 import BusinessCardModal from '../UI/BusinessCard';
@@ -53,15 +55,26 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
   const [activeMiscTab, setActiveMiscTab] = useState('profile');
   const [showCharSwitch, setShowCharSwitch] = useState(false);
   const [showLoginDialog, setShowLoginDialog] = useState(false);
+  // One-time LSPD-portal staff guide (auto-opens on Coroner Email select).
+  const [guideOpen, setGuideOpen] = useState(false);
+  // Floating action row: collapsible to a chevron pill (choice persists).
+  const [fabCollapsed, setFabCollapsedState] = useState(() => {
+    try { return localStorage.getItem('phmc-fab-collapsed') === '1'; } catch { return false; }
+  });
+  const setFabCollapsed = useCallback((collapsed) => {
+    setFabCollapsedState(collapsed);
+    try { localStorage.setItem('phmc-fab-collapsed', collapsed ? '1' : '0'); } catch { /* ignore */ }
+  }, []);
+  const closeGuide = useCallback(() => {
+    setGuideOpen(false);
+    markLspdGuideSeen();
+  }, []);
   const [selectedForm, setSelectedForm] = useState(null);
   const [formValues, setFormValues] = useState({});
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeView, setActiveView] = useState( // 'forms' | 'morgue' | 'ems' | 'tow'
-    ['forms', 'morgue', 'ems', 'tow'].includes(initialView) ? initialView : 'forms'
+  const [activeView, setActiveView] = useState( // 'forms' | 'morgue' | 'leo'
+    ['forms', 'morgue', 'leo'].includes(initialView) ? initialView : 'forms'
   );
-  // Tow Reports: dev-open on localhost; in prod, PHMC members auto-pass
-  // and contractors pass via UCP grant (shared useTowAccess hook).
-  const showImpoundPoc = typeof window !== 'undefined' && window.location.hostname === 'localhost';
 
   // ── Collapsible left sidebar (collapse to the left / expand back) ──
   // Persisted so a refresh keeps the user's preferred layout.
@@ -83,26 +96,8 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
     try { localStorage.setItem('phmc_panel_collapsed', panelCollapsed ? '1' : '0'); } catch { /* ignore */ }
   }, [panelCollapsed]);
 
-  // EMS Protocols (tree lives in the sidebar, selection renders in main content)
-  const [emsProtocols, setEmsProtocols] = useState([]);
-  const [emsInjuries, setEmsInjuries] = useState({});
-  const [selectedEmsProtocol, setSelectedEmsProtocol] = useState(null);
-  const [selectedEmsInjury, setSelectedEmsInjury] = useState(null);
-  const [emsOpen, setEmsOpen] = useState(false);
-  const [emsCollapsed, setEmsCollapsed] = useState(new Set());
-
-  const { formsData, morgueRecords, isLoadingData, morgueLoading, loadMorgueRecords, factionsData, agencyDataStore, selectOptions: dataContextSelectOptions, factionListData, lsccData } = useData();
+  const { formsData, morgueRecords, isLoadingData, morgueLoading, loadMorgueRecords, factionsData, agencyDataStore, selectOptions: dataContextSelectOptions, factionListData } = useData();
   const { user: realUser, isAuthenticated: realIsAuthenticated, characterName, swappableCharacters, factionData, isPhmcMember: realIsPhmcMember, accessLevel: realAccessLevel, login, logout, swapCharacter, canSwapCharacters, isLoading: authLoading, credentialsLoading, identityRefreshStatus } = useGtaWorldAuth();
-
-  // Tow Reports sidebar visibility: dev-open on localhost, otherwise PHMC
-  // members auto-pass and contractors pass via UCP grant (shared hook).
-  const towAccess = useTowAccess({
-    isAuthenticated: realIsAuthenticated,
-    characterName,
-    ucpName: realUser?.username || '',
-    isPhmcMember: realIsPhmcMember,
-  });
-  const showTowReports = showImpoundPoc || (realIsAuthenticated && towAccess.hasAccess);
 
   // ── Initial auth check — show loader until auth is fully resolved ──
   const [authChecking, setAuthChecking] = useState(true);
@@ -150,6 +145,21 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
   const user = realUser;
   const isLocalhostDev = window.location.hostname === 'localhost';
   const isMedicalExaminer = isLocalhostDev || (factionData?.rank || '').toLowerCase().includes('medical examiner');
+  // LEO Access — forwarded reports, shared with the new platform view. Loads
+  // only when the LEO tab is open (and skips the API while its cache is fresh).
+  const leoCharacterName = characterName
+    || user?.activeCharacter?.characterName
+    || user?.faction?.characterName
+    || user?.character?.[0]?.name
+    || user?.character?.[0]?.characterName
+    || user?.characters?.[0]?.name
+    || user?.characters?.[0]?.characterName
+    || '';
+  const leo = useLeoReports({
+    enabled: isAuthenticated,
+    active: activeView === 'leo',
+    characterName: leoCharacterName,
+  });
   const { showNotification, removeNotification } = useNotification();
   const { openImagePreview } = useModal();
   const { handleImageUpload, isUploading: isSigUploading } = useImageUpload(showNotification, () => {});
@@ -212,30 +222,38 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
 
   // agencyDataStore is keyed by short code (e.g. "LSPD", "DAO") — the agency
   // objects themselves have no `shortCode` field, so match the key first, then
-  // fall back to fullName/shortCode.
+  // fall back to fullName/shortCode. When the live store hasn't loaded
+  // (localhost/offline), fall back to the static mirror so the guide still
+  // resolves the selected department instead of degrading to PHMC.
   const findAgency = (code) => {
-    if (!agencyDataStore) return null;
-    if (agencyDataStore[code]) return agencyDataStore[code];
-    return Object.values(agencyDataStore).find(
-      (a) => String(a.shortCode || '').toUpperCase() === code
-        || String(a.fullName || '').toUpperCase().includes(code)
-    ) || null;
+    if (agencyDataStore) {
+      if (agencyDataStore[code]) return agencyDataStore[code];
+      const hit = Object.values(agencyDataStore).find(
+        (a) => String(a.shortCode || '').toUpperCase() === code
+          || String(a.fullName || '').toUpperCase().includes(code)
+      );
+      if (hit) return hit;
+    }
+    return findStaticAgency(code);
   };
   const phmcAgency = findAgency('PHMC');
 
   // Resolve the selected department to an agency entry { key, agency }.
   const resolveDeptAgency = () => {
-    if (!deptVal || !agencyDataStore) return null;
-    const dv = deptVal.toLowerCase();
-    for (const [key, a] of Object.entries(agencyDataStore)) {
-      if (key.toLowerCase() === dv
-        || String(a.shortCode || '').toLowerCase() === dv
-        || String(a.fullName || '').toLowerCase().includes(dv)
-        || dv.includes(key.toLowerCase())) {
-        return { key, agency: a };
+    if (!deptVal) return null;
+    if (agencyDataStore) {
+      const dv = deptVal.toLowerCase();
+      for (const [key, a] of Object.entries(agencyDataStore)) {
+        if (key.toLowerCase() === dv
+          || String(a.shortCode || '').toLowerCase() === dv
+          || String(a.fullName || '').toLowerCase().includes(dv)
+          || dv.includes(key.toLowerCase())) {
+          return { key, agency: a };
+        }
       }
     }
-    return null;
+    const snap = findStaticAgency(deptVal);
+    return snap ? { key: snap.shortCode, agency: snap } : null;
   };
   const deptAgency = resolveDeptAgency();
 
@@ -287,76 +305,13 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
       }
 
       const matches = form.name?.toLowerCase().includes(searchTerm.toLowerCase());
-      // In EMS view the search box filters the protocol tree, not forms.
-      if (!matches && searchTerm && activeView !== 'ems') continue;
+      if (!matches && searchTerm) continue;
       const cat = form.category || 'Uncategorized';
       if (!map[cat]) map[cat] = [];
       map[cat].push(form);
     }
     return map;
   }, [formsData, searchTerm, isAuthenticated, isPhmcMember, user, factionData, activeView, isFormOptedIn]);
-
-  // ── EMS Protocols data (normalized categories from lsccData) ──
-  useEffect(() => {
-    if (!lsccData) return;
-    const protocolOrder = ["Introduction", "Legalities", "Emergency Vehicle Protocols", "Radio Procedures + Encodes", "Miscellaneous Information + Tips"];
-    const protocolOrderMap = new Map(protocolOrder.map((name, index) => [name, index]));
-
-    const normalized = Array.isArray(lsccData.protocols)
-      ? lsccData.protocols.map((cat) => {
-          const sorted = [...(cat.protocols || [])].sort((pA, pB) => {
-            const idxA = protocolOrderMap.get(pA.name) ?? Infinity;
-            const idxB = protocolOrderMap.get(pB.name) ?? Infinity;
-            if (idxA !== idxB) return idxA - idxB;
-            return pA.name.localeCompare(pB.name);
-          });
-          return { ...cat, protocols: sorted };
-        })
-      : [];
-    normalized.sort((a, b) => {
-      const idA = parseInt(a.category.match(/^\[(\d+)\]/)?.[1] || Infinity);
-      const idB = parseInt(b.category.match(/^\[(\d+)\]/)?.[1] || Infinity);
-      if (idA !== idB) return idA - idB;
-      return a.category.localeCompare(b.category);
-    });
-
-    setEmsProtocols(normalized);
-    setEmsInjuries(lsccData.injuries || {});
-  }, [lsccData]);
-
-  const filteredEmsProtocols = useMemo(() => {
-    return emsProtocols.map(cat => ({
-      ...cat,
-      protocols: (cat.protocols || []).filter(p => {
-        const search = searchTerm.toLowerCase();
-        const matches = p.name.toLowerCase().includes(search) || (p.uniqueWords || []).some(w => w.toLowerCase().includes(search));
-        if (!matches) return false;
-        if (!selectedEmsInjury) return true;
-        const content = (p.content || '').toLowerCase();
-        return selectedEmsInjury.words.toLowerCase().split(",").some(w => content.includes(w.trim()));
-      })
-    })).filter(cat => cat.protocols.length > 0);
-  }, [emsProtocols, searchTerm, selectedEmsInjury]);
-
-  const toggleEms = useCallback(() => {
-    setEmsOpen(prev => {
-      const next = !prev;
-      // Only switch into the EMS view when expanding; collapsing keeps the current view.
-      if (next) {
-        setActiveView('ems');
-        setSelectedForm(null);
-        setFormValues({});
-      }
-      return next;
-    });
-  }, []);
-  const toggleEmsCat = useCallback((name) => {
-    setEmsCollapsed(prev => {
-      const next = new Set(prev);
-      if (next.has(name)) next.delete(name); else next.add(name);
-      return next;
-    });
-  }, []);
 
   const handleChange = useCallback((name, value) => {
     setFormValues(prev => ({ ...prev, [name]: value }));
@@ -387,6 +342,26 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
       : null),
     [user, isAuthenticated, selectedForm, factionListData, cleanRankText]
   );
+
+  // One-time staff guide: selecting the Coroner Email form opens the LSPD
+  // portal tutorial once per browser (staff only; everyone gets the manual
+  // link in the post panel). Fires on form switch, not every render.
+  const guideFiredRef = useRef(false);
+  useEffect(() => {
+    if (formKey === 'coroner_email') guideFiredRef.current = false;
+  }, [formKey]);
+  useEffect(() => {
+    if (
+      formKey === 'coroner_email'
+      && !guideFiredRef.current
+      && isAuthenticated
+      && resolvedCredentials
+      && !hasSeenLspdGuide()
+    ) {
+      guideFiredRef.current = true;
+      setGuideOpen(true);
+    }
+  }, [formKey, isAuthenticated, resolvedCredentials]);
 
   // ── BBCode Generator ──
   const { generatedBBCode, generatedTitle, showBBCode, generateBBCode, clearBBCode } = useBbcodeGenerator(
@@ -429,9 +404,20 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
   }, [realIsAuthenticated, authLoading, realUser, characterName, realIsPhmcMember]);
 
   // ── Auto-save / restore form progress ──
+  // Clobber guard (restoredKeyRef): the restore effect below runs on form
+  // switch, but the form-switch click handler first resets formValues to a
+  // credentials-only shell — and this save effect is declared FIRST, so on
+  // the switch commit it used to persist that shell OVER the real draft
+  // before restore could read it. Every re-selected form came back blank.
+  // The save now waits until restore has run for the current key.
+  const restoredKeyRef = useRef(null);
   useEffect(() => {
-    if (selectedForm?.firebaseKey && Object.keys(formValues).length > 0) {
-      localStorage.setItem(`form_progression_${selectedForm.firebaseKey}`, JSON.stringify(formValues));
+    const key = selectedForm?.firebaseKey;
+    if (!key || Object.keys(formValues).length === 0 || restoredKeyRef.current !== key) return;
+    try {
+      localStorage.setItem(`form_progression_${key}`, JSON.stringify(formValues));
+    } catch {
+      /* quota/private-mode write failure: keep typing, just don't persist */
     }
   }, [formValues, selectedForm?.firebaseKey]);
 
@@ -440,10 +426,12 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
   // OAuth credential sync) can never wipe the current coroner/phmc identity.
   useEffect(() => {
     if (selectedForm?.firebaseKey) {
-      const saved = localStorage.getItem(`form_progression_${selectedForm.firebaseKey}`);
+      const key = selectedForm.firebaseKey;
+      const saved = localStorage.getItem(`form_progression_${key}`);
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
+          console.log(`[Draft] Restored ${key} (${saved.length} chars, ${Object.keys(parsed).length} fields)`);
           setFormValues(prev => {
             const merged = { ...parsed };
             CREDENTIAL_KEYS.forEach(k => {
@@ -452,7 +440,13 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
             return merged;
           });
         } catch { /* corrupt saved draft ignored: form starts fresh with current credentials */ }
+      } else {
+        console.log(`[Draft] No saved draft for ${key} — starting fresh`);
       }
+      // Arm the save effect for this key AFTER reading (see clobber guard).
+      restoredKeyRef.current = key;
+    } else {
+      restoredKeyRef.current = null;
     }
   }, [selectedForm?.firebaseKey]);
 
@@ -610,6 +604,20 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
           isAutoDeploy ? 'cloud-upload-alt' : 'save',
           isAutoDeploy ? 8000 : 5000
         );
+        // Short share link (`#/r/`), with a one-tap copy action.
+        if (result.shareCode) {
+          const shortUrl = buildShortReportUrl(result.shareCode);
+          showNotification(`Report link ready — ${shortUrl}`, 'check-circle', 15000, {
+            actions: [{
+              label: 'Copy link',
+              handler: () => {
+                navigator.clipboard.writeText(shortUrl)
+                  .then(() => showNotification('Link copied.', 'check-circle'))
+                  .catch(() => showNotification('Copy failed — long-press the link above.', 'error'));
+              },
+            }],
+          });
+        }
       }
     } else {
       showNotification('Save failed: ' + (result.error || 'unknown error'), 'error');
@@ -1109,82 +1117,6 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
   const activeForm = selectedForm;
   const displayName = characterName || user?.username || 'Guest';
 
-  // ── Employee image signature (non-DMEC PHMC Staff forms) ──
-  // Toggle at the top of the form -> modal to paste the signature URL -> preview
-  // -> approve. Stored in formValues.phmcSignature + persisted per character.
-  const DMEC_CORONER_FORMS = ['autopsy', 'coroner-report', 'coroner_email', 'death_record', 'mass-ftality-test'];
-  const signatureEnabled = !!selectedForm && !DMEC_CORONER_FORMS.includes(selectedForm.firebaseKey);
-  const [sigOpen, setSigOpen] = useState(false);
-  const [sigUrl, setSigUrl] = useState('');
-  const sigStorageKey = `phmcSignature_${(characterName || '').trim().toLowerCase()}`;
-
-  const isSurgicalDev = selectedForm?.firebaseKey === 'surgical' && ['localhost', '127.0.0.1'].includes(window.location.hostname);
-  const [surgicalDiagramOpen, setSurgicalDiagramOpen] = useState(false);
-  const [surgicalDiagram, setSurgicalDiagram] = useState({ imageType: 'male', texts: [], shapes: [] });
-
-  // Auto-fill the approved signature for this character from a previous session.
-  useEffect(() => {
-    if (!signatureEnabled) return;
-    try {
-      const saved = localStorage.getItem(sigStorageKey);
-      console.log('[SIGTRACE] auto-fill effect', { signatureEnabled, sigStorageKey, saved: saved ? saved.slice(0, 60) : null });
-      if (saved && /^https?:\/\/\S+\.(png|jpe?g|gif|webp)(\?\S*)?$/i.test(saved)) {
-        setFormValues(prev => {
-          if (prev.phmcSignature === saved) return prev;
-          console.log('[SIGTRACE] auto-fill SETTING phmcSignature from localStorage →', saved.slice(0, 60), '| prev was', (prev.phmcSignature || '').slice(0, 60) || '(empty)');
-          return { ...prev, phmcSignature: saved };
-        });
-      } else {
-        console.log('[SIGTRACE] auto-fill: no valid saved signature, leaving formValues.phmcSignature =', (formValues.phmcSignature || '').slice(0, 60) || '(empty)');
-      }
-    } catch (e) { console.error('[SIGTRACE] auto-fill error', e); }
-  }, [sigStorageKey, signatureEnabled, formValues.phmcSignature]);
-
-  const openSignatureModal = () => {
-    setSigUrl(String(formValues.phmcSignature || ''));
-    setSigOpen(true);
-  };
-
-  const approveSignature = () => {
-    const url = String(sigUrl || '').trim();
-    const pass = /^https?:\/\/\S+\.(png|jpe?g|gif|webp)(\?\S*)?$/i.test(url);
-    console.log('[SIGTRACE] approveSignature called', { url, pass, sigUrlType: typeof sigUrl, sigUrl, sigStorageKey });
-    if (!pass) return;
-    setFormValues(prev => ({ ...prev, phmcSignature: url }));
-    try { localStorage.setItem(sigStorageKey, url); } catch { /* ignore */ }
-    console.log('[SIGTRACE] phmcSignature SET in formValues →', url, '| stored under', sigStorageKey);
-    setSigOpen(false);
-  };
-
-  const handleSigPaste = async (e) => {
-    const items = e && e.clipboardData && e.clipboardData.items;
-    if (!items) return;
-    for (const item of items) {
-      if (item && item.type && item.type.indexOf('image') === 0) {
-        e.preventDefault();
-        const file = item.getAsFile();
-        if (!file) return;
-        try {
-          const urls = await handleImageUpload(file, 'phmcSignature');
-          if (urls && urls[0]) setSigUrl(urls[0]?.url || '');
-        } catch (err) {
-          showNotification('Signature paste failed: ' + (err?.message || err), 'error');
-        }
-        return;
-      }
-    }
-  };
-
-  const clearSignature = () => {
-    console.log('[SIGTRACE] clearSignature called — removing phmcSignature from formValues + localStorage', { sigStorageKey });
-    setFormValues(prev => {
-      const next = { ...prev };
-      delete next.phmcSignature;
-      return next;
-    });
-    try { localStorage.removeItem(sigStorageKey); } catch { /* ignore */ }
-  };
-
   return (
     <div className={`app${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
 
@@ -1210,52 +1142,24 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
           </button>
           </div>
           <div className="search-box">
-            <input ref={searchRef} type="text" placeholder={activeView === 'ems' ? 'Search protocols…' : 'Search forms…'} value={searchTerm}
+            <input ref={searchRef} type="text" placeholder="Search forms…" value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)} />
           </div>
         </div>
         <div className="form-tree">
           {!basicMode && (
             <>
-              <div className={`cat${!collapsedCats.has('Tools') ? ' open' : ''}`}>
-                <div className="cat-head" onClick={() => toggleCat('Tools')}><span>Morgue Intake Records</span><span className="chev">▶</span></div>
+              <div className={`cat${!collapsedCats.has('LEO Access') ? ' open' : ''}`}>
+                <div className="cat-head" onClick={() => toggleCat('LEO Access')}><span>LEO Access</span><span className="chev">▶</span></div>
                 <div className="cat-items">
                   <div onClick={() => { setActiveView('morgue'); setSelectedForm(null); setFormValues({}); }}
                     className={`form-item${activeView === 'morgue' ? ' active' : ''}`}>
                     <span className="dot" />Morgue Records
                   </div>
-                  {showTowReports && (
-                  <div onClick={() => { setActiveView('tow'); setSelectedForm(null); setFormValues({}); }}
-                    className={`form-item${activeView === 'tow' ? ' active' : ''}`}>
-                    <span className="dot" />Tow Reports
+                  <div onClick={() => { setActiveView('leo'); setSelectedForm(null); setFormValues({}); }}
+                    className={`form-item${activeView === 'leo' ? ' active' : ''}`}>
+                    <span className="dot" />LEO Reports
                   </div>
-                  )}
-                </div>
-              </div>
-
-              {/* ── EMS Protocols — own top-level category ── */}
-              <div className={`cat ems-root${emsOpen ? ' open' : ''}`}>
-                <div className="cat-head" onClick={toggleEms}><span>EMS Protocols</span><span className="chev">▶</span></div>
-                <div className="cat-items">
-                  {filteredEmsProtocols.map(cat => (
-                    <div key={cat.category} className={`cat ems-subcat${!emsCollapsed.has(cat.category) ? ' open' : ''}`}>
-                      <div className="cat-head ems-subhead" onClick={() => toggleEmsCat(cat.category)}>
-                        {cat.category} ({cat.protocols.length})<span className="chev">▶</span>
-                      </div>
-                      <div className="cat-items">
-                        {cat.protocols.map(p => (
-                          <div key={p.id}
-                            onClick={() => { setSelectedEmsProtocol(p); setActiveView('ems'); setSelectedForm(null); setFormValues({}); }}
-                            className={`form-item ems-protocol${selectedEmsProtocol?.id === p.id && activeView === 'ems' ? ' active' : ''}`}>
-                            <span className="dot" />{p.name}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                  {filteredEmsProtocols.length === 0 && (
-                    <div className="ems-empty">No protocols match.</div>
-                  )}
                 </div>
               </div>
 
@@ -1307,8 +1211,8 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
             <i className={`fas ${sidebarCollapsed ? 'fa-chevron-right' : 'fa-chevron-left'}`} />
           </button>
           <div className="topbar-title">
-            <h1>{activeView === 'morgue' ? 'Morgue Records' : activeView === 'ems' ? 'LS County EMS Protocols' : activeView === 'tow' ? 'Tow Reports' : activeForm?.name || 'No Form Selected'}</h1>
-            {activeView === 'morgue' ? <span className="case-tag">Database</span> : activeView === 'ems' ? <span className="case-tag">Protocols</span> : activeForm && <span className="case-tag">{activeForm.accessType || 'General'}</span>}
+            <h1>{activeView === 'morgue' ? 'Morgue Records' : activeView === 'leo' ? 'LEO Reports' : activeForm?.name || 'No Form Selected'}</h1>
+            {activeView === 'morgue' ? <span className="case-tag">Database</span> : activeView === 'leo' ? <span className="case-tag">Law Enforcement</span> : activeForm && <span className="case-tag">{activeForm.accessType || 'General'}</span>}
           </div>
           <div className="topbar-center">
             <ServiceStatusTicker />
@@ -1397,12 +1301,17 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
         <div className="content-row">
 
           {/* ─── MAIN CONTENT ─── */}
-          <div className="main-content" key={activeView === 'morgue' ? 'morgue' : activeView === 'ems' ? 'ems' : activeView === 'tow' ? 'tow' : activeForm?.firebaseKey || 'empty'}>
-            {activeView === 'ems' ? (
-              <EmsPanel protocol={selectedEmsProtocol} injuries={emsInjuries} selectedInjury={selectedEmsInjury}
-                onSelectInjury={setSelectedEmsInjury} onClearInjury={() => setSelectedEmsInjury(null)} />
-            ) : activeView === 'tow' ? (
-              <VehicleImpound showNotification={showNotification} isAuthenticated={isAuthenticated} characterName={characterName} ucpName={realUser?.username || ''} isPhmcMember={isPhmcMember} accessLevel={realAccessLevel} />
+          <div className="main-content" key={activeView === 'morgue' ? 'morgue' : activeView === 'leo' ? 'leo' : activeForm?.firebaseKey || 'empty'}>
+            {activeView === 'leo' ? (
+              <div className="pmc pmc-embed">
+                <LeoView
+                  leo={leo}
+                  isAuthenticated={isAuthenticated}
+                  viewerName={displayName}
+                  onBackToRecords={() => { setActiveView('morgue'); setSelectedForm(null); setFormValues({}); }}
+                  recordsLabel="Morgue Records"
+                />
+              </div>
             ) : activeView === 'morgue' ? (
               <MorgueBrowser records={morgueRecords || []} isLoading={morgueLoading || isLoadingData} loadRecords={loadMorgueRecords} showNotification={showNotification}
                 isAuthenticated={isAuthenticated} characterName={characterName} user={realUser} accessLevel={realAccessLevel} />
@@ -1461,28 +1370,6 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
                       </button>
                     </div>
                   )}
-                  {signatureEnabled && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, padding: '8px 12px', background: 'var(--bg-elevated)', border: '1px solid var(--border-accent)', borderRadius: 8 }}>
-<label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12.5, color: 'var(--text)', whiteSpace: 'nowrap', margin: 0 }}>
-                        <input
-                          type="checkbox"
-                          checked={!!formValues.phmcSignature}
-                          onChange={(e) => { if (e.target.checked) { openSignatureModal(); } else { clearSignature(); } }}
-                          style={{ width: 15, height: 15, margin: 0, flexShrink: 0, verticalAlign: 'middle' }}
-                        />
-                        <i className="fas fa-signature" style={{ color: 'var(--teal)', fontSize: 13, flexShrink: 0, display: 'inline-block' }} />
-                        Use employee signature
-                      </label>
-                      {formValues.phmcSignature ? (
-                        <>
-                          <img src={formValues.phmcSignature} alt="signature" style={{ height: 34, maxWidth: 180, objectFit: 'contain', borderRadius: 4, background: '#fff', padding: 2 }} />
-                          <button onClick={openSignatureModal} style={{ background: 'transparent', border: 'none', color: 'var(--teal)', cursor: 'pointer', fontSize: 12 }}>Change</button>
-                        </>
-                      ) : (
-                        <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>Not set — report will show the typed employee name.</span>
-                      )}
-                    </div>
-                  )}
                   <div className="field-grid">
                     {(activeForm.fields || []).filter(f => evaluateFieldVisibility(f, formValues)).map(field => (
                       <div key={field.name} className={!field.layout || field.layout === 'full' ? 'full' : ''} style={{ display: 'contents' }}>
@@ -1505,22 +1392,6 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
                       </div>
                     ))}
                   </div>
-                  {isSurgicalDev && (
-                    <div style={{ marginTop: 14, padding: '10px 12px', background: 'var(--bg-elevated)', border: '1px dashed var(--amber)', borderRadius: 8 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <i className="fas fa-syringe" style={{ color: 'var(--amber)' }} />
-                        <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)' }}>
-                          Surgical Diagram <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--amber)', fontFamily: 'var(--mono)', marginLeft: 6 }}>DEV</span>
-                        </span>
-                        <button className="btn btn-primary" style={{ marginLeft: 'auto', fontSize: 12, padding: '6px 14px' }} onClick={() => setSurgicalDiagramOpen(true)}>
-                          <i className="fas fa-edit me-1" />Annotate
-                        </button>
-                      </div>
-                      <p style={{ fontSize: 11, color: 'var(--text-faint)', margin: '6px 0 0' }}>
-                        Full-screen annotation layer over the body silhouette — optional, visual only. Male/female toggle, free text, drag, resize.
-                      </p>
-                    </div>
-                  )}
                 </div>
               </>
             ) : (
@@ -1857,9 +1728,30 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
             {!(panelCollapsed && !basicMode) && (
             <div className="panel-card" style={{ overflow: 'visible' }}>
               <div className="bbcode-panel">
+                {/* Status at a glance (replaces the essay hint box below). */}
+                {isDeployTracked && !(panelCollapsed && !basicMode) && (
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8,
+                    padding: '6px 10px', borderRadius: 6, fontSize: 11.5,
+                    background: formConsent ? 'var(--teal-dim)' : 'var(--amber-dim)',
+                    border: `1px solid ${formConsent ? 'var(--teal)' : 'var(--amber)'}`,
+                    color: formConsent ? 'var(--teal)' : 'var(--amber)',
+                  }}>
+                    <i className={`fas ${formConsent ? 'fa-robot' : 'fa-hand-pointer'}`} />
+                    <strong>{formConsent ? 'Auto-deploy on' : 'Manual mode'}</strong>
+                    <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>
+                      {formConsent ? '— Save & Queue does everything' : '— save, copy, post yourself'}
+                    </span>
+                  </div>
+                )}
                 {bbcodeToolsVisible && !(panelCollapsed && !basicMode) && (
-                <div className={`bbcode-banner ${generatedTitle ? 'success' : ''}`}
-                  style={!generatedTitle ? { border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-faint)' } : {}}
+                <button
+                  type="button"
+                  className={`bbcode-banner ${generatedTitle ? 'success' : ''}`}
+                  style={{
+                    width: '100%', textAlign: 'left', fontFamily: 'inherit',
+                    ...(!generatedTitle ? { border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-faint)', cursor: 'default' } : { cursor: 'pointer' }),
+                  }}
                   onClick={() => {
                     if (generatedTitle) {
                       navigator.clipboard.writeText(generatedTitle);
@@ -1869,7 +1761,7 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
                   title={generatedTitle ? 'Click to copy title' : ''}>
                   <i className="fas fa-code" /> {generatedTitle || 'Generated BBCode will appear here'}
                   {generatedTitle && <i className="fas fa-copy" style={{ marginLeft: 'auto', fontSize: 11, opacity: 0.6 }} />}
-                </div>
+                </button>
                 )}
                 {bbcodeToolsVisible && (() => {
                   const tpl = String(activeForm?.template || '');
@@ -1881,77 +1773,75 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
                     })
                     .map(f => f.label || f.name);
                   if (tpl.includes('{{phmcSignature}}') && !String(formValues.phmcSignature || '').trim()) missing.push('Employee Signature');
+                  if (!showBBCode || missing.length === 0) return null;
                   return (
-                  <div>
-                  {showBBCode && missing.length > 0 && (
-                    <div style={{ marginBottom: 6, padding: '6px 10px', borderRadius: 6, background: 'var(--bg-surface)', border: '1px solid var(--amber)', color: 'var(--amber)', fontSize: 11, lineHeight: 1.5 }}>
-                      <i className="fas fa-exclamation-triangle me-1" />Missing fields: <strong>{missing.join(' · ')}</strong>
+                    <div style={{ marginBottom: 6, padding: '5px 9px', borderRadius: 6, background: 'var(--bg-surface)', border: '1px solid var(--amber)', color: 'var(--amber)', fontSize: 10.5, lineHeight: 1.5 }}>
+                      <i className="fas fa-exclamation-triangle me-1" />Missing: <strong>{missing.join(' · ')}</strong>
                     </div>
-                  )}
+                  );
+                })()}
                 {!(panelCollapsed && !basicMode) && (
-                <pre className="bbcode-pre" style={{ maxHeight: showBBCode ? '200px' : '60px' }}>
+                <pre className="bbcode-pre" style={{ maxHeight: showBBCode ? '220px' : '60px' }}>
                   {showBBCode && generatedBBCode
                     ? generatedBBCode
                     : 'Select a form, fill it out, and click "Generate BBCode" to preview it here.'}
                 </pre>
                 )}
-                  </div>
-                  );
-                })()}
-                <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                {/* Save lives in the floating action row (bottom-right, next to
+                    Clear) — no duplicate primary here. Panel keeps preview/copy. */}
+                <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
                   {bbcodeToolsVisible && (
                   <button className="btn btn-ghost" style={{ flex: 1, fontSize: 12, justifyContent: 'center', borderColor: 'var(--teal)', color: 'var(--teal)' }} onClick={() => {
                     generateBBCode();
                     showNotification('BBCode generated!', 'success');
                   }}>
-                    <i className="fas fa-code me-1" /> Preview
+                    <i className="fas fa-code me-1" /> {generatedBBCode ? 'Regenerate' : 'Preview'}
                   </button>
                   )}
-                  {!basicMode && (
+                  {bbcodeToolsVisible && generatedBBCode && !(isDeployTracked && !formConsent) && (
                   <button className="btn btn-ghost" style={{ flex: 1, fontSize: 12, justifyContent: 'center' }}
-                    onClick={handleSaveAndQueue}>
-                    <i className={`fas ${editingDeployedReport ? 'fa-pen' : (isDeployTracked && !formConsent ? 'fa-copy' : 'fa-cloud-upload-alt')} me-1`} />
-                    {editingDeployedReport
-                      ? 'Save & Edit Deployed Post'
-                      : (isDeployTracked && !formConsent ? 'Save & Copy BBCode' : 'Save & Queue')}
-                  </button>
-                  )}
-                </div>
-                {bbcodeToolsVisible && generatedBBCode && !(isDeployTracked && !formConsent) && (
-                  <button className="btn btn-ghost" style={{ width: '100%', marginTop: 6, fontSize: 12 }}
                     onClick={() => navigator.clipboard.writeText(generatedBBCode).then(() => showNotification('BBCode copied!', 'success'))}>
                     <i className="fas fa-copy me-1" /> Copy BBCode
                   </button>
-                )}
+                  )}
+                </div>
                 {!basicMode && (
                 <>
-                {showManualPostGuide && isCoronerEmail && (
-                  <div style={{ marginTop: 10, padding: '8px 10px', borderRadius: 6, background: 'var(--bg-surface)', border: '1px solid var(--amber)', color: 'var(--text-muted)', fontSize: 10.5, lineHeight: 1.5 }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {(showManualPostGuide && (isCoronerEmail || isCoronerOrMassFatal)) && (
+                  <details open style={{ marginTop: 8, padding: '7px 9px', borderRadius: 6, background: 'var(--bg-surface)', border: '1px solid var(--amber)', color: 'var(--text-muted)', fontSize: 10.5, lineHeight: 1.5 }}>
+                    <summary style={{ cursor: 'pointer', fontWeight: 700, color: 'var(--text)', fontSize: 11 }}>
+                      ✉ Post manually <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>— auto-deploy is off</span>
+                    </summary>
+                    {showManualPostGuide && isCoronerEmail && (
+                    <div style={{ marginTop: 6 }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                       {displayFactions.map((code) => {
                         const agency = findAgency(code);
                         const iconSrc = agency?.logo;
                         const name = agency?.fullName || code;
+                        const portal = isPortalAgency(code);
+                        const href = portal ? (portalLoginUrl(code) || agency?.url || '#') : (agency?.url || '#');
                         return (
-                          <a key={code} href={agency?.url || '#'} target="_blank" rel="noopener noreferrer"
-                            title={`${name} — open PM compose`}
-                            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 8, background: 'var(--bg-surface)', border: '1px solid var(--border)', textDecoration: 'none' }}>
+                          <a key={code} href={href} target="_blank" rel="noopener noreferrer"
+                            title={portal ? `${name} — open the Community Portal (OAuth, no forum login needed)` : `${name} — open PM compose`}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 9px 4px 4px', borderRadius: 14, background: 'var(--bg-surface)', border: '1px solid var(--border)', textDecoration: 'none' }}>
                             {iconSrc ? (
-                              <img src={iconSrc} alt={code} style={{ width: 30, height: 30, borderRadius: 6, objectFit: 'contain', flexShrink: 0 }} />
+                              <img src={iconSrc} alt={code} style={{ width: 22, height: 22, borderRadius: '50%', objectFit: 'contain', flexShrink: 0 }} />
                             ) : (
-                              <i className="fas fa-building" style={{ fontSize: 20, color: 'var(--text-muted)', width: 30, textAlign: 'center' }} />
+                              <i className="fas fa-building" style={{ fontSize: 12, color: 'var(--text-muted)', width: 22, textAlign: 'center' }} />
                             )}
-                            <span style={{ fontSize: 11, color: 'var(--text)', fontWeight: 600 }}>Email to {name}</span>
+                            <span style={{ fontSize: 10.5, color: 'var(--text)', fontWeight: 600 }}>{code}</span>
                           </a>
                         );
                       })}
                     </div>
-                    <details style={{ marginTop: 8 }}>
+                    {displayFactions.some((code) => !isPortalAgency(code)) ? (
+                    <details style={{ marginTop: 6 }}>
                       <summary style={{ cursor: 'pointer', fontSize: 10.5, color: 'var(--teal)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                        <i className="fas fa-key" /> Click for Credentials
+                        <i className="fas fa-key" /> Credentials
                       </summary>
-                      <div style={{ marginTop: 6, padding: '6px 8px', borderRadius: 6, background: 'var(--bg-elevated)', fontSize: 10.5, lineHeight: 1.7 }}>
-                        {displayFactions.map((code) => {
+                      <div style={{ marginTop: 5, padding: '5px 7px', borderRadius: 6, background: 'var(--bg-elevated)', fontSize: 10.5, lineHeight: 1.7 }}>
+                        {displayFactions.filter((code) => !isPortalAgency(code)).map((code) => {
                           const c = credsForFaction(code);
                           const name = findAgency(code)?.fullName || code;
                           return (
@@ -1967,40 +1857,41 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
                         })}
                       </div>
                     </details>
-                  </div>
-                )}
-                {showManualPostGuide && isCoronerOrMassFatal && !(panelCollapsed && !basicMode) && (
-                  <a href="https://phmc.gta.world/posting.php?mode=post&f=267" target="_blank" rel="noopener noreferrer"
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, padding: '8px 10px', borderRadius: 8, background: 'var(--bg-surface)', border: '1px solid var(--teal)', color: 'var(--teal)', textDecoration: 'none', fontSize: 12, fontWeight: 600 }}>
-                    {phmcAgency?.logo ? (
-                      <img src={phmcAgency.logo} alt="PHMC" style={{ width: 20, height: 20, borderRadius: 4, objectFit: 'contain' }} />
-                    ) : (
-                      <i className="fas fa-plus-square" />
+                    ) : null}
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      style={{ width: '100%', marginTop: 6, fontSize: 11.5, justifyContent: 'center', borderColor: 'var(--teal)', color: 'var(--teal)' }}
+                      onClick={() => setGuideOpen(true)}
+                      title="Step-by-step: how LSPD coroner emails work now"
+                    >
+                      <i className="fas fa-envelope-open-text me-1" /> How do LSPD emails work now?
+                    </button>
+                    </div>
                     )}
-                    Post to PHMC Forum (f=267)
-                  </a>
-                )}
-                {isDeployTracked && !(panelCollapsed && !basicMode) && (
-                  <div style={{
-                    marginTop: 10, padding: '8px 10px', borderRadius: 6, fontSize: 10.5,
-                    background: 'var(--bg-surface)', border: '1px solid var(--border)',
-                    color: 'var(--text-muted)', lineHeight: 1.5, display: 'flex', gap: 6, alignItems: 'flex-start',
-                  }}>
-                    <i className="fas fa-robot" style={{ marginTop: 1, color: 'var(--teal)' }} />
-                    <span>
-                      {formConsent ? (
-                        <>
-                          Finished with the form? Click on <strong>Save & Queue</strong>, the PHMC Bot will do everything for you.
-                          {' '}If you wish to opt out, you can use the &apos;Deploy Consent&apos; button at the top right.
-                        </>
+                    {showManualPostGuide && isCoronerOrMassFatal && !(panelCollapsed && !basicMode) && (
+                    <a href="https://phmc.gta.world/posting.php?mode=post&f=267" target="_blank" rel="noopener noreferrer"
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, padding: '7px 9px', borderRadius: 8, background: 'var(--bg-surface)', border: '1px solid var(--teal)', color: 'var(--teal)', textDecoration: 'none', fontSize: 11.5, fontWeight: 600 }}>
+                      {phmcAgency?.logo ? (
+                        <img src={phmcAgency.logo} alt="PHMC" style={{ width: 20, height: 20, borderRadius: 4, objectFit: 'contain' }} />
                       ) : (
-                        <>
-                          Auto-deploy is off for this form. Save, then post the BBCode below manually — or re-enable it in the
-                          {' '}Deploy Consent button at the top right.
-                        </>
+                        <i className="fas fa-plus-square" />
                       )}
-                    </span>
-                  </div>
+                      Post to PHMC Forum (f=267)
+                    </a>
+                    )}
+                  </details>
+                )}
+                {isCoronerEmail && !showManualPostGuide && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    style={{ width: '100%', marginTop: 6, fontSize: 12, justifyContent: 'center', borderColor: 'var(--teal)', color: 'var(--teal)' }}
+                    onClick={() => setGuideOpen(true)}
+                    title="Step-by-step: how LSPD coroner emails work now"
+                  >
+                    <i className="fas fa-envelope-open-text me-1" /> How do LSPD emails work now?
+                  </button>
                 )}
                 {deployCountdown && (() => {
                   const remaining = Math.max(0, deployCountdown.endTime - Date.now());
@@ -2031,66 +1922,19 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
       </div>
 
       {/* ─── Modals ─── */}
-      {sigOpen && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 10001, background: 'rgba(6,10,18,0.82)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }} onClick={() => setSigOpen(false)}>
-          <div style={{ maxWidth: 420, width: '100%', background: 'var(--bg-elevated)', border: '1px solid var(--border-accent)', borderRadius: 12, padding: 20 }} onClick={e => e.stopPropagation()} onPaste={handleSigPaste}>
-            <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 4 }}><i className="fas fa-signature" style={{ marginRight: 6, color: 'var(--teal)' }} />Employee Signature</div>
-            <p style={{ fontSize: 11.5, color: 'var(--text-faint)', margin: '0 0 12px' }}>Paste your signature image (Ctrl+V) or its URL, or upload an image. It will be shown on this report&apos;s sign-off in place of the typed employee name.</p>
-            <input
-              value={sigUrl}
-              onChange={e => setSigUrl(e.target.value)}
-              placeholder="Paste image (Ctrl+V) or enter https://…/signature.png"
-              style={{ width: '100%', background: 'var(--bg-surface)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, padding: '9px 11px', fontSize: 12.5, boxSizing: 'border-box' }}
-            />
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>or</span>
-              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, cursor: 'pointer', background: 'var(--bg-surface)', border: '1px dashed var(--border-accent)', borderRadius: 6, padding: '7px 12px', fontSize: 12, color: 'var(--teal)' }}>
-                <i className="fas fa-upload" style={{ fontSize: 12, lineHeight: 1 }} />
-                {isSigUploading ? 'Uploading…' : 'Upload image'}
-                <input
-                  type="file"
-                  accept="image/*"
-                  style={{ display: 'none' }}
-                  disabled={isSigUploading}
-                  onChange={async (e) => {
-                    if (!e.target.files || e.target.files.length === 0) return;
-                    try {
-                      const urls = await handleImageUpload(e, 'phmcSignature');
-                      if (urls && urls[0]) setSigUrl(urls[0]?.url || '');
-                    } catch (err) {
-                      showNotification('Signature upload failed: ' + (err?.message || err), 'error');
-                    } finally {
-                      e.target.value = '';
-                    }
-                  }}
-                />
-              </label>
-            </div>
-            {/^https?:\/\/\S+\.(png|jpe?g|gif|webp)(\?\S*)?$/i.test(String(sigUrl || '').trim()) && (
-              <div style={{ marginTop: 10 }}>
-                <div style={{ fontSize: 11, color: 'var(--text-faint)', marginBottom: 4 }}>Preview:</div>
-                <div style={{ background: '#fff', borderRadius: 6, padding: 8, textAlign: 'center' }}>
-                  <img src={String(sigUrl || '').trim()} alt="signature preview" style={{ maxHeight: 120, maxWidth: '100%', objectFit: 'contain' }} />
-                </div>
-              </div>
-            )}
-            <div style={{ display: 'flex', gap: 8, marginTop: 14, justifyContent: 'flex-end' }}>
-              <button onClick={() => setSigOpen(false)} style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, padding: '8px 14px', fontSize: 12.5, cursor: 'pointer' }}>Cancel</button>
-              <button onClick={approveSignature} disabled={!/^https?:\/\/\S+\.(png|jpe?g|gif|webp)(\?\S*)?$/i.test(String(sigUrl || '').trim())} style={{ background: 'var(--teal-dim)', border: '1px solid var(--teal)', color: 'var(--teal)', borderRadius: 6, padding: '8px 14px', fontSize: 12.5, cursor: 'pointer', opacity: /^https?:\/\/\S+\.(png|jpe?g|gif|webp)(\?\S*)?$/i.test(String(sigUrl || '').trim()) ? 1 : 0.4 }}>Approve</button>
-            </div>
-          </div>
-        </div>
-      )}
-      {isSurgicalDev && surgicalDiagramOpen && (
-        <SurgicalDiagramModal
-          show={surgicalDiagramOpen}
-          onClose={() => setSurgicalDiagramOpen(false)}
-          data={surgicalDiagram}
-          onChange={setSurgicalDiagram}
-        />
-      )}
       {/* ─── Floating action row: progress + clear + book FAB (autopsy only) ─── */}
       {selectedForm && (
+      fabCollapsed ? (
+        <button
+          type="button"
+          onClick={() => setFabCollapsed(false)}
+          title="Show form actions"
+          aria-label="Show form actions"
+          style={{ position: 'fixed', right: 24, bottom: 20, zIndex: 400, width: 38, height: 38, borderRadius: '50%', background: 'var(--bg-elevated)', border: '1px solid var(--teal)', color: 'var(--teal)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 24px rgba(0,0,0,0.45)', fontSize: 14 }}
+        >
+          <i className="fas fa-chevron-up" />
+        </button>
+      ) : (
       <div style={{ position: 'fixed', right: 24, bottom: 20, zIndex: 400, display: 'flex', alignItems: 'center', gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 999, background: 'var(--bg-elevated)', border: '1px solid var(--border-accent)', boxShadow: '0 8px 24px rgba(0,0,0,0.45)' }}>
           <div style={{ width: 64, height: 6, borderRadius: 3, background: 'var(--bg-surface)', overflow: 'hidden' }}>
@@ -2117,8 +1961,19 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
             {caseInfo ? 'View Case Info' : 'View Assignments'}
           </button>
           )}
+          <button
+            type="button"
+            onClick={() => setFabCollapsed(true)}
+            title="Hide form actions"
+            aria-label="Hide form actions"
+            className="btn btn-ghost"
+            style={{ fontSize: 12, padding: '6px 9px' }}
+          >
+            <i className="fas fa-chevron-down" />
+          </button>
         </div>
       </div>
+      )
       )}
       {showCaseInfo && caseInfo && (() => {
         const w = caseInfo.entry || {};
@@ -2316,6 +2171,9 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
         onSwapCharacter={(c) => swapCharacter(c)}
         canSwapCharacters={canSwapCharacters}
       />
+
+      {/* ─── LSPD Portal Guide (one-time staff tutorial) ─── */}
+      <LspdGuideModal open={guideOpen} onClose={closeGuide} />
 
     </div>
   );

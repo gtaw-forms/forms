@@ -61,7 +61,7 @@ export async function execute(interaction) {
         let content = `Here's the business card for **${name}**:`;
         if (imageUrl) content += `\nYour image URL: \`${imageUrl}\``;
 
-        console.log(`[CARD] [DONE] Sending card to ${interaction.user.tag}${imageUrl ? ' (+ImgBB URL)' : ''}`);
+        console.log(`[CARD] [DONE] Sending card to ${interaction.user.tag}${imageUrl ? ' (+ImgLink URL)' : ''}`);
 
         await interaction.editReply({ content, files: [attachment] });
     } catch (error) {

@@ -6,6 +6,8 @@ import * as Sentry from "@sentry/react";
 import { useNotification } from '../contexts/NotificationContext';
 import { useData } from '../contexts/DataContext';
 import { comprehensiveSanitize } from '../utils/textUtils';
+import { isLocalPreview } from '../components/migration-ui/viewModel';
+import { filterDemoRecords, findDemoRecordPayload } from '../components/migration-ui/demoData';
 
 // Note: all non-scheduled reads go through the VPS after the Task 3b
 // cutover — no RTDB report paths are read here anymore.
@@ -87,6 +89,20 @@ export const useReportLoader = () => {
 
             removeNotification(loadingNotifId);
 
+            // Local preview with nothing on record: serve clearly-labelled
+            // sample rows so the modal (list, filter, load) is testable
+            // without OAuth or a backend. Never audited, never deletable
+            // (the modal hides Delete for demo rows).
+            if (allReports.length === 0 && !append && isLocalPreview()) {
+                const demo = filterDemoRecords({}).map((r) => ({
+                    ...r, originalKey: r.title, _src: 'vps',
+                }));
+                setSavedReports(demo);
+                setSavedReportsTotal(demo.length);
+                showNotification(`Loaded ${demo.length} sample report(s) for ${userId} (local preview).`, 'info-circle');
+                return demo;
+            }
+
             if (allReports.length > 0 || append) {
                 allReports.sort((a, b) => b.timestamp - a.timestamp);
                 if (append) {
@@ -119,6 +135,17 @@ export const useReportLoader = () => {
             return allReports;
         } catch (error) {
             removeNotification(loadingNotifId);
+            // Local preview with an unreachable backend: same sample fallback
+            // instead of a dead-end error (the demo rows are inert and local).
+            if (!append && isLocalPreview()) {
+                const demo = filterDemoRecords({}).map((r) => ({
+                    ...r, originalKey: r.title, _src: 'vps',
+                }));
+                setSavedReports(demo);
+                setSavedReportsTotal(demo.length);
+                showNotification(`Backend unreachable — showing ${demo.length} sample report(s) (local preview).`, 'info-circle');
+                return demo;
+            }
             console.error(`Error loading reports for user ${userId}:`, error);
             Sentry.captureException(error, { extra: { context: 'loadUserSavedReports', userId } });
             showNotification(`Failed to load reports for ${userId}.`, 'error');
@@ -162,7 +189,17 @@ export const useReportLoader = () => {
         try {
             let reportSnapshot;
             let bbCodeSnapshot = null;
-            if (report._src === 'scheduled') {
+            if (report?.demo) {
+                // Sample rows load from the local payload — no callable, no
+                // audit, no network. The shared handling below fills the form.
+                const demo = findDemoRecordPayload(report.author || userId, reportFirebaseKey);
+                if (!demo?.report) {
+                    if (!returnOnly) showNotification('Sample report is missing.', 'error');
+                    return { success: false, message: 'Sample report is missing.' };
+                }
+                reportSnapshot = { exists: () => true, val: () => demo.report };
+                bbCodeSnapshot = { exists: () => false, val: () => ({ bbCode: '' }) };
+            } else if (report._src === 'scheduled') {
                 const reportRef = ref(database, reportPath);
                 const bbCodeRef = ref(database, bbCodePath);
                 reportSnapshot = await get(reportRef);

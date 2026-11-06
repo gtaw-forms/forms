@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Button, Form, Spinner } from 'react-bootstrap';
 import Select from 'react-select';
+import { agencyLabel } from '../migration-ui/viewModel';
 
 // Common form types used in the application
 const AVAILABLE_FORMS = [
@@ -180,8 +181,9 @@ const SavedReportsModal = ({
             // First, load the full report data including BBCode
             loadReportForUser(report, selectedEmployee.value, true).then((result) => {
                 if (result.success) {
-                    // Then, call the attachment handler with the full data
-                    handleReportSelectedForAttachment(result.reportData, result.reportData.data, result.reportData.bbCodeVersion, result.reportData.bbCode);
+                    // Then, call the attachment handler with the full data.
+                    // Pass the row's own identity so notices can deep-link it.
+                    handleReportSelectedForAttachment(result.reportData, result.reportData.data, result.reportData.bbCodeVersion, result.reportData.bbCode, { author: report.author || selectedEmployee.value, key: report.key });
                 } else {
                     showNotification('Failed to load report for attachment.', 'error');
                 }
@@ -337,6 +339,7 @@ const SavedReportsModal = ({
                                     <tr style={{ backgroundColor: '#161b22', borderBottom: '1px solid #30363d' }}>
                                         <th style={{ padding: '15px', textAlign: 'left', color: '#8b949e', fontWeight: '600' }}>Name / Identifier</th>
                                         <th style={{ padding: '15px', textAlign: 'left', color: '#8b949e', fontWeight: '600' }}>OOC Names</th>
+                                        <th style={{ padding: '15px', textAlign: 'left', color: '#8b949e', fontWeight: '600' }}>Department</th>
                                         <th style={{ padding: '15px', textAlign: 'left', color: '#8b949e', fontWeight: '600' }}>Date Saved</th>
                                         <th style={{ padding: '15px', textAlign: 'left', color: '#8b949e', fontWeight: '600' }}>Status</th>
                                         <th style={{ padding: '15px', textAlign: 'right', color: '#8b949e', fontWeight: '600' }}>Actions</th>
@@ -347,9 +350,21 @@ const SavedReportsModal = ({
                                         const oocNames = extractOocNames(report);
                                         return (
                                             <tr key={report.key} style={{ borderBottom: '1px solid #30363d', transition: 'background-color 0.2s' }} className="report-row">
-                                                <td style={{ padding: '15px', color: '#e6edf3' }}>{report.originalKey}</td>
+                                                <td style={{ padding: '15px', color: '#e6edf3' }}>
+                                                    {report.originalKey}
+                                                    {report.demo ? (
+                                                        <span style={{ display: 'inline-block', marginLeft: 8, padding: '1px 8px', borderRadius: 10, backgroundColor: '#3a2b00', color: '#f0b429', fontSize: '0.75em', fontWeight: '700' }}>
+                                                            Sample
+                                                        </span>
+                                                    ) : null}
+                                                </td>
                                                 <td style={{ padding: '15px', color: '#8b949e', fontSize: '0.9em' }}>
                                                     {oocNames ? oocNames.join(', ') : <span style={{ fontStyle: 'italic' }}>No OOC</span>}
+                                                </td>
+                                                <td style={{ padding: '15px', color: '#8b949e', fontSize: '0.9em' }}>
+                                                    {(report.department || report.data?.department)
+                                                        ? agencyLabel(report.department || report.data?.department)
+                                                        : <span style={{ fontStyle: 'italic' }}>—</span>}
                                                 </td>
                                                 <td style={{ padding: '15px', color: '#8b949e' }}>{new Date(report.timestamp).toLocaleString()}</td>
                                                 <td style={{ padding: '15px', color: '#8b949e', fontSize: '0.9em' }}>
@@ -376,12 +391,14 @@ const SavedReportsModal = ({
                                                     <Button 
                                                         variant="outline-danger" 
                                                         size="sm" 
+                                                        disabled={!!report.demo}
+                                                        title={report.demo ? 'Sample rows cannot be deleted' : undefined}
                                                         onClick={() => {
                                                             if (window.confirm(`Are you sure you want to delete "${report.originalKey}"?`)) {
                                                                 deleteReportForUser(report, selectedEmployee.value);
                                                             }
                                                         }}
-                                                        style={{ fontWeight: '600' }}
+                                                        style={{ fontWeight: '600', ...(report.demo ? { opacity: 0.4 } : {}) }}
                                                     >
                                                         Delete
                                                     </Button>

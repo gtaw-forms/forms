@@ -11,6 +11,7 @@ import { sendLogMessage } from './logChannel.js';
 import { firstApiKey } from './apiKeyUtil.js';
 import { registerTick, unregisterTick } from './scheduler.js';
 import { readState, writeState } from './vpsState.js';
+import { normalizeDeathType } from './outstandingAutopsies.js';
 
 async function sendWebhook(content, embed) {
     try {
@@ -333,11 +334,37 @@ const OVERDUE_PK_HOURS = hours('AUTOPSY_OVERDUE_HOURS_PK', 120);
 async function checkOverdueAutopsies(db) {
     console.log(`[MONITOR] 🔍 Checking for overdue autopsies (CK>${OVERDUE_CK_HOURS}h, PK>${OVERDUE_PK_HOURS}h, other>${OVERDUE_DEFAULT_HOURS}h)...`);
 
-    const thresholdHoursFor = (v) => {
-        const type = String(v.parsed?.deathType || '').toLowerCase();
+    const hoursForType = (t) => {
+        const type = String(t || '').toLowerCase();
         if (type.includes('ck')) return OVERDUE_CK_HOURS;
         if (type.includes('pk')) return OVERDUE_PK_HOURS;
         return OVERDUE_DEFAULT_HOURS;
+    };
+
+    // Per-body PK/CK for a mass collection (cases/<i>/deathType). Resolved
+    // types only — an unattributed body falls back to the collection's parsed
+    // sentence, never to the generic 48h default.
+    const massBodyTypes = (v) => {
+        const cases = (v && v.cases && typeof v.cases === 'object') ? v.cases : null;
+        if (!cases) return [];
+        const base = normalizeDeathType(v.parsed?.deathType);
+        const out = [];
+        for (const cc of Object.values(cases)) {
+            if (!cc || cc.completedAt || !cc.assignedTo) continue;
+            const t = normalizeDeathType(cc.deathType) || base;
+            if (t) out.push(t);
+        }
+        return out;
+    };
+
+    const thresholdHoursFor = (v, bodyTypes) => {
+        const types = Array.isArray(bodyTypes) ? bodyTypes : massBodyTypes(v);
+        // Mass request: the tightest window across the batch, so the CK body in
+        // a "CK for X, PK for the rest" request can't hide behind its PK
+        // siblings' 120h. (Previously the collection's shared sentence resolved
+        // to CK for every body — the same bug the panel/countdowns had.)
+        if (types.length > 0) return Math.min(...types.map(hoursForType));
+        return hoursForType(normalizeDeathType(v.parsed?.deathType) || v.parsed?.deathType);
     };
 
     try {
@@ -384,7 +411,8 @@ async function checkOverdueAutopsies(db) {
             if (isSettled(v)) return;
             const detected = v.detectedAt ? new Date(v.detectedAt).getTime() : 0;
             if (!detected) return;
-            const limitHours = thresholdHoursFor(v);
+            const bodyTypes = massBodyTypes(v);
+            const limitHours = thresholdHoursFor(v, bodyTypes);
             if (now - detected <= limitHours * 60 * 60 * 1000) return;
             // Suppress stale twins: a sibling with the same caseNum is further
             // along (complete beats assigned beats bare detection).
@@ -402,7 +430,9 @@ async function checkOverdueAutopsies(db) {
                     : (v.caseState || 'detected'),
                 since: detected,
                 caseNum: v.caseNum || '',
-                type: String(v.parsed?.deathType || '').trim() || '?',
+                type: bodyTypes.length > 0
+                    ? [...new Set(bodyTypes)].join('/')
+                    : (String(v.parsed?.deathType || '').trim() || '?'),
                 limitHours,
             });
         });

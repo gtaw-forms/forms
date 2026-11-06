@@ -40,9 +40,7 @@ injects it as `process.env.PHMC_CONFIG` (a JSON string).
   "GTAWORLD_CLIENT_ID":     "your-gta-world-client-id",
   "GTAWORLD_CLIENT_SECRET": "your-gta-world-client-secret",
 
-  "IMGUR_CLIENT_ID":   "...",
-  "IMGUR_ACCESS_TOKEN": "...",
-  "IMGBB_API_KEY":     "..."
+  "IMGLINK_API_KEY":   "..."
 }
 ```
 
@@ -53,9 +51,22 @@ injects it as `process.env.PHMC_CONFIG` (a JSON string).
 | `ADMIN_ACTION_WEBHOOK_URL` | string | `sendWebhook` fallback | Secondary default webhook |
 | `GTAWORLD_CLIENT_ID` | string | `processGtaWorldAuth` / `validateGtaWorldToken` / `getPublicConfig` | GTA World OAuth — **public** id (returned to the client) |
 | `GTAWORLD_CLIENT_SECRET` | string | OAuth token exchange | GTA World OAuth — **private**, never leaves the function |
-| `IMGUR_CLIENT_ID` | string | media proxy (`media.js`) | Imgur uploads |
-| `IMGUR_ACCESS_TOKEN` | string | media proxy | Imgur uploads (user token) |
-| `IMGBB_API_KEY` | string | media proxy | ImgBB uploads (alternative host) |
+| `IMGLINK_API_KEY` | string | media proxy (`media.js`) | ImgLink.cc uploads — every image is filed in the `Coroners` album |
+
+### Image hosting (ImgLink.cc)
+
+`uploadImageProxy` is the single egress point for every uploaded image (web app
+forms, autopsy request screenshots, bot-rendered `/card` images). It uploads to
+`https://imglink.cc/api/v1/upload` with `album=Coroners` and returns
+`{ success, url, thumb, viewer, id }`.
+
+- Key: dashboard → **API Keys** → Generate New Key (`imglink.cc/dashboard`).
+- Add it to `PHMC_CONFIG` as `IMGLINK_API_KEY` (`firebase functions:secrets:set PHMC_CONFIG`).
+- Limits (verified account): 50 MB/file, 100 uploads/hour shared with website
+  uploads, 10 GB storage. The callable's 10 MB request cap and the client's 5 MB
+  pre-flight guard bite long before the file-size limit.
+- The retired `IMGBB_API_KEY` / `IMGUR_*` entries are no longer read; remove them
+  from the secret once the ImgLink rollout is confirmed.
 
 ---
 

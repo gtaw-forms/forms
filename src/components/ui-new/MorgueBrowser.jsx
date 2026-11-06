@@ -3,18 +3,27 @@ import { generateMorgueBBCode } from '../../utils/morgue';
 import { ref, onValue } from 'firebase/database';
 import { database } from '../../firebase';
 import RequestAutopsyModal from './RequestAutopsyModal';
+import MassRequestAutopsyModal from './MassRequestAutopsyModal';
 import MorgueBodyMapModal from './MorgueBodyMapModal';
 
 const PAGE_SIZE = 50;
 const IS_LOCALHOST = window.location.hostname === 'localhost';
 
-const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAuthenticated, characterName, user: _user, accessLevel }) => {
+// Stable selection identity — firebaseKey is the record key; caseId is the
+// human-facing fallback so a cached record without firebaseKey still selects.
+const recordKey = (r) => String(r?.firebaseKey || r?.caseId || r?.name || '');
+
+const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAuthenticated, characterName, user, accessLevel }) => {
   const [search, setSearch] = useState('');
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [requestingAutopsy, setRequestingAutopsy] = useState(null);
+  const [showMassModal, setShowMassModal] = useState(false);
+  const [selectedKeys, setSelectedKeys] = useState(() => new Set());
   const [showBodyMap, setShowBodyMap] = useState(false);
   const [page, setPage] = useState(1);
+  const lastClickedIndexRef = useRef(-1);
+  const selectAllRef = useRef(null);
 
   const canAccess = IS_LOCALHOST || isAuthenticated;
 
@@ -69,6 +78,70 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
   const safePage = Math.min(page, totalPages);
   const paginated = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
+  // ── Batch (mass) autopsy selection ──
+  // Selection is keyed by record and survives paging/filtering; the "select
+  // page" checkbox operates on exactly what is on screen. Shift-click selects
+  // a range inside the current page (same as a file list).
+  const selectedRecords = useMemo(
+    () => records
+      .filter(r => selectedKeys.has(recordKey(r)))
+      // Same order as the list (case id desc) so "Body 1..N" matches what the
+      // user ticked, including selections hidden by an active search.
+      .sort((a, b) => String(b.caseId || '').localeCompare(String(a.caseId || ''), undefined, { numeric: true })),
+    [records, selectedKeys],
+  );
+  const selectedCount = selectedRecords.length;
+  const pageSelectedCount = paginated.filter(r => selectedKeys.has(recordKey(r))).length;
+  const allPageSelected = paginated.length > 0 && pageSelectedCount === paginated.length;
+
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = pageSelectedCount > 0 && pageSelectedCount < paginated.length;
+    }
+  }, [pageSelectedCount, paginated.length]);
+
+  // Drop keys whose record disappeared after a reload so the batch modal can
+  // never submit a body that is no longer in the morgue list.
+  useEffect(() => {
+    setSelectedKeys(prev => {
+      if (prev.size === 0) return prev;
+      const live = new Set(records.map(recordKey));
+      const next = new Set();
+      let changed = false;
+      prev.forEach(k => { if (live.has(k)) next.add(k); else changed = true; });
+      return changed ? next : prev;
+    });
+  }, [records]);
+
+  const toggleSelect = (record, index) => (e) => {
+    const key = recordKey(record);
+    const shift = !!(e?.nativeEvent?.shiftKey || e?.shiftKey);
+    setSelectedKeys(prev => {
+      const next = new Set(prev);
+      const anchor = lastClickedIndexRef.current;
+      if (shift && anchor >= 0 && anchor < paginated.length && anchor !== index) {
+        const [a, b] = anchor < index ? [anchor, index] : [index, anchor];
+        for (let i = a; i <= b; i++) next.add(recordKey(paginated[i]));
+      } else if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+    lastClickedIndexRef.current = index;
+  };
+  const toggleSelectAllPage = () => {
+    setSelectedKeys(prev => {
+      const next = new Set(prev);
+      if (allPageSelected) paginated.forEach(r => next.delete(recordKey(r)));
+      else paginated.forEach(r => next.add(recordKey(r)));
+      return next;
+    });
+    lastClickedIndexRef.current = -1;
+  };
+  const clearSelection = () => { setSelectedKeys(new Set()); lastClickedIndexRef.current = -1; };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
 
@@ -101,11 +174,35 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
         <div className="lookup-bar">
           <input type="text" placeholder="Search by decedent name or case ID…" value={search}
             onChange={e => setSearch(e.target.value)} />
+          {selectedCount > 0 && (
+            <div className="batch-tools">
+              <span className="batch-count" title="Selection is kept while paging and filtering">
+                <i className="fas fa-square-check me-1" />{selectedCount} selected
+              </span>
+              <button
+                className="btn btn-primary"
+                style={{ fontSize: 12, whiteSpace: 'nowrap' }}
+                disabled={selectedCount < 2}
+                title={selectedCount < 2 ? 'Select at least 2 bodies — use the row action for a single autopsy' : `File one batch request for ${selectedCount} bodies`}
+                onClick={() => setShowMassModal(true)}
+              >
+                <i className="fas fa-layer-group me-1" />
+                Request {selectedCount} {selectedCount === 1 ? 'Autopsy' : 'Autopsies'}
+              </button>
+              <button className="btn btn-ghost" style={{ fontSize: 12, whiteSpace: 'nowrap' }} onClick={clearSelection} title="Clear the batch selection">
+                <i className="fas fa-xmark me-1" /> Clear
+              </button>
+            </div>
+          )}
           <button className="btn btn-ghost" style={{ fontSize: 12, whiteSpace: 'nowrap' }}
             onClick={() => { setShowBodyMap(true); }}
             title="Show a map of body counts per street">
             <i className="fas fa-map-location-dot me-1" /> Body Map
           </button>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, fontSize: 10.5, color: 'var(--text-faint)', fontFamily: 'var(--mono)' }}>
+          <i className="fas fa-circle-info" />
+          <span>Tick bodies to request several autopsies in one case thread. Shift-click selects a range.</span>
         </div>
       </div>
 
@@ -137,13 +234,31 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
           </div>
         )}
         {!isLoading && <><div className="records-head-row">
+          <input
+            ref={selectAllRef}
+            type="checkbox"
+            checked={allPageSelected}
+            onChange={toggleSelectAllPage}
+            title="Select every body on this page"
+            aria-label="Select every body on this page"
+          />
           <span>Case ID</span>
           <span>Decedent</span>
           <span>Intake Date</span>
           <span style={{ textAlign: 'center' }}>Action</span>
         </div>
-        {paginated.map(r => (
-          <div key={r.caseId || r.firebaseKey} className="record-row">
+        {paginated.map((r, index) => {
+          const isSelected = selectedKeys.has(recordKey(r));
+          return (
+          <div key={r.firebaseKey || r.caseId} className={`record-row${isSelected ? ' selected' : ''}`}>
+            <input
+              type="checkbox"
+              checked={isSelected}
+              onChange={toggleSelect(r, index)}
+              onClick={e => e.stopPropagation()}
+              title="Add this body to a batch autopsy request (shift-click for a range)"
+              aria-label={`Select ${r.name || 'record'} (case ${r.caseId || 'unknown'})`}
+            />
             <div className="case-id">#{r.caseId}</div>
             <div className="decedent">
               {r.name || 'Unknown'}
@@ -159,7 +274,8 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
               </button>
             </div>
           </div>
-        ))}
+          );
+        })}
         {filtered.length === 0 && !isLoading && !(records.length === 0 && !search) && (
           <div className="no-results" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-faint)', fontSize: 13 }}>
             <i className="fas fa-microscope" style={{ fontSize: 28, display: 'block', marginBottom: 8, opacity: 0.3 }} />
@@ -172,6 +288,7 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
       <div className="doc-footer" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ fontSize: 11.5, color: 'var(--text-faint)', fontFamily: 'var(--mono)' }}>
           Page {safePage} of {totalPages} ({filtered.length} filtered of {records.length} total)
+          {selectedCount > 0 && <span style={{ color: 'var(--teal)' }}> · {selectedCount} selected for batch</span>}
         </span>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: '6px 12px' }}
@@ -341,6 +458,17 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
           onClose={() => setRequestingAutopsy(null)}
           showNotification={showNotification}
           characterName={characterName}
+        />
+      )}
+      {showMassModal && (
+        <MassRequestAutopsyModal
+          show={showMassModal}
+          records={selectedRecords}
+          onClose={() => setShowMassModal(false)}
+          onSubmitted={() => clearSelection()}
+          showNotification={showNotification}
+          characterName={characterName}
+          user={user}
         />
       )}
     </div>

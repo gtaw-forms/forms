@@ -1,5 +1,252 @@
 # PHMC Discord Bot — Changelog
 
+## DEPLOYED 2026-11-06 — LSPD crosspost killed, portal filings re-enabled
+
+### Removed
+- **Dead-board LSPD forum surface**: completion crosspost (`crosspostAutopsyToLspd` + caller, vars, completion-text `lspdUrl` in 4 call sites), detection-time f=1361 topic creation in all 3 monitor paths (reuse-only removed — nothing reads the ids at intake anymore), LSPD ack replies in `sendAutopsyAcknowledgement`, both dead-board recovery sweeps + their heartbeat entries, LSPD logins from the DM retry paths. Completion text for LSPD now points at the records portal (no dead links).
+- **Kept**: historic `lspdTopicId` values on entries (untouched), the `lspdTopicId || isLspdCase` completion gate (still routes the ME form), `ACK_FIELD_NAMES.lspd` (historical data), non-LSPD forum features using `FORUM_LSPD_*` creds (roster, PM monitors — separate scope).
+
+### Changed
+- **`LSPD_PORTAL_ENABLED=true` on the VPS** (was absent = paused): native coroner + ME form filings resume; queues were empty so nothing burst on restart. Verified live: bot online, new heartbeat runs without the retired checks, workers started, no errors (AGH dashboard errors are the known-dead VPS instance, unrelated).
+
+### Audit
+- Repo-wide grep: zero crosspost/inbox remnants outside tombstone comments; full suite 300/300, `check-bot-imports` OK, VPS mirror clean.
+
+## DEPLOYED 2026-11-06 — LSPD inbox sends retired (forms + share links only)
+
+### Removed
+- **All three LSPD portal-mail sends**: coroner/mass-fatality notice queue (`deployCoronerEmail.js` LSPD path now files the native coroner-report form only), autopsy `lspdCrosspost` live step + retry sweep (resolve as retired/skipped, step names kept for dashboards), and the LSPD-targeted `dmSent` live + retry branches (skip before any dead-board login).
+- **`sendPortalMessage` deleted** from `services/lspdPortal.js` (module keeps the session machinery the form driver files through); `LSPD_PORTAL_DRY_RUN` + `LSPD_PORTAL_GROUP_ID` env retired; `buildPortalNotice`/`portalSubject` removed from `lspdReportRoute.js`; `buildAutopsyNotice`/`buildAutopsySubject` removed from `lspdAutopsyNotice.js` (target predicate + recipient kept for the ME form); `coronerEmailQueue` portal channel dropped (forum PM only); startup `retryFailedLspdCrossposts` marks historic `failed` entries `retired` so the tick goes quiet.
+- **Kept untouched**: native coroner-report + ME form filings (still kill-switch gated), share links, LSSD/SADCR/DAO forum PMs, legacy forum crosspost to LSPD f=1361 (dead board, out of scope).
+
+### Audit
+- Repo-wide grep: zero references to any removed symbol outside intentional tombstone comments; full suite 300/300, `check-bot-imports` OK, VPS mirror clean.
+
+## DEPLOYED 2026-11-06 — Before/after snapshots on portal deliveries + receipt detection
+
+### Added
+- **`services/deployLogger.js` `DeployProgressEmbed.snapshot(caption, imagePath)`** — posts a captioned screenshot as a separate follow-up message (never an embed edit — Discord drops attachments on embed-only edits). Best-effort: missing/oversize files are skipped with a log line, never thrown.
+- **Form queue (`services/lspdPortalFormQueue.js`)** posts before-submit + after-submit snapshots on success, before-only on dry-run/failure. **Coroner-email portal branch (`services/deployCoronerEmail.js`)** posts before/after snapshots the same way.
+- **Mail driver (`services/lspdPortal.js`)** and **form driver (`services/lspdPortalForms.js`)** now return `beforeScreenshot` (+ `screenshot` after submit) so the queue/worker layers have both moments. Verified live with a TEST snapshot pair in the log channel (no portal send).
+- **`services/lspdPortalForms.js` `detectReceipt()`** — post-submit confirmation keys on receipt markers (`STATUS Received` + `FILED`, CR-style or request-ID reference) instead of URL-prefix matching, which read every at-path receipt as "still on the form" (false-negatives; a retrying queue would file duplicates). Reference returned for traceability.
+
+### Tests
+- **`tests/lspd-portal-forms.test.js`** — receipt detection: exact ME receipt URL + body from the live TEST filing, coroner receipt strings, negatives (blank form, validation errors, empty input). Full suite 309/309, `check-bot-imports` OK, VPS mirror clean.
+
+## UNDEPLOYED — `/forms-stats` replaces `/autopsy-stats` (per-staffer report image)
+
+### Added
+- **`commands/forms-stats.js`** (new, owner-only) — per-staffer saved-report breakdown with a generated summary image (table + totals + monthly chart, attached + fail-open ImgLink URL like `/card`). Options: `type` (all coroner reports by default; autopsy / coroner-report / death_record / coroner_email / mass-fatality), `period` (last-3 / last-6 / last-12 / year-to-date / all-time) and explicit `from`/`to` (YYYY-MM, overrides period). Old `/autopsy-stats` request-pipeline view removed per leadership call (1a).
+- **`services/formsStatsImage.js`** (new) — SVG + sharp PNG renderer (no browser needed); caps at 24 months and top-15 staff + Other row.
+- **`morgue-api.js` `GET /api/reports/attribution`** (new, above `/:author/:key`) — server-side per-person per-month aggregation over the VPS store (`forms`/`from`/`to` query; examiner = coronerEmployee/phmcEmployee, fallback author). Includes ALL authors (no leadership exclusions — owner-only leadership breakdown).
+
+### Changed
+- **`index.js`** — registers `forms-stats` instead of `autopsy-stats` (slash-command PUT replaces the old command on next restart). `PHMC_COMMANDS` trim list untouched.
+- **`services/autopsyRequestMonitor.js`** — comment only (drop `autopsy-stats` from the `caseState` readers list).
+
+### Removed
+- **`commands/autopsy-stats.js`** deleted (request received/processed stats + ME assignments view gone with it).
+
+## DEPLOYED — LSPD portal delivery PAUSED (verified live: sends hold in retry)
+
+### Changed
+- **`LSPD_PORTAL_ENABLED` kill-switch (default OFF):** the LSPD portal can't add new users, so automated delivery is paused until further notice. Sends fail retryably into `retry_queued` (no Discord spam, no session alerts); the first sweep after re-enable delivers everything held. Web preview/guide/share-links untouched (manual sends to existing members still work).
+
+### Changed
+- **New `services/reportLink.js`** — `portalReportUrl` prefers short `#/r/` links via `shortLinksByReport`, falling back to long links (never fails closed on shortening). Wired into coroner-email + all autopsy portal branches (live + retries).
+- All 1,745 stored reports backfilled (`tools/backfill-share-codes.mjs`, VPS debug scratch, since removed).
+
+## UNDEPLOYED — LSPD autopsy completion via the Community Portal
+
+### Added
+- **`services/lspdAutopsyNotice.js`** (new, dependency-free, unit-tested) — `isLspdAutopsyTarget` (request faction/title-tag wins, report dept is a hint), strict `autopsyNoticeRecipient` (character name or fail-closed), `buildAutopsySubject` (private-safe) and `buildAutopsyNotice` (one notice per completion, batch case numbers listed).
+- **`tests/lspd-autopsy-notice.test.js`** — 5 tests green.
+
+### Changed
+- **`services/deployAutopsyReply.js`** — the `lspdCrosspost` step and the LSPD-targeted `dmSent` branches (private `pmForum=lspd`, web-forms `agencyForum=lspd`) now send portal notices as the group instead of phpBB topic/reply/PM. Step names, progress labels, two-phase tracking, deferral rules and the CASELINK skip are unchanged; recipient mismatches and unlinkable reports fail (retryable), never guess. Completion records now persist `reportAuthorId`/`reportKey` so retries can build deep links.
+- **`services/deployLspd.js`** — `retryFailedLspdCrossposts` converts to portal notices (recipient + identity resolved from the entry; pre-portal failures without either stay failed for manual review).
+- Interactive picker path (`deployInteraction.js`) intentionally untouched — operator-driven, out of scope.
+
+### Ops notes
+- Same `LSPD_PORTAL_DRY_RUN` gate and session-alerting as coroner notices. NOT YET DEPLOYED (dirty tree).
+
+## UNDEPLOYED — LSPD coroner/mass-fatality reports via the Community Portal
+
+### Added
+- **`services/lspdReportRoute.js`** (new, dependency-free, unit-tested) — the single "is this an LSPD Coroner or Mass Fatality report?" home: `isLspdPortalReport` (formId `coroner-report`/`mass-ftality-test` + department normalising to `lspd`), `buildReportUrl` (fail-closed `#/report/<author>/<key>`), `portalSubject`, `buildPortalNotice` (markdown-lite notice, no BBCode).
+- **`services/lspdPortal.js`** (new) — portal delivery driver over the daemon browser (CDP): sends AS the PHMC Forensic Medicine liaison group (`LSPD_PORTAL_GROUP_ID`), exact-single-match recipient resolution (never guesses), `checkPortalSession` health probe, throttled Discord session-renewal alert (6 h) with the re-capture runbook.
+- **`tools/capture-lspd-session.mjs`** (new, local-only) — manual re-capture helper: headed Chrome, snapshots until you type `done`, prints the VPS install command.
+- **`tests/lspd-report-route.test.js`** — 7 tests green; `bot:imports` OK (151 modules).
+
+### Changed
+- **`services/deployCoronerEmail.js`** — `handleCoronerEmail` routes LSPD coroner/mass reports to a portal notice entity (fail-closed when the link can't be built); `deliverCoronerEmail` accepts `channel:'portal'` and drives `lspdPortal.sendPortalMessage` (dry-run aware). All other departments keep the legacy phpBB path untouched.
+- **`services/coronerEmailQueue.js`** — entities carry `channel`/`notice`/`reportUrl`; enqueue validates per-channel bodies; worker passes them through. Sent portal threads mirror to `coronerEmailUrl` as before.
+- **`.env.example`** — `LSPD_PORTAL_DRY_RUN` (default true), `LSPD_PORTAL_GROUP_ID`, `LSPD_PORTAL_SESSION`, `PHMC_SITE_URL`.
+
+### Ops notes (read before enabling)
+- Session lives at `/opt/phmc-bot/lspd-portal-session.json` (chmod 600, outside the bot mirror — `bot:deploy` never touches it, never in git). Seeded 2026-10-29 from a manual login.
+- Rollout: deploy with `LSPD_PORTAL_DRY_RUN=true` first — entities resolve + fill and land terminal `dry_run`, proving the path without submitting. Then set `LSPD_PORTAL_DRY_RUN=false` on the VPS `.env` + restart for live sends.
+- Session expiry → throttled Discord ping to the developer with renewal steps; entities retry on backoff until renewed.
+- NOT YET DEPLOYED — the working tree has pre-existing unrelated changes; `bot:deploy` refuses a dirty tree. Reconcile, then `bot:check` + `bot:deploy`.
+
+## 2026-10-29 — `/card` image URLs via ImgLink (`Coroners` album)
+
+### Changed
+- **`services/imageProxy.js`** now uploads through the `uploadImageProxy` callable to **ImgLink.cc**; `service` is sent as `imglink` and ignored server-side. The API key stays in the Cloud Secret (`PHMC_CONFIG → IMGLINK_API_KEY`) — no new bot env var.
+- **`services/cardGenerator.js`** — `uploadCardImage()` passes `imglink`; fail-open unchanged (native attachment always delivered).
+- **`commands/card.js`** — log label is now "(+ImgLink URL)".
+- **`.env.example`** — comment block updated; ImgBB/Imgur are retired.
+
+### Deployed
+- Whole-tree `npm run bot:deploy` — `[bot-parity] [OK] tree mirrored; VPS matches the repo.` `npm run bot:imports` passes (149 modules). The mirror also published the tree's pre-existing in-flight bot work, on owner approval.
+- `/card` now returns an ImgLink URL (or the native attachment when the proxy fails).
+
+## 2026-10-24 — morgue-api: scoped developer keys (LSPD DRDB)
+
+### Added — morgue-api (deployed via `npm run bot:deploy`)
+- **`MORGUE_REPORTS_API_KEYS`** — morgue-only read keys, accepted by `/api/morgue`, `/api/morgue/drug` and `/api/morgue/:caseId` only; `401` on LEO, agency credentials, rosters, saved reports and every write route.
+- **LEO department scopes** — `LEO_REPORTS_API_KEYS` entries may be `label:agency:key` (`lspd`, `lssd`, `sadcr`, `dao`, `lsfd`, `saaa`). A scoped key forces the list to that department (ignores `?agency=`, returns `agency`/`agencyLocked`), and opening/auditing another department's report returns `404`. Unscoped LEO keys are unchanged.
+- **Issued LSPD DRDB keys** (values live only in the VPS + local `.env`):
+  - `lspd-drdb-morgue` in `MORGUE_REPORTS_API_KEYS`
+  - `lspd-drdb-leo:lspd` in `LEO_REPORTS_API_KEYS`
+- Developer reference: `setup/DEVELOPER-API.md` (API consumers only; no key-management section).
+
+### Key management (maintainers)
+- **Location:** `/opt/phmc-bot/discord-bot/.env` on the VPS, then `pm2 restart morgue-api`.
+- **Generate:**
+  - morgue: `node -e "console.log('pmc_morgue_' + require('crypto').randomBytes(16).toString('hex'))"`
+  - LEO: `node -e "console.log('pmc_leo_' + require('crypto').randomBytes(16).toString('hex'))"`
+- **Add morgue-only:** `MORGUE_REPORTS_API_KEYS="label:pmc_morgue_xxx"` (comma-separate multiple).
+- **Add LEO:** `LEO_REPORTS_API_KEYS="label:pmc_leo_xxx"` for all departments, or `label:agency:pmc_leo_xxx` (e.g. `lspd-drdb-leo:lspd:…`) for one.
+- **Rotate:** append the new key → restart → migrate the consumer → remove the old key → restart.
+- **Revoke:** remove the entry → restart; in-flight requests fail with `401`.
+- Keys are never committed or shipped to a client. LEO keys are rejected on morgue/roster/agency/write routes; morgue-only keys are rejected on LEO.
+
+
+## 2026-10-24 — Dependency + runtime patch pass (Node 22, npm advisories, Chromium, OS)
+
+### Security
+- **Node.js 22.23.4 confirmed current** for the 2026-10-21 coordinated release (CVE-2026-111497 Brotli RCE, CVE-2026-105482 DNS NUL truncation, CVE-2026-106069/106072 TLS hostname bypasses, CVE-2026-105481, CVE-2026-106074, CVE-2026-106073). No runtime change needed.
+- **`npm audit` on production deps: 2 high → 0.** `body-parser` 1.20.7 → 1.20.9 (GHSA-27r3-jxmh-p828, DoS via trailing bytes after a compressed body, reachable through morgue-api's `express.json()`); `undici` 6.28.1 → 6.29.1 (GHSA-4qv8-2p9j-2685, GHSA-xjj6-f33q-929c, pulled in by discord.js / @discordjs/rest).
+- **Playwright 1.61.1 → 1.64.1 and Chromium 149.0.7827.55 → 156.0.8078.4.** The forum browser had drifted six Chrome majors behind while rendering forum content under `--no-sandbox`. Profile backed up before the restart; bot reattached via CDP, logged in on Chrome 156 and saved the session.
+- **Cloud Functions:** `body-parser` 2.3.0 → 2.4.0 (same advisory), `firebase deploy --only functions` complete.
+- **OS:** 72 pending Ubuntu updates applied; kernel 7.0.0-31 → 7.0.0-38 and glibc activated by reboot; `pm2 save` refreshed first.
+- **nginx 1.28.3** is in upstream's affected range for CVE-2026-15176 / CVE-2026-97205, but Ubuntu has no fixed package yet and the config uses none of the vulnerable directives (`alias`+`rewrite`, AIO+SSI, `map`, HTTP/3, TLS) — documented, monitored.
+- Full matrix: `docs/vps-vulnerability-review-2026-10-24.md`.
+
+## 2026-10-24 — morgue-api: forwarded-header IP spoofing fixed (scanner sweep)
+
+### Security (deployed via `npm run bot:deploy`)
+- **`X-Forwarded-For` is no longer trusted from the left.** `getClientIp()` took the leftmost hop, which the client controls, so a scanner sending `X-Forwarded-For: 127.0.0.1` was treated as loopback — a trusted IP — and skipped the keyless-404 instant ban, the strike counter and the suspicious alert. On 2026-10-24 one host (`185.177.72.29`) made 747 requests in 25 s through nginx and was never banned; 418 distinct paths and 118 suspicious detections were logged against `127.0.0.1`. Nothing was accessed (only `/api/health` returned 200).
+- **New `discord-bot/services/clientIp.js`** (unit-tested, 12 cases): honours forwarded headers only from a trusted proxy (loopback/nginx, plus `MORGUE_API_TRUSTED_PROXIES`), prefers `X-Real-IP` (nginx overwrites it), and reads XFF chains right-to-left. A direct peer sending either header is now an **instant permanent ban** (`SPOOF-forwarded-header`) plus a Discord alert; valid API keys stay exempt (Cloud Functions egress from shared GCP IPs).
+- `tests/clientIp.test.js` added; full suite 222/222.
+- **Infrastructure (same day):** public `ufw` allow for 3001 removed (loopback + `tailscale0` only — nginx serves `/api/` on 80); nginx `limit_req` on `/api/`; fail2ban installed with an sshd jail; SSH password auth disabled and root limited to key auth; firewall denies for `185.177.72.29` and `195.178.110.137`. Off-box callers (`functions/.env.example`, `tools/report-view-log.mjs`, `setup/morgue-logger.ps1`, PoC docs) now use port 80.
+- Full write-up: `docs/morgue-api-ip-spoofing-2026-10-24.md`.
+
+## 2026-10-22 — October 2026 Node.js security patch + dependency audit
+
+### Runtime
+- **VPS Node.js 22.23.1 → 22.23.4**; `phmc-bot` and `morgue-api` restarted and verified on 22.23.4. This covers CVE-2026-111497 (Brotli RCE), the TLS hostname bypasses, DNS NUL, and the bundled undici/OpenSSL/c-ares updates.
+
+### Dependencies (bot)
+- `sharp@0.35.4 → 0.35.5` (librsvg CVE-2026-96889).
+- `express@4.22.2 → 4.22.3` + `proxy-addr@2.0.8` override (IP-spoofing critical).
+- `firebase-admin@14.2.0 → 14.5.0`; `@fastify/busboy@3.2.4`; `brace-expansion@1.1.21`.
+- `npm audit`: **0 vulnerabilities**. Bot tree redeployed; VPS `npm install --omit=dev`; services healthy.
+
+## 2026-10-21 — Saved form/report view embeds
+
+### Added — morgue-api (deployed via `npm run bot:deploy`)
+- **Saved form/report opens now post a bot-native embed** (PHMC Bot) to `NOTIFY_CHANNEL_FORM_VIEWS` (default `1455291752327024721`; the report-saving-log fallback was removed). Covers generic `/api/reports/:author/:key/view` and LEO live/cache views.
+- Embed: Form, Author, Character, OAuth, Source, IP, UID; title `Form Viewed` / `LEO Form Viewed`. Two-minute dedupe per viewer+report; audit files remain one line per open.
+- Generic view endpoint now accepts the client character hint and records `viewerSource`/`verifiedViewer`, matching the LEO audit identity rules.
+
+## 2026-10-21 — LEO panel access audit (Discord embed + file)
+
+### Added — morgue-api (deployed via `npm run bot:deploy`)
+- **`POST /api/reports/leo/access`** — records one panel-open event and posts a **bot-native Discord embed** (same PHMC Bot client as `/api/notify`, no webhook URL) to `NOTIFY_CHANNEL_LEO` (fallback `NOTIFY_CHANNEL_ADMIN`). Embed shows Character, OAuth, Source, IP, UID and timestamp; footer `PHMC Bot • LEO access audit`.
+- **`data/leo-panel-access.log`** — JSONL, 5 MB rotation + one spare. Metadata only; identity comes from the Auth-derived `x-phmc-requester-*` headers set by the `logLeoPanelAccess` callable, never from the request body.
+- **Non-PHMC character names**: the Auth claim only carries a PHMC character; LEO users commonly have none. The callable forwards the client's active character as a sanitized display hint (`characterName` body field / `viewer` query parameter for live opens), **and the Auth custom token now carries `displayCharacterName`** (active → PHMC faction → first OAuth character) which `morgueRequesterHeaders` prefers. Audit lines record `viewer`, `viewerSource` (`client`/`claim`/`none`) and `verifiedViewer`; UID/OAuth remain server-derived and authoritative. This covers both panel opens and per-report views.
+- Per-report opens remain in `data/leo-report-access.log`; panel access is a separate event. The notify transport is fail-closed: if Discord is offline the audit line is still written and `notified:false` is returned.
+
+## 2026-10-21 — Saved-report store version signal for live feeds
+
+### Added — morgue-api (deployed via `npm run bot:deploy`)
+- **`appMetadata/reportsDataVersion`** is now bumped whenever the VPS saved-report store changes: single write, delete, bulk write (one bump per batch) and restore. The migration UI listens to this node and drops its IndexedDB feed cache, so a report saved by one user appears for everyone without waiting for the 5-minute TTL. The bump is best-effort and never fails the report operation.
+- **Post-deploy VPS mirror** (`services/vpsReportMirror.js`, called from `deployStatus.markReportComplete`): after a real topic/PM/autopsy deploy succeeds, the bot re-reads the final queue record + `scheduledReportsBBCode` and POSTs the authoritative copy to `/api/reports`. Dry-run/simulated and skipped deploys are excluded. The web app's save-time mirror remains for instant feed updates; this is the durable post-success copy and covers old builds or a failed client mirror.
+- Deployed with the whole-tree bot deploy; `morgue-api` restarted (uptime confirmed). Verified: the node is present and the Thayse Klenner mass report is now served by `/api/reports/recent`.
+
+### Why
+- Deployment-tracked saves live in RTDB `scheduledReports` (bot queue) and were never copied to the VPS feed store. The web side now mirrors queued saves to `/api/reports` on save; this version node is what tells other open clients to refetch. See the web `changelog.md` entry for the full root cause.
+
+## 2026-10-19 — Mass completion matcher: report OOC ↔ body IC-name cross-match
+
+### Fixed
+- **A body filed without `((OOC))` can now be completed by a report that puts its IC name in the OOC slot** (`services/deployAutopsyReply.js` → `matchCollectionCase`). Mass intake accepts a real IC name with no brackets and stores it as `cases/<i>/name` with `oocName: ""` (the 2026-10-15 change). The MEs then file the report the normal way — `John Doe ((Luis Angel))`, `Unknown ((Ryan Kennedy))` — so the report's OOC holds what the body stored as its NAME. The matcher only compared OOC→OOC and name→name, found nothing, and quarantined **every** report: `Shared collection #10392: report OOC="Luis Angel" name="John Doe" matches no body — quarantined`. No body ever got `completedAt`, so the overdue monitor kept alerting (t=10392 HUA3 Brawl — all four reports were submitted).
+  - Pass 1 (report OOC) now also matches the body's **name** when the body has no usable OOC; pass 2 (report name) symmetrically matches the body's **OOC** when the body has no usable name.
+  - Placeholder identities never participate either way (`isNonIdentityPlaceholder`: DOE/`Unknown`/`N/A`), and the existing prefer-uncompleted → highest-caseNum tie-break is unchanged.
+- Checks: `npx vitest run` 178 passed (new `tests/matchCollectionCase.test.js`, 8 cases: the HUA3 shape, legacy OOC/IC matches, placeholder guard, uncompleted-twin preference, multi-entry lookup).
+
+### Recovered
+- **t=10392 (Case 545, HUA3 Brawl) closed.** The four bodies' reports were already posted in the case thread (`p=25720/25733/25734/25739`), but completion was quarantined by the matcher above. Marked `cases/0..3/completedAt` + stored the report BBCode (`completedBbCode`) for the three reports still in RTDB, set the collection-level `completedAt`, and released the four ME rotation slots. The overdue alert clears on the next monitor pass.
+- **Gap noted:** the deferred SADCR completion + combined report was never posted (the completion never ran; `sadcrCrosspostStatus` stays `pending`), and **Hector Angel's saved report no longer exists in RTDB** (only its posted reply `p=25720`), so his body has no `completedBbCode`. Sending the agency batch needs his report recovered from the forum first.
+
+## 2026-10-18 — LEO forwarded-report feed + audited opens
+
+### Added — morgue-api (deployed 2026-10-20 via `npm run bot:deploy`)
+- **`GET /api/reports/leo`** — forwarded-report feed for the new platform: scans `data/saved-reports`, keeps only reports whose values carry `ReportRequested: true`, newest first. Paginated (default 50, max 100), optional `agency` + `q` filters. Returns lightweight rows with `department`, `requestingOfficer`, `decedentName`, `timestamp`, `updatedAt`.
+- **`GET /api/reports/leo/:author/:key`** — reads one forwarded report **and writes the access audit line before returning the payload**, so a live open is always attributed.
+- **`POST /api/reports/leo/:author/:key/view`** — audit-only path for cache hits (the client serves the IndexedDB copy instantly and still records the view).
+- **`data/leo-report-access.log`** — append-only, 5 MB rotation + one spare: `time | viewer | oauth | uid | report | title | agency | source=live|cache | ip`. Identity comes from the Firebase callable's `x-phmc-requester-*` headers (verified Auth claims), never client input; the same line is written to console/pm2.
+- **Deployed 2026-10-20** with the whole-tree bot deploy (parity `0` pending after sync; `morgue-api` restarted). Verified live: `GET /api/reports/leo` → 200 / 466 forwarded rows, audited read + cache-view lines both appended to `data/leo-report-access.log`.
+
+## 2026-10-18 — Morgue dates: day-first month names parse (same-name tie-break)
+
+### Fixed
+- **`parseDate()` now understands the autopsy request template's DATE OF DEATH format** (`14/OCT/2026`, `14-Oct-2026 22:25`, `14 OCT 2026`) and a bare `YYYY-MM-DD` (time optional), in `services/deathRecordDraftCache.js`. It previously returned `NaN` for all of them, so `findMorgueRecord()`'s **closest-date tie-break was skipped** and the FIRST same-named record in the store won. Live effect (t=10392 HUA3 Brawl): the `Unknown (( Ryan Kennedy ))` body resolved to the oldest of the seven same-named records (May `#75003`) even after the correct Oct 14 record existed. With the reference date parsed, the tie-break selects the record nearest the request date (`#85282`).
+- Impact is not limited to mass requests: every autopsy request stores its date as `DD/MMM/YYYY`, so any decedent sharing a name with an older morgue entry could match the wrong record (and therefore the wrong injury set / age / location in the web "Load Case" fill and the assignment panel).
+- Checks: `npx vitest run` 158 passed (new `tests/morgueDateParse.test.js`, 6 cases covering the new formats, the legacy formats, and the same-name tie-break end-to-end).
+
+### Data
+- Added three `morgue-records` entries for the HUA3 Brawl decedents through the VPS morgue API (write path; the VPS `morgue-data.json` is canonical): `#85280 Unknown (( Luis Angel ))`, `#85281 Unknown (( Thiago Ferguson ))`, `#85282 Unknown (( Ryan Kennedy ))`. `morgueDataVersion` bumped so the web app refetches; bot restarted to reload the in-memory morgue cache.
+
+## 2026-10-15 — Mass request intake: missing ((OOC)) no longer parks the whole request
+
+### Fixed
+- **A mass request whose bodies omit `((OOC))` is no longer parked whole** (`services/autopsyRequestMonitor.js` → `parseMassRequestBbcode`). t=10392 `[Mass autopsy Request] HUA3 Brawl [SADCR]` (4 real IC names — Luis Angel / Ryan Kennedy / Thiago Ferguson / Hector Angel — no `((OOC))` anywhere) was detected, then rejected per body ("missing ((OOC)) name — skipped"), so **0 bodies parsed and the request was written `caseState: 'skipped'`** — which also makes the detection loop skip it forever. That hard skip contradicted the legacy multi-decedent path, which already files these bodies and only records a `bodyWarning`. Now a body with a real IC name and no `((OOC))` is **filed on the IC name** with a `BODY n … ((OOC)) name missing — filed on IC name` warning; only genuinely unidentifiable names (DOE/UNKNOWN-style, via `isNonIdentityPlaceholder`) still need the OOC and are skipped. The morgue pre-match already resolves these from the IC name (t=10392 body 2 matches `Unknown (( Ryan Kennedy ))`).
+- **A parked mass request is no longer silent.** The park path wrote Firebase + a stderr `[WARN]` and nothing else — no forum ack, no alert — which is why nobody knew about t=10392. It now also sends a `[Mass Autopsy Request PARKED — needs a fix]` notification to the bot-spam log channel with the topic link and reason.
+- **`MASS_NAME_LINE_RE` no longer crosses a newline** — an EMPTY `1.) Decedent Name:` line was adopting the next field (`"2.) Gender: Male"`) as the decedent name. Same-line value only (`[ \t]*:[ \t]*([^\n]+)`).
+
+### Added
+- **Per-body `Type of Death: PK`/`Type of Death: CK`** is recognised inside a `--- BODY n ---` block and **takes precedence over the shared Section-4 sentence** (which stays the fallback for older posts). The line is being added to the forum template by staff; intake just reads it, so a body's type no longer depends on `((OOC))` or on `deriveBodyDeathTypes()` name-matching. An ambiguous value naming both ("PK/CK" — the template's own hint text) stays unresolved rather than guessing at one.
+- **Body slices are capped at `SECTION 3`/`SECTION 4`** so an unnumbered `Type of Death:` (or any Section-3/4 line) can never be read as the **last** body's value.
+- **A placeholder Section-4 `1.) PK/CK` value ("ANSWER") is dropped** (`shared.deathType = ''`), so ME panels/countdowns never render `Type: ANSWER`.
+- **`tools/redrive-mass-request.mjs`** — re-arm a parked (`caseState: 'skipped'`) request for intake after its source post is fixed (dry-run by default; `--apply`). Refuses a live/terminal non-parked state so it can't re-file a duplicate.
+- Checks: `check-bot-imports` OK; `npx vitest run` 149 passed (new `tests/massRequestBodyIntake.test.js`, 9 cases).
+
+### Recovered
+- **t=10392 HUA3 Brawl re-armed** after deploying this fix; the four bodies now file as one mass collection (Case Management topic + grouped assignment + SADCR crosspost + ack).
+
+## 2026-10-14 — Autopsy completion: placeholder name match + CASELINK DM target
+
+### Fixed
+- **The completion flow's last-resort NAME match no longer accepts placeholders, and no longer completes more than one request.** A report filed as `decedentName: "Unknown"` (the morgue's unidentified/PK convention) missed the caseTopicId and OOC matches, so it fell through to the name lookup — and `isDoePlaceholder("Unknown")` was false, so the lookup matched **every** "Unknown" entry and the loop completed *all* of the open ones. Live effect (Hawick, 02:18–02:20): one body's report was written onto two unrelated stale duplicates (t=10076/t=10083), each created an LSPD crosspost (lspd 130085/130086), and their DM steps then failed hourly. New `nameFallbackVerdict()` (`services/autopsyCompletionGuards.js`) requires a non-placeholder name AND **exactly one OPEN** matching request; anything else is quarantined for supervisor triage (the report stays posted, the request is not completed).
+- **The CASELINK DM target can no longer wedge the Recovery Sweep.** The fallback target was the literal `'CASELINK [BOT]'` while the guard that skips that account tested `'CASELINK [Bot]'` — a case-sensitive mismatch, so the bot really composed a PM to a username phpBB rejects ("not accepted by the forum"), the step stayed `failed`, and the sweep retried it forever (`t=10076/t=10083`). One canonical `CASELINK_ACCOUNT` constant plus case-insensitive `isCaselinkAccount()` / `isUnusableDmTarget()`, wired into **both** the live completion path and the retry path; an unusable target is recorded as a **completed/skipped** step (`Automated request — DM not needed` / `No valid DM target — skipped`), never a failure — so the sweep clears its marker and the hourly WARN stops.
+- **Every placeholder-name gate in the reply path now uses the stricter predicate** (`doePlaceholders.isNonIdentityPlaceholder`): the reply-target lookup, the Case-Management search term, and the shared-collection per-body router (`matchCollectionCase`) all refuse a name that is a DOE marker *or* "Unknown" — a placeholder name is never a match key. Previously `t=10390` ("Akil Yazz ((PK))") had the flow searching Case Management for the literal `"PK"`.
+- Checks: `check-bot-imports` OK (146 modules); `npx vitest run` 140 passed (new `tests/autopsyCompletionGuards.test.js`, 10 cases).
+
+## 2026-10-13 — Mass PK/CK resolves per body (panel tags + wait windows)
+
+### Fixed
+- **A mass request's single Section-4 "PK/CK" line no longer applies one type to every body.** Requesters write sentences — `CK FOR ISABELA SALAZAR, PK FOR THE OTHER TWO` (Hawick, 3 bodies) — and that whole string was stored as `parsed.deathType` and read for every body, so the two PK bodies rendered as CK on the ME panel AND got the CK 72h wait window (`limitHoursFor()` keys off the first "ck" substring). New `deriveBodyDeathTypes()` (`services/autopsyRequestMonitor.js`) resolves ONE type per body — explicitly named bodies first, then catch-all phrases ("the other two" / "the rest" / "all"), then the leading token as the default — and intake now writes it to `cases/<i>/deathType`. Bodies it cannot attribute stay unresolved and fall back to the shared value (never a dropped field); a partial attribution adds a `BODY n … PK/CK unresolved` warning.
+- **Per-body `deathType` is now the first read wherever a type tag or wait window is derived:** ME panel rows + countdown chips (`massAssignmentPanel.buildPanelAssignmentsFromEntry` → V2/legacy panels), `/outstanding-autopsies` rows and the dashboard rows (`outstandingAutopsies.js`, `dashboardManager.js`), single-panel refresh/heal of mass sub-cases (`singlePanelV2.js`), and the per-ME fallback assignment ping (joins the distinct codes a ME owns). Rows staged before this fix keep the shared sentence — no data loss.
+- **Overdue monitor uses the tightest window across a mass batch** (`systemMonitor.js`): a CK body can no longer hide behind its PK siblings' 120h, and the alert lists the batch's types (`CK/PK`) instead of the shared sentence. Unattributed bodies fall back to the collection value, never the generic 48h default.
+- `normalizeDeathType()` (`services/outstandingAutopsies.js`) collapses free text to CK/PK (and to `''` when it names both), so a sentence can never render as a badge/label.
+- Checks: `check-bot-imports` OK (145 modules); `npx vitest run` 130 passed (new `tests/massPkckDeathType.test.js` covers the resolver, the windows and the panel rows).
+
+### Migrated
+- **Backfilled per-body `deathType` on the 8 mass collections staged before the fix** (20 rows across t=9951, 9974, 10161, 10167, 10174, 10308, 10328, 10383) — without this, existing rows had no per-body value, so every reader kept falling back to the shared sentence and the panel kept showing the old type *and* the old countdowns. Done with the new reusable `tools/backfill-mass-deathtype.mjs` (dry-run by default, `--apply` to write, `--topic <id>` to scope; writes only `cases/<idx>/deathType`, never anything else). Live panels fix themselves: the mass-panel watcher sees the Firebase change and edits the message in place (`#10383` refreshed to `PK / PK / CK` with 120h / 120h / 72h).
+
 ## 2026-10-10 — Autopsy decedent OOC dropped for hand-written titles (Case 538)
 
 ### Fixed

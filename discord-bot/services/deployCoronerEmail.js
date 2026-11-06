@@ -17,6 +17,7 @@ import { logFnCall, DeployProgressEmbed } from './deployLogger.js';
 import { state } from './deployState.js';
 import { getForumClient } from './forumClient.js';
 import { isMaintenanceMode } from './deployQueue.js';
+import { isLspdPortalReport, isLspdEmailReport } from './lspdReportRoute.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -118,13 +119,11 @@ function resolveForum(department) {
             forumLabel: 'LSSD',
         };
     }
-    // Default: LSPD
-    return {
-        forumUrl: process.env.FORUM_LSPD_URL || 'http://lspd.gta.world',
-        username: process.env.FORUM_LSPD_USERNAME,
-        password: process.env.FORUM_LSPD_PASSWORD,
-        forumLabel: 'LSPD',
-    };
+    // Fail closed: only SADCR / DAO / LSSD have live forum-PM paths.
+    // Anything else (including LSPD and unrecognized departments) resolves
+    // to null and the caller below refuses to queue — never default onto
+    // the dead LSPD board.
+    return null;
 }
 
 /**
@@ -163,8 +162,43 @@ export async function handleCoronerEmail(report) {
         return;
     }
 
-    // ── Resolve forum ──
+    // ── LSPD portal path: native coroner-report form filing ONLY ──
+    // Inbox retirement (Nov 2026): LSPD is off phpBB and takes no inbox
+    // notices — their portal replaced them. LSPD coroner / mass-fatality
+    // reports (and manually filed LSPD coroner emails) file the liaison
+    // coroner-report form and nothing else. Fail-closed at enqueue:
+    // unbuildable payloads refuse the queue.
+    const isPortalTarget = isLspdPortalReport({ formId: reportData.formId, data })
+        || isLspdEmailReport({ formId: reportData.formId, data });
+    if (isPortalTarget) {
+        try {
+            const { enqueuePortalForm } = await import('./lspdPortalFormQueue.js');
+            const formKey = await enqueuePortalForm(db, {
+                form: 'coroner-report', authorId, reportKey: key,
+                recipient, data, context: {},
+            });
+            if (formKey) {
+                await progress.addStep('Form Queued', 'ok', `Coroner form queued (LSPD → ${recipient})`);
+            } else {
+                await progress.addStep('Form Queued', 'fail', 'Form payload unbuildable — see bot log (ABORT, no default)');
+            }
+            await progress.finalize(formKey ? 'complete' : 'failed');
+            return formKey;
+        } catch (e) {
+            await progress.addStep('Form Queued', 'fail', String(e.message || e).slice(0, 120));
+            await progress.finalize('failed');
+            return null;
+        }
+    }
+
+    // ── Resolve forum (fail closed — null means no live PM path) ──
     const forum = resolveForum(department);
+    if (!forum) {
+        console.error(`[CORONER-EMAIL] No forum-PM path for department "${String(department?.label || department?.value || department || '').slice(0, 60)}" — refusing to queue`);
+        await progress.addStep('No Forum Path', 'fail', 'Unknown department — email not queued (fail closed)');
+        await progress.finalize('failed');
+        return;
+    }
     if (!forum.username || !forum.password) {
         console.warn(`[CORONER-EMAIL] No credentials for ${forum.forumLabel} — skipping`);
         await progress.addStep('No Credentials', 'skip', `${forum.forumLabel} not configured`);
@@ -240,6 +274,17 @@ export async function handleCoronerEmail(report) {
             }
         }
     }
+
+    // Fail closed: an email whose enclosed report resolved to nothing must
+    // never queue — it would send the officer an empty spoiler. The BBCode
+    // is written at save time, so a miss now never heals; fix the data and
+    // re-trigger rather than retry.
+    if (!additionalReports?.length && (deathReport === 'No attached reports.' || /\[spoiler=[^\]]*\]\s*\[\/spoiler\]/i.test(deathReport))) {
+        console.error(`[CORONER-EMAIL] Empty report body for ${authorId}/${key} — refusing to queue`);
+        await progress.addStep('No Report Body', 'fail', 'enclosed report BBCode not found (scheduledReportsBBCode + dev fallback both missed)');
+        await progress.finalize('failed');
+        return;
+    }
     const values = {
         requestingOfficer: recipient,
         coronerEmployee,
@@ -297,6 +342,10 @@ export async function handleCoronerEmail(report) {
  * Deliver one coroner email end-to-end (used by the queue worker).
  * Owns its progress embed; writes nothing to the report record (the worker
  * mirrors delivery results). Returns { ok, url?, reason?, sentTo?, dryRun? }.
+ *
+ * Forum PM path only. The LSPD portal-notice channel was retired Nov 2026
+ * (LSPD takes no inbox notices); legacy `channel: 'portal'` entities are
+ * terminal and never reach this worker path again.
  */
 export async function deliverCoronerEmail({ recipient, subject, bbCode, department, progressTitle }) {
     let target = (recipient || '').trim();
@@ -309,6 +358,12 @@ export async function deliverCoronerEmail({ recipient, subject, bbCode, departme
     }
 
     const forum = resolveForum(department);
+    if (!forum) {
+        console.error(`[CORONER-EMAIL] No forum-PM path for department "${String(department?.label || department?.value || department || '').slice(0, 60)}" — refusing to send`);
+        await progress.addStep('No Forum Path', 'fail', 'Unknown department — not sent (fail closed)');
+        await progress.finalize('failed');
+        return { ok: false, reason: 'Unknown department — no forum-PM path' };
+    }
     if (!forum.username || !forum.password) {
         console.warn(`[CORONER-EMAIL] No credentials for ${forum.forumLabel} — skipping`);
         await progress.addStep('No Credentials', 'fail', `${forum.forumLabel} not configured`);

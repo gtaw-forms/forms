@@ -123,7 +123,7 @@ CLI into the deployed runtime.
 
 | Variable | Description |
 |---|---|
-| `MORGUE_API_URL` | Base URL of your morgue-api (default `http://88.208.243.254`) — **must include the port** your API listens on, e.g. `http://<vps>:3001` |
+| `MORGUE_API_URL` | Base URL of your morgue-api (default `http://88.208.243.254`). Off-box callers use **port 80** (nginx → `127.0.0.1:3001`); morgue-api's own port 3001 is firewalled off the public internet, and is reachable only on loopback and the VPS tailnet (`http://100.84.161.69:3001`). |
 | `MORGUE_API_KEY` | A valid morgue-api **read** key (functions proxy reads to the VPS) |
 | `MORGUE_WRITE_API_KEY` | A valid morgue-api **write** key (only if a function needs PUT/DELETE) |
 

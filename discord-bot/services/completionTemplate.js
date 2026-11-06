@@ -41,12 +41,12 @@ Website: [url]www.phmc.health[/url][/size]
  *   - faction 'lssd' → LSSD CASELINK/records fallback
  *   - faction 'sadcr'/'dao' → agency Autopsy Records subforum link
  *     (SADCR f=2328 / DAO f=2331 live on the shared lssd.gta.world domain)
- *   - faction 'lspd' → direct LSPD topic link (lspdUrl) or the f=1361 forum
+ *   - faction 'lspd' → LSPD records portal line (forum crosspost retired Nov 2026)
  *   - otherwise      → tells the requester to check their PHMC Intranet Inbox
  *
  * @param {string} caseTitle — case title (reserved; template has no CASE_TITLE slot)
  * @param {string} requesterName — requester for the template
- * @param {object|string|null} [linkContext] — { faction, lssdUrl, lspdUrl }, or a
+ * @param {object|string|null} [linkContext] — { faction, lssdUrl }, or a
  *   plain string treated as the completion reply URL (backward compat)
  * @returns {string}
  */
@@ -54,7 +54,7 @@ import { FORUM_FALLBACK_URLS } from './agencyForums.js';
 
 export function buildCompletionBb(caseTitle, requesterName, linkContext = {}) {
     const ctx = typeof linkContext === 'string' ? { lssdUrl: linkContext } : (linkContext || {});
-    const { faction, lssdUrl, lspdUrl, formsAutopsy } = ctx;
+    const { faction, lssdUrl, formsAutopsy } = ctx;
     const f = String(faction || '').toLowerCase();
     const facTag = String(faction || '').toUpperCase();
 
@@ -67,9 +67,7 @@ export function buildCompletionBb(caseTitle, requesterName, linkContext = {}) {
     } else if (f === 'sadcr' || f === 'dao') {
         govLine = `For ${facTag}, please review your completed report in the ${facTag} Autopsy Records forum: [url=${FORUM_FALLBACK_URLS[facTag]}]${facTag} Autopsy Records[/url]`;
     } else if (f === 'lspd') {
-        govLine = lspdUrl
-            ? `For LSPD, please review your completed report here: [url]${lspdUrl}[/url]`
-            : 'For LSPD, please navigate to [url]https://lspd.gta.world/viewforum.php?f=1361[/url]';
+        govLine = 'For LSPD, please review your completed report in the LSPD records portal.';
     } else {
         govLine = 'The completed report has been delivered to your PHMC Intranet Inbox. Please check there for the autopsy findings.';
     }

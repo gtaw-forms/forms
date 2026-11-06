@@ -1,0 +1,253 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   PHMC Platform — components.css
+   Global stylesheet for the new PHMC platform (route /migration-ui).
+   1:1 with plan/coroner-report-handoff/mock-site.html (cards, rows, photos,
+   records list, create forms, decedent blocks, history, raw payload), plus
+   the platform-only blocks for Morgue Records and LEO Reports.
+   Everything is scoped under `.pmc`.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Cards (mock lines 123-136) ── */
+.pmc .card {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--radius); margin-bottom: 18px; overflow: hidden;
+  color: var(--text);
+}
+.pmc .card > h2 {
+  font-size: 14.5px; font-weight: 700; padding: 14px 20px;
+  border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 9px;
+}
+.pmc .card > h2 .ic { color: var(--muted); font-size: 13px; }
+.pmc .card > h2 .tag {
+  margin-left: auto; font-size: 11px; font-weight: 400; color: var(--muted);
+  background: var(--chip); border: 1px solid var(--border); border-radius: 6px; padding: 1px 8px;
+}
+.pmc .card .body { padding: 16px 20px 18px; }
+
+/* ── Grids / rows (mock lines 137-153) ── */
+.pmc .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 32px; }
+.pmc .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px 32px; }
+.pmc .row { margin-bottom: 13px; }
+.pmc .row:last-child { margin-bottom: 0; }
+.pmc .lbl { font-size: 11px; letter-spacing: 0.6px; color: var(--muted); margin-bottom: 3px; }
+.pmc .val { font-size: 14px; }
+.pmc .val.red { color: #e5686d; }
+.pmc .val.warn { color: #e8c36a; }
+.pmc .val.long { line-height: 1.55; color: #d6d6db; }
+.pmc .val.muted { color: var(--muted); }
+.pmc .chiprow { display: flex; gap: 8px; flex-wrap: wrap; }
+.pmc .chip {
+  background: var(--chip); border: 1px solid var(--border); border-radius: 6px;
+  padding: 2px 10px; font-size: 12.5px;
+}
+.pmc .accent-left { border-left: 2px solid var(--accent); padding-left: 14px; }
+.pmc ol.tight { margin: 2px 0 0 18px; }
+.pmc ol.tight li { margin-bottom: 3px; }
+
+/* ── Photo tiles (mock lines 154-165) ── */
+.pmc .photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-top: 6px; }
+.pmc .photo {
+  border: 1px solid var(--border); border-radius: 9px; overflow: hidden; background: var(--panel-2);
+}
+.pmc .photo .thumb {
+  height: 110px; display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, #1b1e26 0%, #232733 60%, #1a1d24 100%);
+  color: var(--faint); font-size: 26px; position: relative; overflow: hidden;
+}
+.pmc .photo .thumb .ph { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+.pmc .photo .thumb img { position: relative; width: 100%; height: 100%; object-fit: cover; display: block; }
+.pmc .photo .cap {
+  font-size: 11px; color: var(--muted); padding: 7px 9px; word-break: break-all;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.pmc .photo .cap b { display: block; color: var(--text); font-size: 11.5px; margin-bottom: 2px; word-break: normal; }
+.pmc .photo .thumb { cursor: zoom-in; }
+.pmc .photo .thumb.broken { cursor: default; }
+/* Side-by-side photo groups (Scene photos | Morgue screenshots). */
+.pmc .photo-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 22px; }
+.pmc .photo-groups .photos { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+/* Click-to-enlarge gallery overlay. */
+.pmc .photo-lightbox {
+  position: fixed; inset: 0; z-index: 2000; padding: 26px;
+  background: rgba(4, 4, 6, 0.88);
+  display: flex; align-items: center; justify-content: center;
+}
+.pmc .photo-lightbox img {
+  max-width: 92vw; max-height: 86vh; object-fit: contain;
+  border: 1px solid var(--border); border-radius: 10px; background: #0d1117;
+}
+.pmc .photo-lightbox button {
+  position: absolute; top: 18px; right: 22px;
+  background: var(--panel); border: 1px solid var(--border); color: var(--text);
+  border-radius: 8px; padding: 7px 14px; font-family: inherit; font-size: 13px; cursor: pointer;
+}
+
+/* ── Records list (mock lines 166-183) ── */
+.pmc .tools { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
+.pmc .tools input[type="search"],
+.pmc .tools input[type="text"] {
+  flex: 1 1 220px; background: var(--panel-2); border: 1px solid var(--border);
+  color: var(--text); border-radius: 9px; padding: 9px 12px; font-size: 13.5px; font-family: inherit;
+  min-width: 0; margin-bottom: 0;
+}
+.pmc .rec {
+  display: flex; align-items: center; gap: 14px; background: var(--panel);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 13px 18px; margin-bottom: 10px; cursor: pointer;
+  width: 100%; text-align: left; color: var(--text); font-family: inherit; font-size: 14px;
+}
+.pmc .rec:hover { border-color: #3a3a42; }
+.pmc .rec .type { flex-shrink: 0; width: 132px; }
+.pmc .rec .main { flex: 1; min-width: 0; }
+.pmc .rec .t { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pmc .rec .d { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.pmc .rec .arrow { color: var(--faint); font-size: 18px; }
+.pmc .empty { color: var(--muted); padding: 26px; text-align: center; }
+.pmc .notice {
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+  color: var(--muted); font-size: 13px; padding: 14px 18px; margin-bottom: 14px;
+}
+.pmc .notice.warn { border-color: #4a3a17; background: #171207; color: #e8c36a; }
+.pmc .notice.err { border-color: #4a1f1f; background: #1a0e0e; color: #e5686d; }
+.pmc .notice.ok { border-color: #1d4a3f; background: #0d1a17; color: #7fd4bd; }
+
+/* ── Create form (mock lines 184-218) ── */
+.pmc .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; }
+.pmc .field { display: flex; flex-direction: column; gap: 5px; }
+.pmc .field.full { grid-column: 1 / -1; }
+/* Neutralise App.css's global form rules (label margin, input margin,
+   custom checkbox appearance) inside the platform scope. */
+.pmc .field label { font-size: 11px; letter-spacing: 0.6px; color: var(--muted); margin-bottom: 0; }
+.pmc .field label .req { color: var(--accent); }
+.pmc .field input[type="text"],
+.pmc .field input[type="time"],
+.pmc .field input[type="datetime-local"],
+.pmc .field select,
+.pmc .field textarea {
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+  border-radius: 8px; padding: 9px 11px; font-size: 13.5px; font-family: inherit; width: 100%;
+  margin-bottom: 0;
+}
+.pmc .field textarea { min-height: 88px; resize: vertical; }
+.pmc .field input[type="datetime-local"]::-webkit-datetime-edit,
+.pmc .field input[type="time"]::-webkit-datetime-edit { color: var(--text); }
+.pmc .field input::-webkit-calendar-picker-indicator { filter: invert(0.8); cursor: pointer; }
+.pmc .field input:focus,
+.pmc .field select:focus,
+.pmc .field textarea:focus { outline: none; border-color: var(--accent); }
+.pmc .checkrow { display: flex; align-items: center; gap: 8px; font-size: 13.5px; margin-bottom: 0; }
+.pmc .checkrow input,
+.pmc .checkrow input:checked {
+  width: 16px; height: 16px; margin: 0; padding: 0;
+  accent-color: var(--accent);
+  appearance: auto; -webkit-appearance: auto;
+  background-color: initial; border: initial; border-radius: initial;
+}
+/* Input + small inline action ("Now", "Map"). */
+.pmc .input-row { display: flex; align-items: center; gap: 6px; }
+.pmc .input-row > input,
+.pmc .input-row > select { flex: 1 1 auto; min-width: 0; }
+.pmc .btn.mini {
+  padding: 0 10px; height: 38px; font-size: 12px; border-radius: 8px;
+  display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; line-height: 1;
+}
+.pmc .btn.mini i { font-size: 11px; }
+/* Request panel: checkbox on its own line, then Officer | Department below. */
+.pmc .request-block { display: flex; flex-direction: column; gap: 14px; }
+.pmc .request-details {
+  display: grid; grid-template-columns: minmax(0, 1fr);
+  gap: 14px 18px; align-items: end;
+}
+.pmc .request-details.has-officer {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+.pmc .form-err { display: none; color: #e5686d; font-size: 13px; margin-top: 4px; }
+.pmc .form-err.visible { display: block; }
+.pmc .form-actions { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+.pmc .dec-block {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--panel); margin-bottom: 14px; overflow: hidden;
+}
+.pmc .dec-block > h3 {
+  font-size: 13.5px; padding: 12px 18px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.pmc .dec-block > h3 button {
+  background: transparent; border: 1px solid var(--border); color: var(--muted);
+  border-radius: 7px; padding: 3px 10px; font-size: 12px; cursor: pointer; font-family: inherit;
+}
+.pmc .dec-block .form-grid { padding: 14px 18px 16px; }
+.pmc .dyn-list input[type="text"] {
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+  border-radius: 8px; padding: 9px 11px; font-size: 13.5px; font-family: inherit;
+  width: 100%; margin-bottom: 8px;
+}
+
+/* ── Raw JSON / history (mock lines 219-230) ── */
+.pmc details.raw { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); }
+.pmc details.raw summary { padding: 14px 20px; cursor: pointer; font-size: 14px; font-weight: 700; }
+.pmc details.raw pre {
+  border-top: 1px solid var(--border); padding: 14px 20px; font-size: 12px; line-height: 1.5;
+  color: #b9e0b9; overflow-x: auto; white-space: pre;
+}
+.pmc .hist { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.pmc .hist:last-child { border-bottom: 0; }
+.pmc .hist .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); margin-top: 5px; flex-shrink: 0; }
+.pmc .hist .t { font-size: 13.5px; }
+.pmc .hist .d { font-size: 12px; color: var(--muted); }
+
+/* ── Platform extras (Morgue Records + LEO Reports) ── */
+.pmc .agency-banner {
+  display: flex; align-items: center; gap: 14px;
+  background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--teal);
+  border-radius: var(--radius); padding: 14px 18px; margin-bottom: 16px;
+}
+.pmc .agency-banner .cap { font-size: 11px; letter-spacing: 0.6px; color: var(--muted); }
+.pmc .agency-banner .name { font-size: 15px; font-weight: 700; color: #7fd4bd; margin-top: 2px; }
+.pmc .agency-banner .meta { margin-left: auto; text-align: right; font-size: 12.5px; color: var(--muted); }
+.pmc .cache-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); margin-bottom: 14px; }
+.pmc .morgue-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.pmc .morgue-table th {
+  text-align: left; font-size: 11px; letter-spacing: 0.5px; color: var(--muted);
+  font-weight: 400; padding: 6px 10px 6px 0; border-bottom: 1px solid var(--border);
+}
+.pmc .morgue-table td { padding: 7px 10px 7px 0; border-bottom: 1px solid var(--border); vertical-align: top; }
+.pmc .morgue-table tr:last-child td { border-bottom: 0; }
+.pmc .mono { font-family: "Consolas", "SFMono-Regular", Menlo, monospace; font-size: 12.5px; }
+
+/* ── Embedded platform view (prototype → LEO Access → LEO Reports) ── */
+.pmc.pmc-embed {
+  min-height: 0;
+  flex: 1 1 auto;
+  background: transparent;
+  overflow-y: auto;
+}
+.pmc.pmc-embed .wrap {
+  max-width: none;
+  padding: 22px 22px 40px;
+}
+
+/* ── Responsive (mock line 231; sidebar collapses instead of disappearing so
+      the platform stays navigable on phones) ── */
+@media (max-width: 860px) {
+  .pmc .shell { flex-direction: column; }
+  .pmc aside {
+    width: auto; flex-direction: row; align-items: center;
+    overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--border);
+    padding: 10px 12px; gap: 8px;
+  }
+  .pmc .brand { padding: 0; flex-shrink: 0; }
+  .pmc .brand div:last-child { display: none; }
+  .pmc .nav-sec { display: none; }
+  .pmc .side-btn { width: auto; margin: 0; white-space: nowrap; flex-shrink: 0; }
+  .pmc .nav-item { width: auto; white-space: nowrap; flex-shrink: 0; }
+  .pmc .nav-item .n { display: none; }
+  .pmc header.top { padding: 12px 16px; }
+  .pmc .wrap { padding: 16px 14px 48px; }
+  .pmc .grid2, .pmc .grid3, .pmc .form-grid { grid-template-columns: 1fr; }
+  .pmc .request-details, .pmc .request-details.has-officer { grid-template-columns: 1fr; }
+  .pmc .photo-groups { grid-template-columns: 1fr; gap: 0; }
+  .pmc .rec .type { width: auto; }
+  .pmc .agency-banner { flex-wrap: wrap; }
+  .pmc .agency-banner .meta { margin-left: 0; text-align: left; width: 100%; }
+}

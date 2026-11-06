@@ -107,6 +107,9 @@ Firebase v2 callables, region **europe-west2**:
 Functions read `MORGUE_API_KEY` / `MORGUE_API_URL` from `functions/.env` and
 Discord webhook URLs from the `PHMC_CONFIG` secret.
 
+> External/developer API reference (morgue records + LEO reports, key scopes,
+> audit rules, examples): [`DEVELOPER-API.md`](DEVELOPER-API.md).
+
 ---
 
 ## Data flow — one saved report

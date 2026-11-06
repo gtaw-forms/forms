@@ -39,15 +39,17 @@ initLogger('api');
 // ──────────────────────────────────────────
 // Validate required env vars
 // ──────────────────────────────────────────
-if (!process.env.MORGUE_API_KEYS && !process.env.MORGUE_WRITE_API_KEYS) {
+if (!process.env.MORGUE_API_KEYS && !process.env.MORGUE_WRITE_API_KEYS && !process.env.LEO_REPORTS_API_KEYS) {
     console.error('[MORGUE-API] No API keys configured.');
-    console.error('[MORGUE-API] Set MORGUE_API_KEYS (read-only) and/or MORGUE_WRITE_API_KEYS (write-allowed) in .env');
+    console.error('[MORGUE-API] Set MORGUE_API_KEYS (read-only), MORGUE_WRITE_API_KEYS (write-allowed),');
+    console.error('[MORGUE-API] and/or LEO_REPORTS_API_KEYS (LEO report routes only) in .env');
     console.error('[MORGUE-API] Example: MORGUE_API_KEYS=pmc_morgue_abc123');
     process.exit(1);
 }
 
 import { API_KEY_LABEL_RE } from './services/apiKeyUtil.js';
 import { isExcludedAuthor } from './services/statsExclusions.js';
+import { getClientIp, isLoopbackIp, parseTrustedProxies, detectForwardedSpoof } from './services/clientIp.js';
 
 // ── Labeled API keys ──
 // MORGUE_API_KEYS="forms-functions:pmc_morgue_xxx,facebrowser:pmc_morgue_yyy"
@@ -57,7 +59,10 @@ import { isExcludedAuthor } from './services/statsExclusions.js';
 const KEY_LABELS = new Map();
 function parseLabeledKeys(raw) {
     const keys = [];
-    for (const entry of String(raw || '').split(',').map(s => s.trim()).filter(Boolean)) {
+    // .env values are often quoted (`KEY="label:value,label2:value2"`); the
+    // manual loader keeps the quotes, so strip them per entry before parsing.
+    const cleanEntry = (s) => String(s || '').trim().replace(/^["']|["']$/g, '').trim();
+    for (const entry of String(raw || '').split(',').map(cleanEntry).filter(Boolean)) {
         const ci = entry.indexOf(':');
         if (ci > 0) {
             const maybeLabel = entry.slice(0, ci).trim();
@@ -85,7 +90,57 @@ function displayKeyName(key, admin = false) {
 }
 const API_KEYS = parseLabeledKeys(process.env.MORGUE_API_KEYS);
 const WRITE_KEYS = parseLabeledKeys(process.env.MORGUE_WRITE_API_KEYS || '');
+// Morgue-only developer keys: accepted by the /api/morgue* GET routes only.
+const MORGUE_REPORT_KEYS = parseLabeledKeys(process.env.MORGUE_REPORTS_API_KEYS || '');
+// LEO-only developer keys. Accepted by /api/reports/leo* ONLY — they are not in
+// API_KEYS, so every other route rejects them with 401. Main read/write keys
+// remain accepted on the LEO routes (the Cloud Functions proxy uses the main key).
+//
+// Optional department scope as a third segment:
+//   LEO_REPORTS_API_KEYS="lspd-drdb-leo:lspd:pmc_leo_xxx,generic:pmc_leo_yyy"
+// A scoped key is forced to that department (the list ignores ?agency, and
+// open/view of another department's report returns 404).
+const AGENCY_SCOPES = new Set(['lspd', 'lssd', 'sadcr', 'dao', 'lsfd', 'saaa']);
+const LEO_KEY_AGENCY = new Map();
+function parseLeoKeys(raw) {
+    const keys = [];
+    const cleanEntry = (s) => String(s || '').trim().replace(/^["']|["']$/g, '').trim();
+    for (const entry of String(raw || '').split(',').map(cleanEntry).filter(Boolean)) {
+        const parts = entry.split(':');
+        if (parts.length >= 3 && API_KEY_LABEL_RE.test(parts[0].trim())) {
+            const label = parts[0].trim();
+            const agency = parts[1].trim().toLowerCase();
+            const key = parts.slice(2).join(':').trim();
+            if (key && AGENCY_SCOPES.has(agency)) {
+                keys.push(key);
+                if (!KEY_LABELS.has(key)) KEY_LABELS.set(key, label);
+                LEO_KEY_AGENCY.set(key, agency);
+                continue;
+            }
+        }
+        const ci = entry.indexOf(':');
+        if (ci > 0) {
+            const label = entry.slice(0, ci).trim();
+            const key = entry.slice(ci + 1).trim();
+            if (API_KEY_LABEL_RE.test(label) && key) {
+                keys.push(key);
+                if (!KEY_LABELS.has(key)) KEY_LABELS.set(key, label);
+                continue;
+            }
+        }
+        keys.push(entry);
+    }
+    return keys;
+}
+const LEO_KEYS = parseLeoKeys(process.env.LEO_REPORTS_API_KEYS || '');
 const PORT = parseInt(process.env.MORGUE_API_PORT || '3001', 10);
+if (MORGUE_REPORT_KEYS.length > 0) {
+    console.log(`[MORGUE-API] ${MORGUE_REPORT_KEYS.length} morgue report key(s) loaded (morgue routes only)`);
+}
+if (LEO_KEYS.length > 0) {
+    const scoped = [...LEO_KEY_AGENCY.entries()].map(([key, agency]) => `${KEY_LABELS.get(key) || 'key'}=${agency}`);
+    console.log(`[MORGUE-API] ${LEO_KEYS.length} LEO report key(s) loaded (LEO routes only)${scoped.length ? ` — scoped: ${scoped.join(', ')}` : ''}`);
+}
 
 // ──────────────────────────────────────────
 // Discord bot transport (webhook migration)
@@ -103,6 +158,13 @@ const NOTIFY_CHANNELS = {
     phmc:    process.env.NOTIFY_CHANNEL_PHMC    || '1384993223608369342', // staging #phmc-webhook-main
     autopsies: process.env.AUTOPSIES_CHANNEL_ID || '1367217501137797252', // PHMC #autopsies
     apilogs: process.env.NOTIFY_CHANNEL_APILOGS || '1455291911740067921', // staging #debug-logs-crash-sentry (this API's own logs)
+    // LEO panel access audit. NOTIFY_CHANNEL_LEO can point at a dedicated
+    // channel; otherwise fall back to the admin action log. Channel IDs are
+    // not secrets — the bot token is the auth.
+    leo:     process.env.NOTIFY_CHANNEL_LEO     || process.env.NOTIFY_CHANNEL_ADMIN || '1455291752327024721',
+    // Saved-form/report view embeds. Dedicated channel override; otherwise the
+    // admin action log channel (1455291752327024721).
+    formviews: process.env.NOTIFY_CHANNEL_FORM_VIEWS || '1455291752327024721',
 };
 
 import { Client, GatewayIntentBits } from 'discord.js';
@@ -400,10 +462,18 @@ function isObviousScanner(label) {
  * separated). Trusted IPs skip strike/ban registration entirely.
  */
 const TRUSTED_IPS_ENV = (process.env.MORGUE_API_TRUSTED_IPS || '').split(',').map(s => s.trim()).filter(Boolean);
-const LOOPBACK_RE = /^(127\.|::1$|::ffff:127\.)/i;
+// Reverse proxies whose forwarded headers we honour. Loopback (nginx on this
+// host) is always trusted; add anything else via MORGUE_API_TRUSTED_PROXIES.
+// See services/clientIp.js — the leftmost X-Forwarded-For hop is never trusted
+// (that is how the 2026-10-24 Stripe scan impersonated 127.0.0.1).
+const TRUSTED_PROXY_IPS = parseTrustedProxies(process.env.MORGUE_API_TRUSTED_PROXIES);
+console.log(
+    `[MORGUE-API] Trusted proxies: loopback${TRUSTED_PROXY_IPS.size ? ` + ${[...TRUSTED_PROXY_IPS].join(', ')}` : ''}` +
+    ' — forwarded headers from any other peer are treated as spoofing and banned'
+);
 function isTrustedIp(ip) {
     if (!ip) return false;
-    if (LOOPBACK_RE.test(ip)) return true;
+    if (isLoopbackIp(ip)) return true;
     return TRUSTED_IPS_ENV.includes(ip);
 }
 
@@ -667,6 +737,7 @@ function searchLocalRecords(query) {
 // ── API key validation middleware ──
 // Regular API keys (MORGUE_API_KEYS) get read-only access (GET + POST).
 // Write keys (MORGUE_WRITE_API_KEYS) can also do PUT/DELETE.
+// LEO keys (LEO_REPORTS_API_KEYS) are accepted ONLY by validateLeoApiKey.
 function validateApiKey(req, res, next) {
     const key = req.headers['x-api-key'];
 
@@ -690,6 +761,69 @@ function validateApiKey(req, res, next) {
 
     req.apiKeyName = displayKeyName(key, isWriteKey);
     req.isAdminKey = isWriteKey;
+    next();
+}
+
+// LEO report routes accept LEO keys in addition to the normal read/write keys.
+// A LEO key sent anywhere else falls through validateApiKey and gets a 401 —
+// so handing a developer this key does not expose morgue records, rosters,
+// saved reports, agency credentials, or the write routes.
+function validateLeoApiKey(req, res, next) {
+    const key = req.headers['x-api-key'];
+
+    if (!key) {
+        return res.status(401).json({
+            error: 'Unauthorized',
+            message: 'Missing API key. Provide it via x-api-key header.',
+        });
+    }
+
+    const isWriteKey = WRITE_KEYS.length > 0 && WRITE_KEYS.includes(key);
+    const isReadKey = API_KEYS.includes(key);
+    const isLeoKey = LEO_KEYS.length > 0 && LEO_KEYS.includes(key);
+
+    if (!isWriteKey && !isReadKey && !isLeoKey) {
+        return res.status(401).json({
+            error: 'Unauthorized',
+            message: 'Invalid API key.',
+        });
+    }
+
+    req.apiKeyName = displayKeyName(key, isWriteKey);
+    req.isAdminKey = isWriteKey;
+    req.leoKeyOnly = isLeoKey && !isReadKey && !isWriteKey;
+    // '' = all departments; otherwise the key is locked to this department.
+    req.leoKeyAgency = LEO_KEY_AGENCY.get(key) || '';
+    next();
+}
+
+// Morgue report routes accept morgue-only keys in addition to the normal
+// read/write keys. A morgue-only key cannot reach LEO, rosters, saved reports,
+// agency credentials or any write route.
+function validateMorgueApiKey(req, res, next) {
+    const key = req.headers['x-api-key'];
+
+    if (!key) {
+        return res.status(401).json({
+            error: 'Unauthorized',
+            message: 'Missing API key. Provide it via x-api-key header.',
+        });
+    }
+
+    const isWriteKey = WRITE_KEYS.length > 0 && WRITE_KEYS.includes(key);
+    const isReadKey = API_KEYS.includes(key);
+    const isMorgueKey = MORGUE_REPORT_KEYS.length > 0 && MORGUE_REPORT_KEYS.includes(key);
+
+    if (!isWriteKey && !isReadKey && !isMorgueKey) {
+        return res.status(401).json({
+            error: 'Unauthorized',
+            message: 'Invalid API key.',
+        });
+    }
+
+    req.apiKeyName = displayKeyName(key, isWriteKey);
+    req.isAdminKey = isWriteKey;
+    req.morgueKeyOnly = isMorgueKey && !isReadKey && !isWriteKey;
     next();
 }
 
@@ -779,7 +913,7 @@ function isRoutinePoll(entry) {
     if (entry.suspicious) return false;
     if (entry.status < 200 || entry.status >= 300) return false; // errors stay verbose
     if (entry.requestedBy && entry.requestedBy !== 'external/unknown') return false;
-    return LOOPBACK_RE.test(entry.ip || '');
+    return isLoopbackIp(entry.ip || '');
 }
 
 function recordPollMetric(entry) {
@@ -1006,15 +1140,6 @@ async function sendSuspiciousAlert(req, finding, ip) {
 // Security & logging middleware
 // ──────────────────────────────────
 
-/** Extract client IP from request, respecting proxies. */
-function getClientIp(req) {
-    const forwarded = req.headers['x-forwarded-for'];
-    if (forwarded) return forwarded.split(',')[0].trim();
-    const realIp = req.headers['x-real-ip'];
-    if (realIp) return realIp;
-    return req.socket?.remoteAddress || 'unknown';
-}
-
 // Set only by the Firebase callable proxy after Auth verification. These are
 // used for abuse/audit attribution; direct API callers remain external/unknown.
 function getRequesterIdentity(req) {
@@ -1023,8 +1148,14 @@ function getRequesterIdentity(req) {
     const characterName = clean(req.headers['x-phmc-requester-character']);
     const oauthName = clean(req.headers['x-phmc-requester-oauth']);
     const uid = clean(req.headers['x-phmc-requester-uid'], 160);
+    const ip = clean(req.headers['x-phmc-requester-ip'], 64);
     if (!characterName && !oauthName && !uid) return null;
-    return { characterName: characterName || 'Unknown', oauthName: oauthName || 'Unknown', uid: uid || null };
+    return {
+        characterName: characterName || 'Unknown',
+        oauthName: oauthName || 'Unknown',
+        uid: uid || null,
+        ip: ip || null,
+    };
 }
 
 function formatRequesterIdentity(req) {
@@ -1069,7 +1200,9 @@ app.use((req, res, next) => {
     req.requestId = randomUUID().slice(0, 8);
 
     // ── Attach client IP ──
-    req.clientIp = getClientIp(req);
+    // Forwarded headers are only honoured from a trusted proxy (nginx on
+    // loopback); see services/clientIp.js.
+    req.clientIp = getClientIp(req, TRUSTED_PROXY_IPS);
 
     const ip = req.clientIp;
 
@@ -1099,6 +1232,35 @@ app.use((req, res, next) => {
             success: false,
             error: 'Forbidden',
             message: `IP permanently banned (${banReason}).`,
+        });
+    }
+
+    // ── Forwarded-header spoof: instant ban ──
+    // Only a trusted proxy may set X-Real-IP / X-Forwarded-For. A caller that
+    // reaches the API directly and sends either header is impersonating another
+    // IP — on 2026-10-24 a Stripe scanner sent `X-Forwarded-For: 127.0.0.1` so
+    // it resolved to a trusted IP and skipped every strike/ban check.
+    const forwardedSpoof = detectForwardedSpoof(req, TRUSTED_PROXY_IPS);
+    if (forwardedSpoof && !hasValidApiKey) {
+        const spoofFinding = {
+            label: 'SPOOF-forwarded-header',
+            match: `${forwardedSpoof.header}=${forwardedSpoof.value}`.slice(0, 160),
+        };
+        sendSuspiciousAlert(req, spoofFinding, ip).catch(() => {});
+        console.warn(
+            `[MORGUE-API] [WARN] BLOCKED req=${req.requestId} ${req.method} ${req.originalUrl} ` +
+            `SPOOFED_FORWARDED_HEADER ${spoofFinding.match} ip=${ip}`
+        );
+        recordActivity(req, 403, 0, ip,
+            // eslint-disable-next-line no-control-regex -- sanitizes User-Agent before activity-log write (log-injection defense)
+            (req.headers['user-agent'] || '').replace(/[\x00-\x1f]/g, '').slice(0, 120),
+            spoofFinding.label
+        );
+        registerSuspiciousRequest(ip, spoofFinding.label, true);
+        return res.status(403).json({
+            success: false,
+            error: 'Forbidden',
+            message: 'Request blocked.',
         });
     }
 
@@ -1217,7 +1379,7 @@ app.use((req, res, next) => {
  * Headers:
  *   x-api-key - Your API key (query param ?key= is no longer supported)
  */
-app.get('/api/morgue', validateApiKey, rateLimiter, (req, res) => {
+app.get('/api/morgue', validateMorgueApiKey, rateLimiter, (req, res) => {
     try {
         const query = (req.query.q || '').trim();
         const limit = Math.min(parseInt(req.query.limit || '10000', 10) || 10000, 10000);
@@ -1260,7 +1422,7 @@ app.get('/api/morgue', validateApiKey, rateLimiter, (req, res) => {
  * Headers:
  *   x-api-key - Your API key
  */
-app.get('/api/morgue/drug', validateApiKey, rateLimiter, (req, res) => {
+app.get('/api/morgue/drug', validateMorgueApiKey, rateLimiter, (req, res) => {
     try {
         const query = (req.query.q || '').trim();
         const limit = Math.min(parseInt(req.query.limit || '100', 10) || 100, 500);
@@ -1301,7 +1463,7 @@ app.get('/api/morgue/drug', validateApiKey, rateLimiter, (req, res) => {
  * Headers:
  *   x-api-key - Your API key
  */
-app.get('/api/morgue/:firebaseKey', validateApiKey, rateLimiter, (req, res) => {
+app.get('/api/morgue/:firebaseKey', validateMorgueApiKey, rateLimiter, (req, res) => {
     try {
         const { firebaseKey } = req.params;
 
@@ -2132,7 +2294,26 @@ function readSavedReport(author, key) {
     }
 }
 
-function writeSavedReport(author, key, report, bbCode = '') {
+// Live-feed version. Bumped whenever the VPS saved-report store changes; the
+// migration UI listens to appMetadata/reportsDataVersion and drops its
+// IndexedDB feed cache so other users see new reports without waiting for the
+// 5-minute TTL (or pressing Refresh). Best-effort: a version bump failure must
+// never fail the report write itself.
+let lastReportsDataVersion = 0;
+function bumpReportsDataVersion() {
+    try {
+        const now = Math.max(Date.now(), lastReportsDataVersion + 1);
+        lastReportsDataVersion = now;
+        return firebase.db.ref('appMetadata/reportsDataVersion').set(now).catch((err) => {
+            console.warn(`[MORGUE-API] reportsDataVersion bump failed: ${err.message}`);
+        });
+    } catch (err) {
+        console.warn(`[MORGUE-API] reportsDataVersion bump failed: ${err.message}`);
+        return Promise.resolve();
+    }
+}
+
+function writeSavedReport(author, key, report, bbCode = '', { bumpVersion = true } = {}) {
     const target = reportFile(author, key);
     if (!target) throw new Error('Invalid author/key.');
     const dir = join(REPORTS_DIR, target.author);
@@ -2148,6 +2329,7 @@ function writeSavedReport(author, key, report, bbCode = '') {
     const tempFile = `${target.file}.tmp-${process.pid}`;
     writeFileSync(tempFile, JSON.stringify(payload), 'utf-8');
     renameSync(tempFile, target.file);
+    if (bumpVersion) bumpReportsDataVersion();
     return payload;
 }
 
@@ -2200,7 +2382,8 @@ app.post('/api/reports/bulk', validateApiKey, rateLimiter, (req, res) => {
                 return res.status(400).json({ success: false, error: 'Each record requires author, key and report.' });
             }
         }
-        for (const item of reports) writeSavedReport(item.author, item.key, item.report, item.bbCode || '');
+        for (const item of reports) writeSavedReport(item.author, item.key, item.report, item.bbCode || '', { bumpVersion: false });
+        bumpReportsDataVersion();
         return res.json({ success: true, migrated: reports.length });
     } catch (err) {
         console.error('[MORGUE-API] Bulk saved report write error:', err.message);
@@ -2263,6 +2446,596 @@ app.get('/api/reports/recent', validateApiKey, rateLimiter, (req, res) => {
     }
 });
 
+// ── LEO forwarded-report feed + access audit ──
+// A saved report is "forwarded" when its values carry ReportRequested === true.
+// The platform's LEO tab shows the newest 50 forwarded reports (the client
+// caches exactly those in IndexedDB) and every open is appended to
+// data/leo-report-access.log with the Auth-derived requester identity.
+const LEO_AUDIT_PATH = resolve(__dirname, 'data', 'leo-report-access.log');
+const LEO_AUDIT_MAX_BYTES = 5 * 1024 * 1024;
+
+function appendLeoAccessAudit(line) {
+    try {
+        try {
+            const st = statSync(LEO_AUDIT_PATH);
+            if (st.size >= LEO_AUDIT_MAX_BYTES) {
+                renameSync(LEO_AUDIT_PATH, `${LEO_AUDIT_PATH}.1`);
+            }
+        } catch {
+            // Missing file (first write) — append creates it below.
+        }
+        appendFileSync(LEO_AUDIT_PATH, `${line}\n`);
+    } catch (err) {
+        console.warn(`[MORGUE-API] LEO access audit write failed: ${err.message}`);
+    }
+}
+
+// Panel-open audit is separate from per-report views: one JSONL line every
+// time the LEO Reports panel is opened, plus a bot-native Discord embed.
+const LEO_PANEL_AUDIT_PATH = resolve(__dirname, 'data', 'leo-panel-access.log');
+const LEO_PANEL_AUDIT_MAX_BYTES = 5 * 1024 * 1024;
+
+function appendLeoPanelAudit(line) {
+    try {
+        try {
+            const st = statSync(LEO_PANEL_AUDIT_PATH);
+            if (st.size >= LEO_PANEL_AUDIT_MAX_BYTES) {
+                renameSync(LEO_PANEL_AUDIT_PATH, `${LEO_PANEL_AUDIT_PATH}.1`);
+            }
+        } catch {
+            // Missing file (first write) — append creates it below.
+        }
+        appendFileSync(LEO_PANEL_AUDIT_PATH, `${line}\n`);
+    } catch (err) {
+        console.warn(`[MORGUE-API] LEO panel audit write failed: ${err.message}`);
+    }
+}
+
+const DEPARTMENT_NAME_TO_KEY = {
+    'los santos police department': 'lspd',
+    'los santos county sheriffs department': 'lssd',
+    "los santos county sheriff's department": 'lssd',
+    'san andreas department of corrections and rehabilitation': 'sadcr',
+    "district attorney's office": 'dao',
+    'district attorney’s office': 'dao',
+    'los santos fire department': 'lsfd',
+    'san andreas aviation administration': 'saaa',
+};
+
+/** Accept both the short key ("lspd") and the legacy full department name. */
+function normalizeDepartmentKey(value) {
+    const raw = String(value || '').trim().toLowerCase();
+    if (!raw) return '';
+    return DEPARTMENT_NAME_TO_KEY[raw] || raw;
+}
+
+function isForwardedReport(report) {
+    const data = report?.data || {};
+    // Coroner reports opt in explicitly.
+    if (data.ReportRequested === true || data.ReportRequested === 'true') return true;
+    const formId = String(report?.formId || '').trim();
+    if (formId === 'mass-ftality-test' || formId === 'mass-fatality') {
+        // Mass Fatality uses the `requesting_officer` compound field: its
+        // "Requested" checkbox writes requestingOfficer (a single space when
+        // checked but unnamed). Department alone is NOT the request signal.
+        if (Object.prototype.hasOwnProperty.call(data, 'ReportRequested')) {
+            return data.ReportRequested === true || data.ReportRequested === 'true';
+        }
+        return String(data.requestingOfficer || '').length > 0;
+    }
+    return false;
+}
+
+function leoReportRows() {
+    if (!existsSync(REPORTS_DIR)) return [];
+    const rows = [];
+    for (const author of readdirSync(REPORTS_DIR)) {
+        const authorDir = join(REPORTS_DIR, author);
+        let files = [];
+        try {
+            if (!existsSync(authorDir)) continue;
+            files = readdirSync(authorDir).filter(name => name.endsWith('.json'));
+        } catch { continue; }
+        for (const file of files) {
+            const payload = readSavedReport(author, file.slice(0, -5));
+            const report = payload?.report;
+            if (!report || typeof report !== 'object' || !isForwardedReport(report)) continue;
+            const values = report.data || {};
+            const decedentNames = Array.isArray(values.decedents)
+                ? values.decedents.map(d => d?.decedentName).filter(Boolean).join(', ')
+                : '';
+            rows.push({
+                key: payload.key,
+                author: payload.author,
+                authorName: report.authorName || author,
+                formId: report.formId || 'unknown',
+                formName: report.formName || report.formId || 'unknown',
+                title: report.originalKey || 'Untitled',
+                timestamp: Number(report.timestamp) || 0,
+                updatedAt: Number(payload.updatedAt) || 0,
+                department: normalizeDepartmentKey(values.department),
+                requestingOfficer: String(values.requestingOfficer || '').trim(),
+                decedentName: values.decedentName || values.patientName || decedentNames,
+                forwarded: true,
+                hasBbCode: typeof payload.bbCode === 'string' && payload.bbCode.length > 0,
+            });
+        }
+    }
+    rows.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    return rows;
+}
+
+app.get('/api/reports/leo', validateLeoApiKey, rateLimiter, (req, res) => {
+    // MUST stay above /api/reports/:author/:key (same reason as /recent).
+    try {
+        const rawLimit = Number(req.query.limit);
+        const rawOffset = Number(req.query.offset);
+        const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(Math.floor(rawLimit), 100) : 50;
+        const offset = Number.isFinite(rawOffset) && rawOffset > 0 ? Math.floor(rawOffset) : 0;
+        const requestedAgency = String(req.query.agency || '').trim().toLowerCase();
+        // A department-scoped key cannot widen the feed: ?agency is ignored.
+        const agency = req.leoKeyAgency || requestedAgency;
+        const q = String(req.query.q || '').trim().toLowerCase();
+
+        let rows = leoReportRows();
+        if (agency && agency !== 'all') rows = rows.filter(row => row.department === agency);
+        if (q) {
+            rows = rows.filter(row => `${row.title} ${row.author} ${row.authorName} ${row.department} ${row.requestingOfficer} ${row.decedentName}`
+                .toLowerCase().includes(q));
+        }
+        return res.json({
+            success: true,
+            reports: rows.slice(offset, offset + limit),
+            total: rows.length,
+            limit,
+            offset,
+            agency: agency || 'all',
+            agencyLocked: req.leoKeyAgency || null,
+            cachedWindow: 50,
+        });
+    } catch (err) {
+        console.error('[MORGUE-API] LEO report list error:', err.message);
+        return res.status(500).json({ success: false, error: 'LEO report list failed.' });
+    }
+});
+
+app.post('/api/reports/leo/access', validateLeoApiKey, rateLimiter, async (req, res) => {
+    // Panel-open audit: called by the logLeoPanelAccess Firebase callable when
+    // the LEO Reports panel is opened. Identity comes from the Auth-derived
+    // x-phmc-requester-* headers, never from the client body.
+    try {
+        const allowedSources = new Set(['migration-ui', 'prototype', 'panel']);
+        const source = allowedSources.has(req.body?.source) ? req.body.source : 'panel';
+        const clientCharacterName = req.body?.characterName;
+        const clientAppBuild = req.body?.appBuild;
+        const result = await recordLeoPanelAccess({ req, source, clientCharacterName, clientAppBuild });
+        return res.json({ success: true, logged: true, notified: Boolean(result?.ok) });
+    } catch (err) {
+        console.error('[MORGUE-API] LEO panel audit error:', err.message);
+        return res.status(500).json({ success: false, error: 'LEO panel audit failed.' });
+    }
+});
+
+app.get('/api/reports/leo/:author/:key', validateLeoApiKey, rateLimiter, (req, res) => {
+    // Read + audit one forwarded report. The Firebase callable sets the
+    // x-phmc-requester-* headers from verified Auth claims, so a client
+    // cannot spoof who viewed the report.
+    try {
+        const author = safeReportSegment(req.params.author);
+        const key = String(req.params.key || '').trim();
+        if (!author || !key) return res.status(400).json({ success: false, error: 'Invalid report identity.' });
+
+        const payload = readSavedReport(author, key);
+        const report = payload?.report;
+        if (!report || !isForwardedReport(report)) {
+            return res.status(404).json({ success: false, error: 'Forwarded report not found.' });
+        }
+        // Department-scoped keys must not see (or audit) another agency's report.
+        if (req.leoKeyAgency && normalizeDepartmentKey(report?.data?.department) !== req.leoKeyAgency) {
+            return res.status(404).json({ success: false, error: 'Forwarded report not found.' });
+        }
+        recordLeoReportView({ req, author, key, report, source: 'live', clientCharacterName: req.query.viewer });
+        return res.json({ success: true, report: report, bbCode: payload.bbCode || '' });
+    } catch (err) {
+        console.error('[MORGUE-API] LEO report read error:', err.message);
+        return res.status(500).json({ success: false, error: 'LEO report read failed.' });
+    }
+});
+
+app.post('/api/reports/leo/:author/:key/view', validateLeoApiKey, rateLimiter, (req, res) => {
+    // Cache-hit audit path: the client serves a cached payload instantly and
+    // tells us it opened the report, so cached views stay attributable.
+    try {
+        const author = safeReportSegment(req.params.author);
+        const key = String(req.params.key || '').trim();
+        if (!author || !key) return res.status(400).json({ success: false, error: 'Invalid report identity.' });
+
+        const payload = readSavedReport(author, key);
+        const report = payload?.report;
+        if (!report || !isForwardedReport(report)) {
+            return res.status(404).json({ success: false, error: 'Forwarded report not found.' });
+        }
+        if (req.leoKeyAgency && normalizeDepartmentKey(report?.data?.department) !== req.leoKeyAgency) {
+            return res.status(404).json({ success: false, error: 'Forwarded report not found.' });
+        }
+        const source = req.body?.source === 'cache' ? 'cache' : 'live';
+        recordLeoReportView({ req, author, key, report, source, clientCharacterName: req.body?.characterName });
+        return res.json({ success: true, logged: true, source });
+    } catch (err) {
+        console.error('[MORGUE-API] LEO view audit error:', err.message);
+        return res.status(500).json({ success: false, error: 'LEO view audit failed.' });
+    }
+});
+
+/** Resolve the attribution identity once for LEO audit paths. */
+function resolveLeoAuditIdentity(req, clientCharacterName = '') {
+    const identity = getRequesterIdentity(req) || {};
+    // eslint-disable-next-line no-control-regex -- strips control chars from identity/hint before audit logging (log-injection defense)
+    const clean = (value, max = 120) => String(value || '').replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, max);
+    const claimViewer = clean(identity.characterName);
+    const hintViewer = clean(clientCharacterName);
+    const hasClaim = claimViewer && claimViewer !== 'Unknown';
+    return {
+        identity,
+        viewer: hintViewer || (hasClaim ? claimViewer : '') || 'Unknown',
+        viewerSource: hintViewer ? 'client' : (hasClaim ? 'claim' : 'none'),
+        verifiedViewer: hasClaim ? claimViewer : 'none',
+        oauth: clean(identity.oauthName || 'Unknown') || 'Unknown',
+        uid: clean(identity.uid || 'none', 160) || 'none',
+        ip: clean(identity.ip || req.clientIp || 'unknown', 64) || 'unknown',
+    };
+}
+
+/** Append one attributed LEO view line (file + console/pm2 log). */
+function recordLeoReportView({ req, author, key, report, source, clientCharacterName = '' }) {
+    const { viewer, viewerSource, verifiedViewer, oauth, uid, ip } = resolveLeoAuditIdentity(req, clientCharacterName);
+    const values = report?.data || {};
+    // eslint-disable-next-line no-control-regex -- strips control chars from untrusted report text before audit logging (log-injection defense)
+    const clean = (value, max = 200) => String(value || '').replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, max);
+    const line = [
+        new Date().toISOString(),
+        `viewer=${viewer}`,
+        `viewerSource=${viewerSource}`,
+        `verifiedViewer=${verifiedViewer}`,
+        `oauth=${oauth}`,
+        `uid=${uid}`,
+        `report=${author}/${key}`,
+        `title=${clean(report?.originalKey || 'Untitled')}`,
+        `agency=${clean(values.department || 'unassigned')}`,
+        `source=${source}`,
+        `ip=${ip}`,
+    ].join(' | ');
+    appendLeoAccessAudit(line);
+    console.log(`[MORGUE-API] LEO report view: ${line}`);
+    void sendFormViewEmbed({
+        viewer,
+        oauth,
+        uid,
+        ip,
+        formId: report?.formId,
+        formName: report?.formName || report?.formId,
+        title: report?.originalKey || 'Untitled',
+        author,
+        authorName: report?.authorName || author,
+        agency: values.department,
+        context: source,
+        kind: 'LEO Form',
+    }).catch((err) => {
+        console.warn(`[MORGUE-API] LEO form view embed error: ${err.message}`);
+    });
+}
+
+/** Append + Discord-embed one LEO panel open. Metadata only, never reports. */
+async function recordLeoPanelAccess({ req, source, clientCharacterName = '', clientAppBuild = '' }) {
+    const { viewer, viewerSource, verifiedViewer, oauth, uid, ip } = resolveLeoAuditIdentity(req, clientCharacterName);
+    // eslint-disable-next-line no-control-regex -- strips control chars from client build string before audit logging (log-injection defense)
+    const appBuild = String(clientAppBuild || '').replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, 80) || 'unknown';
+    const entry = {
+        time: new Date().toISOString(),
+        event: 'leo_panel_access',
+        viewer,
+        viewerSource,
+        verifiedViewer,
+        oauth,
+        uid,
+        ip,
+        source,
+        appBuild,
+    };
+    appendLeoPanelAudit(JSON.stringify(entry));
+    console.log(`[MORGUE-API] LEO panel access: viewer=${viewer} (${viewerSource}, verified=${verifiedViewer}) oauth=${oauth} uid=${uid} source=${source} build=${appBuild} ip=${ip}`);
+
+    // Bot-native embed (same PHMC Bot as the rest of the audit trail).
+    const safeViewer = viewer.replace(/[*_`~|]/g, '');
+    const embed = {
+        title: 'LEO Panel Access',
+        description: `**${safeViewer}** opened the LEO Reports panel.`,
+        color: 0x3aa08a,
+        fields: [
+            { name: 'Character', value: viewer, inline: true },
+            { name: 'OAuth', value: oauth, inline: true },
+            { name: 'Source', value: source, inline: true },
+            { name: 'IP', value: ip, inline: true },
+            { name: 'Build', value: appBuild, inline: false },
+            { name: 'UID', value: uid, inline: false },
+        ],
+        timestamp: entry.time,
+        footer: { text: 'PHMC Bot • LEO access audit' },
+    };
+    try {
+        const result = await sendToChannel(NOTIFY_CHANNELS.leo, { embeds: [embed] });
+        if (!result?.ok) {
+            console.warn(`[MORGUE-API] LEO panel embed failed: ${result?.reason || 'unknown'}`);
+        }
+        return result;
+    } catch (err) {
+        console.warn(`[MORGUE-API] LEO panel embed error: ${err.message}`);
+        return { ok: false, reason: err.message };
+    }
+}
+
+// ── Form/report view embeds ──
+// A saved report ("form") open posts one bot-native embed. Deduplicated for
+// 2 minutes per viewer+report so cache/live re-renders and rapid reopens do
+// not spam the channel; the audit files are still written for every open.
+const FORM_VIEW_EMBED_WINDOW_MS = 120_000;
+const formViewEmbedSeen = new Map();
+
+async function sendFormViewEmbed({
+    viewer, oauth, uid, ip, formId, formName, title, author, authorName, agency, context, kind = 'Form',
+}) {
+    const dedupeKey = `${oauth}|${uid}|${author}|${title}`;
+    const now = Date.now();
+    if (now - (formViewEmbedSeen.get(dedupeKey) || 0) < FORM_VIEW_EMBED_WINDOW_MS) {
+        return { ok: true, skipped: 'dedupe' };
+    }
+    formViewEmbedSeen.set(dedupeKey, now);
+    if (formViewEmbedSeen.size > 1000) {
+        for (const [key, at] of formViewEmbedSeen) {
+            if (now - at > FORM_VIEW_EMBED_WINDOW_MS) formViewEmbedSeen.delete(key);
+        }
+    }
+
+    const clamp = (value, max = 200) => String(value || '').replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, max);
+    const safeViewer = clamp(viewer, 120).replace(/[*_`~|]/g, '') || 'Unknown';
+    const safeTitle = clamp(title, 300) || 'Untitled';
+    const fields = [
+        { name: 'Form', value: clamp(formName || formId || 'Unknown', 120), inline: true },
+        { name: 'Author', value: clamp(authorName || author || 'Unknown', 120), inline: true },
+        { name: 'Character', value: clamp(viewer, 120) || 'Unknown', inline: true },
+        { name: 'OAuth', value: clamp(oauth, 120) || 'Unknown', inline: true },
+        { name: 'Source', value: clamp(context || 'ui', 60), inline: true },
+        { name: 'IP', value: clamp(ip, 64) || 'unknown', inline: true },
+        { name: 'UID', value: clamp(uid, 160) || 'none', inline: false },
+    ];
+    if (agency) fields.splice(5, 0, { name: 'Agency', value: clamp(agency, 60), inline: true });
+    const embed = {
+        title: `${kind} Viewed`,
+        description: `**${safeViewer}** viewed **${safeTitle}**.`,
+        color: 0x6366f1,
+        fields,
+        timestamp: new Date().toISOString(),
+        footer: { text: 'PHMC Bot • Form view audit' },
+    };
+    try {
+        const result = await sendToChannel(NOTIFY_CHANNELS.formviews, { embeds: [embed] });
+        if (!result?.ok) console.warn(`[MORGUE-API] Form view embed failed: ${result?.reason || 'unknown'}`);
+        return result;
+    } catch (err) {
+        console.warn(`[MORGUE-API] Form view embed error: ${err.message}`);
+        return { ok: false, reason: err.message };
+    }
+}
+
+// ── Report view audit (migration UI + any future readers) ──
+// Append-only JSONL: one line per report open, metadata only (who + which
+// report), never the report contents. Identity comes from the Firebase
+// callable's Auth-derived x-phmc-requester-* headers.
+const REPORT_VIEW_AUDIT_PATH = resolve(__dirname, 'data', 'report-view-access.log');
+const REPORT_VIEW_AUDIT_MAX_BYTES = 5 * 1024 * 1024;
+
+function appendReportViewAudit(entry) {
+    try {
+        try {
+            const st = statSync(REPORT_VIEW_AUDIT_PATH);
+            if (st.size >= REPORT_VIEW_AUDIT_MAX_BYTES) {
+                renameSync(REPORT_VIEW_AUDIT_PATH, `${REPORT_VIEW_AUDIT_PATH}.1`);
+            }
+        } catch {
+            // Missing file (first write) — append creates it below.
+        }
+        appendFileSync(REPORT_VIEW_AUDIT_PATH, `${JSON.stringify(entry)}\n`);
+    } catch (err) {
+        console.warn(`[MORGUE-API] Report view audit write failed: ${err.message}`);
+    }
+}
+
+app.post('/api/reports/:author/:key/view', validateApiKey, rateLimiter, async (req, res) => {
+    // Generic saved-report view audit (migration UI records/detail/dataset).
+    // LEO reports use their own /api/reports/leo/:author/:key/view endpoint.
+    try {
+        const author = safeReportSegment(req.params.author);
+        const key = String(req.params.key || '').trim();
+        if (!author || !key) return res.status(400).json({ success: false, error: 'Invalid report identity.' });
+
+        const payload = readSavedReport(author, key);
+        if (!payload?.report) return res.status(404).json({ success: false, error: 'Report not found.' });
+
+        const { viewer, viewerSource, verifiedViewer, oauth, uid, ip } = resolveLeoAuditIdentity(req, req.body?.characterName);
+        const report = payload.report;
+        // eslint-disable-next-line no-control-regex -- strips control chars from untrusted context (log-injection defense)
+        const context = String(req.body?.context || 'ui').replace(/[^\w-]/g, '').slice(0, 40) || 'ui';
+        const entry = {
+            time: new Date().toISOString(),
+            viewer,
+            viewerSource,
+            verifiedViewer,
+            oauth,
+            uid,
+            author: payload.author,
+            key: payload.key,
+            formId: report.formId || null,
+            title: String(report.originalKey || 'Untitled').slice(0, 300),
+            context,
+            ip,
+        };
+        appendReportViewAudit(entry);
+        console.log(`[MORGUE-API] Report view: ${viewer} (${viewerSource}, verified=${verifiedViewer}; ${oauth}${uid !== 'none' ? ` uid=${uid}` : ''}) ${entry.author}/${entry.key} context=${context}`);
+        const embedResult = await sendFormViewEmbed({
+            viewer,
+            oauth,
+            uid,
+            ip,
+            formId: report.formId,
+            formName: report.formName || report.formId,
+            title: entry.title,
+            author: payload.author,
+            authorName: report.authorName || payload.author,
+            agency: report.data?.department,
+            context,
+            kind: 'Form',
+        });
+        return res.json({ success: true, logged: true, notified: Boolean(embedResult?.ok) });
+    } catch (err) {
+        console.error('[MORGUE-API] Report view audit error:', err.message);
+        return res.status(500).json({ success: false, error: 'Report view audit failed.' });
+    }
+});
+
+app.get('/api/reports/views', validateApiKey, rateLimiter, (req, res) => {
+    // Reader for the audit trail (protected by the API key like every other
+    // admin-ish endpoint). Newest first, default 200, max 1000.
+    try {
+        const rawLimit = Number(req.query.limit);
+        const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(Math.floor(rawLimit), 1000) : 200;
+        if (!existsSync(REPORT_VIEW_AUDIT_PATH)) return res.json({ success: true, views: [], count: 0 });
+        const lines = readFileSync(REPORT_VIEW_AUDIT_PATH, 'utf8').split('\n').filter(Boolean);
+        const views = [];
+        for (let i = lines.length - 1; i >= 0 && views.length < limit; i--) {
+            try { views.push(JSON.parse(lines[i])); } catch { /* skip a torn line */ }
+        }
+        return res.json({ success: true, views, count: views.length });
+    } catch (err) {
+        console.error('[MORGUE-API] Report view read error:', err.message);
+        return res.status(500).json({ success: false, error: 'Report view read failed.' });
+    }
+});
+
+app.get('/api/reports/attribution', validateApiKey, rateLimiter, (req, res) => {
+    // Per-person per-month counts across saved reports, for the /forms-stats
+    // command. Filters by report type(s); attributes each report to its
+    // examining staffer (coronerEmployee/phmcEmployee on the report, falling
+    // back to the report author). Includes EVERY author — no leadership
+    // exclusions; this is an owner-only leadership breakdown.
+    // MUST stay above /:author/:key or Express parses "attribution" as an author.
+    try {
+        const CORONER_FORMS = ['autopsy', 'coroner-report', 'coroner_email', 'death_record', 'mass-ftality-test'];
+        const FORM_ALIASES = { 'mass-fatality': 'mass-ftality-test', all: 'all-coroners', coroners: 'all-coroners', 'all-coroners': 'all-coroners' };
+        const rawForms = String(req.query.forms || req.query.formId || 'all-coroners').trim().toLowerCase();
+        let forms;
+        if (rawForms === 'all-coroners' || rawForms === 'all' || rawForms === 'coroners') {
+            forms = [...CORONER_FORMS];
+        } else {
+            forms = rawForms.split(',').map((s) => FORM_ALIASES[s.trim()] || s.trim()).filter(Boolean);
+            if (forms.includes('all-coroners')) forms = [...CORONER_FORMS];
+        }
+        forms = [...new Set(forms)];
+        if (forms.length === 0) return res.status(400).json({ success: false, error: 'No report types selected.' });
+
+        const monthRe = /^\d{4}-(0[1-9]|1[0-2])$/;
+        const from = String(req.query.from || '').trim();
+        const to = String(req.query.to || '').trim();
+        if ((from && !monthRe.test(from)) || (to && !monthRe.test(to))) {
+            return res.status(400).json({ success: false, error: 'from/to must be YYYY-MM.' });
+        }
+        if (from && to && from > to) return res.status(400).json({ success: false, error: 'from must not be after to.' });
+
+        const formSet = new Set(forms);
+        const counts = new Map(); // person -> Map(month -> n)
+        let skippedNoTimestamp = 0;
+        if (existsSync(REPORTS_DIR)) {
+            for (const author of readdirSync(REPORTS_DIR)) {
+                const authorDir = join(REPORTS_DIR, author);
+                let files = [];
+                try {
+                    if (!existsSync(authorDir)) continue;
+                    files = readdirSync(authorDir).filter((name) => name.endsWith('.json'));
+                } catch { continue; }
+                for (const file of files) {
+                    const payload = readSavedReport(author, file.slice(0, -5));
+                    const report = payload?.report;
+                    if (!report || typeof report !== 'object') continue;
+                    if (!formSet.has(String(report.formId || ''))) continue;
+                    const t = Number(report.timestamp) || 0;
+                    if (!t) { skippedNoTimestamp++; continue; }
+                    const d = new Date(t);
+                    const month = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+                    if ((from && month < from) || (to && month > to)) continue;
+                    const data = report.data || {};
+                    const person = String(data.coronerEmployee || data.phmcEmployee || report.authorName || author || '')
+                        .replace(/\s+/g, ' ').trim() || 'Unknown';
+                    if (!counts.has(person)) counts.set(person, new Map());
+                    const pm = counts.get(person);
+                    pm.set(month, (pm.get(month) || 0) + 1);
+                }
+            }
+        }
+
+        // Month axis: explicit from..to range when both are given, else the
+        // months actually observed in the matching reports.
+        let months = [];
+        if (from && to) {
+            let [y, m] = from.split('-').map(Number);
+            const [ey, em] = to.split('-').map(Number);
+            let guard = 0;
+            while ((y < ey || (y === ey && m <= em)) && guard++ < 36) {
+                months.push(`${y}-${String(m).padStart(2, '0')}`);
+                if (++m > 12) { m = 1; y++; }
+            }
+        } else {
+            const seen = new Set();
+            for (const pm of counts.values()) for (const k of pm.keys()) seen.add(k);
+            months = [...seen].sort();
+            if (from) months = months.filter((k) => k >= from);
+            if (to) months = months.filter((k) => k <= to);
+        }
+
+        const people = [...counts.entries()]
+            .map(([name, pm]) => {
+                const c = {};
+                let total = 0;
+                for (const k of months) {
+                    const n = pm.get(k) || 0;
+                    c[k] = n;
+                    total += n;
+                }
+                return { name, counts: c, total };
+            })
+            .filter((p) => p.total > 0)
+            .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
+
+        const monthTotals = {};
+        for (const k of months) monthTotals[k] = 0;
+        for (const p of people) for (const k of months) monthTotals[k] += p.counts[k];
+        const grandTotal = people.reduce((s, p) => s + p.total, 0);
+
+        return res.json({
+            success: true,
+            forms,
+            from: from || months[0] || null,
+            to: to || months[months.length - 1] || null,
+            months,
+            people,
+            monthTotals,
+            grandTotal,
+            skippedNoTimestamp,
+        });
+    } catch (err) {
+        console.error('[MORGUE-API] Attribution error:', err.message);
+        return res.status(500).json({ success: false, error: 'Attribution failed.' });
+    }
+});
+
 app.get('/api/reports/:author/:key', validateApiKey, rateLimiter, (req, res) => {
     const payload = readSavedReport(req.params.author, req.params.key);
     if (!payload) return res.status(404).json({ success: false, error: 'Report not found.' });
@@ -2288,6 +3061,7 @@ app.delete('/api/reports/:author/:key', validateApiKey, rateLimiter, (req, res) 
     if (!target || !existsSync(target.file)) return res.status(404).json({ success: false, error: 'Report not found.' });
     try {
         rmSync(target.file, { force: true });
+        bumpReportsDataVersion();
         return res.json({ success: true });
     } catch (err) {
         console.error('[MORGUE-API] Saved report delete error:', err.message);
@@ -2477,7 +3251,8 @@ app.post('/api/reports/restore', validateApiKey, rateLimiter, (req, res) => {
         if (!existsSync(file)) return res.status(404).json({ success: false, error: 'Backup not found.' });
         const backup = JSON.parse(readFileSync(file, 'utf8'));
         const reports = Array.isArray(backup.reports) ? backup.reports : [];
-        for (const payload of reports) writeSavedReport(payload.author, payload.key, payload.report, payload.bbCode || '');
+        for (const payload of reports) writeSavedReport(payload.author, payload.key, payload.report, payload.bbCode || '', { bumpVersion: false });
+        bumpReportsDataVersion();
         return res.json({ success: true, restored: reports.length, backupId });
     } catch (err) {
         console.error('[MORGUE-API] Report restore error:', err.message);
@@ -2544,13 +3319,18 @@ app.use((req, res) => {
 // ──────────────────────────────────────────
 // Start server
 // ──────────────────────────────────────────
-const server = app.listen(PORT, '0.0.0.0', () => {
+// MORGUE_API_BIND defaults to all interfaces so the tailnet dev proxy can reach
+// it; the host firewall (ufw) is what keeps port 3001 off the public internet
+// (only 80 → nginx → 127.0.0.1:3001 is public). Set MORGUE_API_BIND=127.0.0.1
+// to bind loopback only.
+const BIND_ADDRESS = process.env.MORGUE_API_BIND || '0.0.0.0';
+const server = app.listen(PORT, BIND_ADDRESS, () => {
     // Load persisted IP bans / strike counts so they survive restarts.
     loadBanState();
     console.log('═══════════════════════════════════════════');
-    console.log(`[MORGUE-API] Server running on port ${PORT}`);
-    console.log(`[MORGUE-API] Endpoint:     http://0.0.0.0:${PORT}/api/morgue`);
-    console.log(`[MORGUE-API] Health:       http://0.0.0.0:${PORT}/api/health`);
+    console.log(`[MORGUE-API] Server running on ${BIND_ADDRESS}:${PORT}`);
+    console.log(`[MORGUE-API] Endpoint:     http://${BIND_ADDRESS}:${PORT}/api/morgue`);
+    console.log(`[MORGUE-API] Health:       http://${BIND_ADDRESS}:${PORT}/api/health`);
     console.log(`[MORGUE-API] Local data:   ${MORGUE_DATA_PATH}`);
     console.log(`[MORGUE-API] Write API:    PUT /api/morgue/records/:caseId`);
     console.log(`[MORGUE-API] Data source:  LOCAL FILE (${MORGUE_DATA_PATH}) — Firebase RTDB deprecated for reads`);

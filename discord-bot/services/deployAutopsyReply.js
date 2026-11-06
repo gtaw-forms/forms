@@ -16,14 +16,14 @@ import { state } from './deployState.js';
 import { isMaintenanceMode } from './deployQueue.js';
 import { setDeployStatus, markReportComplete } from './deployStatus.js';
 import { crosspostAutopsyToLssd, searchLssdRequestTopic } from './deployLssd.js';
-import { crosspostAutopsyToLspd } from './deployLspd.js';
 import { getAgencyForum, isAgencyFaction } from './agencyForums.js';
 import { notifyRequesterOfCompletion } from './requesterWebhook.js';
 import { clearAssignment } from './autopsyRotation.js';
 import { readState, mutateState } from './vpsState.js';
 
 import { COMPLETION_TEMPLATE, buildCompletionBb } from './completionTemplate.js';
-import { isDoePlaceholder } from './doePlaceholders.js';
+import { isNonIdentityPlaceholder } from './doePlaceholders.js';
+import { CASELINK_ACCOUNT, isCaselinkAccount, isUnusableDmTarget, nameFallbackVerdict } from './autopsyCompletionGuards.js';
 
 // ── Constants ──
 export const CASE_MGMT_FORUM_ID = 266;
@@ -86,6 +86,15 @@ export function isSharedThreadCollection(entry) {
  * placeholders are not identities). Mirrors the 553-607 lookup semantics (same pass
  * order, same prefer-uncompleted-then-highest-caseNum tie-break) but also
  * matches shared-thread members that carry no individual caseTopicId.
+ *
+ * Cross-match: a request filed WITHOUT an ((OOC)) stores the decedent's identity
+ * in `name` and leaves `oocName` empty (mass intake accepts that — t=10392 HUA3
+ * Brawl). The ME then files the report the normal way, "John Doe ((<identity>))",
+ * so the report's OOC carries what the body stored as its NAME. Pass 1 therefore
+ * also matches the report OOC against the body name when the body has no usable
+ * OOC, and pass 2 symmetrically matches the report name against the body OOC
+ * when the body has no usable name. Placeholders never participate either way.
+ *
  * @param {object} allReq — autopsy-requested node value
  * @param {string} ooc — report decedentOOC
  * @param {string} name — report decedentName
@@ -95,7 +104,11 @@ export function matchCollectionCase(allReq, ooc, name) {
     if (!allReq || typeof allReq !== 'object') return null;
     const oocL = String(ooc || '').trim().toLowerCase();
     const nameL = String(name || '').trim().toLowerCase();
-    const nameUsable = !!nameL && !isDoePlaceholder(name);
+    const usable = (v) => {
+        const s = String(v || '').trim();
+        return !!s && !isNonIdentityPlaceholder(s);
+    };
+    const nameUsable = !!nameL && usable(name);
     const pickBest = (cur, cand) => {
         if (!cur) return cand;
         if (!!cur.caseRec.completedAt && !cand.caseRec.completedAt) return cand;
@@ -112,7 +125,13 @@ export function matchCollectionCase(allReq, ooc, name) {
             if (!entry || !entry.cases || typeof entry.cases !== 'object') continue;
             for (const [ci, c] of Object.entries(entry.cases)) {
                 if (!c || !/^\d+$/.test(ci)) continue;
-                if (String(c.oocName || '').trim().toLowerCase() !== oocL) continue;
+                const bodyOoc = String(c.oocName || '').trim().toLowerCase();
+                const bodyName = String(c.name || '').trim().toLowerCase();
+                const hitOoc = !!bodyOoc && bodyOoc === oocL;
+                // Body has no usable OOC → its IC name IS the identity the report
+                // put in the OOC slot.
+                const hitNameAsOoc = !usable(c.oocName) && usable(c.name) && bodyName === oocL;
+                if (!hitOoc && !hitNameAsOoc) continue;
                 best = pickBest(best, { rkey, ci: parseInt(ci, 10), caseRec: c, entry });
             }
         }
@@ -122,7 +141,12 @@ export function matchCollectionCase(allReq, ooc, name) {
             if (!entry || !entry.cases || typeof entry.cases !== 'object') continue;
             for (const [ci, c] of Object.entries(entry.cases)) {
                 if (!c || !/^\d+$/.test(ci)) continue;
-                if (String(c.name || '').trim().toLowerCase() !== nameL) continue;
+                const bodyName = String(c.name || '').trim().toLowerCase();
+                const bodyOoc = String(c.oocName || '').trim().toLowerCase();
+                const hitName = !!bodyName && bodyName === nameL;
+                // Body has no usable IC name → its OOC is the best name match.
+                const hitOocAsName = !usable(c.name) && usable(c.oocName) && bodyOoc === nameL;
+                if (!hitName && !hitOocAsName) continue;
                 best = pickBest(best, { rkey, ci: parseInt(ci, 10), caseRec: c, entry });
             }
         }
@@ -331,7 +355,7 @@ export async function postLssdCombinedReply({ key, entry, reportData, completion
     // Searchable only if we have an OOC name or a non-generic decedent name.
     // The actual search (scoped to the faction's autopsy subforum, trying
     // "Name (( OOC ))" then the plain name) lives in searchLssdRequestTopic.
-    const searchable = oocName || (decedentName && !isDoePlaceholder(decedentName) ? decedentName : '');
+    const searchable = oocName || (decedentName && !isNonIdentityPlaceholder(decedentName) ? decedentName : '');
 
     if (!searchable) {
         await markLssdFailure(`${effFaction} case but no searchable name (no OOC / generic name) — force crosspost manually`);
@@ -617,6 +641,34 @@ async function finishCompletionStep(topicId, stepName, ok, detail = '') {
 }
 
 /**
+ * Shared LSPD Medical Examiner liaison-form step (live completion + retry).
+ * Builds the ME form payload from the autopsy report and files it through
+ * lspdPortalForms (dry-run default: fill + verify, never submit).
+ * @returns {Promise<{ok:boolean, dryRun?:boolean, detail:string, sessionInvalid?:boolean}>}
+ */
+async function runMedicalExaminerFormStep({ entry, reportData, caseNum, requestLink, meName, approvedBy = '' }) {
+    const { autopsyNoticeRecipient } = await import('./lspdAutopsyNotice.js');
+    const { deliverMedicalExaminerForm } = await import('./lspdPortalForms.js');
+    const target = autopsyNoticeRecipient(entry);
+    if (!target) return { ok: false, detail: 'No requester character name on the entry — refusing to guess the recipient' };
+    if (!reportData?.data) return { ok: false, detail: 'No autopsy report data — refusing to file from nothing' };
+    const result = await deliverMedicalExaminerForm({
+        recipient: target,
+        data: reportData.data,
+        context: {
+            caseNum: caseNum || '',
+            requestLink: requestLink || '',
+            requesterName: target,
+            meName: meName || '',
+            approvedBy: approvedBy || '',
+        },
+    });
+    if (result.ok && result.dryRun) return { ok: true, dryRun: true, detail: `Dry run — ME form verified for ${target}, not submitted` };
+    if (result.ok) return { ok: true, detail: `ME form → ${target} (${result.formUrl || 'submitted'})` };
+    return { ok: false, detail: result.reason || 'Failed', sessionInvalid: result.sessionInvalid };
+}
+
+/**
  * Handle an Autopsy report — search Case Management forum (f=266) by decedent name
  * and reply to the case thread with the autopsy BBCode.
  * Dry-run by default for safety — set AUTOPSY_DRY_RUN=false in .env to enable live posting.
@@ -773,10 +825,11 @@ export async function handleAutopsyReply(report) {
                     if (byName.exists()) arSnap = byName;
                 }
             }
-            // Fallback: decedent name field — but NEVER a DOE placeholder
-            // ("John/Jane Doe", "J. DOE", "DOE and DOE" are not identities).
+            // Fallback: decedent name field — but NEVER a placeholder
+            // ("John/Jane Doe", "J. DOE", "DOE and DOE", "Unknown" are not
+            // identities: matching on them finds an unrelated case).
             // Skipped entirely on a shared-thread hit (topic already resolved).
-            if (!sharedHit && (!arSnap || !arSnap.exists()) && name && !isDoePlaceholder(name)) {
+            if (!sharedHit && (!arSnap || !arSnap.exists()) && name && !isNonIdentityPlaceholder(name)) {
                 arSnap = await db.ref("autopsy-requested").orderByChild("name").equalTo(name).once("value");
                 if (!arSnap.exists()) {
                     const byOoc = await db.ref("autopsy-requested").orderByChild("oocName").equalTo(name).once("value");
@@ -820,7 +873,7 @@ export async function handleAutopsyReply(report) {
             const name = (reportData.data?.decedentName || "").trim();
             const oocL = ooc.toLowerCase();
             const nameL = name.toLowerCase();
-            const nameUsable = !!name && !isDoePlaceholder(name);
+            const nameUsable = !!name && !isNonIdentityPlaceholder(name);
             const allReqSnap = await db.ref("autopsy-requested").once("value");
             const allReq = allReqSnap.val() || {};
             const pickBest = (cur, cand) => {
@@ -1015,15 +1068,15 @@ export async function handleAutopsyReply(report) {
     // ── Mass-collection per-body reply target (best-effort, never fatal) ──
     // Shared-thread collections hold one reply PER BODY inside the one f=266
     // thread: resolve this report's cases/<idx> member (OOC-exact-first, never
-    // a DOE placeholder) and point the reply at the shared thread when the
-    // members carry no individual caseTopicId. Per-topic records skip the
-    // override entirely.
+    // a placeholder name — DOE or "Unknown") and point the reply at the shared
+    // thread when the members carry no individual caseTopicId. Per-topic
+    // records skip the override entirely.
     let massBodyCtx = null; // { rkey, ci, caseRec, entry }
     let massReplyTopicId = topicId;
     try {
         const mOoc = (reportData.data?.decedentOOC || '').trim();
         const mName = (reportData.data?.decedentName || '').trim();
-        if (mOoc || (mName && !isDoePlaceholder(mName))) {
+        if (mOoc || (mName && !isNonIdentityPlaceholder(mName))) {
             const mSnap = await db.ref('autopsy-requested').once('value');
             const hit = matchCollectionCase(mSnap.val() || {}, mOoc, mName);
             if (hit && isSharedThreadCollection(hit.entry)) {
@@ -1066,7 +1119,6 @@ export async function handleAutopsyReply(report) {
         const completed = await markReportComplete(db, authorId, key, label, 'autopsy-reply', completeUrl);
         if (completed) {
             let completedTopicId = null;
-            let completedLspdTopicId = null;
             let completedCaseTitle = null;
             try {
                 const ooc = (reportData.data?.decedentOOC || "").trim();
@@ -1099,15 +1151,31 @@ export async function handleAutopsyReply(report) {
                     }
                 }
 
-                // 3. Last resort: match by the decedent name, but NEVER a DOE
-                //    placeholder — that matches unrelated test entries sharing
-                //    one (e.g. t=10328's "Jane Doe" hit test collection #10161).
+                // 3. Last resort: match by the decedent name, but ONLY when the
+                //    name is a real identity (never a DOE marker or the
+                //    unidentified "Unknown" placeholder) AND exactly one OPEN
+                //    request answers to it — a generic name matches several
+                //    unrelated open requests, and completing them all writes one
+                //    body's report onto the others (2026-10-14: an
+                //    "Unknown ((Isabela Salazar))" report completed stale
+                //    duplicates t=10076/t=10083 and crossposted to LSPD twice).
+                //    Rejected matches are quarantined for supervisor triage.
                 if (!arSnap || !arSnap.exists()) {
-                    if (name && !isDoePlaceholder(name)) {
+                    if (name) {
                         let by = await db.ref("autopsy-requested").orderByChild("name").equalTo(name).once("value");
                         if (!by.exists()) by = await db.ref("autopsy-requested").orderByChild("oocName").equalTo(name).once("value");
-                        if (by.exists()) console.log('[AUTO-COMPLETE] Matched by name "' + name + '"');
-                        arSnap = by;
+                        if (by.exists()) {
+                            const candidates = [];
+                            by.forEach((child) => candidates.push({ key: child.key, ...(child.val() || {}) }));
+                            const verdict = nameFallbackVerdict(name, candidates);
+                            if (verdict.accept) {
+                                console.log(`[AUTO-COMPLETE] Matched by name "${name}" (${verdict.reason})`);
+                                arSnap = by;
+                            } else {
+                                console.warn(`[AUTO-COMPLETE] Name match "${name}" rejected — ${verdict.reason}; report stays posted, request NOT completed (supervisor triage)`);
+                                arSnap = null;
+                            }
+                        }
                     }
                 }
 
@@ -1186,7 +1254,6 @@ export async function handleAutopsyReply(report) {
 
                     for (const { key, entry, ref } of entries) {
                         completedTopicId = key;
-                        completedLspdTopicId = entry.lspdTopicId;
                         // Multi-decedent records: use the per-case record for
                         // identity/state so each case completes independently.
                         const caseRec = entry._caseRec || null;
@@ -1220,7 +1287,9 @@ export async function handleAutopsyReply(report) {
                             const totalCount = Object.values(massCasesVal).length;
                             console.log(`[MASS] #${key} BODY ${Number(caseIdx) + 1}/${totalCount} DONE: ${caseRec?.name || '?'} ((${caseRec?.oocName || '?'})) by ${caseRec?.assignedTo || entry.assignedTo || '?'} — collection ${doneCount}/${totalCount}${allCasesDone ? ' — ALL COMPLETE, batched send follows' : ' (external sends deferred)'}`);
                             if (allCasesDone) {
-                                await ref.update({ completedAt: new Date().toISOString(), completedBbCode: bbCode });
+                                // Portal identity: retries and notices link the
+                                // filed autopsy report — persist its address.
+                                await ref.update({ completedAt: new Date().toISOString(), completedBbCode: bbCode, reportAuthorId: authorId || null, reportKey: key || null });
                                 console.log('[AUTO-COMPLETE] All decedent cases complete — request marked completed');
                                 // Retire the mass panel(s) now that there is
                                 // nothing left to press them for (best-effort —
@@ -1234,7 +1303,8 @@ export async function handleAutopsyReply(report) {
                                 } catch { /* panel retire best-effort ignored: completion itself already persisted */ }
                             }
                         } else {
-                            await ref.update({ completedAt: new Date().toISOString(), completedBbCode: bbCode });
+                            // Portal identity (see above).
+                            await ref.update({ completedAt: new Date().toISOString(), completedBbCode: bbCode, reportAuthorId: authorId || null, reportKey: key || null });
                         }
                         console.log("[AUTO] [OK] Marked autopsy-requested #" + key + " as completed");
 
@@ -1285,10 +1355,7 @@ export async function handleAutopsyReply(report) {
                             ? getAgencyForum(completionFaction)
                             : null;
                         const completionFx = completionAgencyCfg ? completionFaction.toLowerCase() : 'lssd';
-                        const completionLspdUrl = completedLspdTopicId
-                            ? `https://lspd.gta.world/viewtopic.php?t=${completedLspdTopicId}`
-                            : null;
-                        let completionBb = buildCompletionBb(caseTitle, requesterName, { faction: completionFaction, lspdUrl: completionLspdUrl, formsAutopsy: entry.formsAutopsy });
+                        let completionBb = buildCompletionBb(caseTitle, requesterName, { faction: completionFaction, formsAutopsy: entry.formsAutopsy });
                         // Shared-thread mass collection: the agency combined reply
                         // fires ONCE with every body (array input) when the last
                         // body completes; partials defer so no premature singles
@@ -1323,7 +1390,7 @@ export async function handleAutopsyReply(report) {
                                     [`${completionFx}CrosspostedAt`]: new Date().toISOString(),
                                 }).catch(() => {});
                             }
-                            if (agencyCompletionUrl) completionBb = buildCompletionBb(caseTitle, requesterName, { faction: completionFaction, lssdUrl: agencyCompletionUrl, lspdUrl: completionLspdUrl, formsAutopsy: entry.formsAutopsy });
+                            if (agencyCompletionUrl) completionBb = buildCompletionBb(caseTitle, requesterName, { faction: completionFaction, lssdUrl: agencyCompletionUrl, formsAutopsy: entry.formsAutopsy });
                         } else {
                             await finishCompletionStep(key, 'lssdCombinedReply', true, 'Private case — agency crosspost skipped');
                             await progress.addStep('Agency Completion + Report', 'ok', 'Skipped (private case)');
@@ -1394,11 +1461,10 @@ export async function handleAutopsyReply(report) {
                         })());
                         // LSSD cross-post + DM handled as completion steps below (in parallel).
 
-                        // ── LSPD crosspost step ──
-                        // Replies to the LSPD certified copy topic (created at detection time)
-                        // with the completed autopsy report. Falls back to creating the LSPD
-                        // topic now if it wasn't created during detection (race condition guard).
-                        const lspdTopicId = completedLspdTopicId;
+                        // ── LSPD crosspost step (retired Nov 2026 — dead board) ──
+                        // Historic entries may still carry a detection-time
+                        // lspdTopicId; the gate keeps working via isLspdCase.
+                        const lspdTopicId = entry.lspdTopicId || null;
                         // Faction is determined by the REQUEST (entry.faction / [LSPD] tag) — the
                         // report's department field is only a hint for requests with no clear tag.
                         const lspdFaction = (entry.faction || '').toLowerCase();
@@ -1417,68 +1483,55 @@ export async function handleAutopsyReply(report) {
                             await finishCompletionStep(completedTopicId, 'lspdCrosspost', true, 'Deferred — not all bodies complete');
                             await progress.addStep('LSPD Crosspost', 'ok', 'Deferred until all bodies complete');
                         } else if (lspdTopicId || isLspdCase) {
-                            await progress.addStep('LSPD Crosspost', 'pending');
+                            // Inbox retirement (Nov 2026): LSPD takes no inbox
+                            // notices — their portal replaced them. Delivery
+                            // runs via the ME liaison form step below plus the
+                            // share link. Step name kept so dashboards and the
+                            // retry sweep keep keying on it.
+                            const stepName = 'lspdCrosspost';
+                            await startCompletionStep(completedTopicId, stepName, 'Inbox retired — no LSPD notice sent');
+                            await finishCompletionStep(completedTopicId, stepName, true, 'Retired: LSPD inbox notices removed Nov 2026 (delivery via ME form + share link)');
+                            await progress.addStep('LSPD Crosspost', 'skip', 'Inbox retired');
+                        } else {
+                            await finishCompletionStep(completedTopicId, 'lspdCrosspost', true, 'No LSPD topic ID (not an LSPD case)');
+                        }
+
+                        // ── 3b. LSPD Medical Examiner liaison form ──
+                        // Files the portal medical-examiner-case-submission form
+                        // for LSPD autopsies. Same two-phase step tracking as the
+                        // notice above; dry-run default verifies only. New step
+                        // name (lspdMedicalExaminerForm) — existing keys untouched.
+                        if (isPrivateEntry) {
+                            await finishCompletionStep(completedTopicId, 'lspdMedicalExaminerForm', true, 'Private case — ME form skipped');
+                            await progress.addStep('LSPD ME Form', 'ok', 'Skipped (private case)');
+                        } else if (sharedBatch && !allCasesDone) {
+                            await startCompletionStep(completedTopicId, 'lspdMedicalExaminerForm', 'Deferred — collection has pending bodies');
+                            await finishCompletionStep(completedTopicId, 'lspdMedicalExaminerForm', true, 'Deferred — not all bodies complete');
+                            await progress.addStep('LSPD ME Form', 'ok', 'Deferred until all bodies complete');
+                        } else if (lspdTopicId || isLspdCase) {
+                            await progress.addStep('LSPD ME Form', 'pending');
                             stepPromises.push((async () => {
-                                const stepName = 'lspdCrosspost';
-                                const label = lspdTopicId ? 'Reply to LSPD #' + lspdTopicId : 'Create LSPD topic';
-                                await startCompletionStep(completedTopicId, stepName, label);
+                                const stepName = 'lspdMedicalExaminerForm';
+                                await startCompletionStep(completedTopicId, stepName, 'ME liaison form');
                                 try {
-                                    // crosspostAutopsyToLspd re-gates on the report's
-                                    // department text — but demo/fill-in reports may
-                                    // carry a non-LSPD department while the REQUEST
-                                    // is unambiguously LSPD. Fall back to the
-                                    // request's own department line (real request
-                                    // data, not fabricated) so LSPD cases are never
-                                    // skipped on a report-field technicality.
-                                    const reqDeptFallback = entry.parsed?.requesterDept || 'Los Santos Police Department';
-                                    const lspdReportData = {
-                                        data: {
-                                            ...(reportData?.data || {}),
-                                            department: (!lspdDept.includes('lspd') && !lspdDept.includes('police') && isLspdCase)
-                                                ? reqDeptFallback
-                                                : (reportData?.data?.department || 'Los Santos Police Department'),
-                                            decedentName: reportData?.data?.decedentName || caseRec?.name || entry.name || '',
-                                            decedentOOC: reportData?.data?.decedentOOC || caseRec?.oocName || entry.oocName || '',
-                                        }
-                                    };
-                                    // Pass null lspdTopicId when missing — crosspostAutopsyToLspd
-                                    // will create a new topic on the LSPD forum as fallback.
-                                    // Shared-thread collection: ONE crosspost carrying
-                                    // every body (array joined with BODY headers).
-                                    // crosspostAutopsyToLspd takes a single bbCode
-                                    // string, so the batch is joined at this call
-                                    // site — no change needed in deployLspd.js.
-                                    let lspdBbCode = bbCode;
-                                    let lspdCaseTitle = completedCaseTitle;
-                                    if (sharedBatch && allCasesDone) {
-                                        const batch = buildBatchedBodiesPayload(massCasesVal || {});
-                                        lspdBbCode = batch.text;
-                                        const caseNums = Object.keys(massCasesVal || {}).filter((k) => /^\d+$/.test(k)).map(Number).sort((a, b) => a - b).map((i) => massCasesVal[i]?.caseNum).filter(Boolean);
-                                        lspdCaseTitle = `Mass Autopsy — ${batch.count} bodies${caseNums.length ? ` (Cases ${caseNums.join(', ')})` : ''}`;
-                                        console.log(`[AUTO-COMPLETE] Shared collection — batched LSPD crosspost (${batch.count} bodies)`);
-                                    }
-                                    const lspdResult = await crosspostAutopsyToLspd(
-                                        lspdReportData,
-                                        lspdBbCode,
-                                        completedTopicId,
-                                        state.dbRef,
-                                        lspdTopicId || null,
-                                        { caseTitle: lspdCaseTitle, caseTopicId: caseRec?.caseTopicId || entry.caseTopicId }
-                                    );
-                                    const ok = lspdResult.ok && !lspdResult.skipped;
-                                    const detail = lspdTopicId ? '#' + lspdTopicId : (lspdResult.url || '');
-                                    await finishCompletionStep(completedTopicId, stepName, ok, ok ? (lspdTopicId ? 'Reply to LSPD #' + lspdTopicId : 'Created LSPD topic') : (lspdResult.error || 'Skipped'));
-                                    await progress.addStep('LSPD Crosspost', ok ? 'ok' : 'fail', detail || (lspdResult.error || 'Failed'));
-                                    if (!ok) stepFailed.LSPD = true;
+                                    const r = await runMedicalExaminerFormStep({
+                                        entry, reportData,
+                                        caseNum: caseRec?.caseNum || entry.caseNum || '',
+                                        requestLink: entry.caseUrl || entry.topicUrl || '',
+                                        meName: completingMe || '',
+                                    });
+                                    await finishCompletionStep(completedTopicId, stepName, r.ok, r.detail);
+                                    await progress.addStep('LSPD ME Form', r.ok ? 'ok' : 'fail', r.detail);
+                                    if (!r.ok) stepFailed.LSPD = true;
                                 } catch (e) {
-                                    console.error('[AUTO-COMPLETE] LSPD crosspost error: ' + e.message);
+                                    console.error('[AUTO-COMPLETE] LSPD ME form error: ' + e.message);
                                     await finishCompletionStep(completedTopicId, stepName, false, e.message);
-                                    await progress.addStep('LSPD Crosspost', 'fail', e.message);
+                                    await progress.addStep('LSPD ME Form', 'fail', e.message);
                                     stepFailed.LSPD = true;
                                 }
                             })());
                         } else {
-                            await finishCompletionStep(completedTopicId, 'lspdCrosspost', true, 'No LSPD topic ID (not an LSPD case)');
+                            await finishCompletionStep(completedTopicId, 'lspdMedicalExaminerForm', true, 'No LSPD topic ID (not an LSPD case)');
                         }
 
                         // ── 4. DM the requester on its own isolated client ──
@@ -1489,6 +1542,13 @@ export async function handleAutopsyReply(report) {
                         stepPromises.push((async () => {
                             const dmClient = createIsolatedClient('dm');
 
+                            // Forum key first: the portal branch below reads it,
+                            // and const-declaring it later would TDZ-throw here.
+                            const deliveryForumKey = String(
+                                (isPrivateEntry && entry.pmForum) ? entry.pmForum
+                                : (entry.formsAutopsy === true ? (entry.agencyForum || 'phmc') : '')
+                            ).toLowerCase();
+
                             // Multi-decedent requests defer the DM until every decedent
                             // is done — no premature "completed" DM for an open request.
                             if (isMulti && !allCasesDone) {
@@ -1497,24 +1557,30 @@ export async function handleAutopsyReply(report) {
                                 return;
                             }
 
+                            // Inbox retirement (Nov 2026): LSPD-targeted DMs are
+                            // skipped — LSPD takes no inbox notices (their
+                            // portal replaced them) and its phpBB board is
+                            // dead, so phpBB PMs there are dead too. Covers
+                            // private pmForum=lspd and web-forms
+                            // agencyForum=lspd. All other forums keep the
+                            // phpBB PM path below untouched.
+                            if (deliveryForumKey === 'lspd') {
+                                await finishCompletionStep(key, 'dmSent', true, 'Retired: LSPD inbox notices removed Nov 2026 (delivery via ME form + share link)');
+                                await progress.addStep('DM Requester', 'skip', 'LSPD inbox retired');
+                                try { await dmClient.close(); } catch { /* isolated DM client cleanup best-effort ignored: retired step already recorded */ }
+                                return;
+                            }
+
                             // Resolve forum target for private pm_forum / web-forms
-                            // deliveries (LSPD/LSSD/SADCR/DAO/PHMC)
+                            // deliveries (LSSD/SADCR/DAO/PHMC — LSPD retired above)
                             let pmForumBaseUrl = null;
                             let pmForumUser = null;
                             let pmForumPass = null;
-                            const deliveryForumKey = String(
-                                (isPrivateEntry && entry.pmForum) ? entry.pmForum
-                                : (entry.formsAutopsy === true ? (entry.agencyForum || 'phmc') : '')
-                            ).toLowerCase();
                             if (deliveryForumKey) {
                                 if (deliveryForumKey === 'lssd' || deliveryForumKey === 'sadcr' || deliveryForumKey === 'dao') {
                                     pmForumBaseUrl = 'https://lssd.gta.world';
                                     pmForumUser = process.env.FORUM_LSSD_USERNAME;
                                     pmForumPass = process.env.FORUM_LSSD_PASSWORD;
-                                } else if (deliveryForumKey === 'lspd') {
-                                    pmForumBaseUrl = 'https://lspd.gta.world';
-                                    pmForumUser = process.env.FORUM_LSPD_USERNAME;
-                                    pmForumPass = process.env.FORUM_LSPD_PASSWORD;
                                 } else {
                                     pmForumBaseUrl = process.env.FORUM_BASE_URL || 'https://phmc.gta.world';
                                     pmForumUser = process.env.FORUM_USERNAME;
@@ -1563,25 +1629,26 @@ export async function handleAutopsyReply(report) {
                                         console.warn('[AUTO-COMPLETE] Topic poster lookup failed: ' + lookupErr.message);
                                     }
                                     if (!dmTarget) {
-                                        // Last resort: CASELINK [BOT] is the automated requester for
-                                        // LSSD/LSPD cases. If the topic poster can't be resolved, DM
-                                        // this account as a safe default so the completion report
-                                        // still reaches the department's intake system.
-                                        dmTarget = 'CASELINK [BOT]';
-                                        console.warn('[AUTO-COMPLETE] Topic poster not found, using CASELINK [BOT] as fallback');
+                                        // Last resort: the CASELINK bot is the automated requester
+                                        // for LSSD/LSPD cases. It cannot receive these PMs (phpBB
+                                        // rejects the account) and reads the forums directly, so
+                                        // the skip guard below records the step as skipped — the
+                                        // canonical CASELINK_ACCOUNT value is what makes that guard
+                                        // match (a differently-cased literal made the DM attempt
+                                        // for real and retried forever, 2026-10-14).
+                                        dmTarget = CASELINK_ACCOUNT;
+                                        console.warn('[AUTO-COMPLETE] Topic poster not found, using CASELINK as fallback');
                                     }
                                 }
 
-                                if (!dmTarget || dmTarget === "Requesting Party" || dmTarget === 'PHMC Forms Bot') {
-                                    await finishCompletionStep(key, 'dmSent', true, 'No valid DM target — skipped');
-                                    await progress.addStep('DM Requester', 'skip', 'No valid target');
-                                    return;
-                                }
-                                // CASELINK [Bot] only checks LSSD forums — DMs are redundant for automated requests
-                                if (dmTarget === 'CASELINK [Bot]') {
-                                    console.log("[AUTO-COMPLETE] CASELINK [Bot] target — DM skipped (they monitor LSSD forums directly)");
-                                    await finishCompletionStep(key, 'dmSent', true, 'Automated request — DM not needed');
-                                    await progress.addStep('DM Requester', 'skip', 'CASELINK monitors LSSD');
+                                // Placeholder recipients and the CASELINK bot are skipped —
+                                // as COMPLETED steps, never failures, so the recovery sweep
+                                // can't retry a permanently unsendable DM.
+                                if (isUnusableDmTarget(dmTarget)) {
+                                    const caselink = isCaselinkAccount(dmTarget);
+                                    if (caselink) console.log("[AUTO-COMPLETE] CASELINK target — DM skipped (they monitor LSSD forums directly)");
+                                    await finishCompletionStep(key, 'dmSent', true, caselink ? 'Automated request — DM not needed' : 'No valid DM target — skipped');
+                                    await progress.addStep('DM Requester', 'skip', caselink ? 'CASELINK monitors LSSD' : 'No valid target');
                                     return;
                                 }
                                 const dmSubject = buildDmSubject(entry);
@@ -1686,7 +1753,17 @@ export async function handleAutopsyReply(report) {
                         }
 
 // Wait for all completion steps, then finalize
-                        await Promise.allSettled(stepPromises);
+                        // Rejections are logged LOUDLY: a step promise that
+                        // throws outside its own try (e.g. a TDZ slip) writes
+                        // no step record and the retry sweep can't see it —
+                        // that exact silence orphaned a DM step before.
+                        const settled = await Promise.allSettled(stepPromises);
+                        for (const s of settled) {
+                            if (s.status === 'rejected') {
+                                console.error('[AUTO-COMPLETE] Completion step promise rejected with no step record: ' + (s.reason?.message || s.reason || 'unknown'));
+                                stepFailed.unrecorded = true;
+                            }
+                        }
                         const anyFailed = Object.keys(stepFailed).length > 0;
                         if (anyFailed) {
                             const failedList = Object.keys(stepFailed).join(', ');
@@ -1881,7 +1958,7 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
             // done. Markers are kept so the next sweep picks them up.
             const retryShared = isSharedThreadCollection(entry);
             const retryAllDone = collectionCasesDone(entry);
-            if (retryShared && !retryAllDone && (stepBase === 'phmcCompletionReply' || stepBase === 'dmSent' || stepBase === 'requesterWebhook' || stepBase === 'lssdCombinedReply' || stepBase === 'lspdCrosspost')) {
+            if (retryShared && !retryAllDone && (stepBase === 'phmcCompletionReply' || stepBase === 'dmSent' || stepBase === 'requesterWebhook' || stepBase === 'lssdCombinedReply' || stepBase === 'lspdCrosspost' || stepBase === 'lspdMedicalExaminerForm')) {
                 console.log(`[AUTO-COMPLETE] ${stepName} for ${caseLabel} — collection partial, deferring (no premature single)`);
                 continue;
             }
@@ -1890,7 +1967,7 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
 
             // Private cases never crosspost to LSPD/LSSD — mark crosspost steps as resolved.
             if (entry.isPrivate === true && (stepBase === 'lssdCombinedReply' || stepBase === 'lssdCompletionReply'
-                || stepBase === 'lssdAutopsyReport' || stepBase === 'lspdCrosspost')) {
+                || stepBase === 'lssdAutopsyReport' || stepBase === 'lspdCrosspost' || stepBase === 'lspdMedicalExaminerForm')) {
                 console.log(`[AUTO-COMPLETE] [OK] ${stepName} for ${caseLabel} — private case, crosspost skipped`);
                 await finishCompletionStep(key, stepName, true, 'Private case — crosspost skipped');
                 continue;
@@ -1904,14 +1981,13 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
                     : (String(entry.faction || '').toLowerCase()
                         || (/\[(lssd|lspd|sadcr|dao)\]/i.exec(entry.title || '') || [])[1]?.toLowerCase()
                         || null);
-                const retryLspdUrl = entry.lspdTopicId ? `https://lspd.gta.world/viewtopic.php?t=${entry.lspdTopicId}` : null;
                 // Faction-prefixed completion URL (lssdCompletionUrl legacy key for LSSD;
                 // sadcrCompletionUrl / daoCompletionUrl for the newer registry factions).
                 const retryAgencyCfg = isAgencyFaction(retryFaction) ? getAgencyForum(retryFaction) : null;
                 const retryFx = retryAgencyCfg ? String(retryFaction).toLowerCase() : 'lssd';
                 // Per-case step: prefer that body's own stored completion URL.
                 const retryCompletionUrl = stepCaseRec ? stepCaseRec[`${retryFx}CompletionUrl`] : entry[`${retryFx}CompletionUrl`];
-                const completionBb = buildCompletionBb(caseTitle, requesterName, { faction: retryFaction, lssdUrl: retryCompletionUrl, lspdUrl: retryLspdUrl, formsAutopsy: entry.formsAutopsy });
+                const completionBb = buildCompletionBb(caseTitle, requesterName, { faction: retryFaction, lssdUrl: retryCompletionUrl, formsAutopsy: entry.formsAutopsy });
 
                 let success = false;
 
@@ -2076,28 +2152,58 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
                     }
 
                 } else if (stepBase === 'lspdCrosspost') {
-                    const lspdTopicId = entry.lspdTopicId;
-                    if (!lspdTopicId) {
+                    // Inbox retirement (Nov 2026): LSPD inbox notices are
+                    // gone — historic failures resolve as retired so the
+                    // sweep stops carrying them. Delivery runs via the ME
+                    // liaison form step plus the share link.
+                    console.log(`[AUTO-COMPLETE] [OK] Retry OK — ${stepName} for ${caseLabel}: LSPD inbox retired, skipped`);
+                    success = true;
+
+                } else if (stepBase === 'lspdMedicalExaminerForm') {
+                    // ME liaison-form retry (same shape as the live step).
+                    const { isLspdAutopsyTarget } = await import('./lspdAutopsyNotice.js');
+                    if (!isLspdAutopsyTarget(entry)) {
                         console.log(`[AUTO-COMPLETE] [OK] Retry OK — ${stepName} for ${caseLabel}: not an LSPD case`);
                         success = true;
-                    } else {
-                        // Shared-thread collection: ONE batched payload on retry.
-                        const bbCodeToSend = retryBatch ? retryBatch.text : (entry.completedBbCode || '');
-                        if (!bbCodeToSend) {
-                            console.warn(`[AUTO-COMPLETE] Cannot retry ${stepName} for ${caseLabel}: no completedBbCode`);
-                            stillFailed++;
-                            continue;
-                        }
-                        console.log(`[AUTO-COMPLETE] Retrying LSPD crosspost to #${lspdTopicId}...`);
-                        await retryClient.login(process.env.FORUM_LSPD_USERNAME, process.env.FORUM_LSPD_PASSWORD, { force: false, baseUrl: 'https://lspd.gta.world' });
-                        const r = await retryClient.replyToTopic(lspdTopicId, 1361, bbCodeToSend, { dryRun: false, baseUrl: 'https://lspd.gta.world' });
-                        success = r.ok;
-                        console.log(`[AUTO-COMPLETE] LSPD crosspost retry — ${r.ok ? 'OK' : 'FAILED: ' + (r.reason || 'Unknown')}`);
+                        continue;
+                    }
+                    const retryAuthor = entry?.reportAuthorId || null;
+                    const retryKey = entry?.reportKey || null;
+                    if (!retryAuthor || !retryKey) {
+                        console.warn(`[AUTO-COMPLETE] Cannot retry ${stepName} for ${caseLabel}: no report identity (verify manually)`);
+                        stillFailed++;
+                        continue;
+                    }
+                    try {
+                        const repSnap = await db.ref(`scheduledReports/${retryAuthor}/${retryKey}`).once('value');
+                        const repData = repSnap.exists() ? repSnap.val() : null;
+                        const r = await runMedicalExaminerFormStep({
+                            entry, reportData: repData,
+                            caseNum: entry.caseNum || '',
+                            requestLink: entry.caseUrl || entry.topicUrl || '',
+                            meName: entry.assignedTo || '',
+                        });
+                        success = !!r.ok;
+                        console.log(`[AUTO-COMPLETE] LSPD ME form retry — ${r.ok ? 'OK' : 'FAILED: ' + r.detail}`);
+                    } catch (retryErr) {
+                        console.warn(`[AUTO-COMPLETE] LSPD ME form retry error for ${caseLabel}: ${retryErr.message}`);
                     }
 
                 } else if (stepBase === 'dmSent') {
                     // Shared-thread collection: ONE batched DM on retry.
                     const bbCodeToSend = retryBatch ? retryBatch.text : entry.completedBbCode;
+                    // Inbox retirement (Nov 2026): LSPD-targeted DMs resolve
+                    // as retired before any forum login — LSPD takes no inbox
+                    // notices and its phpBB board is dead. Delivery runs via
+                    // the ME liaison form step plus the share link.
+                    const dmRetireKey = entry.isPrivate === true && entry.pmForum
+                        ? String(entry.pmForum).toLowerCase()
+                        : (entry.formsAutopsy === true ? String(entry.agencyForum || 'phmc').toLowerCase() : '');
+                    if (dmRetireKey === 'lspd') {
+                        console.log(`[AUTO-COMPLETE] [OK] Retry OK — ${stepName} for ${caseLabel}: LSPD inbox retired, skipped`);
+                        success = true;
+                        continue;
+                    }
                     if (!bbCodeToSend) {
                         console.warn(`[AUTO-COMPLETE] Cannot retry ${stepName} for ${caseLabel}: no completedBbCode stored`);
                         stillFailed++;
@@ -2112,9 +2218,6 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
                         if (forumKey === 'lssd') {
                             dmBaseUrl = 'https://lssd.gta.world';
                             await retryClient.login(process.env.FORUM_LSSD_USERNAME, process.env.FORUM_LSSD_PASSWORD, { force: false, baseUrl: dmBaseUrl });
-                        } else if (forumKey === 'lspd') {
-                            dmBaseUrl = 'https://lspd.gta.world';
-                            await retryClient.login(process.env.FORUM_LSPD_USERNAME, process.env.FORUM_LSPD_PASSWORD, { force: false, baseUrl: dmBaseUrl });
                         } else {
                             await retryClient.login(null, null, { force: false, baseUrl: dmBaseUrl });
                         }
@@ -2126,9 +2229,6 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
                         if (fKey === 'lssd' || fKey === 'sadcr' || fKey === 'dao') {
                             dmBaseUrl = 'https://lssd.gta.world';
                             await retryClient.login(process.env.FORUM_LSSD_USERNAME, process.env.FORUM_LSSD_PASSWORD, { force: false, baseUrl: dmBaseUrl });
-                        } else if (fKey === 'lspd') {
-                            dmBaseUrl = 'https://lspd.gta.world';
-                            await retryClient.login(process.env.FORUM_LSPD_USERNAME, process.env.FORUM_LSPD_PASSWORD, { force: false, baseUrl: dmBaseUrl });
                         } else {
                             await retryClient.login(null, null, { force: false, baseUrl: dmBaseUrl });
                         }
@@ -2145,15 +2245,12 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
                             console.warn('[AUTO-COMPLETE] Topic poster lookup failed during retry: ' + lookupErr.message);
                         }
                         if (!dmTarget) {
-                            dmTarget = 'CASELINK [BOT]';
-                            console.warn('[AUTO-COMPLETE] Topic poster not found during retry, using CASELINK [BOT] as fallback');
+                            dmTarget = CASELINK_ACCOUNT;
+                            console.warn('[AUTO-COMPLETE] Topic poster not found during retry, using CASELINK as fallback');
                         }
                     }
-                    if (!dmTarget || dmTarget === 'Requesting Party' || dmTarget === 'PHMC Forms Bot') {
-                        console.log(`[AUTO-COMPLETE] ${stepName} for ${caseLabel}: no valid DM target`);
-                        success = true;
-                    } else if (dmTarget === 'CASELINK [Bot]') {
-                        console.log(`[AUTO-COMPLETE] ${stepName} for ${caseLabel}: CASELINK [Bot] — DM skipped (they monitor LSSD forums)`);
+                    if (isUnusableDmTarget(dmTarget)) {
+                        console.log(`[AUTO-COMPLETE] ${stepName} for ${caseLabel}: unusable DM target (${dmTarget || 'empty'}) — skipped`);
                         success = true;
                     } else {
                         const dmSubject = buildDmSubject(entry);

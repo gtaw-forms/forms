@@ -19,12 +19,12 @@ import { searchLssdRequestTopic } from './deployLssd.js';
 import { getAgencyForum, isAgencyFaction } from './agencyForums.js';
 import { sendLogMessage, notifySelfHeal } from './logChannel.js';
 import { selectME, selectMEsForMass, initializeRotationFromGroup, syncRotationFromGroup, getDevTestME, isDevTestActive } from './autopsyRotation.js';
-import { TERMINAL_STATES } from './outstandingAutopsies.js';
+import { TERMINAL_STATES, normalizeDeathType } from './outstandingAutopsies.js';
 import { DeployProgressEmbed } from './deployLogger.js';
 import { state as deployState } from './deployState.js';
 import { registerTick, unregisterTick } from './scheduler.js';
 import { mutateState } from './vpsState.js';
-import { DOE_PAREN_RE, isDoePlaceholder } from './doePlaceholders.js';
+import { DOE_PAREN_RE, isDoePlaceholder, isNonIdentityPlaceholder } from './doePlaceholders.js';
 
 /**
  * Bump a faction intake counter (VPS-local, off RTDB — the totals are only
@@ -78,9 +78,9 @@ export const ACK_FIELD_NAMES = {
 // assigned, acks/crossposts done, counters updated — Step 4). It does NOT mean
 // the autopsy was performed; a finished examination is marked by `completedAt`
 // + `completedBbCode` on the entry. Readers keying on the literal 'complete':
-// the monitor skip-guard, systemMonitor FINAL_STATES, autopsy-stats, and the
-// force-lssd gate — do not rename the value without migrating existing RTDB
-// records, or old entries will re-enter intake (duplicate case files + pings).
+// the monitor skip-guard, systemMonitor FINAL_STATES, and the force-lssd
+// gate — do not rename the value without migrating existing RTDB records,
+// or old entries will re-enter intake (duplicate case files + pings).
 //   case_created → me_assigned → ack_sent → complete
 //   dry_run (AUTOPSY_DRY_RUN) · multi (multi-decedent parent) · skipped
 //   (systemMonitor FINAL_STATES additionally reserves cancelled/denied)
@@ -828,12 +828,21 @@ export async function checkForNewRequests() {
                 try {
                     const mass = parseMassRequestBbcode(requestBbCode);
                     if (mass.error) {
-                        // Structural defect (e.g. a body missing ((OOC))) with the
-                        // full BBCode present → park as skipped so it never files
-                        // partial data; needs a supervisor fix on the source post.
+                        // Structural defect (all bodies unparseable/placeholder)
+                        // with the full BBCode present → park as skipped so it
+                        // never files partial data; needs a supervisor fix on the
+                        // source post.
                         console.warn(`[AUTOPSY-MON] [WARN] Mass request parse failed for #${topic.topicId}: ${mass.error}`);
                         // Batched: error + skip marker in one update (same values).
                         await _db.ref(`autopsy-requested/${topic.topicId}`).update({ massParseError: mass.error, caseState: 'skipped', skipReason: mass.error }).catch(() => {});
+                        // A parked request is otherwise invisible — it sends no
+                        // forum ack and (until now) no alert, and the sticky
+                        // caseState keeps the scanner off it forever. Surface it
+                        // so staff can fix the post and re-drive it
+                        // (tools/redrive-mass-request.mjs <topicId>).
+                        await sendWebhookSummary(
+                            `**[Mass Autopsy Request PARKED — needs a fix]**\n${topic.title}\nTopic: ${topic.href}\nReason: ${mass.error}`
+                        );
                     } else {
                         await processMassRequest({ db: _db, topic, parsed, mass, requestBbCode, processed });
                     }
@@ -1105,7 +1114,6 @@ export async function checkForNewRequests() {
                         const requesterName = parsedBbFields.requesterName || parsed.name || '';
                         let agencyAckTopicId = null;   // request topic on the faction's own forum
                         let agencyFactionKey = null;   // 'LSSD' | 'SADCR' | 'DAO'
-                        let lspdTopicId = null;  // declared here for access in the ack call below
 
                         // --- Agency crosspost: locate/create the request topic on the faction's own forum ---
                         // LSSD/SADCR/DAO are registry factions whose forums ALL sit on lssd.gta.world,
@@ -1136,46 +1144,12 @@ export async function checkForNewRequests() {
                             console.log('[AUTOPSY-MON] Step 3 — Agency crosspost skipped (faction=' + (parsed.faction || 'none') + ', oocName=' + (parsed.oocName || 'none') + ', name=' + (parsed.name || 'none') + ')');
                         }
 
-                        // --- LSPD: Create topic on LSPD forum f=1361 immediately on detection ---
-                        if (parsed.faction === 'LSPD') {
-                            // Reuse a preserved LSPD topic id (reprocessing after a
-                            // reset) instead of creating a duplicate.
-                            const existingLspd = existingEntry.lspdTopicId || (await caseRef.child('lspdTopicId').once('value')).val() || '';
-                            if (existingLspd) {
-                                lspdTopicId = String(existingLspd);
-                                console.log('[AUTOPSY-MON] Reusing existing LSPD topic #' + lspdTopicId + ' for request');
-                            } else {
-                            try {
-                                const lspdClient = getForumClient();
-                                await lspdClient.login(process.env.FORUM_LSPD_USERNAME, process.env.FORUM_LSPD_PASSWORD, { force: false, baseUrl: 'https://lspd.gta.world' });
-                                const lspdTopicTitle = 'Autopsy Request - ' + caseName + (caseOoc ? ' ((' + caseOoc + '))' : '') + ' [LSPD]';
-                                const lspdTopicBody = requestBbCode
-                                    ? '[divbox=white][center][b][size=170]AUTOPSY REQUEST — CERIFIED COPY [/size][/b][/center][hr][/hr]\n' + requestBbCode + '\n[hr][/hr][b]Case:[/b] ' + caseTitle + '\n[b]Status:[/b] Under Investigation\n[/divbox]'
-                                    : '[divbox=white][b]Autopsy Request[/b]\n[b]Decedent:[/b] ' + caseName + (caseOoc ? ' ((' + caseOoc + '))' : '') + '\n[b]Case:[/b] ' + caseTitle + '\n[b]Status:[/b] Under Investigation\n[/divbox]';
-                                const lspdResult = await lspdClient.postTopic(1361, lspdTopicTitle, lspdTopicBody, 'https://lspd.gta.world/posting.php?mode=post&f=1361');
-                                if (lspdResult.ok) {
-                                    const tM = lspdResult.url.match(/[?&]t=(\d+)/);
-                                    if (tM) {
-                                        lspdTopicId = tM[1];  // was: const lspdTopicId
-                                        console.log('[AUTOPSY-MON] Created LSPD topic #' + lspdTopicId + ' for request');
-                                        // Batched: topic id + crosspost status in one update (same values).
-                                        _db.ref('autopsy-requested/' + topic.topicId).update({ lspdTopicId, lspdCrosspostStatus: 'pending' }).catch(() => {});
-                                    } else {
-                                        console.warn('[AUTOPSY-MON] Step 3 — LSPD topic created but could not extract topic ID from URL: ' + lspdResult.url);
-                                    }
-                                } else {
-                                    console.warn('[AUTOPSY-MON] Step 3 — Failed to create LSPD topic: ' + (lspdResult.reason || 'unknown'));
-                                }
-                            } catch (err) {
-                                console.warn('[AUTOPSY-MON] Step 3 — LSPD topic creation error: ' + err.message);
-                            }
-                            }
-                        } else {
-                            console.log('[AUTOPSY-MON] Step 3 — LSPD topic creation skipped (faction=' + (parsed.faction || 'none') + ')');
-                        }
+                        // --- LSPD crosspost retired Nov 2026 (dead phpBB board) ---
+                        // No new f=1361 topics are created; historic lspdTopicId
+                        // values stay on their entries untouched.
 
-                        // --- Send acknowledgement reply to PHMC + the faction's own forum + LSPD ---
-                        const ackOpts = { baseUrl: PHMC_BASE, lspdTopicId };
+                        // --- Send acknowledgement reply to PHMC + the faction's own forum ---
+                        const ackOpts = { baseUrl: PHMC_BASE };
                         if (agencyFactionKey === 'LSSD') ackOpts.lssdTopicId = agencyAckTopicId;
                         else if (agencyFactionKey) {
                             // SADCR/DAO ride the generic registry branch (own subforum, shared login)
@@ -1187,7 +1161,6 @@ export async function checkForNewRequests() {
                         // Log which ack targets were hit
                         if (ackResult.phmc) console.log('[AUTOPSY-MON] Acknowledgement sent to PHMC #' + topic.topicId);
                         if (agencyFactionKey && ackResult[agencyFactionKey.toLowerCase()]) console.log('[AUTOPSY-MON] Acknowledgement sent to ' + agencyFactionKey + ' #' + agencyAckTopicId);
-                        if (ackResult.lspd) console.log('[AUTOPSY-MON] Acknowledgement sent to LSPD #' + lspdTopicId);
 
                         // Save ack status to Firebase for retry tracking.
                         // Visible field names (ACK_FIELD_NAMES) + timestamps, so a
@@ -1214,10 +1187,7 @@ export async function checkForNewRequests() {
                         // ── Crosspost step on the live progress embed ──
                         if (progress) {
                             if (parsed.faction === 'LSPD') {
-                                const url = lspdTopicId ? `https://lspd.gta.world/viewtopic.php?t=${lspdTopicId}` : '';
-                                if (ackResult.lspd === true) await progress.addStep('CROSSPOSTED TO LSPD', 'ok', url || 'Certified copy posted');
-                                else if (ackResult.lspd === false) await progress.addStep('CROSSPOSTED TO LSPD', 'fail', url ? `Ack failed — ${url}` : 'Ack failed');
-                                else await progress.addStep('CROSSPOSTED TO LSPD', 'skip', 'No LSPD certified copy for this request');
+                                await progress.addStep('CROSSPOSTED TO LSPD', 'skip', 'LSPD forum crosspost retired Nov 2026');
                             } else if (parsed.faction === 'LSSD') {
                                 const url = agencyAckTopicId ? `https://lssd.gta.world/viewtopic.php?t=${agencyAckTopicId}` : '';
                                 if (ackResult.lssd === true) await progress.addStep('CROSSPOSTED TO LSSD', 'ok', url || 'Certified copy posted');
@@ -1365,10 +1335,10 @@ async function processMassRequest({ db, topic, parsed, mass, requestBbCode, proc
     console.log(`[MASS] #${topicId}: ${N} ${N === 1 ? 'body' : 'bodies'} parsed from request`);
     for (let i = 0; i < N; i++) {
         const b = bodies[i];
-        console.log(`[MASS] #${topicId} BODY ${i + 1}/${N} FOUND: ${b.name || '?'} ((${b.oocName || '?'})) | ${b.sex || '?'} | ${b.dateOfDeath || '?'} ${b.timeOfDeath || ''} | ${b.placeOfDeath || '?'}`);
+        console.log(`[MASS] #${topicId} BODY ${i + 1}/${N} FOUND: ${b.name || '?'} ((${b.oocName || '?'})) | ${b.sex || '?'} | ${b.dateOfDeath || '?'} ${b.timeOfDeath || ''} | ${b.placeOfDeath || '?'} | ${b.deathType || '?'}`);
     }
     const sharedBits = mass.shared || {};
-    console.log(`[MASS] #${topicId} shared: requester="${sharedBits.requesterName || '?'}" deathType="${sharedBits.deathType || '?'}" override="${(sharedBits.assignedOverride || '').trim() || 'none'}"`);
+    console.log(`[MASS] #${topicId} shared: requester="${sharedBits.requesterName || '?'}" deathType="${sharedBits.deathType || '?'}" resolved=[${bodies.map((b) => b.deathType || '?').join(', ')}] override="${(sharedBits.assignedOverride || '').trim() || 'none'}"`);
 
     // Per-body rows — full field snapshot per body (not just identity) so
     // downstream readers (panel refresh, dashboards) can rebuild without the
@@ -1387,6 +1357,11 @@ async function processMassRequest({ db, topic, parsed, mass, requestBbCode, proc
             dateOfDeath: b.dateOfDeath || '',
             timeOfDeath: b.timeOfDeath || '',
             placeOfDeath: b.placeOfDeath || '',
+            // Per-body PK/CK (resolved from the shared Section 4 line): the
+            // panel tags, wait-window countdowns and overdue checks all read
+            // this row, so a mixed mass request no longer inherits the first
+            // body's type (see deriveBodyDeathTypes).
+            deathType: b.deathType || '',
             assignedTo: null,
             completedAt: null,
             replyPostId: null,
@@ -1707,7 +1682,9 @@ async function processMassRequest({ db, topic, parsed, mass, requestBbCode, proc
                         sex: bodies[i].sex,
                         dateOfDeath: bodies[i].dateOfDeath,
                         timeOfDeath: bodies[i].timeOfDeath,
-                        deathType: sharedDeathType,
+                        // Per-body PK/CK (shared line fallback only when the
+                        // resolver could not attribute a type to this body).
+                        deathType: bodies[i].deathType || sharedDeathType,
                         synopsis: (mass.shared && mass.shared.synopsis) || '',
                         placeOfDeath: bodies[i].placeOfDeath,
                         morgue: morgueByBody[i],
@@ -1719,12 +1696,25 @@ async function processMassRequest({ db, topic, parsed, mass, requestBbCode, proc
                 const panelRes = await notifyMassAssignmentPanel(db, null, panelAssignments, { requestTopicId: topicId });
                 if (!panelRes || !panelRes.posted) {
                     const caseUrl = result.url || '';
+                    // Per-ME type for the fallback ping: one ME can hold bodies
+                    // of mixed type, so join the distinct codes they own.
+                    const typeForMe = (me) => {
+                        const types = [];
+                        for (let i = 0; i < N; i++) {
+                            if (massPicks[i] !== me) continue;
+                            const t = bodies[i].deathType || '';
+                            if (t && !types.includes(t)) types.push(t);
+                        }
+                        return types.length > 1
+                            ? types.join(' / ')
+                            : (types[0] || (mass.shared && mass.shared.deathType) || '');
+                    };
                     for (const me of uniqueMEs) {
                         try {
                             await notifyAssignment(db, me, massCaseTitle, caseUrl, {
                                 isMassAutopsy: true,
                                 caseNumber: caseNum,
-                                deathType: (mass.shared && mass.shared.deathType) || '',
+                                deathType: typeForMe(me),
                                 requestTopicId: topicId,
                             });
                         } catch (e) {
@@ -1801,71 +1791,9 @@ async function processMassRequest({ db, topic, parsed, mass, requestBbCode, proc
             console.log('[AUTOPSY-MON] Step 3 — Agency crosspost skipped (faction=' + (parsed.faction || 'none') + ')');
         }
 
-        // ── LSPD crosspost (mass single-thread) ──
-        // Mirrors the legacy multi-decedent LSPD branch (parsed.faction ===
-        // 'LSPD' gate, reuse existing lspdTopicId from existing/rootRef, else
-        // create the f=1361 request copy and persist lspdTopicId). caseLabelLine
-        // lists all bodies with their MEs, read back from cases/<i>/assignedTo
-        // like the agency block above (massPicks is scoped to the assignment try).
-        // Declared with let so the shared ack call below carries agency + LSPD.
-        let lspdTopicId = null;   // request topic on the LSPD forum (f=1361)
-        if (!isDryRun && parsed.faction === 'LSPD' && N > 0) {
-            try {
-                const existingLspd = existing.lspdTopicId
-                    || (await rootRef.child('lspdTopicId').once('value')).val()
-                    || '';
-                if (existingLspd) {
-                    lspdTopicId = String(existingLspd);
-                    console.log('[AUTOPSY-MON] Reusing existing LSPD topic #' + lspdTopicId + ' for mass request');
-                    // Heal pre-fix first-body titles to the incident-label shape
-                    // (best-effort — the topic stays usable if this fails).
-                    try {
-                        const healClient = getForumClient();
-                        await healClient.login(process.env.FORUM_LSPD_USERNAME, process.env.FORUM_LSPD_PASSWORD, { force: false, baseUrl: 'https://lspd.gta.world' });
-                        await healClient.editTopicTitle(lspdTopicId, 1361, `[Mass Autopsy Request] ${incidentLabel} [LSPD]`, { baseUrl: 'https://lspd.gta.world' });
-                        console.log('[AUTOPSY-MON] Healed LSPD topic #' + lspdTopicId + ' title to incident-label shape');
-                    } catch (e) {
-                        console.warn('[AUTOPSY-MON] [WARN] Mass LSPD title heal failed: ' + e.message);
-                    }
-                } else {
-                    const searchOoc = parsed.oocName || (bodies[0] && bodies[0].oocName) || '';
-                    const searchName = parsed.name || (bodies[0] && bodies[0].name) || '';
-                    const meByBody = [];
-                    for (let i = 0; i < N; i++) {
-                        try {
-                            meByBody.push((await rootRef.child(`cases/${i}/assignedTo`).once('value')).val() || '');
-                        } catch { meByBody.push(''); }
-                    }
-                    const caseLabelLine = bodies.map((b, i) => `Case ${caseNum} — Body ${i + 1}/${N}: ${b.name || 'Unknown'} ((${b.oocName || 'Unknown OOC'})) → ${meByBody[i] || 'UNASSIGNED'}`).join(' | ');
-                    const lspdClient = getForumClient();
-                    await lspdClient.login(process.env.FORUM_LSPD_USERNAME, process.env.FORUM_LSPD_PASSWORD, { force: false, baseUrl: 'https://lspd.gta.world' });
-                    // Dynamic mass title mirroring the request thread — never the
-                    // legacy singular "Autopsy Request - Name ((OOC))" shape.
-                    const lspdTopicTitle = `[Mass Autopsy Request] ${incidentLabel} [LSPD]`;
-                    const lspdTopicBody = requestBbCode
-                        ? '[divbox=white][center][b][size=170]AUTOPSY REQUEST — CERIFIED COPY [/size][/b][/center][hr][/hr]\n' + requestBbCode + '\n[hr][/hr][b]Cases:[/b] ' + caseLabelLine + '\n[b]Status:[/b] Under Investigation\n[/divbox]'
-                        : '[divbox=white][b]Autopsy Request[/b]\n[b]Decedent:[/b] ' + searchName + (searchOoc ? ' ((' + searchOoc + '))' : '') + '\n[b]Cases:[/b] ' + caseLabelLine + '\n[b]Status:[/b] Under Investigation\n[/divbox]';
-                    const lspdResult = await lspdClient.postTopic(1361, lspdTopicTitle, lspdTopicBody, 'https://lspd.gta.world/posting.php?mode=post&f=1361');
-                    if (lspdResult.ok) {
-                        const tM = (lspdResult.url || '').match(/[?&]t=(\d+)/);
-                        if (tM) {
-                            lspdTopicId = tM[1];
-                            console.log('[AUTOPSY-MON] Created LSPD topic #' + lspdTopicId + ' for mass request');
-                            // Batched: topic id + crosspost status in one update (same values).
-                            rootRef.update({ lspdTopicId, lspdCrosspostStatus: 'pending' }).catch(() => {});
-                        } else {
-                            console.warn('[AUTOPSY-MON] [WARN] Mass LSPD topic created but could not extract topic ID from URL: ' + lspdResult.url);
-                        }
-                    } else {
-                        console.warn('[AUTOPSY-MON] [WARN] Mass LSPD topic creation failed: ' + (lspdResult.reason || 'unknown'));
-                    }
-                }
-            } catch (err) {
-                console.warn('[AUTOPSY-MON] [WARN] Mass LSPD crosspost error: ' + err.message);
-            }
-        } else {
-            console.log('[AUTOPSY-MON] Step 3 — LSPD topic creation skipped (faction=' + (parsed.faction || 'none') + ')');
-        }
+        // ── LSPD crosspost retired Nov 2026 (dead phpBB board) ──
+        // No new f=1361 topics are created; historic lspdTopicId values stay
+        // on their entries untouched.
 
         // One grouped ack on the PHMC request topic. Paced after the last
         // assignment reply for the same flood-control reason as above.
@@ -1873,7 +1801,6 @@ async function processMassRequest({ db, topic, parsed, mass, requestBbCode, proc
             await sleep(MASS_ACK_GAP_MS);
             const requesterName = (mass.shared && mass.shared.requesterName) || parsed.name || '';
             const ackOpts = { baseUrl: PHMC_BASE };
-            ackOpts.lspdTopicId = lspdTopicId;
             if (agencyFactionKey === 'LSSD') ackOpts.lssdTopicId = agencyAckTopicId;
             else if (agencyFactionKey) {
                 ackOpts.agencyTopicId = agencyAckTopicId;
@@ -1882,7 +1809,6 @@ async function processMassRequest({ db, topic, parsed, mass, requestBbCode, proc
             const ackResult = await sendAutopsyAcknowledgement(topic.topicId, requesterName, null, ackOpts);
             if (ackResult.phmc) console.log(`[AUTOPSY-MON] [OK] Grouped acknowledgement sent to PHMC #${topic.topicId}`);
             if (agencyFactionKey && ackResult[agencyFactionKey.toLowerCase()]) console.log(`[AUTOPSY-MON] [OK] Grouped acknowledgement sent to ${agencyFactionKey} #${agencyAckTopicId}`);
-            if (parsed.faction === 'LSPD' && ackResult.lspd) console.log(`[AUTOPSY-MON] [OK] Grouped acknowledgement sent to LSPD #${lspdTopicId}`);
             const ackStatus = {};
             const ackAt = {};
             const nowIso = new Date().toISOString();
@@ -1910,10 +1836,7 @@ async function processMassRequest({ db, topic, parsed, mass, requestBbCode, proc
                     else await progress.addStep(lbl, 'skip', 'No certified copy for this request');
                 }
                 if (parsed.faction === 'LSPD') {
-                    const lspdUrl = lspdTopicId ? `https://lspd.gta.world/viewtopic.php?t=${lspdTopicId}` : '';
-                    if (ackResult.lspd === true) await progress.addStep('CROSSPOSTED TO LSPD', 'ok', lspdUrl || 'Certified copy posted');
-                    else if (ackResult.lspd === false) await progress.addStep('CROSSPOSTED TO LSPD', 'fail', lspdUrl ? `Ack failed — ${lspdUrl}` : 'Ack failed');
-                    else await progress.addStep('CROSSPOSTED TO LSPD', 'skip', 'No LSPD certified copy for this request');
+                    await progress.addStep('CROSSPOSTED TO LSPD', 'skip', 'LSPD forum crosspost retired Nov 2026');
                 }
             }
         } catch (err) {
@@ -2158,7 +2081,6 @@ async function processMultiDecedentRequest({ db, topic, parsed, decedents, reque
                 const requesterName = parsedBbFields.requesterName || parsed.name || '';
                 let agencyAckTopicId = null;   // request topic on the faction's own forum
                 let agencyFactionKey = null;   // 'LSSD' | 'SADCR' | 'DAO'
-                let lspdTopicId = null;
 
                 // --- Agency crosspost (registry factions share one pipeline) ---
                 if (isAgencyFaction(parsed.faction) && (parsed.oocName || parsed.name)) {
@@ -2183,43 +2105,12 @@ async function processMultiDecedentRequest({ db, topic, parsed, decedents, reque
                     console.log('[AUTOPSY-MON] Step 3 — Agency crosspost skipped (faction=' + (parsed.faction || 'none') + ')');
                 }
 
-                // --- LSPD: Create topic on LSPD forum f=1361 ---
-                if (parsed.faction === 'LSPD') {
-                    // Reuse a preserved LSPD topic id (reprocessing after a
-                    // reset) instead of creating a duplicate.
-                    const existingLspd = existing.lspdTopicId || (await rootRef.child('lspdTopicId').once('value')).val() || '';
-                    if (existingLspd) {
-                        lspdTopicId = String(existingLspd);
-                        console.log('[AUTOPSY-MON] Reusing existing LSPD topic #' + lspdTopicId + ' for request');
-                    } else {
-                    try {
-                        const lspdClient = getForumClient();
-                        await lspdClient.login(process.env.FORUM_LSPD_USERNAME, process.env.FORUM_LSPD_PASSWORD, { force: false, baseUrl: 'https://lspd.gta.world' });
-                        const lspdTopicTitle = 'Autopsy Request - ' + parsed.name + (parsed.oocName ? ' ((' + parsed.oocName + '))' : '') + ' [LSPD]';
-                        const lspdTopicBody = requestBbCode
-                            ? '[divbox=white][center][b][size=170]AUTOPSY REQUEST — CERIFIED COPY [/size][/b][/center][hr][/hr]\n' + requestBbCode + '\n[hr][/hr][b]Cases:[/b] ' + caseTitles.join(' | ') + '\n[b]Status:[/b] Under Investigation\n[/divbox]'
-                            : '[divbox=white][b]Autopsy Request[/b]\n[b]Decedent:[/b] ' + parsed.name + (parsed.oocName ? ' ((' + parsed.oocName + '))' : '') + '\n[b]Cases:[/b] ' + caseTitles.join(' | ') + '\n[b]Status:[/b] Under Investigation\n[/divbox]';
-                        const lspdResult = await lspdClient.postTopic(1361, lspdTopicTitle, lspdTopicBody, 'https://lspd.gta.world/posting.php?mode=post&f=1361');
-                        if (lspdResult.ok) {
-                            const tM = lspdResult.url.match(/[?&]t=(\d+)/);
-                            if (tM) {
-                                lspdTopicId = tM[1];
-                                db.ref(`autopsy-requested/${topicId}/lspdTopicId`).set(lspdTopicId).catch(() => {});
-                                db.ref(`autopsy-requested/${topicId}/lspdCrosspostStatus`).set('pending').catch(() => {});
-                            }
-                        } else {
-                            console.warn('[AUTOPSY-MON] Step 3 — Failed to create LSPD topic: ' + (lspdResult.reason || 'unknown'));
-                        }
-                    } catch (err) {
-                        console.warn('[AUTOPSY-MON] Step 3 — LSPD topic creation error: ' + err.message);
-                    }
-                    }
-                } else {
-                    console.log('[AUTOPSY-MON] Step 3 — LSPD topic creation skipped (faction=' + (parsed.faction || 'none') + ')');
-                }
+                // --- LSPD crosspost retired Nov 2026 (dead phpBB board) ---
+                // No new f=1361 topics are created; historic lspdTopicId
+                // values stay on their entries untouched.
 
-                // --- Send acknowledgement reply to PHMC + the faction's own forum + LSPD ---
-                const ackOpts = { baseUrl: PHMC_BASE, lspdTopicId };
+                // --- Send acknowledgement reply to PHMC + the faction's own forum ---
+                const ackOpts = { baseUrl: PHMC_BASE };
                 if (agencyFactionKey === 'LSSD') ackOpts.lssdTopicId = agencyAckTopicId;
                 else if (agencyFactionKey) {
                     ackOpts.agencyTopicId = agencyAckTopicId;
@@ -2241,7 +2132,6 @@ async function processMultiDecedentRequest({ db, topic, parsed, decedents, reque
 
                 if (ackResult.phmc) console.log('[AUTOPSY-MON] Acknowledgement sent to PHMC #' + topic.topicId);
                 if (agencyFactionKey && ackResult[agencyFactionKey.toLowerCase()]) console.log('[AUTOPSY-MON] Acknowledgement sent to ' + agencyFactionKey + ' #' + agencyAckTopicId);
-                if (ackResult.lspd) console.log('[AUTOPSY-MON] Acknowledgement sent to LSPD #' + lspdTopicId);
 
                 const ackStatus = {};
                 const ackAt = {};
@@ -2266,10 +2156,7 @@ async function processMultiDecedentRequest({ db, topic, parsed, decedents, reque
                 // ── Crosspost step on the live progress embed ──
                 if (progress) {
                     if (parsed.faction === 'LSPD') {
-                        const url = lspdTopicId ? `https://lspd.gta.world/viewtopic.php?t=${lspdTopicId}` : '';
-                        if (ackResult.lspd === true) await progress.addStep('CROSSPOSTED TO LSPD', 'ok', url || 'Certified copy posted');
-                        else if (ackResult.lspd === false) await progress.addStep('CROSSPOSTED TO LSPD', 'fail', url ? `Ack failed — ${url}` : 'Ack failed');
-                        else await progress.addStep('CROSSPOSTED TO LSPD', 'skip', 'No LSPD certified copy for this request');
+                        await progress.addStep('CROSSPOSTED TO LSPD', 'skip', 'LSPD forum crosspost retired Nov 2026');
                     } else if (parsed.faction === 'LSSD') {
                         const url = agencyAckTopicId ? `https://lssd.gta.world/viewtopic.php?t=${agencyAckTopicId}` : '';
                         if (ackResult.lssd === true) await progress.addStep('CROSSPOSTED TO LSSD', 'ok', url || 'Certified copy posted');
@@ -2356,7 +2243,10 @@ function parseDecedentNameLine(raw) {
 const MASS_TITLE_RE = /\[?Mass Autopsy Request\]?/i;
 const MASS_BODY_HEADER_RE = /---\s*BODY\s*(\d+)\s*---/gi;
 // "1.) Decedent Name:" (template label) or bare "1.) Name:" (legacy).
-const MASS_NAME_LINE_RE = /(?:Decedent\s+Name(?:\(s?\))?|1\.\)\s*Name)\s*:\s*(.+)/i;
+// Same-line value only: the whitespace around the colon must not cross a
+// newline, or an EMPTY name line adopts the next field ("2.) Gender: Male")
+// as the decedent name.
+const MASS_NAME_LINE_RE = /(?:Decedent\s+Name(?:\(s?\))?|1\.\)\s*Name)[ \t]*:[ \t]*([^\n]+)/i;
 const MASS_NAME_LINE_GLOBAL_RE = /(?:Decedent\s+Name(?:\(s?\))?|1\.\)\s*Name)\s*:/gi;
 // Mass title contract (no OOC names — bodies are the sole OOC source).
 // Agency tag optional; unknown trailing tags (e.g. [PHMC]) are stripped by
@@ -2364,6 +2254,77 @@ const MASS_NAME_LINE_GLOBAL_RE = /(?:Decedent\s+Name(?:\(s?\))?|1\.\)\s*Name)\s*
 // Placeholder bodies (the pinned template post's ANSWER ((OOC NAME)) example
 // blocks) must never file — parked as skipped instead of partial data.
 const MASS_PLACEHOLDER_RE = /^(answer|example|ex:|placeholder|\[name\]|\[ooc\]|ooc name|unknown ooc|xxxx|insert|n\/a\b|na\b|none|tbd)$/i;
+
+// ── Per-body PK/CK resolution (Section 4 is ONE shared line) ──
+// Mass requesters write things like "CK FOR ISABELA SALAZAR, PK FOR THE OTHER
+// TWO" into the single Section-4 PK/CK field. Storing that sentence as every
+// body's type mislabels the PK bodies in the Discord panel AND hands them the
+// CK wait window (limitHoursFor keys off the first "ck"), so the two PK bodies
+// were shown as CK and deadline-chipped at 72h (Hawick, Oct 2026).
+// deriveBodyDeathTypes() resolves ONE type per body from that sentence:
+//   explicitly named bodies win, then catch-all phrases
+//   ("the other two" / "the rest" / "all"), then the leading token as default.
+const PKCK_TOKEN_RE = /\b(CK|PK)\b/i;
+const PKCK_CATCH_ALL_RE = /^(?:the\s+)?(?:other|others|rest|remaining|remainder|everyone|every\s+other|both|all)\b/i;
+// Leading connectors between the type token and its target ("FOR Isabela
+// Salazar", "PK: the rest") — dropped before the catch-all test so
+// "PK FOR THE OTHER TWO" still reads as a catch-all.
+const PKCK_LEAD_RE = /^(?:(?:for|to|of|on|with|is|are|was|were|applies|apply|not)\b[\s:,-]*)+/i;
+// Clause decorations that are never part of a body name.
+const PKCK_NOISE_RE = /\b(the|for|to|of|on|with|and|or|bodies|body|number|nos|no|decedent|decedents|victims|victim|remaining|remainder|rest|other|others|everyone|else|both|all|type|only|is|are|was|were|applies|apply)\b/gi;
+
+/**
+ * Resolve a per-body PK/CK type from the shared Section-4 PK/CK line.
+ *
+ * @param {string} rawDeathType — the shared field value (may be a sentence)
+ * @param {Array<{name?: string, oocName?: string}>} bodies — parsed bodies, in order
+ * @returns {Array<'CK'|'PK'|''>} one code per body ('' = unresolved, caller falls back to the shared text)
+ */
+export function deriveBodyDeathTypes(rawDeathType, bodies = []) {
+    const list = Array.isArray(bodies) ? bodies : [];
+    const out = list.map(() => '');
+    const text = String(rawDeathType || '').trim();
+    if (!text || list.length === 0) return out;
+
+    const leading = (text.match(PKCK_TOKEN_RE) || [])[1];
+    const defaultType = leading ? leading.toUpperCase() : '';
+    const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+    // Identity keys per body: the IC name and the OOC name. Names shorter than
+    // 3 chars ("CK" used as an OOC placeholder) are not real identity keys.
+    const keys = list.map((b) => [norm(b && b.name), norm(b && b.oocName)]
+        .filter((k) => k.length >= 3 && k !== 'ck' && k !== 'pk'));
+
+    // Split the sentence into clauses: "CK FOR X, PK FOR THE OTHER TWO".
+    const clauses = text.split(/[,;\n]|\s+\/\s+/).map((c) => c.trim()).filter(Boolean);
+    const explicit = [];
+    let catchAll = '';
+    for (const clause of clauses) {
+        const tm = clause.match(PKCK_TOKEN_RE);
+        if (!tm) continue; // e.g. a continued name list — handled by the clause that names its type
+        const type = tm[1].toUpperCase();
+        // Keep the catch-all wording for the test below, then strip it for
+        // name matching ("PK FOR THE OTHER TWO" -> target "" but catch-all).
+        const rest = clause.replace(PKCK_TOKEN_RE, ' ').trim();
+        const lead = rest.replace(PKCK_LEAD_RE, '').trim();
+        const leadNorm = norm(lead);
+        if (!leadNorm || PKCK_CATCH_ALL_RE.test(leadNorm)) { catchAll = catchAll || type; continue; }
+        const target = norm(lead.replace(PKCK_NOISE_RE, ' '));
+        if (!target) { catchAll = catchAll || type; continue; }
+        explicit.push({ type, target });
+    }
+
+    for (const { type, target } of explicit) {
+        for (let i = 0; i < list.length; i++) {
+            if (out[i]) continue;
+            const hit = keys[i].some((k) => k === target || (target.length >= 4 && (target.includes(k) || k.includes(target))));
+            if (hit) out[i] = type;
+        }
+    }
+    const fill = (type) => { if (!type) return; for (let i = 0; i < out.length; i++) if (!out[i]) out[i] = type; };
+    fill(catchAll);
+    fill(defaultType);
+    return out;
+}
 
 /**
  * Parse a mass title into its incident label + agency. The agency tag is
@@ -2501,6 +2462,10 @@ export function parseMassRequestBbcode(bbcode) {
     delete shared.dateOfDeath;
     delete shared.timeOfDeath;
     delete shared.placeOfDeath;
+    // Section 4's "1.) PK/CK" is free text and often left as the template's
+    // placeholder ("ANSWER") — that is not a type. Drop it so panels/countdowns
+    // never render "Type: ANSWER" (t=10392 HUA3 Brawl left it blank).
+    if (shared.deathType && !/\b(?:ck|pk)\b/i.test(shared.deathType)) shared.deathType = '';
 
     // Step 3: per-slice fields with the existing Section 2 regexes.
     // NOTE: the template labels the line "1.) Decedent Name:" — match that
@@ -2511,7 +2476,25 @@ export function parseMassRequestBbcode(bbcode) {
     // in, and they are template text, never decedent data.
     const HINT_PAREN_RE = /\(\s*(DATE YOU FOUND THE BODY|TIME LSFD\/PHMC DECEASED DECEASED, YOU CAN USE \/CDAMAGES TO FIND TIMES)\s*\)/gi;
     const cleanHint = (v) => String(v || '').replace(HINT_PAREN_RE, '').replace(/\s{2,}/g, ' ').trim();
-    const FIELD_LABEL_RE = /[1-6]\.\)\s*(Decedent\s+Name|Name|Gender|Ethnicity|Date of Death|Time of Death|Location)\s*:/i;
+    const FIELD_LABEL_RE = /[1-7]\.\)\s*(Decedent\s+Name|Name|Gender|Ethnicity|Date of Death|Time of Death|Location|Type of Death)\s*:/i;
+    // Per-body "7.) Type of Death: PK" (or bare "Type of Death: PK") inside a
+    // --- BODY n --- block. The template will carry this line so a body's type
+    // no longer has to be inferred from the shared Section-4 sentence (and the
+    // ((OOC)) slot is never the source). Both PK and CK present ("PK/CK", the
+    // template's own hint text) is ambiguous → unresolved, never a guess.
+    const PKCK_ONE_RE = /\b(ck|pk)\b/gi;
+    const pkckCode = (v) => {
+        const tokens = String(v || '').match(PKCK_ONE_RE) || [];
+        const set = new Set(tokens.map((t) => t.toUpperCase()));
+        return set.size === 1 ? [...set][0] : '';
+    };
+    // Sections 3/4 follow the last --- BODY n --- block, but the last body's
+    // slice runs to the end of the source — cap it so a Section-3/4 line (or a
+    // shared "Type of Death") can never be read as the last body's value.
+    const bodySourceEnd = Math.min(
+        ...[source.search(/\bSECTION\s*3\b/i), source.search(/\bSECTION\s*4\b/i)].filter((n) => n > -1),
+        source.length,
+    );
     const bodies = [];
     const bodyWarnings = [];
     // Bodies that fail identity validation are SKIPPED with a recorded reason
@@ -2523,7 +2506,7 @@ export function parseMassRequestBbcode(bbcode) {
         // Positional label — printed header numbers are unreliable (see above).
         const label = String(i + 1);
         const start = boundaries[i].end;
-        const end = boundaries[i + 1] ? boundaries[i + 1].index : source.length;
+        const end = boundaries[i + 1] ? boundaries[i + 1].index : bodySourceEnd;
         const slice = source.slice(start, end);
         const clean = slice.replace(/\[.*?\]/g, '').trim();
 
@@ -2538,22 +2521,38 @@ export function parseMassRequestBbcode(bbcode) {
 
         const n1 = clean.match(MASS_NAME_LINE_RE);
         const nameLine = parseDecedentNameLine(n1 ? n1[1].trim() : '');
-        if (!nameLine || !nameLine.oocName) {
-            const w = `BODY ${label} missing ((OOC)) name — skipped, needs re-submit`;
+        if (!nameLine || !nameLine.name) {
+            const w = `BODY ${label} has no decedent name — skipped, needs re-submit`;
             bodyWarnings.push(w);
-            skippedBodies.push({ label, name: (nameLine && nameLine.name) || '', oocName: '', reason: 'missing ((OOC)) name' });
+            skippedBodies.push({ label, name: '', oocName: '', reason: 'missing decedent name' });
             continue;
         }
         // Template-post guard: ANSWER ((OOC NAME)) example blocks parse
         // structurally but are placeholders — skipped, never filed. (A post
         // where EVERY body is a placeholder still parks via the empty-result
         // error below, so the staged template itself can never file.)
-        if (MASS_PLACEHOLDER_RE.test(String(nameLine.name || '').trim()) ||
+        if (MASS_PLACEHOLDER_RE.test(String(nameLine.name).trim()) ||
             MASS_PLACEHOLDER_RE.test(String(nameLine.oocName || '').trim())) {
             const w = `BODY ${label} holds placeholder values ("${nameLine.name}" ((${nameLine.oocName}))) — skipped`;
             bodyWarnings.push(w);
             skippedBodies.push({ label, name: nameLine.name, oocName: nameLine.oocName, reason: 'placeholder values' });
             continue;
+        }
+        // A real IC name is a usable identity on its own → a missing ((OOC)) is
+        // a WARNING, not a skip. This matches the legacy multi-decedent path
+        // (which files these + records a bodyWarning); the mass path used to
+        // hard-skip every such body, so a whole request went unprocessed when
+        // all of them omitted the brackets (t=10392 HUA3 Brawl, Oct 2026 —
+        // four real IC names, no ((OOC))). Only genuinely unidentifiable bodies
+        // (DOE/UNKNOWN-style names) still require the OOC to tell them apart.
+        if (!nameLine.oocName) {
+            if (isNonIdentityPlaceholder(nameLine.name)) {
+                const w = `BODY ${label} (${nameLine.name}) has no ((OOC)) identity — skipped, needs re-submit`;
+                bodyWarnings.push(w);
+                skippedBodies.push({ label, name: nameLine.name, oocName: '', reason: 'missing ((OOC)) name' });
+                continue;
+            }
+            bodyWarnings.push(`BODY ${label} (${nameLine.name}): ((OOC)) name missing — filed on IC name`);
         }
         let sex = (clean.match(/2\.\)\s*Gender:\s*(.+)/i) || [])[1] || '';
         sex = String(sex).trim();
@@ -2565,6 +2564,10 @@ export function parseMassRequestBbcode(bbcode) {
         const dateOfDeath = cleanHint((clean.match(/4\.\)\s*Date of Death:\s*(.+)/i) || [])[1] || '');
         const timeOfDeath = cleanHint((clean.match(/5\.\)\s*Time of Death:\s*(.+)/i) || [])[1] || '');
         const placeOfDeath = ((clean.match(/6\.\)\s*Location:\s*(.+)/i) || [])[1] || '').trim();
+        // Per-body PK/CK — the "Type of Death:" line the template now carries in
+        // each body block. Takes precedence over the shared Section-4 sentence.
+        const bodyTypeRaw = ((clean.match(/(?:\d+\.\)\s*)?Type of Death\s*:\s*(.+)/i) || [])[1] || '').trim();
+        const bodyDeathType = pkckCode(bodyTypeRaw);
         // Incomplete-field warnings: missing OR still-template-hint values are
         // recorded per body (Firebase + logs) so MEs see what's absent.
         const incomplete = [];
@@ -2573,8 +2576,9 @@ export function parseMassRequestBbcode(bbcode) {
         if (!dateOfDeath) incomplete.push('Date of Death');
         if (!timeOfDeath) incomplete.push('Time of Death');
         if (!placeOfDeath) incomplete.push('Location');
+        const who = `${nameLine.name}${nameLine.oocName ? ` ((${nameLine.oocName}))` : ''}`;
         if (incomplete.length > 0) {
-            bodyWarnings.push(`BODY ${label} (${nameLine.name} ((${nameLine.oocName}))) incomplete: ${incomplete.join(', ')} missing`);
+            bodyWarnings.push(`BODY ${label} (${who}) incomplete: ${incomplete.join(', ')} missing`);
         }
         bodies.push({
             name: nameLine.name,
@@ -2584,11 +2588,35 @@ export function parseMassRequestBbcode(bbcode) {
             dateOfDeath,
             timeOfDeath,
             placeOfDeath,
+            // Explicit per-body type (may be '' — the shared Section-4 line is
+            // the fallback, resolved after the loop).
+            deathType: bodyDeathType,
             incomplete,
         });
     }
     if (bodies.length === 0) {
         return { error: 'No parseable bodies found' + (bodyWarnings.length ? ` (${bodyWarnings.join('; ')})` : '') };
+    }
+
+    // Section 4's PK/CK line is shared across bodies — resolve it per body so
+    // the panel tags / wait windows are right for mixed requests (see
+    // deriveBodyDeathTypes). A per-body "Type of Death:" line already set
+    // above wins; only blanks are filled from the shared sentence. Unresolved
+    // bodies keep '' and callers fall back to the shared value (previous
+    // behaviour, never a dropped field).
+    const perBodyTypes = deriveBodyDeathTypes(shared.deathType, bodies);
+    bodies.forEach((b, i) => { if (!b.deathType) b.deathType = perBodyTypes[i] || ''; });
+    const unresolved = [];
+    for (let i = 0; i < bodies.length; i++) {
+        if (!bodies[i].deathType) {
+            unresolved.push(`BODY ${i + 1} (${bodies[i].name}${bodies[i].oocName ? ` ((${bodies[i].oocName}))` : ''})`);
+        }
+    }
+    if (unresolved.length > 0 && bodies.some((b) => b.deathType)) {
+        // Mixed outcome: some bodies carry a type (per-body line or attributed
+        // from the shared sentence), these don't — warn instead of guessing.
+        const basis = shared.deathType ? `shared "${shared.deathType}" applies` : 'no Section-4 PK/CK line to fall back on';
+        bodyWarnings.push(`PK/CK unresolved for ${unresolved.join(', ')} — ${basis}`);
     }
 
     return { bodies, shared, decedentCount: bodies.length, warnings: [...headerWarnings, ...bodyWarnings], skippedBodies };
@@ -2765,7 +2793,7 @@ Website: [url][color=#808080]www.phmc.health[/color][/url][/size]
  *     (their forums share the lssd.gta.world domain and FORUM_LSSD_* credentials —
  *     see services/agencyForums.js)
  */
-export async function sendAutopsyAcknowledgement(topicId, requesterName, bbCode, { baseUrl, lssdTopicId, lspdTopicId, agencyTopicId, agencyFaction, skippedBodies, morgueMissing } = {}) {
+export async function sendAutopsyAcknowledgement(topicId, requesterName, bbCode, { baseUrl, lssdTopicId, agencyTopicId, agencyFaction, skippedBodies, morgueMissing } = {}) {
     const client = getForumClient();
     const name = (requesterName && !isDna(requesterName)) ? requesterName : 'Requesting Party';
     let ackBbcode = ACK_TEMPLATE.replace('REQUESTING_NAME', name);
@@ -2788,7 +2816,7 @@ export async function sendAutopsyAcknowledgement(topicId, requesterName, bbCode,
         });
         ackBbcode += `\n\n[hr][/hr]\n[b]No morgue record found (${morgueMissing.length}):[/b]\n[list]${items.join('')}[/list]`;
     }
-    const results = { phmc: null, lssd: null, lspd: null };
+    const results = { phmc: null, lssd: null };
 
     // Reply to PHMC autopsy request topic
     try {
@@ -2832,20 +2860,7 @@ export async function sendAutopsyAcknowledgement(topicId, requesterName, bbCode,
         }
     }
 
-    // Reply to LSPD forum if a topic ID was provided
-    if (lspdTopicId) {
-        try {
-            const client_lspd = getForumClient();
-            await client_lspd.login(process.env.FORUM_LSPD_USERNAME, process.env.FORUM_LSPD_PASSWORD, { force: false, baseUrl: 'https://lspd.gta.world' });
-            const r = await client_lspd.replyToTopic(lspdTopicId, 1361, ackBbcode, { dryRun: false, baseUrl: 'https://lspd.gta.world' });
-            results.lspd = r.ok;
-            console.log(`[AUTOPSY-MON] Ack reply to LSPD #${lspdTopicId}: ${r.ok ? 'OK' : 'FAIL'}`);
-        } catch (err) {
-            console.error(`[AUTOPSY-MON] Ack LSPD reply failed: ${err.message}`);
-        }
-    } else {
-        console.log('[AUTOPSY-MON] Step 3 — LSPD ack reply skipped (no LSPD topic ID)');
-    }
+    // LSPD ack reply retired Nov 2026 with the forum crosspost (dead board).
 
     return results;
 }
@@ -3003,8 +3018,8 @@ export async function retryFailedAssignmentReplies(db, { entries, memberList } =
         if (!hasRetries) return;
 
         const cc = getForumClient();
-        // Force a PHMC session — the default client may have been left on LSPD/LSSD
-        // by earlier heartbeat checks (retryMissingLspdCrossposts force-logs it to LSPD).
+        // Force a PHMC session — the default client may have been left on LSSD
+        // by earlier heartbeat checks.
         await cc.login(null, null, { force: false, baseUrl: PHMC_BASE });
 
         if (!memberList) {

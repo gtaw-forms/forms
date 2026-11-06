@@ -4,6 +4,7 @@ import * as Sentry from "@sentry/react";
 import { getDepartmentFullName } from '../utils/bbcodeHelpers';
 import generateDecedentBBCode from '../phmc-bbcode-generators/generateMassFatality';
 import { renderBbcode } from '../utils/bbcodeRenderer';
+import { isLspdCondensedTarget, bareName, buildLspdCondensedEmail } from '../utils/lspdCondensedNotice';
 import { formatCharacterNameForDisplay, resolveEmployeeCredentials, getOAuthShapeFlags } from '../utils/identityUtils';
 import { cleanRankText } from '../utils/textUtils';
 
@@ -363,6 +364,25 @@ const useBbcodeGenerator = (selectedForm, formValues, finalSelectOptions, agency
           ? (processedFormValues.coronerEmployee || processedFormValues.phmcEmployee || processedFormValues.employeeName || 'LocalEmployee')
           : (processedFormValues.coronerEmployee || processedFormValues.phmcEmployee || processedFormValues.employeeName || 'Unknown Coroner')
       };
+
+      // ── LSPD condensed override ──
+      // Coroner Emails for LSPD travel as a short portal notice, not the full
+      // BBCode document. Preview and save the condensed text so staff see (and
+      // copy) exactly what the officer receives. Pre-save there is no
+      // author/key, so the notice carries a link placeholder the bot replaces
+      // with the real deep link at deploy time.
+      const emailFormKey = selectedForm?.firebaseKey || selectedForm?.id || '';
+      if (isLspdCondensedTarget(emailFormKey, processedFormValues.department)) {
+        const condensed = buildLspdCondensedEmail(
+          {
+            ...processedFormValues,
+            requestingOfficer: bareName(formValues?.requestingOfficer) || processedFormValues.requestingOfficer,
+            coronerEmployee: bareName(formValues?.coronerEmployee) || processedFormValues.coronerEmployee,
+          },
+          { departmentFullName: getDepartmentFullName(processedFormValues.department, agencyDataStore) },
+        );
+        return { bbcode: condensed.bbcode, finalTitle: condensed.finalTitle };
+      }
 
       // Delegate the entire render pipeline to the extracted pure core (Stage
       // T2-B). All enrichment (credential fill, local defaults, currentYear,

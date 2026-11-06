@@ -20,7 +20,9 @@ if (!(Test-Path $basePath)) { New-Item -ItemType Directory -Path $basePath | Out
 if (!(Test-Path $archivePath)) { New-Item -ItemType Directory -Path $archivePath | Out-Null }
 
 # --- Morgue API Configuration ---
-$apiBaseUrl = "http://<YOUR-VPS-IP>:3001"
+# Public traffic goes through nginx on port 80 (morgue-api's own port 3001 is
+# firewalled off the internet; only the VPS and its tailnet can reach it).
+$apiBaseUrl = "http://<YOUR-VPS-IP>"
 $apiKey = "<YOUR_MORGUE_API_KEY>"
 # ^^ Dedicated key for this script. Revoke independently by removing from
 #    MORGUE_API_KEYS in the VPS .env and restarting morgue-api.

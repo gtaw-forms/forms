@@ -17,8 +17,15 @@ export const useReportAttachment = (
     const pendingReportAttachmentCallback = useRef(null);
     const currentAttachmentTargetFieldRef = useRef(null);
 
-    const handleReportSelectedForAttachment = useCallback(async (reportData, loadedFormData, loadedVersion, _loadedBbCode) => {
+    const handleReportSelectedForAttachment = useCallback(async (reportData, loadedFormData, loadedVersion, _loadedBbCode, sourceRef = null) => {
         const targetFieldName = currentAttachmentTargetFieldRef.current;
+        // Identity of the attached report for deep links (the modal row's own
+        // author/key — NOT the currently selected employee). Absent for
+        // legacy/parse flows; link builders must treat it as optional.
+        const attachedIdentity = (sourceRef && typeof sourceRef === 'object')
+            ? { author: String(sourceRef.author || '').trim() || null, key: String(sourceRef.key || '').trim() || null }
+            : { author: null, key: null };
+        const withIdentity = (item) => ({ ...item, ...(attachedIdentity.author && attachedIdentity.key ? { attachedAuthor: attachedIdentity.author, attachedKey: attachedIdentity.key } : {}) });
         
         setFormData(prev => {
             if (loadedVersion === 11) {
@@ -30,7 +37,7 @@ export const useReportAttachment = (
 
                 if (!Array.isArray(decedents) || decedents.length === 0) {
                     const reportContent = loadedFormData.deathReport || reportData.bbCode || '';
-                    return { ...prev, additionalReports: [...(prev.additionalReports || []), { bbCode: reportContent, originalKey: reportData.originalKey, formId: reportData.formId }] };
+                    return { ...prev, additionalReports: [...(prev.additionalReports || []), withIdentity({ bbCode: reportContent, originalKey: reportData.originalKey, formId: reportData.formId })] };
                 }
                 
                 const firstDecedent = decedents[0];
@@ -48,7 +55,7 @@ export const useReportAttachment = (
                 }
 
                 const reportContent = loadedFormData.deathReport || reportData.bbCode || '';
-                newState.additionalReports = [...(prev.additionalReports || []), { bbCode: reportContent, originalKey: reportData.originalKey, formId: reportData.formId }];
+                newState.additionalReports = [...(prev.additionalReports || []), withIdentity({ bbCode: reportContent, originalKey: reportData.originalKey, formId: reportData.formId })];
 
                 if (Array.isArray(loadedFormData.decedents)) {
                     newState.decedents = [...(prev.decedents || []), ...loadedFormData.decedents];
@@ -65,7 +72,7 @@ export const useReportAttachment = (
                     const reportContent = reportData.bbCode || '';
                     
                     let newState = { ...prev };
-                    newState.additionalReports = [...(prev.additionalReports || []), { bbCode: reportContent, originalKey: reportData.originalKey, formId: reportData.formId }];
+                    newState.additionalReports = [...(prev.additionalReports || []), withIdentity({ bbCode: reportContent, originalKey: reportData.originalKey, formId: reportData.formId })];
 
                     if (loadedFormData.requestingOfficer) newState.requestingOfficer = loadedFormData.requestingOfficer;
                     if (loadedFormData.department) newState.department = loadedFormData.department;

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { httpsCallable } from 'firebase/functions';
+import { signInWithCustomToken } from 'firebase/auth';
 import { database, functions } from '../firebase';
 import { auth } from '../firebase';
 import { ref, onValue } from 'firebase/database';
@@ -79,6 +80,9 @@ export const GtaWorldAuthProvider = ({ children }) => {
     const [isValidatingSession, setIsValidatingSession] = useState(false);
     const [activeCharacter, setActiveCharacter] = useState(null);
     const [credentialsLoading, setCredentialsLoading] = useState(false);
+    // One-shot: install the refreshed custom token (new claims) at most once
+    // per page session, so auth-state flips cannot loop the identity refresh.
+    const claimsRefreshedRef = useRef(false);
 
     // Tracks an in-flight OAuth callback so re-runs of the initialization effect
     // (triggered by Firebase authLoading flaps during sign-in) never treat the
@@ -258,11 +262,17 @@ export const GtaWorldAuthProvider = ({ children }) => {
             return result;
         } catch (err) {
             // Non-members (and pre-auth callers) are rejected by the server
-            // gate by design — that is a skip, not an error. Downgrade so a
-            // non-member login doesn't fan out into the error channel.
-            if (err?.code === 'permission-denied' || err?.code === 'unauthenticated') {
+            // gate by design — that is a skip, not an error. Callable errors
+            // carry the `functions/` prefix ("functions/permission-denied"),
+            // so match by suffix/inclusion rather than exact code.
+            const code = String(err?.code || '');
+            if (code === 'permission-denied' || code === 'unauthenticated'
+                || code.includes('permission-denied') || code.includes('unauthenticated')) {
                 console.warn('[GtaWorldAuthContext] Faction sync not permitted (non-member or pre-auth) — skipping.');
-                return { skipped: true, reason: err.code };
+                // Remember the skip for this browser session so non-members do
+                // not re-invoke the callable on every automatic path.
+                markFactionSyncedThisSession();
+                return { skipped: true, reason: code };
             }
             console.error('[GtaWorldAuthContext] triggerFactionSync failed:', err);
             throw err;
@@ -431,7 +441,7 @@ export const GtaWorldAuthProvider = ({ children }) => {
                         setCredentialsLoading(false);
                     } catch (syncError) {
                         setCredentialsLoading(false);
-                        if (syncError.code === 'permission-denied') {
+                        if (String(syncError.code || '').includes('permission-denied')) {
                             console.warn('[GtaWorldAuthContext] Background sync skipped (Permission Denied). This is expected for non-faction members.');
                         } else {
                             console.error('[GtaWorldAuthContext] Background sync failed:', syncError);
@@ -651,6 +661,15 @@ export const GtaWorldAuthProvider = ({ children }) => {
                     const refreshedUser = { ...res.user, loginRole: user.loginRole || 'employee' };
                     setUser(refreshedUser);
                     storeUser(refreshedUser);
+                    // Install the refreshed custom token so new claims (e.g.
+                    // displayCharacterName for non-PHMC LEO users) reach the
+                    // Firebase session without requiring a full re-login.
+                    if (res.firebaseCustomToken && auth.currentUser && !claimsRefreshedRef.current) {
+                        claimsRefreshedRef.current = true;
+                        signInWithCustomToken(auth, res.firebaseCustomToken).catch((signInErr) => {
+                            console.warn('[IdentityRefresh] Custom-token refresh failed:', signInErr?.code || signInErr?.message);
+                        });
+                    }
                     localStorage.setItem(identityLastKey, String(Date.now()));
                     setIdentityRefreshStatus('success');
                     logIdentityRefresh({ username: user.username, characterName, trigger, attempt, maxAttempts: IDENTITY_REFRESH_MAX, matchedBy: 'id', success: true });

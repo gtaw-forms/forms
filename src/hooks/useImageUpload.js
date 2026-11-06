@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import * as Sentry from "@sentry/react";
-import { uploadImageToImgBB, uploadDataUrlToImgBB } from '../utils/imageUploadUtils';
+import { uploadImageToImgLink, uploadDataUrlToImgLink } from '../utils/imageUploadUtils';
 
 export const useImageUpload = (showNotification, setFormData) => {
     const [isUploading, setIsUploading] = useState(false);
@@ -25,8 +25,8 @@ export const useImageUpload = (showNotification, setFormData) => {
 
             for (const file of filesToUpload) {
                 const result = typeof file === 'string'
-                    ? await uploadDataUrlToImgBB(file)
-                    : await uploadImageToImgBB(file);
+                    ? await uploadDataUrlToImgLink(file)
+                    : await uploadImageToImgLink(file);
 
                 imageUrls.push(result);
             }

@@ -340,7 +340,9 @@ export const dailyMaintenanceTask = onSchedule({
     timeZone: "UTC",
     region: "europe-west2",
     secrets: ["PHMC_CONFIG"],
-    memory: "512MiB",
+    // 256MiB is plenty: observed p99 peak is ~123MiB. This roughly halves the
+    // task's memory allocation time (the largest line in today's usage).
+    memory: "256MiB",
     timeoutSeconds: 540,
 }, async (event) => {
     console.log(`Running daily maintenance task. Event ID: ${event.id}`);
@@ -357,7 +359,8 @@ export const dailyMaintenanceTask = onSchedule({
 export const triggerManualMaintenance = onCall({
     region: "europe-west2",
     secrets: ["PHMC_CONFIG"],
-    memory: "512MiB",
+    // Same workload as dailyMaintenanceTask (p99 peak ~108-123MiB).
+    memory: "256MiB",
     timeoutSeconds: 1200,
 }, async (request) => {
     const isSuperAdmin = request.auth?.token?.isSuperAdmin === true || request.auth?.token?.accessLevel === 'superadmin';

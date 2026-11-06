@@ -9,7 +9,8 @@ import { sanitizeMorgueText } from '../../utils/textUtils';
 import { getUtcFormattedDateTime, getUtcFormattedTime } from '../../utils/dateTimeUtils';
 import { formatCharacterNameForDisplay } from '../../utils/identityUtils';
 import { mapAgencyOptions } from '../../utils/agencyOptions';
-import { triggerCheckOfficerName } from '../../services/firebaseFunctions';
+import { triggerCheckOfficerName, triggerGetOfficerRoster } from '../../services/firebaseFunctions';
+import { readOfficerRoster, refreshOfficerRoster, searchOfficerRoster } from '../../utils/officerRosterCache';
 import { useNotification } from '../../contexts/NotificationContext';
 
 // Debug logger — only logs when running the Vite dev server. Keeps the noisy
@@ -1145,6 +1146,25 @@ const OfficerSearch = ({ field, value, onChange, allValues, onFieldChange = () =
   const userTypedRef = useRef(false);
   const { showNotification } = useNotification();
 
+  // Officer names are static, tiny data (~554 names / ~9 KB for all four
+  // rosters). Keeping a 24 h snapshot in IndexedDB makes the autocomplete
+  // instant, keeps it working through a callable outage, and stops it costing
+  // one function invocation per keystroke.
+  const [roster, setRoster] = useState(null);
+  useEffect(() => {
+    if (!rosterSearchable) return undefined;
+    let cancelled = false;
+    (async () => {
+      const cached = await readOfficerRoster();
+      if (!cancelled && cached) setRoster(cached);
+      // No-op when the snapshot is under 24 h old; keeps the old copy if the
+      // refresh fails (a stale roster still beats no roster).
+      const snapshot = await refreshOfficerRoster(() => triggerGetOfficerRoster().then((res) => res?.departments));
+      if (!cancelled && snapshot) setRoster(snapshot);
+    })();
+    return () => { cancelled = true; };
+  }, [rosterSearchable]);
+
   // Toast (not inline bubble) so the layout stays aligned — tells the user the
   // field is free manual entry when the selected department has no roster
   // lookup. Fires on user interaction (focus the name input / pick a manual
@@ -1175,6 +1195,23 @@ const OfficerSearch = ({ field, value, onChange, allValues, onFieldChange = () =
     // API search (which would pop the dropdown over a filled-in name).
     if (!userTypedRef.current) { setWaiting(false); return; }
 
+    // Cached roster -> local search. Instant, needs no callable, and keeps
+    // working through a function outage. Short debounce only so the dropdown
+    // does not flicker on every keystroke (the 2 s debounce below exists for
+    // the network path, which this avoids entirely).
+    if (roster) {
+      setWaiting(false);
+      const localTimer = setTimeout(() => {
+        devLog(`[OfficerSearch] Local roster search: "${officerName}" (dept: "${currentDept || 'any'}")`);
+        lastSearched.current = officerName;
+        const matches = searchOfficerRoster(roster, officerName, currentDept);
+        setSearchResults(matches);
+        setNoMatch(matches.length === 0);
+        setSearching(false);
+      }, 150);
+      return () => clearTimeout(localTimer);
+    }
+
     // Debounce window — show "Waiting..." so the user knows the search will
     // start after they stop typing (2s), before the actual API call ("Searching...").
     setWaiting(true);
@@ -1201,13 +1238,23 @@ const OfficerSearch = ({ field, value, onChange, allValues, onFieldChange = () =
         setNoMatch(matches.length === 0);
       } catch (err) {
         console.warn(`[OfficerSearch] API check failed:`, err?.message || err);
-        setSearchResults([]);
-        setNoMatch(false);
+        // No snapshot in memory yet — try the one on disk before giving up.
+        const cached = await readOfficerRoster();
+        if (cached) {
+          setRoster(cached);
+          const matches = searchOfficerRoster(cached, officerName, currentDept);
+          setSearchResults(matches);
+          setNoMatch(matches.length === 0);
+        } else {
+          setSearchResults([]);
+          setNoMatch(false);
+          showNotification('Officer roster lookup is unavailable right now — you can type the name manually.', 'exclamation-triangle', 5000, { key: 'officer-roster-unavailable' });
+        }
       }
       setSearching(false);
     }, 2000);
     return () => clearTimeout(timer);
-  }, [officerName, currentDept, reqOn, rosterSearchable]);
+  }, [officerName, currentDept, reqOn, rosterSearchable, roster, showNotification]);
 
   return (
     <div className={inline ? '' : `field${field.layout !== 'compact-50' ? ' full' : ''}`} style={{ position: 'relative', ...(inline ? { flex: '1 1 200px' } : {}) }}>

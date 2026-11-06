@@ -11,15 +11,18 @@
   },
   "dependencies": {
     "discord.js": "^14.18.0",
-    "express": "^4.21.0",
-    "firebase-admin": "^14.2.0",
-    "playwright": "^1.61.1",
+    "express": "^4.22.3",
+    "firebase-admin": "^14.5.0",
+    "playwright": "^1.64.1",
     "playwright-extra": "^4.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2",
-    "sharp": "^0.35.4"
+    "sharp": "^0.35.5"
   },
   "overrides": {
     "uuid": ">=11.1.1",
-    "qs": "6.16.0"
+    "qs": "6.16.0",
+    "proxy-addr": "2.0.8",
+    "@fastify/busboy": "3.2.4",
+    "brace-expansion": "1.1.21"
   }
 }

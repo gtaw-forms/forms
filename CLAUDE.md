@@ -278,7 +278,9 @@ Users set per-form-type auto-deploy preferences via a multi-step modal (BotDeplo
 
 A standalone Express server (`discord-bot/morgue-api.js`) that exposes morgue records via REST.
 
-- **Endpoint:** `http://88.208.243.254:3001/api/morgue`
+- **Endpoint (public):** `http://88.208.243.254/api/morgue` — nginx terminates port 80 and proxies `/api/` to `127.0.0.1:3001`.
+- **Port 3001 is NOT public.** ufw allows it only on `tailscale0` (the Vite dev proxy at `100.84.161.69:3001`) and loopback; the public 3001 rule was removed 2026-10-24. Anything off-box (Cloud Functions, admin scripts) must use port 80.
+- **Client IPs:** forwarded headers (`X-Real-IP`/`X-Forwarded-For`) are honoured only from a trusted proxy (loopback/nginx). A direct caller that sends either is treated as spoofing and banned instantly — see `discord-bot/services/clientIp.js` and `docs/morgue-api-ip-spoofing-2026-10-24.md`.
 - **Auth:** `x-api-key` header or `?key=` query parameter (keys in `MORGUE_API_KEYS` env var)
 - **Search:** `?q=name` to filter by name/caseId/location
 - **Rate limit:** 60 req/min per API key

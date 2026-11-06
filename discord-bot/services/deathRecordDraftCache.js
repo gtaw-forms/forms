@@ -103,8 +103,9 @@ export function isMorgueCacheLoaded() {
 /**
  * Parse a date value to a UTC epoch ms, returning NaN when unparseable.
  * Handles the date/time formats that flow through the draft pipeline:
- *  - ISO: "YYYY-MM-DD[T ]HH:MM[:SS]"
+ *  - ISO: "YYYY-MM-DD[T ]HH:MM[:SS]" (time optional)
  *  - Slash: "MM/DD/YYYY - HH:MM[:SS]" (mass-fatality form convention, day-first)
+ *  - Day-first month name: "14/OCT/2026[ HH:MM[:SS]]" (autopsy request template)
  *  - Morgue: "Weekday, DD Month YYYY HH:MM:SS"
  *
  * `new Date()` alone cannot be trusted here — "05/08/2026 - 22:36" yields
@@ -117,8 +118,8 @@ export function parseDate(value) {
     const str = String(value).trim();
     if (!str) return NaN;
 
-    let m = str.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{1,2}):(\d{2})(?::(\d{2}))?/);
-    if (m) return Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0));
+    let m = str.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+    if (m) return Date.UTC(+m[1], +m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0));
 
     m = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s*[-–—]?\s*(?:(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
     if (m) {
@@ -126,6 +127,22 @@ export function parseDate(value) {
         if (month > 12) { const t = day; day = month; month = t; }
         if (day < 1 || day > 31 || month < 1 || month > 12) return NaN;
         return Date.UTC(+m[3], month - 1, day, +(m[4] || 0), +(m[5] || 0), +(m[6] || 0));
+    }
+
+    // Day-first with a month NAME — the autopsy request template's DATE OF
+    // DEATH format ("14/OCT/2026", "14-Oct-2026 22:25"). Without this the
+    // reference date was NaN, so findMorgueRecord's closest-date tie-break was
+    // skipped and a same-named OLDER record won (t=10392 body Ryan Kennedy
+    // matched the May #75003 record instead of the Oct 14 one).
+    m = str.match(/^(\d{1,2})[\/\-\s]+([A-Za-z]{3,9})[\/\-\s]+(\d{4})(?:\s*[-–—]?\s*(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+    if (m) {
+        const MONTHS3 = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+        const month = MONTHS3[m[2].toLowerCase().slice(0, 3)];
+        if (month !== undefined) {
+            const day = +m[1];
+            if (day < 1 || day > 31) return NaN;
+            return Date.UTC(+m[3], month, day, +(m[4] || 0), +(m[5] || 0), +(m[6] || 0));
+        }
     }
 
     m = str.match(/(\d{1,2})\s+([A-Za-z]+),?\s+(\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?/);

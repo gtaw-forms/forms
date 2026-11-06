@@ -13,6 +13,33 @@ const STATIC_AGENCY_NAMES = {
     SANFIRE: 'State Fire Marshal',
     SAAA: 'San Andreas Aviation Administration',
 };
+// Static forum URLs (bot resolveForum defaults) so the manual-post guide keeps
+// working when the live agency store hasn't loaded (localhost/offline).
+const STATIC_AGENCY_URLS = {
+    LSPD: 'http://lspd.gta.world',
+    LSSD: 'http://lssd.gta.world',
+    SADCR: 'http://sadcr.gta.world',
+    DAO: 'https://lsda.gta.world',
+};
+/**
+ * Offline agency entry { shortCode, fullName, url } for a short code or full
+ * name (case-insensitive), or null. Mirrors the RTDB /agencies shape closely
+ * enough for the manual-post guide (icon lookup by key, compose link, creds
+ * domain match) when the live store is unavailable.
+ */
+const findStaticAgency = (code) => {    if (!code) return null;
+    const raw = String(code).trim();
+    const upper = raw.toUpperCase();
+    if (STATIC_AGENCY_NAMES[upper]) {
+        return { shortCode: upper, fullName: STATIC_AGENCY_NAMES[upper], url: STATIC_AGENCY_URLS[upper] || '' };
+    }
+    const lower = raw.toLowerCase();
+    if (lower.length >= 4) {
+        const hit = Object.entries(STATIC_AGENCY_NAMES).find(([, name]) => name.toLowerCase() === lower || name.toLowerCase().includes(lower));
+        if (hit) return { shortCode: hit[0], fullName: hit[1], url: STATIC_AGENCY_URLS[hit[0]] || '' };
+    }
+    return null;
+};
 const getDepartmentFullName = (departmentShortCode, agencyDataStore) => {
     if (!departmentShortCode) return departmentShortCode;
     const raw = String(departmentShortCode);
@@ -67,4 +94,33 @@ const transformReportTitle = (originalKey) => {
 };
 
 
-export { getDepartmentFullName, transformReportTitle };
+export { getDepartmentFullName, transformReportTitle, findStaticAgency };
+
+/** Short codes of agencies on the OAuth portal stack (phpBB creds N/A). */
+const PORTAL_AGENCY_CODES = ['LSPD'];
+
+/** Community Portal sign-in for portal-stack agencies. */
+const PORTAL_LOGIN_URLS = {
+    LSPD: 'https://lspd.gta.world/portal/login',
+};
+
+/**
+ * True when an agency authenticates via its Community Portal (OAuth) rather
+ * than phpBB credentials — no username/password block applies to it.
+ * Accepts a short code or full name (case-insensitive).
+ */
+export function isPortalAgency(code) {
+    if (!code) return false;
+    const upper = String(code).trim().toUpperCase();
+    if (PORTAL_AGENCY_CODES.includes(upper)) return true;
+    const snap = findStaticAgency(code);
+    return !!snap && PORTAL_AGENCY_CODES.includes(snap.shortCode);
+}
+
+/** Portal sign-in URL for a portal-stack agency, or ''. */
+export function portalLoginUrl(code) {
+    if (!isPortalAgency(code)) return '';
+    const snap = findStaticAgency(code);
+    const key = snap ? snap.shortCode : String(code).trim().toUpperCase();
+    return PORTAL_LOGIN_URLS[key] || '';
+}

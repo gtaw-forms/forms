@@ -318,7 +318,23 @@ export function buildStartupStatusV2({ caseCount = 0, desc = '', loaDesc = 'None
             // carry formId 'testing-compact-mode' (retired with medical records —
             // left unmapped so such rows are ignored, never deployed).
             if (reportData.formId === 'coroner_email') {
-                consentGateAndEnqueue('pm', item, reportData.formId);
+                // LSPD emails skip the dead forum-PM path: handleCoronerEmail
+                // files the native coroner-report form instead (no inbox —
+                // LSPD takes no inbox notices since Nov 2026).
+                // Record presence in scheduledReports already implies save-time
+                // consent, same as the dev-report path below.
+                import('./lspdReportRoute.js').then(({ isLspdEmailReport }) => {
+                    if (isLspdEmailReport({ formId: reportData.formId, data: reportData.data })) {
+                        console.log(`[AUTO]  LSPD coroner email — native form filing (${reportKey})`);
+                        import('./deployCoronerEmail.js').then(({ handleCoronerEmail }) => {
+                            handleCoronerEmail(item).catch(err => console.error('[CORONER-EMAIL] LSPD handler error:', err.message));
+                        }).catch(err => console.error('[CORONER-EMAIL] Failed to import handler:', err.message));
+                    } else {
+                        consentGateAndEnqueue('pm', item, reportData.formId);
+                    }
+                }).catch(() => {
+                    consentGateAndEnqueue('pm', item, reportData.formId);
+                });
             } else if (['death_record', 'mass-ftality-test', 'coroner-report'].includes(reportData.formId)) {
                 consentGateAndEnqueue('topic', item, reportData.formId);
                 // Coroner email fires inside handleTopic — after topic post completes
@@ -497,76 +513,16 @@ export function buildStartupStatusV2({ caseCount = 0, desc = '', loaDesc = 'None
 
     }
 
-// ── LSPD Acknowledgement Retry ──
-
-/**
- * Scan for autopsy requests where the LSPD acknowledgement reply failed
- * and retry sending it. Runs as part of the recovery heartbeat (startup + every 10 min).
- */
-export async function retryFailedLspdAcknowledgements(db) {
-    logFnCall('autoDeploy', 'retryFailedLspdAcknowledgements', 'Scanning for failed LSPD ack replies');
-    if (!db) return;
-    try {
-        const { sendAutopsyAcknowledgement, ACK_FIELD_NAMES } = await import('./autopsyRequestMonitor.js');
-        const lspdField = ACK_FIELD_NAMES.lspd;
-        const phmcField = ACK_FIELD_NAMES.phmc;
-        const snap = await db.ref('autopsy-requested').orderByChild(lspdField).equalTo('failed').once('value');
-        if (!snap.exists()) {
-            console.log('[AUTO]  No failed LSPD ack replies to retry');
-            return;
-        }
-        let retried = 0;
-        const promises = [];
-        snap.forEach((child) => {
-            const entry = child.val();
-            const lspdTopicId = entry.lspdTopicId;
-            if (!lspdTopicId) {
-                console.log('[AUTO]  Skipping ' + child.key + ' — no LSPD topic ID saved');
-                return;
-            }
-            const requesterName = entry.parsed?.requesterName || entry.name || 'Requesting Party';
-            console.log('[AUTO]  Retrying LSPD ack reply for ' + child.key + ' on topic #' + lspdTopicId);
-            promises.push(
-                sendAutopsyAcknowledgement(child.key, requesterName, null, {
-                    baseUrl: 'https://phmc.gta.world',
-                    lspdTopicId: lspdTopicId
-                }).then(result => {
-                    if (result.lspd) {
-                        console.log('[AUTO]  LSPD ack retry succeeded for ' + child.key);
-                        db.ref('autopsy-requested/' + child.key + '/' + lspdField).set('completed').catch(() => {});
-                        db.ref('autopsy-requested/' + child.key + '/' + lspdField + '-at').set(new Date().toISOString()).catch(() => {});
-                        // sendAutopsyAcknowledgement also posts the PHMC ack — mark it
-                        // completed too so the PHMC retry can't double-post this sweep.
-                        if (result.phmc && entry[phmcField] !== 'completed') {
-                            db.ref('autopsy-requested/' + child.key + '/' + phmcField).set('completed').catch(() => {});
-                            db.ref('autopsy-requested/' + child.key + '/' + phmcField + '-at').set(new Date().toISOString()).catch(() => {});
-                        }
-                        notifySelfHeal(child.key, `${lspdField} failed`, 'LSPD ack posted');
-                    } else {
-                        console.warn('[AUTO]  LSPD ack retry failed for ' + child.key);
-                        notifySelfHeal(child.key, `${lspdField} failed`, 'LSPD ack retry FAILED - will retry next sweep');
-                    }
-                }).catch(err => {
-                    console.error('[AUTO]  LSPD ack retry error for ' + child.key + ': ' + err.message);
-                    notifySelfHeal(child.key, `${lspdField} failed`, 'ERROR: ' + err.message);
-                })
-            );
-            retried++;
-        });
-        await Promise.allSettled(promises);
-        console.log('[AUTO]  Retried ' + retried + ' failed LSPD ack reply(ies)');
-    } catch (err) {
-        console.error('[AUTO]  LSPD ack retry scan error: ' + err.message);
-    }
-}
+// ── LSPD Acknowledgement Retry — RETIRED Nov 2026 ──
+// The LSPD forum crosspost is dead (board retired); historic failed LSPD
+// ack entries stay as-is and nothing scans them. LSPD delivery runs via
+// the native liaison forms plus the share links.
 
 // ── Agency Acknowledgement Retry (SADCR / DAO) ──
 
 /**
  * Scan for SADCR/DAO autopsy requests whose agency acknowledgement reply failed
- * and retry sending it. Mirrors retryFailedLspdAcknowledgements — these factions
- * were added to the crosspost registry, so their acks need their own recovery
- * sweep entry. Runs as part of the recovery heartbeat.
+ * and retry sending it. Runs as part of the recovery heartbeat.
  */
 export async function retryFailedAgencyAcknowledgements(db) {
     logFnCall('autoDeploy', 'retryFailedAgencyAcknowledgements', 'Scanning for failed agency (SADCR/DAO) ack replies');
@@ -692,145 +648,9 @@ export async function retryFailedPhmcAcknowledgements(db, { force = false, entri
     }
 }
 
-// ── LSPD Crosspost Recovery (detection-time request topic) ──
-
-/**
- * Find LSPD autopsy requests that have a case topic but no LSPD crosspost
- * (lspdTopicId missing) and recover them: create the LSPD f=1361 request copy,
- * post the LSPD acknowledgement, and persist lspdTopicId + ack status.
- *
- * The monitor's step 3 does this during detection, but if the run is interrupted
- * (e.g. a hung Discord send freezes it before step 3) the LSPD crosspost never
- * happens and nothing recovered it. This runs at startup and every 10 minutes.
- *
- * @param {object} db — Firebase RTDB
- * @param {object} [opts] — { force } bypasses the 10-min staleness guard for manual runs.
- */
-export async function retryMissingLspdCrossposts(db, { force = false, entries } = {}) {
-    logFnCall('autoDeploy', 'retryMissingLspdCrossposts', 'Scanning for LSPD cases missing the LSPD crosspost');
-    if (!db) return;
-    try {
-        const { getForumClient } = await import('./forumClient.js');
-        const { ACK_TEMPLATE } = await import('./autopsyRequestMonitor.js');
-        const LSPD_BASE = 'https://lspd.gta.world';
-        const LSPD_FORUM_ID = 1361;
-        const STALENESS_MS = 10 * 60 * 1000;
-
-        if (entries === undefined) {
-            const snap = await db.ref('autopsy-requested').once('value');
-            entries = snap.val() || {};
-        }
-
-        // Collect candidates first — only touch LSPD (login/browser) when there is
-        // actually something to recover, so an LSPD outage can't fail this sweep
-        // every 10 minutes for nothing.
-        const candidates = [];
-        for (const [key, entry] of Object.entries(entries)) {
-            if ((entry.faction || '').toUpperCase() !== 'LSPD') continue;
-            if (entry.isPrivate === true) continue; // private cases never crosspost
-            if (!entry.caseTopicId) continue;
-            if (entry.completedAt) continue;
-            if (entry.lspdTopicId && entry['lspd-acknowledge-reply'] === 'completed') continue;
-            // Staleness guard: don't race a request still being processed.
-            if (!force) {
-                const detected = entry.detectedAt ? new Date(entry.detectedAt).getTime() : 0;
-                if (!detected || (Date.now() - detected) < STALENESS_MS) continue;
-            }
-            candidates.push([key, entry]);
-        }
-
-        if (candidates.length === 0) {
-            console.log(`[AUTO]  LSPD recovery: no candidates missing the crosspost (${Object.keys(entries).length} entries scanned) — skipping LSPD login`);
-            return;
-        }
-
-        // One shared isolated LSPD client for the whole sweep. All isolated clients
-        // share a single Chromium browser, and per-entry clients running in parallel
-        // let one entry's client.close() tear down the page another was mid-navigation
-        // on ("Target page, context or browser has been closed"), silently killing the
-        // crosspost. One sequential client avoids that entirely.
-        const client = getForumClient();
-        // Force-login to LSPD with the LSPD credentials FIRST (matches the monitor's
-        // step 3 and crosspostAutopsyToLspd). Important: postTopic's internal login
-        // fallback uses this.username/password — the PHMC creds — so if the LSPD
-        // posting page redirects to login mid-post it submits the WRONG creds and
-        // gets stuck on the login page. Pre-logging-in with force:true avoids that.
-        await client.login(process.env.FORUM_LSPD_USERNAME, process.env.FORUM_LSPD_PASSWORD, { force: true, baseUrl: LSPD_BASE });
-
-        let retried = 0;
-        for (const [key, entry] of candidates) {
-            retried++;
-            try {
-                    const name = entry.name || 'Decedent';
-                    const oocName = entry.oocName || '';
-                    const oocPart = oocName ? ' ((' + oocName + '))' : '';
-                    const requestBbCode = entry.requestBbCode || '';
-                    const caseTitle = entry.caseTitle || ('Case ' + (entry.caseNum || '') + ' - ' + name);
-                    const caseTopicId = entry.caseTopicId || null;
-                    const requesterName = entry.parsed?.requesterName || entry.name || 'Requesting Party';
-                    console.log(`[AUTO]  LSPD recovery for ${key} (caseTopicId=${caseTopicId ? '#' + caseTopicId : 'UNKNOWN'}) "${caseTitle}"`);
-
-                    // Create the LSPD request topic if it doesn't exist yet. Before creating,
-                    // search LSPD f=1361 for an existing request topic for this case and adopt
-                    // it if found. This guards against orphan topics when a PREVIOUS attempt
-                    // posted the topic but failed to persist lspdTopicId (URL parse error or a
-                    // dropped db write) — without the search, the next sweep would post a
-                    // duplicate request topic.
-                    // NOTE: topicTitle is declared OUTSIDE the blocks below — an earlier
-                    // revision scoped it inside the search branch, so the create branch
-                    // below threw `topicTitle is not defined` and no copy was ever made.
-                    const topicTitle = 'Autopsy Request - ' + name + oocPart + ' [LSPD]';
-                    let lspdTopicId = entry.lspdTopicId || null;
-                    if (!lspdTopicId) {
-                        try {
-                            const existing = await client.searchForum(topicTitle, LSPD_FORUM_ID, { baseUrl: LSPD_BASE });
-                            const exact = existing.find(r => r.title === topicTitle);
-                            if (exact) {
-                                lspdTopicId = String(exact.topicId);
-                                await db.ref(`autopsy-requested/${key}/lspdTopicId`).set(lspdTopicId).catch(() => {});
-                                console.log(`[AUTO]  Adopted existing LSPD topic #${lspdTopicId} for ${key} (caseTopicId=${caseTopicId ? '#' + caseTopicId : 'UNKNOWN'})`);
-                            }
-                        } catch (searchErr) {
-                            console.warn(`[AUTO]  LSPD pre-create search error for ${key}: ${searchErr.message} — will attempt create anyway`);
-                        }
-                    }
-                    if (!lspdTopicId) {
-                        const topicBody = requestBbCode
-                            ? '[divbox=white][center][b][size=170]AUTOPSY REQUEST — CERIFIED COPY [/size][/b][/center][hr][/hr]\n' + requestBbCode + '\n[hr][/hr][b]Case:[/b] ' + caseTitle + '\n[b]Status:[/b] Under Investigation\n[/divbox]'
-                            : '[divbox=white][b]Autopsy Request[/b]\n[b]Decedent:[/b] ' + name + oocPart + '\n[b]Case:[/b] ' + caseTitle + '\n[b]Status:[/b] Under Investigation\n[/divbox]';
-                        console.log(`[AUTO]  Creating LSPD crosspost topic for ${key} (caseTopicId=${caseTopicId ? '#' + caseTopicId : 'UNKNOWN'}): "${topicTitle}"`);
-                        const postResult = await client.postTopic(LSPD_FORUM_ID, topicTitle, topicBody, 'https://lspd.gta.world/posting.php?mode=post&f=1361');
-                        if (!postResult.ok) throw new Error('LSPD topic create failed: ' + (postResult.reason || 'unknown'));
-                        const tM = (postResult.url || '').match(/[?&]t=(\d+)/);
-                        if (!tM) throw new Error('Could not extract LSPD topic ID from: ' + postResult.url);
-                        lspdTopicId = tM[1];
-                        await db.ref(`autopsy-requested/${key}/lspdTopicId`).set(lspdTopicId).catch(() => {});
-                        console.log(`[AUTO]  LSPD topic created #${lspdTopicId} for ${key} (caseTopicId=${caseTopicId ? '#' + caseTopicId : 'UNKNOWN'})`);
-                    }
-
-                    // Post the LSPD acknowledgement reply.
-                    const ackBbcode = ACK_TEMPLATE.replace('REQUESTING_NAME', requesterName);
-                    const ackResult = await client.replyToTopic(lspdTopicId, LSPD_FORUM_ID, ackBbcode, { dryRun: false, baseUrl: LSPD_BASE });
-                    if (ackResult.ok) {
-                        await db.ref(`autopsy-requested/${key}/lspd-acknowledge-reply`).set('completed').catch(() => {});
-                        await db.ref(`autopsy-requested/${key}/lspd-acknowledge-reply-at`).set(new Date().toISOString()).catch(() => {});
-                        console.log(`[AUTO]  LSPD ack posted for ${key} (#${lspdTopicId})`);
-                        notifySelfHeal(key, 'lspd crosspost missing', `LSPD topic #${lspdTopicId} + ack posted`);
-                    } else {
-                        console.warn(`[AUTO]  LSPD ack failed for ${key}: ${ackResult.reason || 'unknown'}`);
-                        notifySelfHeal(key, 'lspd crosspost', `LSPD ack FAILED: ${ackResult.reason || 'unknown'}`);
-                    }
-                } catch (err) {
-                    console.error(`[AUTO]  LSPD crosspost recovery error for ${key}: ${err.message}`);
-                    notifySelfHeal(key, 'lspd crosspost', `ERROR: ${err.message}`);
-                }
-        }
-
-        if (retried > 0) console.log(`[AUTO]  Retried ${retried} missing LSPD crosspost(s)`);
-    } catch (err) {
-        console.error('[AUTO]  LSPD crosspost recovery scan error: ' + err.message);
-    }
-}
+// ── LSPD Crosspost Recovery — RETIRED Nov 2026 ──
+// The detection-time f=1361 request copy is dead with the board; nothing
+// recreates it. Historic lspdTopicId values stay on their entries untouched.
 
 // ── Unified Recovery Heartbeat ──
 
@@ -841,10 +661,9 @@ const RECOVERY_HEARTBEAT_INTERVAL_MS =
 /**
  * Run all recovery/self-healing sweeps in sequence.
  *
- * Checks are ordered so the shared default forum client's session stays sane
- * (retryMissingLspdCrossposts force-logs it into LSPD, so PHMC-only checks run
- * after it or re-authenticate explicitly). Each check is isolated — one failure
- * never stops the rest. A reentrancy guard skips an overlapping tick.
+ * Checks are ordered so the shared default forum client's session stays sane.
+ * Each check is isolated — one failure never stops the rest. A reentrancy
+ * guard skips an overlapping tick.
  */
 export async function runRecoveryHeartbeat(db) {
     if (_heartbeatRunning) {
@@ -872,8 +691,6 @@ export async function runRecoveryHeartbeat(db) {
         ['retry-queue',            () => checkRetryQueue()],
         ['lssd-crosspost-retry',   () => retryFailedLssdCrossposts(db)],
         ['lspd-crosspost-retry',   () => retryFailedLspdCrossposts(db)],
-        ['lspd-crosspost-recover', () => retryMissingLspdCrossposts(db, { entries: autopsyEntries })],
-        ['lspd-ack-retry',         () => retryFailedLspdAcknowledgements(db)],
         ['agency-ack-retry',       () => retryFailedAgencyAcknowledgements(db)],
         ['phmc-ack-retry',         () => retryFailedPhmcAcknowledgements(db, { entries: autopsyEntries })],
         ['completion-steps-retry', () => retryFailedCompletionSteps(db, { entries: autopsyEntries })],

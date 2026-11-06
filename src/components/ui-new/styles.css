@@ -212,10 +212,16 @@
   }
 
   /* ---- Morgue Records lookup ---- */
-  .lookup-bar{ display:flex; gap:10px; margin-bottom:18px; align-items:center; }
+  .lookup-bar{ display:flex; gap:10px; margin-bottom:18px; align-items:center; flex-wrap:wrap; }
   .lookup-bar input[type="text"]{
-    flex:1; background:var(--bg-surface); border:1px solid var(--border); color:var(--text);
+    flex:1 1 220px; min-width:200px; background:var(--bg-surface); border:1px solid var(--border); color:var(--text);
     border-radius:8px; padding:10px 12px; font-size:13px; font-family:var(--sans); line-height:1.4; box-sizing:border-box;
+  }
+  .batch-tools{ display:flex; gap:8px; align-items:center; flex-shrink:0; }
+  .batch-count{
+    font-family:var(--mono); font-size:11px; font-weight:700; color:var(--teal);
+    background:var(--teal-dim); border:1px solid var(--border-accent); border-radius:20px;
+    padding:5px 10px; white-space:nowrap;
   }
   .lookup-bar select{
     background:var(--bg-surface); border:1px solid var(--border); color:var(--text);
@@ -226,15 +232,19 @@
   .lookup-bar label input[type="checkbox"]{ width:14px; height:14px; margin:0; }
 
   .records-head-row{
-    display:grid; grid-template-columns:110px 1fr 160px 260px; gap:14px;
+    display:grid; grid-template-columns:26px 110px 1fr 160px 260px; gap:14px;
     padding:0 14px 8px; font-size:10.5px; font-family:var(--mono); color:var(--text-faint);
-    text-transform:uppercase; letter-spacing:1px;
+    text-transform:uppercase; letter-spacing:1px; align-items:center;
   }
   .record-row{
-    display:grid; grid-template-columns:110px 1fr 160px 260px; gap:14px; align-items:center;
+    display:grid; grid-template-columns:26px 110px 1fr 160px 260px; gap:14px; align-items:center;
     padding:13px 14px; border-radius:8px; background:var(--bg-surface); border:1px solid var(--border);
-    margin-bottom:8px;
+    margin-bottom:8px; transition:border-color .15s, background .15s;
   }
+  .records-head-row input[type="checkbox"], .record-row input[type="checkbox"]{
+    width:15px; height:15px; margin:0; cursor:pointer; accent-color:var(--teal);
+  }
+  .record-row.selected{ border-color:var(--teal); background:rgba(99,102,241,0.10); }
   .record-row .case-id{ font-family:var(--mono); color:var(--teal); font-size:11.5px; }
   .record-row .decedent{ font-weight:600; font-size:13px; }
   .record-row .decedent .sub{ font-size:10.5px; color:var(--text-faint); margin-top:2px; font-weight:400; }

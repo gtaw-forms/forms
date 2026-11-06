@@ -5,6 +5,10 @@ import 'bootstrap/dist/css/bootstrap.min.css';
 import '@fortawesome/fontawesome-free/css/all.min.css';
 import './App.css';
 import './buttons.css';
+// New PHMC platform theme (route /migration-ui). Loaded last and namespaced
+// under `.pmc`, so it cannot restyle the legacy handler/prototype/admin UIs.
+import './platform/theme.css';
+import './platform/components.css';
 import App from './App';
 import { init, getClient } from "@sentry/react";
 import { AuthProvider } from './contexts/AuthContext.jsx';
