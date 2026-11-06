@@ -319,6 +319,12 @@ const FIXED_HISTOLOGY = 'Representative sections from various organs are preserv
 const FIXED_TOXICOLOGY = 'Femoral blood, EDTA blood, urine, stomach contents and vitreous have been submitted to the lab. A comprehensive screen was requested.';
 
 /**
+ * Standing approver for ME liaison filings (Nov 2026 policy): every Medical
+ * Examiner case submission is approved by the Chief Medical Examiner.
+ */
+export const ME_APPROVED_BY = 'Chief Medical Examiner Anne Carter';
+
+/**
  * Medical-examiner form payload from an autopsy record's data.
  * Manner lives in data.deathType on autopsy records (NOT mannerOfDeath).
  * @param {object} data — autopsy report data
@@ -412,7 +418,8 @@ export function buildMedicalExaminerPayload(data = {}, ctx = {}) {
   if (!str(ctx.meName)) errors.push('Performed By is empty — aborting');
   else fields.push(req('Performed By', 'text', ctx.meName));
 
-  // No PHMC source carries an approver: fail closed until one is supplied.
+  // Approver: the standing ME_APPROVED_BY policy supplies this at the call
+  // sites below — the builder still refuses to invent one when missing.
   if (!str(ctx.approvedBy)) errors.push('Approved By has no source (no approver field on autopsy records) — supply ctx.approvedBy, refusing to invent one');
   else fields.push(req('Approved By', 'text', ctx.approvedBy));
 

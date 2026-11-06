@@ -648,10 +648,13 @@ async function finishCompletionStep(topicId, stepName, ok, detail = '') {
  */
 async function runMedicalExaminerFormStep({ entry, reportData, caseNum, requestLink, meName, approvedBy = '' }) {
     const { autopsyNoticeRecipient } = await import('./lspdAutopsyNotice.js');
-    const { deliverMedicalExaminerForm } = await import('./lspdPortalForms.js');
+    const { deliverMedicalExaminerForm, ME_APPROVED_BY } = await import('./lspdPortalForms.js');
     const target = autopsyNoticeRecipient(entry);
     if (!target) return { ok: false, detail: 'No requester character name on the entry — refusing to guess the recipient' };
     if (!reportData?.data) return { ok: false, detail: 'No autopsy report data — refusing to file from nothing' };
+    // Standing policy (Nov 2026): the Chief Medical Examiner approves every
+    // ME filing; an explicit approver still wins when one is supplied.
+    const approver = (approvedBy || '').trim() || ME_APPROVED_BY;
     const result = await deliverMedicalExaminerForm({
         recipient: target,
         data: reportData.data,
@@ -660,7 +663,7 @@ async function runMedicalExaminerFormStep({ entry, reportData, caseNum, requestL
             requestLink: requestLink || '',
             requesterName: target,
             meName: meName || '',
-            approvedBy: approvedBy || '',
+            approvedBy: approver,
         },
     });
     if (result.ok && result.dryRun) return { ok: true, dryRun: true, detail: `Dry run — ME form verified for ${target}, not submitted` };

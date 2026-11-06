@@ -175,7 +175,7 @@ async function processOneForm(key, _entity) {
         ? forms.deliverCoronerReportForm({ recipient: fresh.recipient, data: report.data })
         : forms.deliverMedicalExaminerForm({
           recipient: fresh.recipient, data: report.data,
-          context: { ...(fresh.context || {}), meName: (fresh.context || {}).meName || report.data?.coronerEmployee || '' },
+          context: { ...(fresh.context || {}), meName: (fresh.context || {}).meName || report.data?.coronerEmployee || '', approvedBy: (fresh.context || {}).approvedBy || forms.ME_APPROVED_BY },
         });
       result = await deliver;
     }

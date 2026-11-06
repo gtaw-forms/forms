@@ -16,6 +16,7 @@ import {
   buildCoronerFormPayload,
   buildMedicalExaminerPayload,
   detectReceipt,
+  ME_APPROVED_BY,
 } from '../discord-bot/services/lspdPortalForms.js';
 
 const coronerData = (over = {}) => ({
@@ -268,6 +269,14 @@ describe('lspdPortalForms — medical-examiner payload', () => {
     );
     expect(r.ok).toBe(false);
     expect(r.errors.join(' ')).toMatch(/Cause of Death is empty/);
+  });
+
+  it('pins the standing approver policy (Chief Medical Examiner)', () => {
+    expect(ME_APPROVED_BY).toBe('Chief Medical Examiner Anne Carter');
+    // Builder-level fail-closed stays: callers supply the constant.
+    const r = buildMedicalExaminerPayload(autopsyData(), { ...meCtx(), approvedBy: ME_APPROVED_BY });
+    expect(r.ok).toBe(true);
+    expect(r.fields.filter((f) => f.label === 'Approved By')[0].value).toBe(ME_APPROVED_BY);
   });
 
   it('maps Accidental manner and empty-metal honestly', () => {    const r = buildMedicalExaminerPayload(
