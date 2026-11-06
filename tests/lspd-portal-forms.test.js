@@ -251,8 +251,26 @@ describe('lspdPortalForms — medical-examiner payload', () => {
     expect(byLabel('Metal Objects Extracted')[0].value).toContain('striation marks');
   });
 
-  it('maps Accidental manner and empty-metal honestly', () => {
+  it('falls back to the examiner causeOfDeath narrative when the causes list is empty (#10461)', () => {
     const r = buildMedicalExaminerPayload(
+      autopsyData({ deathCausesListItems: '', causeOfDeath: 'Multiple gunshot wounds to torso and head' }),
+      meCtx(),
+    );
+    expect(r.ok).toBe(true);
+    expect(r.fields.filter((f) => f.label === 'Cause of Death')[0].value)
+      .toBe('Multiple gunshot wounds to torso and head');
+  });
+
+  it('still aborts when both the causes list and the narrative are empty', () => {
+    const r = buildMedicalExaminerPayload(
+      autopsyData({ deathCausesListItems: '', causeOfDeath: '' }),
+      meCtx(),
+    );
+    expect(r.ok).toBe(false);
+    expect(r.errors.join(' ')).toMatch(/Cause of Death is empty/);
+  });
+
+  it('maps Accidental manner and empty-metal honestly', () => {    const r = buildMedicalExaminerPayload(
       autopsyData({ deathType: 'Accidental', casings: [] }), meCtx(),
     );
     expect(r.ok).toBe(true);

@@ -1230,6 +1230,12 @@ export async function handleAutopsyReply(report) {
                 }
 
                 const entries = [];
+                // Portal identity: capture the REPORT key here — the loop
+                // below destructures `key` as the request topic id, which
+                // shadowed the report key and persisted topic ids as
+                // reportKey (retries then read a missing node). Nov 2026.
+                const portalReportAuthor = authorId || null;
+                const portalReportKey = key || null;
                 for (const s of sharedResolved) entries.push(s);
                 if (multiMatch) {
                     const { key, entry, ci, caseRec } = multiMatch;
@@ -1288,8 +1294,9 @@ export async function handleAutopsyReply(report) {
                             console.log(`[MASS] #${key} BODY ${Number(caseIdx) + 1}/${totalCount} DONE: ${caseRec?.name || '?'} ((${caseRec?.oocName || '?'})) by ${caseRec?.assignedTo || entry.assignedTo || '?'} — collection ${doneCount}/${totalCount}${allCasesDone ? ' — ALL COMPLETE, batched send follows' : ' (external sends deferred)'}`);
                             if (allCasesDone) {
                                 // Portal identity: retries and notices link the
-                                // filed autopsy report — persist its address.
-                                await ref.update({ completedAt: new Date().toISOString(), completedBbCode: bbCode, reportAuthorId: authorId || null, reportKey: key || null });
+                                // filed autopsy report — persist its address
+                                // (captured above, never the topic id).
+                                await ref.update({ completedAt: new Date().toISOString(), completedBbCode: bbCode, reportAuthorId: portalReportAuthor, reportKey: portalReportKey });
                                 console.log('[AUTO-COMPLETE] All decedent cases complete — request marked completed');
                                 // Retire the mass panel(s) now that there is
                                 // nothing left to press them for (best-effort —
@@ -1304,7 +1311,7 @@ export async function handleAutopsyReply(report) {
                             }
                         } else {
                             // Portal identity (see above).
-                            await ref.update({ completedAt: new Date().toISOString(), completedBbCode: bbCode, reportAuthorId: authorId || null, reportKey: key || null });
+                            await ref.update({ completedAt: new Date().toISOString(), completedBbCode: bbCode, reportAuthorId: portalReportAuthor, reportKey: portalReportKey });
                         }
                         console.log("[AUTO] [OK] Marked autopsy-requested #" + key + " as completed");
 

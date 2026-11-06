@@ -354,9 +354,19 @@ export function buildMedicalExaminerPayload(data = {}, ctx = {}) {
   if (!str(data.placeOfDeath)) errors.push('Place of Death is empty — aborting');
   else fields.push(req('Place of Death', 'text', data.placeOfDeath));
 
+  // Cause of Death: the findings list first; older-era reports leave it
+  // empty and carry the examiner's own cause narrative in causeOfDeath
+  // instead (e.g. #10461) — falling back to those exact words is faithful,
+  // not invented. Abort only when both are empty.
   const causes = normalizeTextList(data.deathCausesListItems);
-  if (!causes.length) errors.push('Cause of Death is empty — aborting');
-  else fields.push(req('Cause of Death', 'textarea', causes.join('\n')));
+  if (causes.length) {
+    fields.push(req('Cause of Death', 'textarea', causes.join('\n')));
+  } else if (str(data.causeOfDeath)) {
+    console.warn(`[${TAG}] Cause of Death: deathCausesListItems empty — filing examiner causeOfDeath narrative verbatim`);
+    fields.push(req('Cause of Death', 'textarea', String(data.causeOfDeath)));
+  } else {
+    errors.push('Cause of Death is empty (no deathCausesListItems, no causeOfDeath) — aborting');
+  }
 
   const manner = mapManner(data.deathType);
   if (!manner.ok) errors.push(`Manner of Death: ${manner.reason}`);
