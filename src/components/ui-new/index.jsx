@@ -17,6 +17,7 @@ import { useReportActions } from '../../hooks/useReportActions';
 import SavedReportsModal from '../Modals/SavedReportsModal';
 import FixDeployedReportModal from '../Modals/FixDeployedReportModal';
 import AssignedAutopsiesModal from '../Modals/AssignedAutopsiesModal';
+import AutopsyDutyWarningModal from './AutopsyDutyWarningModal';
 import MapModal from '../Modals/MapModal';
 import PrototypeFieldRenderer from './PrototypeFieldRenderer';
 import MorgueBrowser from './MorgueBrowser';
@@ -362,6 +363,15 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
       setGuideOpen(true);
     }
   }, [formKey, isAuthenticated, resolvedCredentials]);
+
+  // ── Autopsy duty warning (LFM ruling): EVERY navigation to the autopsy
+  // panel re-opens the EXTREMELY clear pop-up. No persistence, no "don't show
+  // again" — dismissal only covers the current viewing; leaving and returning
+  // (or loading another case into the form) shows it again.
+  useEffect(() => {
+    if (formKey === 'autopsy') setShowAutopsyWarning(true);
+    else setShowAutopsyWarning(false);
+  }, [formKey]);
 
   // ── BBCode Generator ──
   const { generatedBBCode, generatedTitle, showBBCode, generateBBCode, clearBBCode } = useBbcodeGenerator(
@@ -768,6 +778,8 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
   });
   // ── Misc modals ──
   const [showAssignedAutopsies, setShowAssignedAutopsies] = useState(false);
+  // ── Autopsy duty warning (LFM ruling — re-opened on every autopsy visit) ──
+  const [showAutopsyWarning, setShowAutopsyWarning] = useState(false);
   // ── Book FAB: loaded autopsy case at-a-glance ──
   // caseInfo tracks the load source ({ entry, morgue }); cleared on form
   // clear / leaving the autopsy form so the FAB never shows a stale case.
@@ -777,6 +789,7 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
   // the #/load/:requestId deep link (autoLoad effect below).
   const fillAutopsyForm = useCallback((morgue, entry) => {
           setShowAssignedAutopsies(false);
+          setShowAutopsyWarning(true);
           setCaseInfo({ entry: entry || null, morgue: morgue || null });
           const autopsyForm = formsData?.find(f => f.firebaseKey === 'autopsy');
           if (!autopsyForm) { showNotification('Autopsy form not found', 'warning'); return; }
@@ -2174,6 +2187,12 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
 
       {/* ─── LSPD Portal Guide (one-time staff tutorial) ─── */}
       <LspdGuideModal open={guideOpen} onClose={closeGuide} />
+
+      {/* ─── Autopsy duty warning (LFM ruling — shows EVERY time) ─── */}
+      <AutopsyDutyWarningModal
+        show={showAutopsyWarning && formKey === 'autopsy'}
+        onAcknowledge={() => setShowAutopsyWarning(false)}
+      />
 
     </div>
   );
