@@ -2000,6 +2000,13 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
                 const completionBb = buildCompletionBb(caseTitle, requesterName, { faction: retryFaction, lssdUrl: retryCompletionUrl, formsAutopsy: entry.formsAutopsy });
 
                 let success = false;
+                // Fresh outcome text for the Firebase write below. Branches
+                // that compute their own detail set this; the tail falls back
+                // to the previous detail so a retry never blanks the record —
+                // but never replays a STALE failure as current (Nov 2026: the
+                // ME step showed a fixed cause-abort for two superseded
+                // failures because the tail rewrote stepData.detail).
+                let retryDetail = '';
 
                 if (stepBase === 'phmcCompletionReply') {
                     if (!entry.topicId) {
@@ -2194,6 +2201,7 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
                             meName: entry.assignedTo || '',
                         });
                         success = !!r.ok;
+                        retryDetail = r.detail || (r.ok ? 'Retried on restart — OK' : 'Retry failed');
                         console.log(`[AUTO-COMPLETE] LSPD ME form retry — ${r.ok ? 'OK' : 'FAILED: ' + r.detail}`);
                     } catch (retryErr) {
                         console.warn(`[AUTO-COMPLETE] LSPD ME form retry error for ${caseLabel}: ${retryErr.message}`);
@@ -2290,8 +2298,8 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
                             status: success ? 'completed' : 'failed',
                             updatedAt: new Date().toISOString(),
                             detail: success
-                                ? `Retried on restart — OK`
-                                : (stepData.detail || 'Retry failed'),
+                                ? (retryDetail || `Retried on restart — OK`)
+                                : (retryDetail || stepData.detail || 'Retry failed'),
                             retriedAt: new Date().toISOString(),
                         });
                     // Keep the tiny retry index in sync (see STEP_RETRY_PATH).
