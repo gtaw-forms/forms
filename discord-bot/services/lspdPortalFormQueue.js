@@ -7,8 +7,8 @@
  *   { form, authorId, reportKey, recipient, context,
  *     status, attempts, retryAt, lastError,
  *     formUrl, sentAt, createdAt, updatedAt }
- * Status: queued → sending → sent | retry_queued (+ dry_run terminal
- * for dry-run verifies). Retries never expire (backoff 30m/2h/6h, capped at
+ * Status: queued → sending → sent | retry_queued. Dry-run verifies hold as
+ * retry_queued (never terminal) until a live submit lands. Retries never expire (backoff 30m/2h/6h, capped at
  * the last step). Stuck `sending` (>30m, e.g. crash mid-send) resets to
  * queued on sweep. Sent entities prune after 7 days.
  *
@@ -171,11 +171,14 @@ async function processOneForm(key, _entity) {
       result = { ok: false, reason: 'Report record missing at delivery — refusing to file from stale data' };
     } else {
       const forms = await import('./lspdPortalForms.js');
+      // LIVE submits (Nov 2026: filings enabled by operator). The driver
+      // still refuses unless LSPD_PORTAL_ENABLED + LSPD_FORMS_DRY_RUN=false.
       const deliver = fresh.form === 'coroner-report'
-        ? forms.deliverCoronerReportForm({ recipient: fresh.recipient, data: report.data })
+        ? forms.deliverCoronerReportForm({ recipient: fresh.recipient, data: report.data, submit: true })
         : forms.deliverMedicalExaminerForm({
           recipient: fresh.recipient, data: report.data,
           context: { ...(fresh.context || {}), meName: (fresh.context || {}).meName || report.data?.coronerEmployee || '', approvedBy: (fresh.context || {}).approvedBy || forms.ME_APPROVED_BY },
+          submit: true,
         });
       result = await deliver;
     }
@@ -185,16 +188,19 @@ async function processOneForm(key, _entity) {
 
   const attempts = (fresh.attempts || 0) + 1;
   if (result.ok && result.dryRun) {
-    // Dry-run verify: the form was filled but nothing was submitted — record
-    // the documented terminal `dry_run` state, never `sent`, no formUrl.
-    await progress.addStep('Delivery', 'ok', 'Filled — not submitted (dry run)');
+    // Hold-pending semantics (Nov 2026): a dry-run verify is NOT a filing.
+    // Requeue on the normal backoff instead of going terminal — the entity
+    // keeps retrying until a live submit lands.
+    await progress.addStep('Delivery', 'warn', 'Dry run verified — NOT submitted, holding for live submit');
     await progress.snapshot(`Before submit (dry run, not submitted) — ${fresh.form} → ${fresh.recipient}`, result.beforeScreenshot);
-    await progress.finalize('complete');
+    await progress.finalize('failed');
+    const retryAt = new Date(Date.now() + (BACKOFF_MS[attempts - 1] || BACKOFF_MS[BACKOFF_MS.length - 1])).toISOString();
     await _db.ref(`${FORM_QUEUE_NODE}/${key}`).update({
-      status: 'dry_run', attempts, formUrl: null,
-      sentAt: null, lastError: null, updatedAt: new Date().toISOString(),
+      status: 'retry_queued', attempts, retryAt,
+      lastError: 'Dry-run verify only — holding for live submit',
+      updatedAt: new Date().toISOString(),
     });
-    console.log(`[FORMS-QUEUE] ${key} DRY RUN — form filled, not submitted (terminal dry_run)`);
+    console.log(`[FORMS-QUEUE] ${key} DRY RUN — holding for live submit, retry at ${retryAt}`);
   } else if (result.ok) {
     await progress.addStep('Delivery', 'ok', result.formUrl || result.threadId || 'sent');
     await progress.snapshot(`Before submit — ${fresh.form} → ${fresh.recipient}`, result.beforeScreenshot);

@@ -646,7 +646,9 @@ async function finishCompletionStep(topicId, stepName, ok, detail = '') {
 /**
  * Shared LSPD Medical Examiner liaison-form step (live completion + retry).
  * Builds the ME form payload from the autopsy report and files it through
- * lspdPortalForms (dry-run default: fill + verify, never submit).
+ * lspdPortalForms with a LIVE submit (Nov 2026: filings enabled by operator).
+ * Requires LSPD_PORTAL_ENABLED + LSPD_FORMS_DRY_RUN=false on the VPS, else
+ * the driver refuses and the step holds for retry.
  * @returns {Promise<{ok:boolean, dryRun?:boolean, detail:string, sessionInvalid?:boolean}>}
  */
 async function runMedicalExaminerFormStep({ entry, reportData, caseNum, requestLink, meName, approvedBy = '' }) {
@@ -668,9 +670,12 @@ async function runMedicalExaminerFormStep({ entry, reportData, caseNum, requestL
             meName: meName || '',
             approvedBy: approver,
         },
+        submit: true,
     });
-    if (result.ok && result.dryRun) return { ok: true, dryRun: true, detail: `Dry run — ME form verified for ${target}, not submitted` };
-    if (result.ok) return { ok: true, detail: `ME form → ${target} (${result.formUrl || 'submitted'})` };
+    // Hold-pending semantics (Nov 2026): a dry-run verify is NOT a filing —
+    // the step stays failed so it keeps retrying until a live submit lands.
+    if (result.ok && result.dryRun) return { ok: false, dryRun: true, detail: `Dry run verified for ${target} — NOT submitted, holding for live submit` };
+    if (result.ok) return { ok: true, detail: `ME form → ${target} (${result.formUrl || 'submitted'})${result.reference ? ` (ref ${result.reference})` : ''}` };
     return { ok: false, detail: result.reason || 'Failed', sessionInvalid: result.sessionInvalid };
 }
 
