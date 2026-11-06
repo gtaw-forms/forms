@@ -50,6 +50,7 @@ if (!process.env.MORGUE_API_KEYS && !process.env.MORGUE_WRITE_API_KEYS && !proce
 import { API_KEY_LABEL_RE } from './services/apiKeyUtil.js';
 import { isExcludedAuthor } from './services/statsExclusions.js';
 import { getClientIp, isLoopbackIp, parseTrustedProxies, detectForwardedSpoof } from './services/clientIp.js';
+import { BLOCKED_MESSAGE, parseBlockedLabels, isBlockedLabel } from './services/apiConsumerBlock.js';
 
 // ── Labeled API keys ──
 // MORGUE_API_KEYS="forms-functions:pmc_morgue_xxx,facebrowser:pmc_morgue_yyy"
@@ -133,6 +134,22 @@ function parseLeoKeys(raw) {
     return keys;
 }
 const LEO_KEYS = parseLeoKeys(process.env.LEO_REPORTS_API_KEYS || '');
+// ── Blocked consumers (revoked with an explicit reason, not a silent 401) ──
+// LSSD staff request, Nov 2026: their key keeps validating but every request
+// is rejected with 403 + the contact message. Label-based (never key
+// material); env-overridable without a code change, default covers lssd-pengu.
+const BLOCKED_LABELS = parseBlockedLabels(process.env.MORGUE_BLOCKED_KEY_LABELS || 'lssd-pengu');
+// Shared gate for the three key validators below. Runs AFTER the validity
+// check so only the real blocked key sees the message — forged keys still
+// get the generic 401 and the block list never leaks to probers.
+// Returns true when it already answered (caller must stop).
+function rejectBlockedConsumer(req, res) {
+    const label = KEY_LABELS.get(req.headers['x-api-key']) || '';
+    if (!isBlockedLabel(label, BLOCKED_LABELS)) return false;
+    console.log(`[MORGUE-API] [WARN] BLOCKED req=${req.requestId} ${req.method} ${req.originalUrl} consumer=key_${label} — access revoked, restore via coroner leadership`);
+    res.status(403).json({ error: 'Forbidden', message: BLOCKED_MESSAGE });
+    return true;
+}
 const PORT = parseInt(process.env.MORGUE_API_PORT || '3001', 10);
 if (MORGUE_REPORT_KEYS.length > 0) {
     console.log(`[MORGUE-API] ${MORGUE_REPORT_KEYS.length} morgue report key(s) loaded (morgue routes only)`);
@@ -759,6 +776,8 @@ function validateApiKey(req, res, next) {
         });
     }
 
+    if (rejectBlockedConsumer(req, res)) return;
+
     req.apiKeyName = displayKeyName(key, isWriteKey);
     req.isAdminKey = isWriteKey;
     next();
@@ -788,6 +807,8 @@ function validateLeoApiKey(req, res, next) {
             message: 'Invalid API key.',
         });
     }
+
+    if (rejectBlockedConsumer(req, res)) return;
 
     req.apiKeyName = displayKeyName(key, isWriteKey);
     req.isAdminKey = isWriteKey;
@@ -820,6 +841,8 @@ function validateMorgueApiKey(req, res, next) {
             message: 'Invalid API key.',
         });
     }
+
+    if (rejectBlockedConsumer(req, res)) return;
 
     req.apiKeyName = displayKeyName(key, isWriteKey);
     req.isAdminKey = isWriteKey;

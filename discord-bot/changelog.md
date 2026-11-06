@@ -1,5 +1,11 @@
 # PHMC Discord Bot — Changelog
 
+## DEPLOYED 2026-11-06 — LSSD API access revoked with explicit 403 reason
+
+### Changed
+- **LSSD key (`lssd-pengu`) blocked, not deleted**: valid requests with that consumer label now get `403 Forbidden` + `Contact PHMC CORONER LEADERSHIP - ALYSON FROST / FR0STYDEV to restore access | BLOCKED: 02958e - This application is not authorized to use PHMC Tools` (LSSD staff request). New `services/apiConsumerBlock.js` (label matching, unit-tested); hooked into all three morgue-api key validators after the validity check, so forged keys still get the generic 401 and the block list never leaks. Env-overridable via `MORGUE_BLOCKED_KEY_LABELS` (default `lssd-pengu`).
+- **Verified live**: no key → 401, bogus key → 401, real LSSD key → 403 + exact message on two routes. morgue-api restarted by the deploy.
+
 ## DEPLOYED 2026-11-06 — LSPD crosspost killed, portal filings re-enabled
 
 ### Removed
