@@ -582,6 +582,9 @@ async function notifyCompletionStepFailure(topicId, stepName, detail) {
  * read that rebuilds assignment counts), so pre-deploy failures aren't lost.
  */
 export const STEP_RETRY_PATH = 'completionStepRetries';
+// Cooldown between retries of the same failed step (the sweep skips fresher
+// attempts; the queue dashboard renders next-retry times off this).
+export const STEP_RETRY_COOLDOWN_MS = 30 * 60 * 1000;
 
 export function markStepRetry(topicId, stepName, detail = '') {
     if (!topicId || !stepName) return;
@@ -1833,7 +1836,7 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
         return;
     }
 
-    const COOLDOWN_MS = 30 * 60 * 1000; // skip steps retried within the last 30 min
+    const COOLDOWN_MS = STEP_RETRY_COOLDOWN_MS; // skip steps retried within the last 30 min
     try {
         // Single shared marker read: the tiny completionStepRetries index names
         // every known failed step, so fetch ONLY those entries — never the full

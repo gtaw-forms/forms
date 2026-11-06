@@ -418,6 +418,7 @@ client.once('clientReady', async () => {
     // ── Start portal-forms worker (lspd-portal-form-queue entity; same ──
     // lifecycle as the coroner-email queue; dry-run verify only by default) ──
     try {
+        const firebase = (await import('./services/firebase.js')).default;
         firebase.init();
         const { startPortalFormWorker } = await import('./services/lspdPortalFormQueue.js');
         startPortalFormWorker(firebase.db);

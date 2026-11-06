@@ -2,10 +2,12 @@
  * Queue Dashboard — lightweight embed showing the deploy queue in real time.
  *
  * Posts to the bot-spam channel and updates every 30 seconds.
- * No browser checks. Three data sources, all cheap:
+ * No browser checks. Four data sources, all cheap:
  *   1. In-memory deploy queue (queued/processing, with fire times) — free.
  *   2. The tiny `retry-queue` RTDB index (failed forms + retry countdowns).
  *   3. The tiny `coroner-email-queue` RTDB node (pending emails).
+ *   4. The VPS-local completion-step retry file + one small read per marked
+ *      topic (failed autopsy-pipeline steps + next-try times).
  * Sources 2+3 refresh every 5 min into memory (≈600 tiny reads/day total);
  * countdowns render live regardless. Manual Refresh always reads fresh.
  * Never blocks the deploy system.
@@ -14,6 +16,8 @@
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { getQueuedDeployments } from './autoDeploy.js';
 import { registerTick, unregisterTick } from './scheduler.js';
+import { readState } from './vpsState.js';
+import { STEP_RETRY_PATH, STEP_RETRY_COOLDOWN_MS } from './deployAutopsyReply.js';
 
 const REFRESH_MS = 30 * 1000; // 30 seconds
 const CONFIG_PATH = 'appMetadata/queueDashboard';
@@ -28,10 +32,10 @@ let cachedConfig = null;
 // were indexed: key -> { label, formId } from a single-report read.
 const retryLabelCache = new Map();
 // Firebase-read cache: the in-memory queue is free to render every 30s, but
-// the retry-queue + email-queue RTDB reads are cached for 5 min (≈576 tiny
-// reads/day instead of ≈5,760). Countdowns (<t:...:R>) render live anyway.
+// the retry-queue + email-queue + step-retry RTDB reads are cached for 5 min
+// (≈576 tiny reads/day instead of ≈5,760). Countdowns (<t:...:R>) render live anyway.
 const FIREBASE_CACHE_MS = 5 * 60 * 1000;
-let firebaseCache = { at: 0, failed: null, emails: null };
+let firebaseCache = { at: 0, failed: null, emails: null, steps: null };
 
 export function setQueueDashboardClient(c) {
     client = c;
@@ -72,6 +76,47 @@ async function getPendingEmails(db) {
     }
 }
 
+/**
+ * Read failed completion steps awaiting their retry sweep (e.g. an LSPD ME
+ * form that aborted). Markers live in the VPS-local retry file (free,
+ * same-process read); each marked topic costs one small completionSteps
+ * read so the row shows the live detail. Never scans autopsy-requested.
+ */
+async function getPendingStepRetries(db) {
+    let markers = {};
+    try {
+        markers = readState(STEP_RETRY_PATH, {});
+    } catch { return []; }
+    const ids = Object.keys(markers || {});
+    if (!db || ids.length === 0) return [];
+    const rows = [];
+    for (const topicId of ids.slice(0, 12)) {
+        const steps = markers[topicId] || {};
+        let entry = null;
+        try {
+            const snap = await db.ref(`autopsy-requested/${topicId}`).once('value').catch(() => null);
+            entry = snap?.exists() ? (snap.val() || {}) : null;
+        } catch { entry = null; }
+        const title = String(entry?.caseTitle || entry?.title || '').replace(/\s*[-–—]\s*UNASSIGNED\s*$/i, '').trim().slice(0, 70);
+        for (const stepName of Object.keys(steps)) {
+            const st = entry?.completionSteps?.[stepName];
+            // Drop markers the sweep already resolved (it clears its own) —
+            // display only steps still failed.
+            if (!st || st.status !== 'failed') continue;
+            const lastTry = Date.parse(st.retriedAt || '') || Date.parse(markers[topicId][stepName]?.failedAt || '') || 0;
+            const nextAt = lastTry ? lastTry + STEP_RETRY_COOLDOWN_MS : 0;
+            rows.push({
+                topicId, stepName,
+                label: title || `#${topicId}`,
+                detail: String(st.detail || '').slice(0, 140),
+                nextAt: nextAt && nextAt > Date.now() ? nextAt : 0,
+            });
+        }
+    }
+    rows.sort((a, b) => (a.nextAt || 0) - (b.nextAt || 0));
+    return rows;
+}
+
 /** Fill in label/formId for pre-label index rows (one small read, cached). */
 async function resolveRetryLabel(db, row) {
     if (row.label) return row;
@@ -109,14 +154,16 @@ async function buildQueueEmbed(db, { fresh = false } = {}) {
     const entries = getQueuedDeployments();
     let failed = firebaseCache.failed || [];
     let emails = firebaseCache.emails || [];
+    let steps = firebaseCache.steps || [];
     if (db && (fresh || Date.now() - firebaseCache.at > FIREBASE_CACHE_MS)) {
         failed = await getFailedRetries(db);
         emails = await getPendingEmails(db);
-        firebaseCache = { at: Date.now(), failed, emails };
+        steps = await getPendingStepRetries(db);
+        firebaseCache = { at: Date.now(), failed, emails, steps };
     }
 
     const embed = new EmbedBuilder()
-        .setColor(failed.length > 0 ? 0xe74c3c : entries.length > 0 ? 0xffc107 : 0x28a745)
+        .setColor(failed.length > 0 || steps.length > 0 ? 0xe74c3c : entries.length > 0 ? 0xffc107 : 0x28a745)
         .setTitle('Deploy Queue')
         .setDescription(`Last updated: <t:${Math.floor(Date.now() / 1000)}:R>`)
         .setFooter({ text: `Auto-refreshes every ${REFRESH_MS / 1000}s` });
@@ -149,6 +196,19 @@ async function buildQueueEmbed(db, { fresh = false } = {}) {
         }
         if (failed.length > 10) lines.push(`…and ${failed.length - 10} more`);
         embed.addFields({ name: `Failed Queued Forms (${failed.length})`, value: truncateLines(lines), inline: false });
+    }
+
+    // Completion-step retries (autopsy pipeline): failed steps the recovery
+    // sweep will retry — with the next-try time, so a quiet queue never reads
+    // as "nothing pending" while a filing is still stuck.
+    if (steps.length > 0) {
+        const lines = steps.slice(0, 8).map((s) => {
+            const when = s.nextAt ? ` — retry <t:${Math.floor(s.nextAt / 1000)}:R>` : ' — retry on next sweep';
+            const detail = s.detail ? `\n└ ${s.detail}` : '';
+            return `⏳ **${s.label}** — \`${s.stepName}\` (#${s.topicId})${when}${detail}`;
+        });
+        if (steps.length > 8) lines.push(`…and ${steps.length - 8} more`);
+        embed.addFields({ name: `Failed Steps — Retrying (${steps.length})`, value: truncateLines(lines), inline: false });
     }
 
     if (emails.length > 0) {
