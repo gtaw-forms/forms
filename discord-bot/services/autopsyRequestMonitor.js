@@ -31,7 +31,7 @@ import { DOE_PAREN_RE, isDoePlaceholder, isNonIdentityPlaceholder } from './doeP
  * ever read by the bot, never the web app). Store: data/bot-state/
  * autopsy-requests/counters.json -> { counts: {<faction>: n}, lastUpdated }.
  */
-function bumpFactionCounter(countKey, delta = 1) {
+export function bumpFactionCounter(countKey, delta = 1) {
     const s = mutateState('autopsy-requests/counters', (cur) => {
         cur = cur || { counts: {}, lastUpdated: {} };
         cur.counts[countKey] = (cur.counts[countKey] || 0) + delta;
@@ -365,13 +365,12 @@ async function searchAgencyRequestTopic(client, { oocName, name }, cfg) {
  *
  *   1. Reuse a preserved topic id from a previous cycle (reset-safe).
  *   2. Search the faction forum for a matching existing topic ("Name (( OOC ))"
- *      first, then the plain name) — CASELINK creates its own topics.
- *   3. Nothing found → resolve the PHMC topic poster. CASELINK poster → skip
- *      creation (never duplicate). Unresolvable poster → skip conservatively
- *      (recovery sweep / manual handling covers it). Human poster → one final
- *      re-search to close the CASELINK race window, then create a "certified
- *      copy" topic containing the raw request BBCode and persist
- *      <faction>RequestTopicId + created-by-bot + crosspostStatus flags.
+ *      first, then the plain name).
+ *   3. Nothing found → resolve the PHMC topic poster. Unresolvable poster →
+ *      skip conservatively (recovery sweep / manual handling covers it).
+ *      Otherwise create a "certified copy" topic containing the raw request
+ *      BBCode and persist <faction>RequestTopicId + created-by-bot +
+ *      crosspostStatus flags.
  *
  * @param {object} p
  * @param {object} p.db — Firebase Admin RTDB
@@ -437,41 +436,29 @@ async function ensureAgencyRequestTopic({
             db.ref(`autopsy-requested/${topicId}/${cfg.topicField}`).set(found.topicId).catch(() => {});
             return { topicId: found.topicId };
         }
-        console.log(`[AUTOPSY-MON] Step 3 — ${String(faction).toUpperCase()} topic search returned no results for ${oocName || name}; checking poster for CASELINK...`);
+        console.log(`[AUTOPSY-MON] Step 3 — ${String(faction).toUpperCase()} topic search returned no results for ${oocName || name}; checking poster...`);
     } catch (err) {
         console.warn(`[AUTOPSY-MON] Step 3 — ${String(faction).toUpperCase()} topic search error: ${err.message}`);
         return { topicId: null };
     }
 
     // 3. Nothing found — resolve the PHMC poster before creating anything.
+    // Fail closed: without a resolvable poster we never create (avoids
+    // duplicating a topic the requester's faction may have posted itself).
     let poster = requesterPoster;
     if (!poster) {
         try {
             poster = await getForumClient().getTopicPoster(topicId, { baseUrl: PHMC_BASE }) || '';
         } catch { poster = ''; }
     }
-    const isCaselink = !!(poster && /caselink/i.test(poster));
-    console.log(`[AUTOPSY-MON] Step 3 — PHMC request poster: "${poster || 'unknown'}" (caselink: ${isCaselink})`);
-
-    if (isCaselink) {
-        console.log(`[AUTOPSY-MON] Step 3 — CASELINK request — ${String(faction).toUpperCase()} creates its own topic; skipping creation to avoid duplication`);
-        return { topicId: null };
-    }
+    console.log(`[AUTOPSY-MON] Step 3 — PHMC request poster: "${poster || 'unknown'}"`);
     if (!poster) {
-        console.warn(`[AUTOPSY-MON] Step 3 — Could not resolve request poster — skipping ${String(faction).toUpperCase()} topic creation to avoid duplicating a potential CASELINK topic. Handle manually or via recovery sweep.`);
+        console.warn(`[AUTOPSY-MON] Step 3 — Could not resolve request poster — skipping ${String(faction).toUpperCase()} topic creation. Handle manually or via recovery sweep.`);
         return { topicId: null };
     }
 
-    // Human request — close the CASELINK race window with one more search,
-    // then post the certified-copy topic with the RAW request BBCode verbatim.
+    // Human request — post the certified-copy topic with the RAW request BBCode verbatim.
     try {
-        const recheck = await searchAgencyRequestTopic(client, { oocName, name }, cfg);
-        if (recheck) {
-            console.log(`[AUTOPSY-MON] Step 3 — ${String(faction).toUpperCase()} topic appeared during recheck: #${recheck.topicId}`);
-            db.ref(`autopsy-requested/${topicId}/${cfg.topicField}`).set(recheck.topicId).catch(() => {});
-            return { topicId: recheck.topicId };
-        }
-
         // Dynamic mass title when provided (mass single-thread passes its
         // incident-label title); otherwise the legacy singular shape.
         const finalTitle = topicTitle || `Autopsy Request - ${name}${oocName ? ` ((${oocName}))` : ''} [${facTag}]`;
@@ -484,7 +471,7 @@ async function ensureAgencyRequestTopic({
             const tM = res.url.match(/[?&]t=(\d+)/);
             if (tM) {
                 const newTopicId = tM[1];
-                console.log(`[AUTOPSY-MON] Created ${facTag} request topic #${newTopicId} for non-caselink request`);
+                console.log(`[AUTOPSY-MON] Created ${facTag} request topic #${newTopicId}`);
                 // Batched: topic id + creation flags in one update (same values, same timing — all post after the forum post lands).
                 db.ref(`autopsy-requested/${topicId}`).update({ [cfg.topicField]: newTopicId, [`${factionLower}RequestCreatedByBot`]: true, [`${factionLower}CrosspostStatus`]: 'pending' }).catch(() => {});
                 return { topicId: newTopicId };
@@ -697,10 +684,9 @@ export async function checkForNewRequests() {
             // --- New matching request found ---
 
             // ── Requester identity (resolved at detection time, reused later) ──
-            // The forum username of whoever posted the request ("CASELINK [Bot]"
-            // vs a human officer) gates BOTH the agency-topic duplication guard
-            // and the completion webhook. Looked up here once so Step 3 never
-            // needs its own ad-hoc fetch.
+            // The forum username of whoever posted the request. Looked up here
+            // once so Step 3 never needs its own ad-hoc fetch; also feeds the
+            // completion "DM Requester" step.
             let requesterPoster = prevEntry?.requesterPoster || '';
             try {
                 const phmcClient = getForumClient();
@@ -710,9 +696,8 @@ export async function checkForNewRequests() {
             } catch (err) {
                 console.warn(`[AUTOPSY-MON] Poster lookup failed for #${topic.topicId}: ${err.message}`);
             }
-            const postedByCaselink = !!(requesterPoster && /caselink/i.test(requesterPoster));
             if (requesterPoster) {
-                console.log(`[AUTOPSY-MON] Request poster for #${topic.topicId}: "${requesterPoster}" (caselink: ${postedByCaselink})`);
+                console.log(`[AUTOPSY-MON] Request poster for #${topic.topicId}: "${requesterPoster}"`);
             }
 
             const entry = {
@@ -740,10 +725,9 @@ export async function checkForNewRequests() {
                 ...(prevEntry?.sadcrRequestTopicId ? { sadcrRequestTopicId: prevEntry.sadcrRequestTopicId } : {}),
                 ...(prevEntry?.daoRequestTopicId ? { daoRequestTopicId: prevEntry.daoRequestTopicId } : {}),
                 ...(prevEntry?.requesterDiscordTag ? { requesterDiscordTag: prevEntry.requesterDiscordTag } : {}),
-                // Requester identity fields (poster lookup re-runs each cycle only
-                // while no caseState exists; never write a false over a true).
+                // Requester identity (poster lookup re-runs each cycle only
+                // while no caseState exists).
                 ...(requesterPoster ? { requesterPoster } : {}),
-                ...(postedByCaselink ? { postedByCaselink: true } : {}),
                 // Preserve the live progress embed so reprocessing/restarts
                 // RESUME the same Discord message instead of posting a new one.
                 ...(prevEntry?.progressMessageId ? { progressMessageId: prevEntry.progressMessageId } : {}),
@@ -1117,10 +1101,10 @@ export async function checkForNewRequests() {
 
                         // --- Agency crosspost: locate/create the request topic on the faction's own forum ---
                         // LSSD/SADCR/DAO are registry factions whose forums ALL sit on lssd.gta.world,
-                        // so one pipeline serves them: search-first ("Name (( OOC ))" then plain name)
-                        // because CASELINK posts its own topics; creation happens ONLY for requests
-                        // whose PHMC poster positively resolves to a human account (never duplicate a
-                        // CASELINK topic; unresolvable posters defer to recovery/manual).
+                        // so one pipeline serves them: search-first ("Name (( OOC ))" then plain name);
+                        // creation happens ONLY for requests whose PHMC poster
+                        // positively resolves (unresolvable posters defer to
+                        // recovery/manual).
                         // The raw request BBCode goes in verbatim inside the certified-copy shell.
                         if (isAgencyFaction(parsed.faction) && (caseOoc || caseName)) {
                             const cfgA = getAgencyForum(parsed.faction);

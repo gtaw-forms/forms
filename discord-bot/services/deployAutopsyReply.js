@@ -23,7 +23,7 @@ import { readState, mutateState } from './vpsState.js';
 
 import { COMPLETION_TEMPLATE, buildCompletionBb } from './completionTemplate.js';
 import { isNonIdentityPlaceholder } from './doePlaceholders.js';
-import { CASELINK_ACCOUNT, isCaselinkAccount, isUnusableDmTarget, nameFallbackVerdict } from './autopsyCompletionGuards.js';
+import { isUnusableDmTarget, nameFallbackVerdict } from './autopsyCompletionGuards.js';
 
 // ── Constants ──
 export const CASE_MGMT_FORUM_ID = 266;
@@ -51,9 +51,11 @@ export function extractReplyPostId(url) {
 // Mass Autopsy Rework model: one shared f=266 thread holds one reply PER BODY
 // (each ME's report), tracked under cases/<idx>/{replyPostId,replyUrl,
 // completedAt,completedBbCode}. The collection-level steps (f=265 PHMC reply,
-// agency combined reply, LSPD crosspost, requester DM, CASELINK webhook) fire
+// agency combined reply, LSPD crosspost, requester DM) fire
 // ONCE per collection with ONE batched payload when every body is done —
-// partials never emit premature singles.
+// partials never emit premature singles. (The requester Discord webhook fired
+// here too until CASELINK was retired 2026-11-09; manual sends go through
+// /forward-autopsy-complete.)
 //
 // Per-topic multi records (each case owns its own f=266 topic via
 // cases/<idx>/caseTopicId) keep the legacy per-case behaviour below.
@@ -651,7 +653,7 @@ async function finishCompletionStep(topicId, stepName, ok, detail = '') {
  * the driver refuses and the step holds for retry.
  * @returns {Promise<{ok:boolean, dryRun?:boolean, detail:string, sessionInvalid?:boolean}>}
  */
-async function runMedicalExaminerFormStep({ entry, reportData, caseNum, requestLink, meName, approvedBy = '' }) {
+export async function runMedicalExaminerFormStep({ entry, reportData, caseNum, requestLink, meName, approvedBy = '' }) {
     const { autopsyNoticeRecipient } = await import('./lspdAutopsyNotice.js');
     const { deliverMedicalExaminerForm, ME_APPROVED_BY } = await import('./lspdPortalForms.js');
     const target = autopsyNoticeRecipient(entry);
@@ -1130,7 +1132,6 @@ export async function handleAutopsyReply(report) {
         const completed = await markReportComplete(db, authorId, key, label, 'autopsy-reply', completeUrl);
         if (completed) {
             let completedTopicId = null;
-            let completedCaseTitle = null;
             try {
                 const ooc = (reportData.data?.decedentOOC || "").trim();
                 const name = (reportData.data?.decedentName || "").trim();
@@ -1275,7 +1276,6 @@ export async function handleAutopsyReply(report) {
                         // identity/state so each case completes independently.
                         const caseRec = entry._caseRec || null;
                         const caseIdx = entry._caseIdx ?? null;
-                        completedCaseTitle = ((caseRec?.caseTitle || entry.caseTitle || entry.title || "Autopsy Case")).replace(/\s*[-–—]\s*UNASSIGNED\s*$/i, '');
 
                         // Private cases (confidential autopsies) never crosspost to LSPD/LSSD.
                         const isPrivateEntry = entry.isPrivate === true;
@@ -1422,6 +1422,14 @@ export async function handleAutopsyReply(report) {
                         await progress.addStep('PHMC Reply', 'pending');
                         stepPromises.push((async () => {
                             const stepName = 'phmcCompletionReply';
+                            // Private cases have no public request topic — entry.topicId
+                            // is the f=266 case topic, so there is nothing to reply to
+                            // here (the report itself is already the case-thread reply).
+                            if (isPrivateEntry) {
+                                await finishCompletionStep(key, stepName, true, 'Private case — no public request topic');
+                                await progress.addStep('PHMC Reply', 'skip', 'Confidential — no public post');
+                                return;
+                            }
                             if (isMulti && !allCasesDone) {
                                 await startCompletionStep(key, stepName, 'Deferred — request has pending decedents');
                                 await finishCompletionStep(key, stepName, true, 'Deferred — not all decedent cases complete');
@@ -1519,14 +1527,18 @@ export async function handleAutopsyReply(report) {
                         // for LSPD autopsies. Same two-phase step tracking as the
                         // notice above; dry-run default verifies only. New step
                         // name (lspdMedicalExaminerForm) — existing keys untouched.
-                        if (isPrivateEntry) {
-                            await finishCompletionStep(completedTopicId, 'lspdMedicalExaminerForm', true, 'Private case — ME form skipped');
-                            await progress.addStep('LSPD ME Form', 'ok', 'Skipped (private case)');
+                        // Private LSPD cases DO file here: DRDB is their only
+                        // delivery route (inbox notices retired Nov 2026). Private
+                        // cases from other agencies still skip it.
+                        const privateLspdDelivery = isPrivateEntry && (entry.deliveryDRDB === true || isLspdCase);
+                        if (isPrivateEntry && !privateLspdDelivery) {
+                            await finishCompletionStep(completedTopicId, 'lspdMedicalExaminerForm', true, 'Private case — not an LSPD DRDB delivery');
+                            await progress.addStep('LSPD ME Form', 'ok', 'Skipped (private, non-LSPD)');
                         } else if (sharedBatch && !allCasesDone) {
                             await startCompletionStep(completedTopicId, 'lspdMedicalExaminerForm', 'Deferred — collection has pending bodies');
                             await finishCompletionStep(completedTopicId, 'lspdMedicalExaminerForm', true, 'Deferred — not all bodies complete');
                             await progress.addStep('LSPD ME Form', 'ok', 'Deferred until all bodies complete');
-                        } else if (lspdTopicId || isLspdCase) {
+                        } else if (lspdTopicId || isLspdCase || privateLspdDelivery) {
                             await progress.addStep('LSPD ME Form', 'pending');
                             stepPromises.push((async () => {
                                 const stepName = 'lspdMedicalExaminerForm';
@@ -1647,26 +1659,20 @@ export async function handleAutopsyReply(report) {
                                         console.warn('[AUTO-COMPLETE] Topic poster lookup failed: ' + lookupErr.message);
                                     }
                                     if (!dmTarget) {
-                                        // Last resort: the CASELINK bot is the automated requester
-                                        // for LSSD/LSPD cases. It cannot receive these PMs (phpBB
-                                        // rejects the account) and reads the forums directly, so
-                                        // the skip guard below records the step as skipped — the
-                                        // canonical CASELINK_ACCOUNT value is what makes that guard
-                                        // match (a differently-cased literal made the DM attempt
-                                        // for real and retried forever, 2026-10-14).
-                                        dmTarget = CASELINK_ACCOUNT;
-                                        console.warn('[AUTO-COMPLETE] Topic poster not found, using CASELINK as fallback');
+                                        // No usable poster — leave the target empty so the
+                                        // unusable-target guard below records a skip (never
+                                        // a failure, so the recovery sweep can't retry a
+                                        // permanently unsendable DM forever).
+                                        console.warn('[AUTO-COMPLETE] Topic poster not found — DM will be skipped');
                                     }
                                 }
 
-                                // Placeholder recipients and the CASELINK bot are skipped —
-                                // as COMPLETED steps, never failures, so the recovery sweep
+                                // Placeholder recipients are skipped — as COMPLETED
+                                // steps, never failures, so the recovery sweep
                                 // can't retry a permanently unsendable DM.
                                 if (isUnusableDmTarget(dmTarget)) {
-                                    const caselink = isCaselinkAccount(dmTarget);
-                                    if (caselink) console.log("[AUTO-COMPLETE] CASELINK target — DM skipped (they monitor LSSD forums directly)");
-                                    await finishCompletionStep(key, 'dmSent', true, caselink ? 'Automated request — DM not needed' : 'No valid DM target — skipped');
-                                    await progress.addStep('DM Requester', 'skip', caselink ? 'CASELINK monitors LSSD' : 'No valid target');
+                                    await finishCompletionStep(key, 'dmSent', true, 'No valid DM target — skipped');
+                                    await progress.addStep('DM Requester', 'skip', 'No valid target');
                                     return;
                                 }
                                 const dmSubject = buildDmSubject(entry);
@@ -1702,70 +1708,12 @@ export async function handleAutopsyReply(report) {
                             }
                         })());
 
-                        // Requester Discord notification (CASELINK requests only) — see
-                        // services/requesterWebhook.js. Pings the officer when their numeric Discord
-                        // ID resolves, else greets by name. A blank faction webhook var (DAO default)
-                        // returns {skipped:true} and the step completes silently.
-                        if (entry.postedByCaselink === true && !isPrivateEntry) {
-                            await progress.addStep('Requester Discord Notification', 'pending');
-                            stepPromises.push((async () => {
-                                const stepName = 'requesterWebhook';
-                                if (isMulti && !allCasesDone) {
-                                    await startCompletionStep(key, stepName, 'Deferred — request has pending decedents');
-                                    await finishCompletionStep(key, stepName, true, 'Deferred — not all decedent cases complete');
-                                    await progress.addStep('Requester Discord Notification', 'ok', 'Deferred until all decedents complete');
-                                    return;
-                                }
-                                await startCompletionStep(key, stepName, 'POST requester-completion webhook');
-                                try {
-                                    let agencyTopicUrlForButton = null;
-                                    if (completionAgencyCfg) {
-                                        const tid = entry[completionAgencyCfg.topicField];
-                                        if (tid) agencyTopicUrlForButton = `${completionAgencyCfg.baseUrl}/viewtopic.php?t=${tid}`;
-                                    }
-                                    // Shared-thread collection: ONE webhook call per
-                                    // collection with the combined case list (no
-                                    // change needed in requesterWebhook.js — the
-                                    // batch is expressed via caseNumber/caseTitle).
-                                    let hookCaseNumber = caseRec?.caseNum ?? entry.caseNum ?? '';
-                                    let hookCaseTitle = completedCaseTitle;
-                                    let hookMeName = completingMe || '';
-                                    if (sharedBatch && allCasesDone) {
-                                        const sIdxs = Object.keys(massCasesVal || {}).filter((k) => /^\d+$/.test(k)).map(Number).sort((a, b) => a - b);
-                                        const caseNums = sIdxs.map((i) => massCasesVal[i]?.caseNum).filter(Boolean);
-                                        const meNames = [...new Set(sIdxs.map((i) => massCasesVal[i]?.assignedTo).filter(Boolean))];
-                                        hookCaseNumber = caseNums.join(', ');
-                                        hookCaseTitle = `Mass Autopsy — ${sIdxs.length} bodies${caseNums.length ? ` (Cases ${caseNums.join(', ')})` : ''}`;
-                                        if (meNames.length) hookMeName = meNames.join(', ');
-                                        console.log(`[AUTO-COMPLETE] Shared collection — batched requester webhook (${sIdxs.length} bodies)`);
-                                    }
-                                    const res = await notifyRequesterOfCompletion(db, {
-                                        ...entry,
-                                        assignedTo: hookMeName || entry.assignedTo || '',
-                                    }, {
-                                        caseNumber: hookCaseNumber,
-                                        caseTitle: hookCaseTitle,
-                                        faction: completionFaction ? String(completionFaction).toUpperCase() : '',
-                                        agencyTopicUrl: agencyTopicUrlForButton,
-                                        meName: hookMeName || '',
-                                    });
-                                    const detail = res.ok
-                                        ? (res.testMode ? `Sent [TEST -> ${res.target}]` : `Sent -> ${res.target}`)
-                                        : (res.reason === 'test_url_missing' ? 'Test mode ON but TEST_URL empty'
-                                            : res.skipped ? `Skipped — ${res.reason}` : (res.reason || 'Send failed'));
-                                    const okFlag = !!res.ok;
-                                    const skippedFlag = !okFlag && !!res.skipped;
-                                    await finishCompletionStep(key, stepName, okFlag || skippedFlag, detail);
-                                    await progress.addStep('Requester Discord Notification', okFlag ? 'ok' : (skippedFlag ? 'skip' : 'fail'), detail);
-                                    if (!okFlag && !skippedFlag) stepFailed.REQUESTERWEBHOOK = true;
-                                } catch (e) {
-                                    await finishCompletionStep(key, stepName, false, e.message);
-                                    await progress.addStep('Requester Discord Notification', 'fail', e.message);
-                                    stepFailed.REQUESTERWEBHOOK = true;
-                                }
-                            })());
-                        } else {
-                            const skipWhy = isPrivateEntry ? 'Private case' : 'Not a CASELINK request';
+                        // Requester Discord notification — retired with CASELINK
+                        // (2026-11-09): the webhook only ever fired for
+                        // CASELINK-posted requests, which no longer exist.
+                        // Manual sends still go through /forward-autopsy-complete.
+                        {
+                            const skipWhy = isPrivateEntry ? 'Private case' : 'Requester webhook retired with CASELINK';
                             await finishCompletionStep(key, 'requesterWebhook', true, `${skipWhy} — webhook skipped`);
                             await progress.addStep('Requester Discord Notification', 'skip', skipWhy);
                         }
@@ -1983,9 +1931,11 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
             // ONE batched payload source for completed-collection retries.
             const retryBatch = (retryShared && retryAllDone) ? buildBatchedBodiesPayload(entry.cases || {}) : null;
 
-            // Private cases never crosspost to LSPD/LSSD — mark crosspost steps as resolved.
+            // Private cases never crosspost to LSPD/LSSD — mark crosspost steps as
+            // resolved. The LSPD ME form is NOT skipped: DRDB is the only delivery
+            // route for private LSPD cases, so its failures must keep retrying.
             if (entry.isPrivate === true && (stepBase === 'lssdCombinedReply' || stepBase === 'lssdCompletionReply'
-                || stepBase === 'lssdAutopsyReport' || stepBase === 'lspdCrosspost' || stepBase === 'lspdMedicalExaminerForm')) {
+                || stepBase === 'lssdAutopsyReport' || stepBase === 'lspdCrosspost')) {
                 console.log(`[AUTO-COMPLETE] [OK] ${stepName} for ${caseLabel} — private case, crosspost skipped`);
                 await finishCompletionStep(key, stepName, true, 'Private case — crosspost skipped');
                 continue;
@@ -2017,6 +1967,14 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
                 let retryDetail = '';
 
                 if (stepBase === 'phmcCompletionReply') {
+                    if (entry.isPrivate === true) {
+                        // No public request topic exists for a private case —
+                        // resolve any inherited marker without posting.
+                        console.log(`[AUTO-COMPLETE] [OK] Retry OK — ${stepName} for ${caseLabel}: private case, no public post`);
+                        await finishCompletionStep(key, stepName, true, 'Private case — no public request topic');
+                        retried++;
+                        continue;
+                    }
                     if (!entry.topicId) {
                         console.warn(`[AUTO-COMPLETE] Cannot retry ${stepName} for ${caseLabel}: no topicId`);
                         stillFailed++;
@@ -2271,8 +2229,9 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
                             console.warn('[AUTO-COMPLETE] Topic poster lookup failed during retry: ' + lookupErr.message);
                         }
                         if (!dmTarget) {
-                            dmTarget = CASELINK_ACCOUNT;
-                            console.warn('[AUTO-COMPLETE] Topic poster not found during retry, using CASELINK as fallback');
+                            // No usable poster — leave the target empty so the
+                            // unusable-target guard below records a skip.
+                            console.warn('[AUTO-COMPLETE] Topic poster not found during retry — DM will be skipped');
                         }
                     }
                     if (isUnusableDmTarget(dmTarget)) {

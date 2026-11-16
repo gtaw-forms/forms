@@ -221,6 +221,45 @@ export async function resolveAutopsyTopic(interaction) {
                                     const { completeSinglePanel } = await import('./singlePanelV2.js');
                                     await completeSinglePanel(db, (interaction && interaction.client) || state.discordClient, { requestTopicId: key, caseIdx: ci }).catch(() => {});
                                 } catch { /* panel flip best-effort ignored: private completion already persisted */ }
+
+                                // LSPD private cases are delivered through DRDB — the manual
+                                // completion path must file the ME liaison form too, or the
+                                // report never reaches LSPD (inbox notices are retired).
+                                const { isLspdAutopsyTarget } = await import('./lspdAutopsyNotice.js');
+                                if (isLspdAutopsyTarget(entry)) {
+                                    // Never file twice: the automatic completion path may
+                                    // already have filed this case.
+                                    const meStepSnap = await state.dbRef.child(`autopsy-requested/${key}/completionSteps/lspdMedicalExaminerForm`).once('value').catch(() => null);
+                                    const meStep = meStepSnap?.exists?.() ? meStepSnap.val() : null;
+                                    if (meStep?.status === 'completed' || meStep?.status === 'attempting') {
+                                        console.log('[AUTO-COMPLETE] Private LSPD case #' + key + ' — DRDB step already ' + meStep.status + ', not filing again');
+                                    } else if (!reportData?.data) {
+                                        console.warn('[AUTO-COMPLETE] Private LSPD case #' + key + ' has no report data — DRDB filing NOT done');
+                                        await state.dbRef.child(`autopsy-requested/${key}/completionSteps/lspdMedicalExaminerForm`).set({
+                                            status: 'failed',
+                                            updatedAt: new Date().toISOString(),
+                                            detail: 'Manual completion: no report data — DRDB filing not done',
+                                        }).catch(() => {});
+                                    } else {
+                                        try {
+                                            const { runMedicalExaminerFormStep } = await import('./deployAutopsyReply.js');
+                                            const r = await runMedicalExaminerFormStep({
+                                                entry, reportData,
+                                                caseNum: caseRec?.caseNum || entry.caseNum || '',
+                                                requestLink: entry.caseUrl || entry.topicUrl || '',
+                                                meName: completingMe || '',
+                                            });
+                                            console.log('[AUTO-COMPLETE] Private LSPD DRDB filing — ' + (r.ok ? 'OK' : 'FAILED: ' + r.detail));
+                                            await state.dbRef.child(`autopsy-requested/${key}/completionSteps/lspdMedicalExaminerForm`).set({
+                                                status: r.ok ? 'completed' : 'failed',
+                                                updatedAt: new Date().toISOString(),
+                                                detail: r.detail || (r.ok ? 'Filed on manual completion' : 'Failed'),
+                                            }).catch(() => {});
+                                        } catch (e) {
+                                            console.warn('[AUTO-COMPLETE] Private LSPD DRDB filing error: ' + e.message);
+                                        }
+                                    }
+                                }
                             } else {
                                 console.log('[AUTO-COMPLETE] Marking autopsy request as completed in Firebase');
                                 const requesterName = entry.parsed?.requesterName || 'Requesting Party';

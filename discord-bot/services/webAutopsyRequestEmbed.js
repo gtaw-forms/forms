@@ -141,3 +141,59 @@ export function buildPostedNotification(entry = {}, topicUrl = '') {
         }],
     };
 }
+
+// ── Private (confidential) web requests ───────────────────────────────────
+// These never reach a public forum, so the internal Discord notice is the only
+// trace outside the confidential f=266 case. The IC decedent name stays in the
+// internal notice (same as the LSPD PM intake drafts); nothing here is public.
+const PRIVATE_COLOR = 0x9b59b6; // purple — matches the PM intake draft
+
+/**
+ * "New PRIVATE autopsy request submitted" webhook payload.
+ * @param {object} entry — an autopsy-requests/private-pending entry
+ */
+export function buildPrivateSubmittedNotification(entry = {}) {
+    return {
+        username: WEBHOOK_USERNAME,
+        content: '**New PRIVATE autopsy request submitted — no public forum post**',
+        embeds: [{
+            title: clip(entry.topicTitle || `Private Autopsy Request — ${entry.decedentName || 'Unknown'}`, 250),
+            color: PRIVATE_COLOR,
+            fields: [
+                { name: 'Decedent', value: clip(`${entry.decedentName || 'Unknown'}${entry.oocName ? ` ((${entry.oocName}))` : ''}`, 200), inline: true },
+                { name: 'Morgue Case #', value: clip(entry.caseId || '—', 100), inline: true },
+                { name: 'Requester', value: clip(entry.requesterName || 'Unknown', 200), inline: true },
+                ...(entry.requesterDept ? [{ name: 'Department', value: clip(entry.requesterDept, 200), inline: true }] : []),
+                ...(entry.agencyForum ? [{ name: 'Agency', value: clip(entry.agencyForum, 100), inline: true }] : []),
+                ...(entry.privateJustification ? [{ name: 'Justification / authority', value: clip(entry.privateJustification, 400), inline: false }] : []),
+            ],
+            timestamp: new Date().toISOString(),
+        }],
+    };
+}
+
+/**
+ * "PRIVATE case created" webhook payload.
+ * @param {object} entry — the pending entry (or a dry-run preview)
+ * @param {string} caseUrl — the f=266 case topic URL (empty for dry runs)
+ */
+export function buildPrivateCreatedNotification(entry = {}, caseUrl = '') {
+    const link = caseUrl ? ` — <${caseUrl}>` : '';
+    const dry = !caseUrl;
+    return {
+        username: WEBHOOK_USERNAME,
+        content: dry
+            ? '**[DRY RUN] PRIVATE case would be created — nothing posted**'
+            : `**PRIVATE case created (confidential)**${link}`,
+        embeds: [{
+            title: clip(entry.topicTitle || 'Private Autopsy Case', 250),
+            color: dry ? MASS_COLOR : POSTED_COLOR,
+            fields: [
+                { name: 'Agency', value: clip(entry.agencyForum || '—', 100), inline: true },
+                ...(entry.caseNum ? [{ name: 'Case', value: clip(`#${entry.caseNum}`, 100), inline: true }] : []),
+                { name: 'Assigned ME', value: clip(entry.assignedTo || 'Rotation pending', 150), inline: true },
+            ],
+            timestamp: new Date().toISOString(),
+        }],
+    };
+}

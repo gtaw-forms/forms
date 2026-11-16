@@ -1,0 +1,738 @@
+[
+  {
+    "name": "awaiting",
+    "state": "REVIEWING",
+    "data": {
+      "shortId": "a1b2c3",
+      "sessionId": "a1b2c3",
+      "requestSummary": "Waiting for your first message…",
+      "oneLineResult": "double-submit fixed",
+      "investigated": [
+        "Read agent/CLAUDE.md (project scope)",
+        "Searched files: \"submit\" (6 matches)",
+        "Read src/forms/IntakeForm.js, src/forms/submit.js"
+      ],
+      "planItems": [
+        "Disable the button and show a spinner while the request is pending.",
+        "Ignore repeat clicks in submit.js.",
+        "Re-enable on error with a message."
+      ],
+      "questions": [
+        "Spinner on the button, or a full-form overlay?",
+        "Add a regression test for double-submit?"
+      ],
+      "awaitingRequest": true
+    },
+    "view": {
+      "embed": {
+        "title": "Please send your feedback",
+        "description": "Status: **Waiting** · describe the bug or feature request in this DM and I will investigate before changing anything",
+        "color": 5793266,
+        "fields": [
+          {
+            "name": "Investigated",
+            "value": "[done] Read agent/CLAUDE.md (project scope)\n[done] Searched files: \"submit\" (6 matches)\n[done] Read src/forms/IntakeForm.js, src/forms/submit.js",
+            "inline": false
+          },
+          {
+            "name": "Proposed plan",
+            "value": "1. Disable the button and show a spinner while the request is pending.\n2. Ignore repeat clicks in submit.js.\n3. Re-enable on error with a message.",
+            "inline": false
+          },
+          {
+            "name": "Questions before I change anything",
+            "value": "**Q1.** Spinner on the button, or a full-form overlay?\n**Q2.** Add a regression test for double-submit?",
+            "inline": false
+          }
+        ],
+        "footer": {
+          "text": "PHMC Forms · session a1b2c3"
+        }
+      },
+      "components": [
+        {
+          "label": "View Full Log",
+          "style": "Secondary",
+          "customId": "fb:log:a1b2c3",
+          "disabled": false
+        }
+      ]
+    }
+  },
+  {
+    "name": "review",
+    "state": "REVIEWING",
+    "data": {
+      "shortId": "a1b2c3",
+      "sessionId": "a1b2c3",
+      "requestSummary": "Submit button double-submit on the intake form",
+      "oneLineResult": "double-submit fixed",
+      "investigated": [
+        "Read agent/CLAUDE.md (project scope)",
+        "Searched files: \"submit\" (6 matches)",
+        "Read src/forms/IntakeForm.js, src/forms/submit.js"
+      ],
+      "planItems": [
+        "Disable the button and show a spinner while the request is pending.",
+        "Ignore repeat clicks in submit.js.",
+        "Re-enable on error with a message."
+      ],
+      "questions": [
+        "Spinner on the button, or a full-form overlay?",
+        "Add a regression test for double-submit?"
+      ]
+    },
+    "view": {
+      "embed": {
+        "title": "Feedback noted",
+        "description": "Status: **Reviewing** · read-only, no changes made",
+        "color": 5793266,
+        "fields": [
+          {
+            "name": "User has asked",
+            "value": "Submit button double-submit on the intake form",
+            "inline": false
+          },
+          {
+            "name": "Investigated",
+            "value": "[done] Read agent/CLAUDE.md (project scope)\n[done] Searched files: \"submit\" (6 matches)\n[done] Read src/forms/IntakeForm.js, src/forms/submit.js",
+            "inline": false
+          },
+          {
+            "name": "Proposed plan",
+            "value": "1. Disable the button and show a spinner while the request is pending.\n2. Ignore repeat clicks in submit.js.\n3. Re-enable on error with a message.",
+            "inline": false
+          },
+          {
+            "name": "Questions before I change anything",
+            "value": "**Q1.** Spinner on the button, or a full-form overlay?\n**Q2.** Add a regression test for double-submit?",
+            "inline": false
+          }
+        ],
+        "footer": {
+          "text": "PHMC Forms · session a1b2c3"
+        }
+      },
+      "components": [
+        {
+          "label": "Approve & Execute",
+          "style": "Success",
+          "customId": "fb:approve:a1b2c3",
+          "disabled": false
+        },
+        {
+          "label": "No Action Needed",
+          "style": "Secondary",
+          "customId": "fb:noaction:a1b2c3",
+          "disabled": false
+        },
+        {
+          "label": "Answer questions",
+          "style": "Secondary",
+          "customId": "fb:answer:a1b2c3",
+          "disabled": false
+        },
+        {
+          "label": "Pause",
+          "style": "Secondary",
+          "customId": "fb:pause:a1b2c3",
+          "disabled": false
+        },
+        {
+          "label": "View Full Log",
+          "style": "Secondary",
+          "customId": "fb:log:a1b2c3",
+          "disabled": false
+        }
+      ]
+    }
+  },
+  {
+    "name": "plan-updated",
+    "state": "AWAITING_ANSWERS",
+    "data": {
+      "shortId": "a1b2c3",
+      "sessionId": "a1b2c3",
+      "requestSummary": "Submit button double-submit on the intake form",
+      "oneLineResult": "double-submit fixed",
+      "investigated": [
+        "Read agent/CLAUDE.md (project scope)",
+        "Searched files: \"submit\" (6 matches)",
+        "Read src/forms/IntakeForm.js, src/forms/submit.js"
+      ],
+      "planItems": [
+        "Disable the button and show a spinner while the request is pending.",
+        "Ignore repeat clicks in submit.js.",
+        "Re-enable on error with a message."
+      ],
+      "questions": [
+        "Spinner on the button, or a full-form overlay?",
+        "Add a regression test for double-submit?"
+      ],
+      "planRevised": true
+    },
+    "view": {
+      "embed": {
+        "title": "Plan updated",
+        "description": "Status: **Plan updated** · press Answer questions to reply, or Approve & Execute to start",
+        "color": 5793266,
+        "fields": [
+          {
+            "name": "User has asked",
+            "value": "Submit button double-submit on the intake form",
+            "inline": false
+          },
+          {
+            "name": "Investigated",
+            "value": "[done] Read agent/CLAUDE.md (project scope)\n[done] Searched files: \"submit\" (6 matches)\n[done] Read src/forms/IntakeForm.js, src/forms/submit.js",
+            "inline": false
+          },
+          {
+            "name": "Proposed plan",
+            "value": "1. Disable the button and show a spinner while the request is pending.\n2. Ignore repeat clicks in submit.js.\n3. Re-enable on error with a message.",
+            "inline": false
+          },
+          {
+            "name": "Questions before I change anything",
+            "value": "**Q1.** Spinner on the button, or a full-form overlay?\n**Q2.** Add a regression test for double-submit?",
+            "inline": false
+          }
+        ],
+        "footer": {
+          "text": "PHMC Forms · session a1b2c3"
+        }
+      },
+      "components": [
+        {
+          "label": "Approve & Execute",
+          "style": "Success",
+          "customId": "fb:approve:a1b2c3",
+          "disabled": false
+        },
+        {
+          "label": "No Action Needed",
+          "style": "Secondary",
+          "customId": "fb:noaction:a1b2c3",
+          "disabled": false
+        },
+        {
+          "label": "Answer questions",
+          "style": "Secondary",
+          "customId": "fb:answer:a1b2c3",
+          "disabled": false
+        },
+        {
+          "label": "Pause",
+          "style": "Secondary",
+          "customId": "fb:pause:a1b2c3",
+          "disabled": false
+        },
+        {
+          "label": "View Full Log",
+          "style": "Secondary",
+          "customId": "fb:log:a1b2c3",
+          "disabled": false
+        }
+      ]
+    }
+  },
+  {
+    "name": "working",
+    "state": "WORKING",
+    "data": {
+      "shortId": "a1b2c3",
+      "sessionId": "a1b2c3",
+      "requestSummary": "Submit button double-submit on the intake form",
+      "oneLineResult": "double-submit fixed",
+      "investigated": [
+        "Read agent/CLAUDE.md (project scope)",
+        "Searched files: \"submit\" (6 matches)",
+        "Read src/forms/IntakeForm.js, src/forms/submit.js"
+      ],
+      "planItems": [
+        "Disable the button and show a spinner while the request is pending.",
+        "Ignore repeat clicks in submit.js.",
+        "Re-enable on error with a message."
+      ],
+      "questions": [
+        "Spinner on the button, or a full-form overlay?",
+        "Add a regression test for double-submit?"
+      ],
+      "phaseLabel": "Applying changes",
+      "progress": [
+        {
+          "text": "Edited src/forms/submit.js",
+          "done": true
+        },
+        {
+          "text": "Editing src/forms/IntakeForm.js…",
+          "done": false
+        }
+      ],
+      "liveText": "Applying the spinner change to IntakeForm.js now — button disables on submit, re-enables on error."
+    },
+    "view": {
+      "embed": {
+        "title": "Working on it",
+        "description": "Status: **Applying changes**",
+        "color": 15774258,
+        "fields": [
+          {
+            "name": "User has asked",
+            "value": "Submit button double-submit on the intake form",
+            "inline": false
+          },
+          {
+            "name": "Progress",
+            "value": "[done] Edited src/forms/submit.js\n[...] Editing src/forms/IntakeForm.js…",
+            "inline": false
+          },
+          {
+            "name": "Latest",
+            "value": "Applying the spinner change to IntakeForm.js now — button disables on submit, re-enables on error.",
+            "inline": false
+          }
+        ],
+        "footer": {
+          "text": "PHMC Forms · session a1b2c3"
+        }
+      },
+      "components": [
+        {
+          "label": "Pause",
+          "style": "Secondary",
+          "customId": "fb:pause:a1b2c3",
+          "disabled": false
+        },
+        {
+          "label": "View Full Log",
+          "style": "Secondary",
+          "customId": "fb:log:a1b2c3",
+          "disabled": false
+        }
+      ]
+    }
+  },
+  {
+    "name": "done",
+    "state": "DONE",
+    "data": {
+      "shortId": "a1b2c3",
+      "sessionId": "a1b2c3",
+      "requestSummary": "Submit button double-submit on the intake form",
+      "oneLineResult": "double-submit fixed",
+      "investigated": [
+        "Read agent/CLAUDE.md (project scope)",
+        "Searched files: \"submit\" (6 matches)",
+        "Read src/forms/IntakeForm.js, src/forms/submit.js"
+      ],
+      "planItems": [
+        "Disable the button and show a spinner while the request is pending.",
+        "Ignore repeat clicks in submit.js.",
+        "Re-enable on error with a message."
+      ],
+      "questions": [
+        "Spinner on the button, or a full-form overlay?",
+        "Add a regression test for double-submit?"
+      ],
+      "summary": "The submit button now disables with a spinner while the request is pending, repeat clicks are ignored, and it re-enables with a message on error.",
+      "filesChanged": [
+        {
+          "path": "src/forms/IntakeForm.js",
+          "size": "4.2 KB",
+          "added": 18,
+          "removed": 3
+        },
+        {
+          "path": "src/forms/submit.js",
+          "size": "1.9 KB",
+          "added": 11,
+          "removed": 2
+        },
+        {
+          "path": "tests/submit.test.js",
+          "size": "0.8 KB",
+          "added": 24,
+          "removed": 0
+        }
+      ],
+      "checks": [
+        "Tests passed (42/42)",
+        "Tagged pre-feedback-0911",
+        "Pushed to source · deploy succeeded"
+      ]
+    },
+    "view": {
+      "embed": {
+        "title": "Done: double-submit fixed",
+        "description": "Status: **Deployed**",
+        "color": 2336089,
+        "fields": [
+          {
+            "name": "User has asked",
+            "value": "Submit button double-submit on the intake form",
+            "inline": false
+          },
+          {
+            "name": "Investigated",
+            "value": "[done] Read agent/CLAUDE.md (project scope)\n[done] Searched files: \"submit\" (6 matches)\n[done] Read src/forms/IntakeForm.js, src/forms/submit.js",
+            "inline": false
+          },
+          {
+            "name": "Summary",
+            "value": "The submit button now disables with a spinner while the request is pending, repeat clicks are ignored, and it re-enables with a message on error.",
+            "inline": false
+          },
+          {
+            "name": "Files changed (3)",
+            "value": "`src/forms/IntakeForm.js` — 4.2 KB · +18 −3\n`src/forms/submit.js` — 1.9 KB · +11 −2\n`tests/submit.test.js` — 0.8 KB · +24 −0",
+            "inline": false
+          },
+          {
+            "name": "Checks & deploy",
+            "value": "[done] Tests passed (42/42)\n[done] Tagged pre-feedback-0911\n[done] Pushed to source · deploy succeeded",
+            "inline": false
+          },
+          {
+            "name": "Finished with this session?",
+            "value": "Press Complete Session to archive it and free the slot, or Revert to roll main back.",
+            "inline": false
+          }
+        ],
+        "footer": {
+          "text": "PHMC Forms · session a1b2c3"
+        }
+      },
+      "components": [
+        {
+          "label": "Complete Session",
+          "style": "Success",
+          "customId": "fb:complete:a1b2c3",
+          "disabled": false
+        },
+        {
+          "label": "View Full Log",
+          "style": "Secondary",
+          "customId": "fb:log:a1b2c3",
+          "disabled": false
+        },
+        {
+          "label": "Revert",
+          "style": "Danger",
+          "customId": "fb:revert:a1b2c3",
+          "disabled": false
+        }
+      ]
+    }
+  },
+  {
+    "name": "paused",
+    "state": "PAUSED",
+    "data": {
+      "shortId": "a1b2c3",
+      "sessionId": "a1b2c3",
+      "requestSummary": "Submit button double-submit on the intake form",
+      "oneLineResult": "double-submit fixed",
+      "investigated": [
+        "Read agent/CLAUDE.md (project scope)",
+        "Searched files: \"submit\" (6 matches)",
+        "Read src/forms/IntakeForm.js, src/forms/submit.js"
+      ],
+      "planItems": [
+        "Disable the button and show a spinner while the request is pending.",
+        "Ignore repeat clicks in submit.js.",
+        "Re-enable on error with a message."
+      ],
+      "questions": [
+        "Spinner on the button, or a full-form overlay?",
+        "Add a regression test for double-submit?"
+      ],
+      "pausedFrom": "WORKING"
+    },
+    "view": {
+      "embed": {
+        "title": "Paused",
+        "description": "Stopped before the next step. Send feedback or extra info and I will re-check the plan before continuing.",
+        "color": 8422542,
+        "fields": [
+          {
+            "name": "User has asked",
+            "value": "Submit button double-submit on the intake form",
+            "inline": false
+          },
+          {
+            "name": "Investigated",
+            "value": "[done] Read agent/CLAUDE.md (project scope)\n[done] Searched files: \"submit\" (6 matches)\n[done] Read src/forms/IntakeForm.js, src/forms/submit.js",
+            "inline": false
+          },
+          {
+            "name": "Paused from",
+            "value": "WORKING",
+            "inline": false
+          }
+        ],
+        "footer": {
+          "text": "PHMC Forms · session a1b2c3"
+        }
+      },
+      "components": [
+        {
+          "label": "Resume",
+          "style": "Success",
+          "customId": "fb:resume:a1b2c3",
+          "disabled": false
+        },
+        {
+          "label": "View Full Log",
+          "style": "Secondary",
+          "customId": "fb:log:a1b2c3",
+          "disabled": false
+        }
+      ]
+    }
+  },
+  {
+    "name": "failed-tests",
+    "state": "FAILED",
+    "data": {
+      "shortId": "a1b2c3",
+      "sessionId": "a1b2c3",
+      "requestSummary": "Submit button double-submit on the intake form",
+      "oneLineResult": "double-submit fixed",
+      "investigated": [
+        "Read agent/CLAUDE.md (project scope)",
+        "Searched files: \"submit\" (6 matches)",
+        "Read src/forms/IntakeForm.js, src/forms/submit.js"
+      ],
+      "planItems": [
+        "Disable the button and show a spinner while the request is pending.",
+        "Ignore repeat clicks in submit.js.",
+        "Re-enable on error with a message."
+      ],
+      "questions": [
+        "Spinner on the button, or a full-form overlay?",
+        "Add a regression test for double-submit?"
+      ],
+      "error": "tests failed (3 failing) — no changes pushed",
+      "failedStep": "TESTING",
+      "checks": [
+        {
+          "label": "Tests failed (39/42)",
+          "ok": false
+        }
+      ],
+      "filesChanged": [
+        {
+          "path": "src/forms/submit.js",
+          "size": "1.9 KB",
+          "added": 11,
+          "removed": 2
+        }
+      ]
+    },
+    "view": {
+      "embed": {
+        "title": "Failed: needs attention",
+        "description": "Status: **Failed** · tests failed (3 failing) — no changes pushed",
+        "color": 14300988,
+        "fields": [
+          {
+            "name": "User has asked",
+            "value": "Submit button double-submit on the intake form",
+            "inline": false
+          },
+          {
+            "name": "Investigated",
+            "value": "[done] Read agent/CLAUDE.md (project scope)\n[done] Searched files: \"submit\" (6 matches)\n[done] Read src/forms/IntakeForm.js, src/forms/submit.js",
+            "inline": false
+          },
+          {
+            "name": "Files changed (1)",
+            "value": "`src/forms/submit.js` — 1.9 KB · +11 −2",
+            "inline": false
+          },
+          {
+            "name": "Checks & deploy",
+            "value": "[...] Tests failed (39/42)",
+            "inline": false
+          },
+          {
+            "name": "Failed step",
+            "value": "TESTING",
+            "inline": false
+          }
+        ],
+        "footer": {
+          "text": "PHMC Forms · session a1b2c3"
+        }
+      },
+      "components": [
+        {
+          "label": "Retry review",
+          "style": "Success",
+          "customId": "fb:retry:a1b2c3",
+          "disabled": false
+        },
+        {
+          "label": "View Full Log",
+          "style": "Secondary",
+          "customId": "fb:log:a1b2c3",
+          "disabled": false
+        },
+        {
+          "label": "Revert",
+          "style": "Danger",
+          "customId": "fb:revert:a1b2c3",
+          "disabled": false
+        },
+        {
+          "label": "Complete Session",
+          "style": "Secondary",
+          "customId": "fb:complete:a1b2c3",
+          "disabled": false
+        }
+      ]
+    }
+  },
+  {
+    "name": "superseded",
+    "state": "SUPERSEDED",
+    "data": {
+      "shortId": "a1b2c3",
+      "sessionId": "a1b2c3",
+      "requestSummary": "Submit button double-submit on the intake form",
+      "oneLineResult": "double-submit fixed",
+      "investigated": [
+        "Read agent/CLAUDE.md (project scope)",
+        "Searched files: \"submit\" (6 matches)",
+        "Read src/forms/IntakeForm.js, src/forms/submit.js"
+      ],
+      "planItems": [
+        "Disable the button and show a spinner while the request is pending.",
+        "Ignore repeat clicks in submit.js.",
+        "Re-enable on error with a message."
+      ],
+      "questions": [
+        "Spinner on the button, or a full-form overlay?",
+        "Add a regression test for double-submit?"
+      ],
+      "lastRequest": "Double-submit on the intake form"
+    },
+    "view": {
+      "embed": {
+        "title": "Session closed",
+        "description": "Status: **Superseded** · a newer /feedback replaced this session before anything started — nothing was changed",
+        "color": 8422542,
+        "fields": [
+          {
+            "name": "Investigated",
+            "value": "[done] Read agent/CLAUDE.md (project scope)\n[done] Searched files: \"submit\" (6 matches)\n[done] Read src/forms/IntakeForm.js, src/forms/submit.js",
+            "inline": false
+          },
+          {
+            "name": "Your last message (kept, not acted on)",
+            "value": "Double-submit on the intake form",
+            "inline": false
+          }
+        ],
+        "footer": {
+          "text": "PHMC Forms · session a1b2c3"
+        }
+      },
+      "components": []
+    }
+  },
+  {
+    "name": "no-action",
+    "state": "NO_ACTION",
+    "data": {
+      "shortId": "a1b2c3",
+      "sessionId": "a1b2c3",
+      "requestSummary": "Submit button double-submit on the intake form",
+      "oneLineResult": "double-submit fixed",
+      "investigated": [
+        "Read agent/CLAUDE.md (project scope)",
+        "Searched files: \"submit\" (6 matches)",
+        "Read src/forms/IntakeForm.js, src/forms/submit.js"
+      ],
+      "planItems": [
+        "Disable the button and show a spinner while the request is pending.",
+        "Ignore repeat clicks in submit.js.",
+        "Re-enable on error with a message."
+      ],
+      "questions": [
+        "Spinner on the button, or a full-form overlay?",
+        "Add a regression test for double-submit?"
+      ],
+      "noActionReason": "No defect found — the button already disables; the double submits came from an old cached bundle."
+    },
+    "view": {
+      "embed": {
+        "title": "No action needed",
+        "description": "Status: **Closed** · judged to need no repo changes",
+        "color": 2336089,
+        "fields": [
+          {
+            "name": "Investigated",
+            "value": "[done] Read agent/CLAUDE.md (project scope)\n[done] Searched files: \"submit\" (6 matches)\n[done] Read src/forms/IntakeForm.js, src/forms/submit.js",
+            "inline": false
+          },
+          {
+            "name": "Summary",
+            "value": "No defect found — the button already disables; the double submits came from an old cached bundle.",
+            "inline": false
+          },
+          {
+            "name": "Finished with this session?",
+            "value": "Press Complete Session to archive it and free the slot. Nothing was changed, so there is nothing to revert.",
+            "inline": false
+          }
+        ],
+        "footer": {
+          "text": "PHMC Forms · session a1b2c3"
+        }
+      },
+      "components": [
+        {
+          "label": "Complete Session",
+          "style": "Success",
+          "customId": "fb:complete:a1b2c3",
+          "disabled": false
+        },
+        {
+          "label": "View Full Log",
+          "style": "Secondary",
+          "customId": "fb:log:a1b2c3",
+          "disabled": false
+        }
+      ]
+    }
+  },
+  {
+    "name": "history",
+    "state": "HISTORY",
+    "view": {
+      "embed": {
+        "title": "Feedback sessions",
+        "description": "Status: **WORKING**",
+        "color": 15774258,
+        "fields": [
+          {
+            "name": "Active now",
+            "value": "`f99ff7` — **WORKING**\nphase: Applying changes · steps: 1/2 done · plan: 3 items · questions: 1\n> Double-submit on the intake form",
+            "inline": false
+          },
+          {
+            "name": "Past sessions (2)",
+            "value": "`43cb0c` — **superseded** · Describe the bug or feature in this DM… · <t:1794414772:R> — replaced before anything started\n`a1b2c3` — **deployed** · Double-submit fixed · `pre-feedback-0911` · <t:1794414772:R>",
+            "inline": false
+          }
+        ],
+        "footer": {
+          "text": "PHMC Forms · feedback history (last 20)"
+        }
+      },
+      "components": []
+    }
+  }
+]

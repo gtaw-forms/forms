@@ -1,0 +1,161 @@
+/* "Send to DRDB" modal — self-contained, mirrors the LSPD guide modal so it
+   looks right inside migration-ui. The info header is light blue per spec. */
+
+.pmc-forward-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(4, 4, 6, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.pmc-forward-card {
+  background: var(--panel, #121214);
+  border: 1px solid var(--border, #232327);
+  border-radius: 12px;
+  max-width: 460px;
+  width: 100%;
+  padding: 22px 24px 20px;
+  color: var(--text, #e9e9ec);
+  font-family: "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
+}
+
+.pmc-forward-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.pmc-forward-kicker {
+  font-size: 11px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--accent, #d63a3a);
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.pmc-forward-head h2 {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.pmc-forward-x {
+  background: transparent;
+  border: 1px solid var(--border, #232327);
+  border-radius: 8px;
+  color: var(--muted, #8e8e96);
+  width: 30px;
+  height: 30px;
+  cursor: pointer;
+  flex-shrink: 0;
+  font-size: 13px;
+}
+
+.pmc-forward-x:hover {
+  color: var(--text, #e9e9ec);
+  border-color: #3a3a42;
+}
+
+/* Light-blue information header (spec). */
+.pmc-forward-info {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: #bfe3ff;
+  background: rgba(56, 150, 255, 0.1);
+  border: 1px solid rgba(56, 150, 255, 0.45);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 0 0 14px;
+}
+
+.pmc-forward-info strong {
+  color: #e8f4ff;
+}
+
+.pmc-forward-label {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.6px;
+  color: var(--muted, #8e8e96);
+  margin-bottom: 5px;
+  text-transform: uppercase;
+}
+
+.pmc-forward-input {
+  background: var(--panel-2, #17171a);
+  border: 1px solid var(--border, #232327);
+  color: var(--text, #e9e9ec);
+  border-radius: 8px;
+  padding: 9px 11px;
+  font-size: 13.5px;
+  font-family: inherit;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.pmc-forward-input:focus {
+  outline: none;
+  border-color: var(--accent, #d63a3a);
+}
+
+.pmc-forward-error {
+  font-size: 13px;
+  color: #ff6b6b;
+  margin: 8px 0 0;
+}
+
+.pmc-forward-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.pmc-forward-btn {
+  padding: 9px 22px;
+  border-radius: 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--accent, #d63a3a);
+  background: var(--accent, #d63a3a);
+  color: #fff;
+  font-family: inherit;
+}
+
+.pmc-forward-btn:hover {
+  filter: brightness(1.1);
+}
+
+.pmc-forward-btn.ghost {
+  background: transparent;
+  color: var(--text, #e9e9ec);
+  border-color: var(--border, #232327);
+}
+
+.pmc-forward-btn.ghost:hover {
+  background: var(--panel-2, #17171a);
+  border-color: #3a3a42;
+}
+
+.pmc-forward-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+  filter: none;
+}
+
+.pmc-forward-wait {
+  font-size: 12.5px;
+  color: var(--muted, #8e8e96);
+  margin: 10px 0 0;
+}

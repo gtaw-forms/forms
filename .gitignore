@@ -49,6 +49,12 @@ tools/*
 # deploy-critical bot tooling IS tracked (documented in CLAUDE.md → Bot Deployment)
 !tools/deploy-bot.mjs
 !tools/check-bot-imports.mjs
+# feedback-bot tooling (owner-only OpenCode sessions via /feedback)
+!tools/feedback-verify.mjs
+!tools/feedback-render-test.mjs
+!tools/feedback-samples.mjs
+!tools/feedback-dryrun.mjs
+!tools/feedback-sessions.mjs
 # morgue street-bubble coverage checker (read-only probe; reused by the feature)
 !tools/morgue-street-coverage.mjs
 # targeted autopsy duplicate marker (see tools/mark-autopsy-duplicate.mjs)
@@ -85,5 +91,9 @@ changelog.md
 discord-bot/aghMetrics.js
 discord-bot/services/aghMetrics.js
 discord-bot/commands/agh-dashboard.js
+
+# CCTV fetcher (local-only tooling: session capture, saved Chrome profile and
+# fetched history all stay off git — the profile holds a live session cookie)
+cctv-script/
 
 .openchamber/

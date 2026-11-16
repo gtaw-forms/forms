@@ -259,6 +259,8 @@ The app has two parallel UI implementations sharing the same hooks, contexts, an
 
 **Cross-Post:** Completed autopsy reports auto-cross-post to LSSD f=2263. Interactive button picker when multiple threads match.
 
+**Private (confidential) autopsies:** LE requesters can choose **Private Autopsy** in the web modal. Submissions go to `autopsy-requests/private-pending` (NEVER the public f=265 queue — the poster refuses `isPrivate` entries) and `services/privateWebAutopsyIntake.js` opens the f=266 `[PRIVATE]` case, assigns the ME and notifies staff. Mode: `PRIVATE_WEB_MODE` = `off` | `dryrun` | `live`, owner command `/private-web-autopsy` (persists to `.env`); currently `live`. A required justification/authority is stored on the case. Completion posts the report in the case thread, skips f=265 + crossposts, files **LSPD to DRDB** (portal ME form), and PMs LSSD/SADCR/DAO requesters. Case creation is `services/privateCaseCreation.js`. LSPD **batch** requests are refused in the web modal — DRDB takes one filing per decedent. The LSPD inbox intake (`privateAutopsyPmMonitor`) and `/pm-intake-dryrun` were **deleted** 2026-11-15 (board permanently retired).
+
 **Web App:** Assigned Autopsies modal auto-opens on autopsy form. Load Case fills from parsed data + morgue record. Completed cases filtered out.
 
 **LOA System:** `autopsy-requests/loa/<username>` in Firebase. Excluded from assignment pool. Dashboard shows ME assignments.
@@ -303,7 +305,7 @@ Add to `MORGUE_API_KEYS` in `.env`, then `pm2 restart morgue-api`.
 
 - No `text-muted` — use `var(--text-muted)` on a custom class instead.
 - No emojis in code — they break on PowerShell re-save (UTF-8 BOM corruption). Use `[OK]`, `[WARN]`, `[ERR]`, `[DONE]` instead.
-- Firebase rules: `".read": true, ".write": "auth != null"` at root.
+- Firebase rules: **root `.read` is `auth != null`; root `.write` is `false`** — every client write is granted per path in `functions/database.rules.json`. Reports/BBCode/edits/share-index are scoped to the owning author, and the key there is the **sanitized character name** (not the uid), so the rule matches the token's `characterName`/`displayCharacterName`/`gtawUsername` run through the same sanitizer (space, `.`, `/`, `#` → `_`, runs collapsed) as well as `auth.uid`; `user-consent/$uid` is owner-only; the autopsy request queues are create-only; admin surfaces (forms, selectOptions, morgue-records, LSCC, factions, webhooks, appMetadata whitelist) require `auth.token.isSuperAdmin === true` or `accessLevel` in `admin`/`management` (rank 12+ — rank 11 has no claim yet; see setup/SCHEMA.md). The bot and tools write with the Admin SDK and bypass rules. Opted-out ("standard") reports are saved through the `triggerSaveSavedReport` callable, not client RTDB writes. Note: rules `replace()` is a literal substring replace and `string(...)` does not exist in this engine — keep rule expressions to equality, `!= null` guards and literal replaces.
 - Forms stored in Firebase as BBCode templates (JSON schema).
 - Bot forum client uses Playwright with stealth plugin — must NOT include `--disable-web-security` or `bypassCSP: true`.
 - Secrets (`.env`, `firebase-admin-key.json`, `*credentials.md`) are never committed or read aloud.

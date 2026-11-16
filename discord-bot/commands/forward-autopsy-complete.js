@@ -137,7 +137,6 @@ export async function execute(interaction) {
             requesterSalutation: ping.salutation,
             requesterDiscordId: ping.discordId,
             factionKey,
-            postedByCaselink: entry.postedByCaselink === true,
             agencyTopicUrl: deepLink,
         });
 

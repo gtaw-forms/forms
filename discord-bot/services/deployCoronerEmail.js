@@ -18,6 +18,7 @@ import { state } from './deployState.js';
 import { getForumClient } from './forumClient.js';
 import { isMaintenanceMode } from './deployQueue.js';
 import { isLspdPortalReport, isLspdEmailReport } from './lspdReportRoute.js';
+import { normalizeRecipients } from './recipients.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -150,63 +151,21 @@ export async function handleCoronerEmail(report) {
 
     // ── Extract form data ──
     const data = reportData.data || {};
-    let recipient = (data.requestingOfficer || data.requesting_officer || data.officerName || '').trim();
+    // Multi-recipient: primary + additionalRecipients (capped at 5, idx 0 is
+    // the primary so single-recipient reports keep their legacy queue keys).
+    const recipients = normalizeRecipients(data);
     const department = data.department || '';
     const coronerEmployee = data.coronerEmployee || 'PHMC Coroner';
     const additionalReports = data.additionalReports || [];
 
-    if (!recipient) {
+    if (recipients.length === 0) {
         console.log('[CORONER-EMAIL] No requesting officer — skipping');
         await progress.addStep('No Recipient', 'skip', 'requestingOfficer is empty');
         await progress.finalize('complete');
         return;
     }
 
-    // ── LSPD portal path: native coroner-report form filing ONLY ──
-    // Inbox retirement (Nov 2026): LSPD is off phpBB and takes no inbox
-    // notices — their portal replaced them. LSPD coroner / mass-fatality
-    // reports (and manually filed LSPD coroner emails) file the liaison
-    // coroner-report form and nothing else. Fail-closed at enqueue:
-    // unbuildable payloads refuse the queue.
-    const isPortalTarget = isLspdPortalReport({ formId: reportData.formId, data })
-        || isLspdEmailReport({ formId: reportData.formId, data });
-    if (isPortalTarget) {
-        try {
-            const { enqueuePortalForm } = await import('./lspdPortalFormQueue.js');
-            const formKey = await enqueuePortalForm(db, {
-                form: 'coroner-report', authorId, reportKey: key,
-                recipient, data, context: {},
-            });
-            if (formKey) {
-                await progress.addStep('Form Queued', 'ok', `Coroner form queued (LSPD → ${recipient})`);
-            } else {
-                await progress.addStep('Form Queued', 'fail', 'Form payload unbuildable — see bot log (ABORT, no default)');
-            }
-            await progress.finalize(formKey ? 'complete' : 'failed');
-            return formKey;
-        } catch (e) {
-            await progress.addStep('Form Queued', 'fail', String(e.message || e).slice(0, 120));
-            await progress.finalize('failed');
-            return null;
-        }
-    }
-
-    // ── Resolve forum (fail closed — null means no live PM path) ──
-    const forum = resolveForum(department);
-    if (!forum) {
-        console.error(`[CORONER-EMAIL] No forum-PM path for department "${String(department?.label || department?.value || department || '').slice(0, 60)}" — refusing to queue`);
-        await progress.addStep('No Forum Path', 'fail', 'Unknown department — email not queued (fail closed)');
-        await progress.finalize('failed');
-        return;
-    }
-    if (!forum.username || !forum.password) {
-        console.warn(`[CORONER-EMAIL] No credentials for ${forum.forumLabel} — skipping`);
-        await progress.addStep('No Credentials', 'skip', `${forum.forumLabel} not configured`);
-        await progress.finalize('complete');
-        return;
-    }
-
-    // ── Load and fill template ──
+    // ── Load and fill template (shared deathReport; per-leg recipient fill) ──
     let templateStr;
     try {
         templateStr = readFileSync(resolve(__dirname, '../templates/Coroner-Email.json'), 'utf-8');
@@ -285,57 +244,107 @@ export async function handleCoronerEmail(report) {
         await progress.finalize('failed');
         return;
     }
-    const values = {
-        requestingOfficer: recipient,
-        coronerEmployee,
-        department,
-        deathReport,
-        formData: { department },
-    };
 
-    let bbCode;
-    try {
-        bbCode = fillEmailTemplate(template.bbcodeTemplate || template.template, values);
-    } catch (e) {
-        console.error('[CORONER-EMAIL] Template fill error:', e.message);
-        await progress.addStep('Template Error', 'fail', e.message);
-        await progress.finalize('failed');
-        return;
-    }
-
-    // ── Log the rendered BBCode for validation ──
-    console.log('[CORONER-EMAIL] Rendered BBCode preview (first 500 chars):');
-    console.log(bbCode.substring(0, 500));
-    try {
-        const { writeFileSync, mkdirSync } = await import('fs');
-        const debugDir = resolve(__dirname, '..', 'debug');
-        mkdirSync(debugDir, { recursive: true });
-        writeFileSync(resolve(debugDir, 'debug-coroner-email-bbcode.txt'), bbCode, 'utf-8');
-        console.log('[CORONER-EMAIL] Full BBCode written to debug/debug-coroner-email-bbcode.txt');
-    } catch (e) {
-        console.warn('[CORONER-EMAIL] Could not write debug file:', e.message);
-    }
-
-    // ── Hand off to the dedicated email queue ──
-    // The topic deploy owns the report record; from here email delivery state
-    // lives on its own entity (own status, attempts, backoff). The worker
-    // delivers; nothing here touches the forum or the report status.
+    // ── Fan-out: one queue entity per recipient ──
+    // LSPD recipients file the native liaison coroner-report form (inbox
+    // retirement, Nov 2026 — LSPD takes no inbox notices); everyone else
+    // gets a forum-PM email entity. Idempotent per leg: existing
+    // non-terminal entities are left alone, so a re-run only queues the
+    // legs that never queued.
     const topicUrl = report.topicUrl || null;
     const topicId = topicUrl ? ((topicUrl.match(/[?&]t=(\d+)/) || [])[1] || null) : null;
     const { enqueueCoronerEmail } = await import('./coronerEmailQueue.js');
-    const emailKey = await enqueueCoronerEmail(db, {
-        authorId, reportKey: key, topicId, topicUrl,
-        recipient, department, forumLabel: forum.forumLabel,
-        subject, bbCode,
-    });
-    if (emailKey) {
-        await progress.addStep('Queued', 'ok', `Email queued (${forum.forumLabel} → ${recipient})`);
-        await progress.finalize('complete');
-    } else {
-        await progress.addStep('Queued', 'fail', 'Could not queue email');
-        await progress.finalize('failed');
+    const queuedKeys = [];
+    console.log(`[CORONER-EMAIL] Fan-out: ${recipients.length} recipient(s) — ${recipients.map((r) => `${r.officer} [${r.department || department || 'no-dept'}]`).join(' | ')}`);
+    for (let i = 0; i < recipients.length; i++) {
+        const leg = recipients[i];
+        const tag = recipients.length > 1 ? ` (${i + 1}/${recipients.length})` : '';
+        const legDept = leg.department || department;
+        const legData = { ...data, requestingOfficer: leg.officer, department: legDept };
+
+        // ── LSPD portal path: native coroner-report form filing ONLY ──
+        const isPortalTarget = isLspdPortalReport({ formId: reportData.formId, data: legData })
+            || isLspdEmailReport({ formId: reportData.formId, data: legData });
+        if (isPortalTarget) {
+            try {
+                const { enqueuePortalForm } = await import('./lspdPortalFormQueue.js');
+                const formKey = await enqueuePortalForm(db, {
+                    form: 'coroner-report', authorId, reportKey: key,
+                    recipient: leg.officer, data: legData, context: {}, idx: i,
+                });
+                if (formKey) {
+                    await progress.addStep(`Form Queued${tag}`, 'ok', `Coroner form queued (LSPD → ${leg.officer})`);
+                    queuedKeys.push(formKey);
+                } else {
+                    await progress.addStep(`Form Queued${tag}`, 'fail', 'Form payload unbuildable — see bot log (ABORT, no default)');
+                }
+            } catch (e) {
+                await progress.addStep(`Form Queued${tag}`, 'fail', String(e.message || e).slice(0, 120));
+            }
+            continue;
+        }
+
+        // ── Forum-PM path (fail closed — null means no live PM path) ──
+        const forum = resolveForum(legDept);
+        if (!forum) {
+            console.error(`[CORONER-EMAIL] No forum-PM path for department "${String(legDept?.label || legDept?.value || legDept || '').slice(0, 60)}" — refusing to queue (${leg.officer})`);
+            await progress.addStep(`No Forum Path${tag}`, 'fail', `Unknown department — ${leg.officer} not queued (fail closed)`);
+            continue;
+        }
+        if (!forum.username || !forum.password) {
+            console.warn(`[CORONER-EMAIL] No credentials for ${forum.forumLabel} — skipping (${leg.officer})`);
+            await progress.addStep(`No Credentials${tag}`, 'skip', `${forum.forumLabel} not configured — ${leg.officer} not queued`);
+            continue;
+        }
+
+        const values = {
+            requestingOfficer: leg.officer,
+            coronerEmployee,
+            department: legDept,
+            deathReport,
+            formData: { department: legDept },
+        };
+
+        let bbCode;
+        try {
+            bbCode = fillEmailTemplate(template.bbcodeTemplate || template.template, values);
+        } catch (e) {
+            console.error('[CORONER-EMAIL] Template fill error:', e.message);
+            await progress.addStep(`Template Error${tag}`, 'fail', e.message);
+            continue;
+        }
+
+        // ── Log the rendered BBCode for validation (primary leg only) ──
+        if (i === 0) {
+            console.log('[CORONER-EMAIL] Rendered BBCode preview (first 500 chars):');
+            console.log(bbCode.substring(0, 500));
+            try {
+                const { writeFileSync, mkdirSync } = await import('fs');
+                const debugDir = resolve(__dirname, '..', 'debug');
+                mkdirSync(debugDir, { recursive: true });
+                writeFileSync(resolve(debugDir, 'debug-coroner-email-bbcode.txt'), bbCode, 'utf-8');
+                console.log('[CORONER-EMAIL] Full BBCode written to debug/debug-coroner-email-bbcode.txt');
+            } catch (e) {
+                console.warn('[CORONER-EMAIL] Could not write debug file:', e.message);
+            }
+        }
+
+        // ── Hand off to the dedicated email queue ──
+        const emailKey = await enqueueCoronerEmail(db, {
+            authorId, reportKey: key, topicId, topicUrl,
+            recipient: leg.officer, department: legDept, forumLabel: forum.forumLabel,
+            subject, bbCode, idx: i,
+        });
+        if (emailKey) {
+            await progress.addStep(`Queued${tag}`, 'ok', `Email queued (${forum.forumLabel} → ${leg.officer})`);
+            queuedKeys.push(emailKey);
+        } else {
+            await progress.addStep(`Queued${tag}`, 'fail', `Could not queue email for ${leg.officer}`);
+        }
     }
-    return emailKey;
+
+    await progress.finalize(queuedKeys.length === recipients.length ? 'complete' : 'failed');
+    return queuedKeys;
 }
 
 /**

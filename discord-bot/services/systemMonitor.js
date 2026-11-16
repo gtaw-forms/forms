@@ -234,7 +234,10 @@ async function getVpsMorgueLatest() {
             signal: controller.signal,
         });
         clearTimeout(t);
-        if (!res.ok) return null;
+        if (!res.ok) {
+            console.warn(`[MONITOR] VPS morgue fetch HTTP ${res.status} — falling back to RTDB`);
+            return null;
+        }
         const j = await res.json();
         const rec = j.records?.[0];
         if (rec?.lastUpdated) return rec.lastUpdated;
@@ -251,7 +254,10 @@ async function getVpsMorgueLatest() {
             if (latest) return latest;
         }
         return null;
-    } catch { return null; }
+    } catch (err) {
+        console.warn(`[MONITOR] VPS morgue fetch failed (${err.message}) — falling back to RTDB`);
+        return null;
+    }
 }
 
 async function checkMorgueOverdue(db) {

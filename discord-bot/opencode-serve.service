@@ -1,0 +1,35 @@
+# discord-bot/opencode-serve.service — systemd unit for `opencode serve`.
+#
+# Install on the VPS (NOT via bot:deploy — units live outside the mirror):
+#   sudo cp discord-bot/opencode-serve.service /etc/systemd/system/opencode-serve.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now opencode-serve
+#
+# What it does: runs `opencode serve` bound to loopback only (127.0.0.1:4096)
+# so only the bot (same host) can reach it. The bot connects with
+# createOpencodeClient({ baseUrl: OPENCODE_URL }).
+#
+# WorkingDirectory MUST be a full clone of the PHMC Forms repo (the agent edits
+# and pushes that checkout). It is NOT /opt/phmc-bot/discord-bot (bot mirror,
+# no git history for the web app). Suggested layout:
+#   /opt/phmc-feedback/phmc-forms   (git clone <repo-url> phmc-forms)
+# Adjust User= to the account that owns that checkout and holds the git + model
+# credentials. opencode reads its own auth from that user's config.
+
+[Unit]
+Description=OpenCode server for PHMC feedback bot
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/phmc-feedback/phmc-forms
+ExecStart=/usr/local/bin/opencode serve --hostname 127.0.0.1 --port 4096
+Restart=always
+RestartSec=5
+# Model/auth for the pinned provider come from the service user's opencode
+# config — never from the bot .env and never from the repo.
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target

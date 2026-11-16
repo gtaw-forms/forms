@@ -1,5 +1,153 @@
 # PHMC Discord Bot — Changelog
 
+## UNDEPLOYED — LSPD PM intake deleted (2026-11-15)
+
+### Removed
+- **`services/privateAutopsyPmMonitor.js` deleted** — the LSPD phpBB board is permanently retired, so the 30-minute inbox poll, the Approve/Deny approval drafts, the `pmintake_*` button handler and the `private-pm-intake/*` processed/created records have no purpose. Private autopsies arrive exclusively through the web modal (`services/privateWebAutopsyIntake.js`, `PRIVATE_WEB_MODE`).
+- **`commands/pm-intake-dryrun.js` deleted** and unregistered from both command lists; the `pmintake_*` interaction handler is gone from `index.js`. Historical Discord approval cards now fall through to the unknown-button path.
+- **Wiring removed from `index.js`**: the `setPmIntakeClient` registration and the `pm-intake` phased-boot-queue entry.
+- **`.env.example`**: the `PRIVATE_PM_INTAKE_*` / `LSPD_PM_INTAKE_GROUP_ID` block replaced with a removal note. The vars are inert; remove them from the VPS `.env` at leisure.
+- Kept: `services/privateCaseCreation.js` (the shared case-creation core) and its use by the web intake. `private-pm-intake/*` RTDB data is left untouched (historical record) and no longer read.
+
+## UNDEPLOYED — Autopsy completion notice: debug line removed (2026-11-15)
+
+### Fixed
+- **`Forms Autopsy: True` leaked into public completion notices.** `COMPLETION_TEMPLATE` carried an internal diagnostic line (`[b]Forms Autopsy:[/b] FORMS_AUTOPSY`) that every requester-facing completion notice rendered — the f=265 reply, the LSSD/SADCR/DAO combined completion + report reply, and `/force-autopsy-send`. Removed from the template and from `buildCompletionBb` (the `formsAutopsy` context flag is still accepted for caller compatibility but is no longer rendered). Nothing else in the template changed: requester name, Gov Intranet link line, signature and footer are byte-identical.
+- Posts already on the forums keep the line (the bot never retro-edits); they need a manual edit or a re-render of the stored completion reply.
+
+## UNDEPLOYED — Web PRIVATE autopsy intake + LSPD DRDB delivery (2026-11-14)
+
+### Added
+- **`services/privateWebAutopsyIntake.js`** — web "Private Autopsy" requests (`autopsy-requests/private-pending`) become a confidential f=266 case (`[PRIVATE]` title, rotation ME assignment, title edit, assignment reply, staff notification). No f=265 topic, no acknowledgement reply, no agency crosspost. Modes via `PRIVATE_WEB_MODE` = `off` (default) | `dryrun` | `live`, toggled by the new owner command **`/private-web-autopsy`**; mode persists to `.env`.
+- **`services/privateCaseCreation.js`** — one case-creation core for both private intakes (`createPrivateCase`, `nextCaseNumber`, `buildPrivateCaseTitle`), now shared by `privateAutopsyPmMonitor.js` (behaviour-preserving refactor; its `private-pm-intake/created/<msgId>/<label>` idempotency records are untouched).
+- **Private submission notifications** (`webAutopsyRequestEmbed.js`): `buildPrivateSubmittedNotification` / `buildPrivateCreatedNotification` — purple "no public forum post" embed, justification/authority field, dry-run variant.
+- **Stats**: `bumpFactionCounter` exported from `autopsyRequestMonitor.js`; the private intake bumps the same faction totals so private requests are not missing from the intake counters.
+
+### Fixed
+- **Private LSPD cases now file to DRDB** (they were skipping the LSPD portal ME-liaison form, and LSPD inbox notices are retired — so private LSPD reports had no automated delivery). The completion step runs for private cases whose agency is LSPD (`entry.deliveryDRDB`/LSPD faction); other private agencies still skip it. Failures stay in the completion-step retry sweep, which no longer skips `lspdMedicalExaminerForm` for private entries.
+- **Private completion no longer replies into f=265**: the PHMC completion notice is now explicitly skipped for private cases (it previously fired at the case topic id with forum 265). The full report is still the f=266 case-thread reply.
+- **Manual completion path** (`deployInteraction.js`) also files the DRDB ME form for private LSPD cases (or records the step failed when no report data is available, instead of silently skipping).
+- **Belt and braces**: `webAutopsyRequestPoster.postOne` refuses and parks any entry carrying `isPrivate`/`requestType: private`, so a private request can never be published by the public poster.
+
+### Validation / safety
+- Fail-closed intake: LE agency required (explicit selector cross-checked against the department string), decedent/requester fields required, justification >= 10 chars, forum account URL required except LSPD.
+- `creating` claim before any forum write; a claim older than 1h is parked `needs-review` with a Discord alert (never auto-retried — no duplicate cases). Duplicate guard on `caseId|decedent|agency` within 24h. Failed creations retry on a 5-min backoff with alerts.
+
+### Hardening (post-build audit, 2026-11-14)
+- **No duplicate cases from a stale queue entry**: the intake re-reads the queue node before every attempt, and any entry that already carries a `caseTopicId` is parked `needs-review` instead of being reposted. `createPrivateCase` calls `onPosted` immediately after the topic post so the id is persisted before any wiring step can fail.
+- **Claim before duplicate check**: two submissions of the same request can no longer both pass dedupe and create cases.
+- **Mode-change resume**: entries submitted while `PRIVATE_WEB_MODE=off` were queued but dormant; `/private-web-autopsy` now rescans and processes them when switched to `dryrun`/`live`.
+- **Assignment notification accuracy**: `createPrivateCase` returns `notified`; the PM intake only marks `notified:true` when the ping actually succeeded, and logs an UNASSIGNED case instead of failing silently.
+- **No double DRDB filing** from the manual completion path: `deployInteraction` skips the ME form when the step is already `completed`/`attempting`.
+- **Dependencies**: root `npm audit` highs (dev-only `undici`/`zod`) cleared via `npm audit fix`; 6 moderate remain in build tooling (no runtime exposure). Bot deps: 0 high / 0 critical.
+- **Rules note**: `functions/database.rules.json` adds a `private-pending` child rule (no client read; create-only write). Under the current root `.read/.write: "auth != null"` this is **defence-in-depth only** — Firebase rules cascade, so a shallower grant cannot be revoked by a child. See the audit report: root-level rules lockdown is a separate task.
+
+## UNDEPLOYED — Feedback bot: waiting state + instant button acks (2026-11-11, code live 09:30 UTC)
+
+### Fixed
+- **`/feedback` no longer jumps to "Feedback noted / Reviewing" before you have said anything.** It now posts a "Please send your feedback" waiting embed (View Full Log only) and creates the OpenCode session only when your first DM arrives — that message is the request, and it carries the mandatory CLAUDE.md-first Phase 1 instruction (the old code created the session eagerly with placeholder text and the live first-DM branch could never run).
+- **Buttons no longer time out.** Every `fb:*` press is now acknowledged immediately (`deferUpdate` for message edits, `deferReply` for the log/cancel ephemerals) before any slow work (OpenCode abort, message fetches, git ops). All follow-ups in the acknowledged path use `editReply`/`followUp`, and the nested pause-from-permission path no longer double-acks. Root cause of the "didn't respond in time" failures: `abortSession` and friends ran before `interaction.update`.
+- Anything pressed while still waiting (except View Full Log) gets an instant ephemeral "Send your request in this DM first".
+- **Stale pre-execution sessions no longer strand the slot — and are no longer silent.** `/feedback` auto-replaces an active session that never got going (pre-execution state, no plan items, no progress), aborting its orphan OpenCode session. The old DM message is re-rendered as a grey "Session closed" marker echoing back your last message, and the outcome (`superseded`) is recorded. Sessions with real work keep the one-slot guard.
+- **`/feedback-list` (new, owner-only):** live session with stage/step detail (state, phase, steps done, plan items, questions, deploy tag) plus terminal history (last 20): `deployed` / `closed` / `failed` / `superseded` with summary, tag, and relative time. History is recorded on complete, fail (once-guarded), and supersede; nothing expires on timers.
+- **Event stream actually attached (09:44).** The live review path created the OpenCode session and sent the prompt but never subscribed to `event.subscribe` (only the restart path did) — the plan agent worked unseen and the embed froze at "Feedback noted". The stream now attaches right after the Phase 1 prompt, and restart recovery replays missed plan text from `session.messages` (revived the live `f99ff7` test session this way). Also set `FEEDBACK_REPO_DIR`/`FEEDBACK_DEPLOY_BRANCH`/`OPENCODE_URL` in the VPS `.env` — the first session ran with the bot dir as cwd by fallback.
+- **View Full Log timeout (09:47): double `fb:` prefix in button IDs.** Session records stored `sessionId` as `fb:<sid>`, so buttons rendered as `fb:log:fb:f99ff7` (4 parts) while the parser only accepts `fb:<action>:<sid>` (3 parts) — the press was received, rejected silently, and Discord timed out with no ack. Fixed at the source (plain sid), added a legacy-prefix strip so the live session's buttons heal on next render, tightened the render test to reject the double form, and made unparseable `fb:` presses answer instantly instead of falling through.
+- **Stream attaches before the prompt (09:54).** `session.prompt` long-polls until the run completes, so attaching the event stream after it meant the embed missed the entire run. The stream now attaches first and the prompt is fire-and-forget (completion/failure/backfill settle in the background); the one-off backfill became a shared helper used by both restore and prompt completion.
+- **Chat narration in the DM thread.** The embed stays the state dashboard; the DM thread is now the readable record: completed assistant prose posts as plain-text messages (chunked, idempotent via a watermark), plus one-line milestone notes (approved, testing, deployed, failed, paused, resumed, permission asked/resolved, no-action, complete). The bot still never edits chat history — only appends.
+- **/feedback paused until further notice (owner request).** `FEEDBACK_ENABLED=false` in the VPS `.env` + a code gate: the command replies "paused until further notice" and starts nothing. The live session keeps working; re-enable by true-ing the var + `pm2 restart phmc-bot`.
+- **Event serialization.** Stream events are processed strictly in order through a per-process promise chain — concurrent read-modify-write cycles used to clobber progress lines and freeze stale buttons (e.g. review buttons on a WORKING session) into the embed.
+- **Mostly-live agent prose (Latest field).** The SSE stream carries tool/permission events but not the agent's words, so a 5s ticker polls `session.messages` while a session runs and renders the tail of the latest assistant message into a "Latest" embed field; new prose is also appended to the session log as `agent:` lines, so View Full Log reads like a transcript.
+- **No Action Needed button (review states).** The owner judges — pressing it closes the session immediately as green "No action needed" (nothing committed, nothing to revert). History records it, the slot frees at once, and the message stays as a button-less tombstone — no separate Complete press needed. The status hint only mentions Answer questions when questions exist.
+- **/feedback opens with a proper prompt.** The ephemeral reply now reads as an invitation ("Ask your feedback, question, or query — this opens an inbox (DM) with the PHMC Bot…") instead of the terse "Opening a DM…"; command description updated to match.
+- **Answer questions modal + held-DM queue + Retry review + abandon offer.** Questions can be answered via a modal (one field each, compiled into a plan revision prompt) or plain DM replies — both forward into the live session and reset the embed to "Processing new input…" first. A DM arriving mid-run is held and auto-forwarded when the step finishes instead of failing the session; unattributable server errors are logged, never charged against the live session. FAILED gains **Retry review**. /feedback with a live slot offers Abandon & start fresh (marked superseded, history `closed`).
+- **Questions get direct answers, not forced plans.** The review prompt now ends conditionally: a change gets PLAN:/QUESTIONS: sections, a pure question gets a direct answer ending in NO-CHANGE-NEEDED — surfaced as an "Answered" status with the prose in Latest, closable via No Action. Answered questions clear on revision; junk fragments are filtered.
+- **Latest reads cleanly + self-checks.** Machine markers stripped, degenerate spans unwrapped, lone ticks dropped (fences untouched), tail clips on line (else word) boundaries at ~1000 of the 1024 budget — the cut happens in the ticker where the full text is known. The agent prompt enforces embed-friendly prose, a uniform markdown contract, a ~900-char reply budget, and a pre-send self-check (length, paired ticks, exact machine lines); revision prompts repeat the format reminder.
+- **"User has asked" box.** The owner's original request is quoted verbatim as the first embed field (all states except waiting/superseded/completed/no-action, which already carry it or have nothing to quote).
+- **/feedback opens an ask modal.** The command now pops a question box (one paragraph field) instead of printing instructions — submitting it opens the DM, creates the session with the text in hand, and starts the review immediately. A stray owner DM with no session gets a "run /feedback" pointer instead of silence.
+- **Embed declutter.** The raw Latest tail hides once structured plan/questions render (it was echoing them verbatim); revisions replace plan/questions from the trailing window so answered questions clear instead of lingering; question parsing drops thinking-aloud fragments (min length + complete-sentence rule, agent instructed accordingly).
+- **Fresh context on new input.** Any new DM or modal answer resets the embed to "Processing new input…" — old plan/questions/prose/verdict flags clear instead of lingering next to the fresh context. Stale NO-ACTION verdicts arriving after newer input are ignored rather than closing the session.
+- **Assessment honesty + exits.** No Action presses are visibly acknowledged (ephemeral note + Assessing status in the embed), repeat presses are refused while one runs, and a verdict-less finish hands the prose back instead of hanging. Review descriptions now surface the live phase label, so Processing/Assessing states are visible. /feedback with a live slot offers Abandon & start fresh (marked superseded, history `closed`) instead of dead-ending; FAILED gains Retry review.
+- **Execution-phase embed honesty.** Approving now clears the review-era prose/plan text so Latest starts fresh instead of echoing the stale plan; the Allow button label and "waiting on permission" line stringify safely (no more `[object Object]` — the server sends a `{messageID, callID}` object there); resolving a permission rewrites the waiting line to `Permission allowed/denied`. Event handling is serialized through a per-process chain — concurrent stream events used to read-modify-write the store out of order, clobbering progress lines and freezing stale buttons into the embed.
+- **Prompt sends retry transient failures.** `session.prompt` now retries up to 3x with backoff on `fetch failed`/conn-refused-style errors (the 15:41 "Execution failed to start · fetch failed" was a loopback blip with a healthy server) and names the systemd unit in the final error; busy/concurrency rejections still fail fast into the hold-DM path, never retried.
+
+## UNDEPLOYED — Feedback bot: owner-only OpenCode sessions via /feedback (2026-11-11)
+
+### Added
+- **`/feedback` (owner only):** opens a DM; that DM is one OpenCode session on the PHMC Forms repo. One active session at a time; state persists to `data/bot-state/feedback.json` (survives `bot:deploy`) and reattaches on restart.
+- **Two-phase flow:** review (Plan agent, read-only, questions in the embed, DM answers revise it) then execute (Build agent on Approve). Pause/Resume, Allow/Deny permission gate, tests → `pre-feedback-<timestamp>` tag → commit → push to `source` (repo has no `main`; branch is `FEEDBACK_DEPLOY_BRANCH`), two-confirm Revert, Complete Session.
+- **Mandatory CLAUDE.md gate:** the initial prompt requires reading `agent/CLAUDE.md` first; the controller aborts visibly if an edit/shell event precedes the observed read.
+- **One-message UI:** `services/feedback/render.js` renders `{state,data}` → `{embed,components}` (limits-enforced, isolation-tested); `samples-output.json` holds per-state samples vs the reference images. `FEEDBACK_DRY_RUN=true` simulates streams without the model.
+- **Wiring:** `DirectMessages` + `MessageContent` intents (+ `Channel` partial), `fb:<action>:<sessionId>` buttons, owner-checked everywhere.
+- **Ops:** `discord-bot/opencode-serve.service` (loopback `opencode serve`), `.env.example` `FEEDBACK_*`/`OPENCODE_URL` vars, `README-feedback.md`, `tools/feedback-{verify,render-test,samples,dryrun}.mjs`.
+- **Verified:** `check-bot-imports` clean (169 modules); render tests green; samples + dry-run outputs match the reference images. SDK surface verified against `@opencode-ai/sdk` 1.19.5 docs (v1 `createOpencodeClient`, `session.*`, `app.agents`, `config.providers`, `event.subscribe`); `--live` agent/model check + `opencode models` pinning still to run on the VPS.
+- **Not yet (VPS side, owner call):** Message Content Intent flip in the portal (user confirmed); then `node tools/feedback-verify.mjs --live` + `opencode models` pin. Code is live but `/feedback` fails closed until then.
+- Deployed via `npm run bot:check` (exactly the 14 intended diffs) + `npm run bot:deploy` — mirror clean except the expected `package-lock.json` rewrite from the VPS `npm install` (which installed `@opencode-ai/sdk`); `phmc-bot` restarted online, SDK present, boot log clean (only pre-existing AGH fetch errors).
+- **VPS setup DONE 2026-11-11:** `opencode` 1.19.5 installed (matches SDK), full repo cloned at `/opt/phmc-feedback/phmc-forms` (`source` @8da3dab), `opencode-serve.service` installed/enabled/active on 127.0.0.1:4096, `opencode-go` key merged into `/root/.local/share/opencode/auth.json` (600, other entries preserved), `opencode models` confirms `opencode-go/muse-spark-1.3-contributor`, `--live` verify all green (session/app/config/event surface, plan+build agents, provider).
+
+## DEPLOYED 2026-11-10 — `drdb-sent` flag on LEO reports
+
+### Added
+- **New `services/drdbAudit.js`** (dependency-free, import-checker safe): the `drdb-sent` audit trail. The automatic LSPD send (opted-in coroner report → `lspdPortalFormQueue` live filing) appends one `source=portal-send` line to `data/leo-report-access.log`; the flag is **derived from that log at read time, never persisted** — pre-DRDB reports (e.g. the 10/29 Wayne Stryker filing) correctly read `false`, and officer views never set it.
+- **LEO API responses gain top-level `drdb-sent`**: list rows (`leoReportRows`), single-report read, and cached-view audit — all via an mtime-cached, tail-bounded log scan (`getDrdbSentSet`).
+- **`lspdPortalFormQueue` success path** appends the send line (recipient, form URL/reference included). Best-effort: logging can never fail the send.
+- **Docs:** `setup/DEVELOPER-API.md` §5.1/§5.5 document the flag.
+- **Tests:** new `tests/drdb-audit.test.js` (11 tests: line format, log-injection stripping, derivation rules, file set + cache).
+- Deployed via `npm run bot:check` (exactly the 3 intended diffs) + `npm run bot:deploy` — mirror clean, `phmc-bot` + `morgue-api` restarted, LEO responses verified live with `drdb-sent` present. Pre-deploy sends (incl. the 10/29 Stryker filing) correctly read `false`; no resends — `sent` entities are terminal and the writer only fires on future sends.
+
+## UNDEPLOYED — Quoted API keys broke bot loopback reads / false morgue-overdue alerts (2026-11-09)
+
+### Fixed
+- **Root cause of the false "Morgue Database Update Overdue" alerts:** the VPS `.env` quotes `MORGUE_API_KEYS` (`"label:key,..."`), the bot's naive `.env` loader keeps the quotes, and `firstApiKey` never stripped them — so every bot-side loopback call sent `"label:key` as the key, got 401, and the morgue monitor silently fell back to the RTDB copy (stale since dual-write off, latest 9/21) while the VPS file was hours fresh. Proven live: same fetch 401 before / 200 after stripping.
+- **`stripKeyLabel` / `firstApiKey` (`services/apiKeyUtil.js`)** now strip surrounding quotes (mirrors the server's own parser). Fixes all 7 callers at once (morgue monitor, dashboard, morgue-add, death-record scan, stats commands).
+- **Same tolerance** in `vpsReportMirror.js`'s local copy (trailing-quote case on single-entry values).
+- **`systemMonitor.getVpsMorgueLatest` no longer fails silently:** warns on non-200 and on fetch exceptions instead of quietly taking the stale RTDB path.
+- **Tests:** new `tests/apiKeyUtil.test.js` (7 tests: labels, bare keys, quoted values, empties).
+- Deploy with `npm run bot:check` then `npm run bot:deploy` (whole tree) + `pm2 restart phmc-bot` is covered by the deploy.
+
+## UNDEPLOYED — CASELINK retired and stripped (2026-11-09)
+
+### Removed
+- **CASELINK logic removed bot-wide** (owner removed from LSSD, bot deauthorized, portal non-operable; last CASELINK-posted request Oct 30). No web-app references existed.
+- `autopsyRequestMonitor.js`: CASELINK poster branch, race-window re-search, and `postedByCaselink` flag writes gone. Fail-closed poster resolution stays (unresolvable poster still skips agency-topic creation).
+- `deployAutopsyReply.js`: DM fallback to the CASELINK account replaced with honest skip; requester-webhook auto-step retired (always skips; manual sends via `/forward-autopsy-complete` unchanged).
+- `requesterWebhook.js`: CASELINK copy/button/origin flag removed — neutral "Autopsy Records" payload only. Module retained for manual sends.
+- `autopsyCompletionGuards.js`: `CASELINK_ACCOUNT` + `isCaselinkAccount` deleted; `isUnusableDmTarget` keeps the remaining template guards.
+- `completionTemplate.js`: LSSD gov line no longer references the CASELINK portal. Comment touch-ups in `agencyForums.js`, `lspdAutopsyNotice.js`, `.env.example`.
+- Historical records keep their `postedByCaselink`/`requesterPoster` values; all reads stay graceful. Verified: no in-flight `requesterWebhook` steps anywhere.
+- Tests: `autopsyCompletionGuards.test.js` rewritten (caselink cases out); full suite 38 files / 322 green.
+
+## UNDEPLOYED — LSSD crosspost placeholder-name fix (2026-11-09)
+
+### Fixed
+- **`searchLssdRequestTopic` no longer matches on placeholder names** (`discord-bot/services/deployLssd.js`): "Unknown" (and Doe variants, via `isNonIdentityPlaceholder`) can no longer seed the bare-name search term or verify a title match. A request identified only by a placeholder now fails closed (no thread, manual handling) instead of adopting a stranger's thread.
+- **Root cause (LSSD #84490):** the Sep-30 Marchetti/Bates request thread collected 8 unrelated bot replies (Oct 24 – Nov 7) for four later "Unknown" cases (10425/10426/10438/10463). Each search fell back to the bare term "Unknown" and title-matched #84490; the wrong id was then persisted as those entries' `lssdRequestTopicId`, funneling every later ack/completion there.
+- **Data repair:** cleared the wrong `lssdRequestTopicId: 84490` on 10425/10426/10438/10463 (all four fully complete, nothing pending — purely defensive). Posted replies stay as-is (bot cannot un-post; thread needs a manual cleanup if wanted).
+- **Tests:** new `tests/lssd-request-search.test.js` (6 tests: stranger-thread rejection, own-thread hit, usable-name regression, John Doe parity, no-search empty case). Full suite: 38 files / 323 tests green. Covers LSSD/SADCR/DAO (all funnel through the one function).
+
+## UNDEPLOYED — Multi-recipient fan-out (2026-11-08)
+
+### Added
+- **NEW `services/recipients.js`** (dependency-free mirror of `src/utils/recipients.js` — `src/` is not shipped to the VPS): `normalizeRecipients` (trim, drop empties, dedupe vs primary, cap 5), `MAX_EXTRA_RECIPIENTS = 4`.
+- **`deployPM` fan-out**: one personalized PM per recipient (per-recipient BBCode variant from `scheduledReportsBBCode/.../variants`, base copy as fallback), grouped by forum (one login each). Per-leg status in `deployTargets`; retries skip already-`sent` legs. No-recipient / no-BBCode / single-recipient-no-credentials paths behave exactly as before.
+- **`handleCoronerEmail` fan-out**: one queue entity per leg (`enqueueCoronerEmail` / `enqueuePortalForm` accept `idx`; idx 0 keeps legacy keys). LSPD legs file the native portal form with per-leg data; other legs get per-leg filled email templates.
+- `check-bot-imports` OK (159 modules). Deploy with `npm run bot:check` then `npm run bot:deploy` after a staging fan-out test.
+
+## DEPLOYED 2026-11-07 — CCTV restored (panel + API + scheduler + rebuilt fetcher)
+
+### Restored
+- **morgue-api CCTV routes** (`GET /api/cctv/cameras|search|cameras/:id|stats`, `POST /api/cctv/fetch`) — byte-faithful to the pre-retirement code, re-inserted between the roster routes and the saved-report store. Fail closed (`503`) until the fetcher writes its first data.
+- **`services/cctvScheduler.js` + `index.js` wiring** — daily fetch tick back (5-min boot delay, 24h cadence, whole-tree SIGKILL on timeout — the 2026-07 OOM lesson kept).
+- **Functions `getCctvData` + `triggerCctvFetch`** redeployed (both listed live in `europe-west2`).
+
+### New fetcher (`cctv-script/fetch-all.cjs`)
+- The Oct retirement deleted `/opt/phmc-bot/cctv-script/` (never in git, no backup). Rebuilt from a live authenticated capture: the site serves logs as DataTables server-side JSON (`GET /logs/populate?...&Type=Normal&fetch=<cameraId>&...` → `{draw, recordsTotal, recordsFiltered, data:[{id,message,date}]}`), so the new script is **pure HTTPS, no browser** (a few MB RAM vs the old headless Chromium that once OOM'd the box).
+- **Auth = stored login session**: UCP SSO (password + recaptcha + OTP) can't fresh-login headless, so the script sends `CCTV_SESSION` (the `gta_world_cctv_english_session` cookie value) from `discord-bot/.env`. Expiry → exit 2 with `AUTH_EXPIRED`, scheduler posts the tail to bot-spam, owner refreshes the cookie. Same shapes out (`cameras.json`, `output/cctv-data.json` with `{name, latestId, logs}` + `metadata.lastFetched`), same scheduler-parseable stdout (`Cameras fetched: X/Y`, `Failed: N`, `New Total lines: N`, `#id name: n new entries, m stored`).
+- **Deploy note**: `cctv-script/` lives OUTSIDE the `bot:deploy` mirror — synced by hand (`scp`, see `cctv-script/README.md`), whole directory only.
+
+### Verified
+- `check-bot-imports` OK (158 modules), `bot:check` showed exactly the 3 intended diffs, mirror clean, `phmc-bot` + `morgue-api` restarted online, `/api/health` ok, CCTV routes 401 without a key.
+- **Pending (owner)**: install `CCTV_SESSION` in the VPS `.env` (3 steps in `cctv-script/README.md`), then run one `node fetch-all.cjs --headless` on the VPS — first run backfills full history (the site retains it).
+
 ## DEPLOYED 2026-11-06 — LSSD API access revoked with explicit 403 reason
 
 ### Changed

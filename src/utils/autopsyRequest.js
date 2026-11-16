@@ -110,6 +110,142 @@ export const toMassRequestBody = (record) => {
     };
 };
 
+// LSPD runs its own portal and has no phpBB forum profiles, so the Forum
+// Account URL (used for forum-profile DM delivery) does not exist for LSPD
+// requesters. Case-insensitive on purpose — the title tag derivation above
+// stays uppercase-strict (changing it would churn topic titles + goldens);
+// this helper is ONLY the forum-profile exemption gate for the request forms.
+export const isLspdRequester = ({ agencyForum, requesterDept, dept } = {}) => {
+    if (String(agencyForum || '').trim().toUpperCase() === 'LSPD') return true;
+    const d = String(requesterDept ?? dept ?? '').trim();
+    return /^lspd\b/i.test(d) || /los santos police/i.test(d);
+};
+
+// ── Private (confidential) autopsy requests ───────────────────────────────
+// Private requests are law-enforcement only: they never post to the public
+// forums, so the requesting department must be a real LE agency (the bot
+// re-validates and fails closed on anything else).
+export const LE_AGENCIES = ['LSPD', 'LSSD', 'SADCR', 'DAO'];
+export const PRIVATE_JUSTIFICATION_MIN = 10;
+
+export const isLeAgency = (agency) => LE_AGENCIES.includes(String(agency || '').trim().toUpperCase());
+
+// Batch requests cannot be filed through the LSPD portal (one DRDB form per
+// decedent/report), so an LSPD batch is refused up front with a clear message.
+export const LSPD_MASS_BLOCK_MESSAGE = 'This is currently not supported on LSPD DRDB, please try again later.';
+
+export const isLspdMassBlocked = ({ agencyForum, requesterDept } = {}) =>
+    isLspdRequester({ agencyForum, requesterDept });
+
+/**
+ * Preview builder for a PRIVATE request's confidential Case Management post.
+ * The bot builds the authoritative f=266 post from the structured payload
+ * (discord-bot/services/privateWebAutopsyIntake.js -> buildPrivateWebCaseBbcode);
+ * this mirror exists so the requester sees exactly what the case file says.
+ * Keep the section headings/line labels identical to the bot builder.
+ */
+export const buildPrivateAutopsyCaseBBCode = (r = {}) => {
+    const raw = (v) => String(v ?? '').trim();
+    const ans = (v) => raw(v) || DNA_VALUE;
+    const ooc = raw(r.oocName);
+    const nameLine = ooc ? `${raw(r.decedentName)} ((${ooc}))` : raw(r.decedentName);
+    return `[divbox=white][center][b][size=150]CONFIDENTIAL AUTOPSY REQUEST[/size][/b][/center]
+[center][size=65]LOS SANTOS DEPARTMENT OF MEDICAL EXAMINER-CORONER[/size][/center]
+[center][b][color=#800000]NOT FOR PUBLIC RELEASE[/color][/b][/center][/divbox]
+[divbox=white]
+[b]SECTION 1: REQUESTER'S INFORMATION[/b]
+[b]1.) Name:[/b] ${ans(r.requesterName)}
+[b]2.) Rank:[/b] ${ans(r.requesterRank)}
+[b]3.) Department / Assignment:[/b] ${ans(r.requesterDept)}
+[b]4.) Badge/Serial Number:[/b] ${ans(r.requesterBadge)}
+[b]5.) Read and understood Autopsy Guidelines:[/b] ${r.guidelinesRead ? 'YES' : 'NO'}
+[b]6.) Contact Information:[/b] Cell ${ans(r.requesterCell)} | Forum ${ans(r.forumAccountUrl)} | (( Discord ${ans(r.requesterDiscord)} ))
+[b]PRIVATE REQUEST - JUSTIFICATION / AUTHORITY:[/b] ${ans(r.privateJustification)}
+[/divbox]
+[divbox=white]
+[b]SECTION 2: DECEDENT'S INFORMATION[/b]
+[b]1.) Decedent Name:[/b] ${nameLine || 'Unknown'}
+[b]2.) Gender:[/b] ${ans(r.gender)}
+[b]3.) Ethnicity:[/b] ${ans(r.ethnicity)}
+[b]4.) Date of Death:[/b] ${ans(r.dateOfDeath)}
+[b]5.) Time of Death:[/b] ${ans(r.timeOfDeath)}
+[b]6.) Location:[/b] ${ans(r.placeOfDeath)}
+[/divbox]
+[divbox=white]
+[b]SECTION 3: DETAILS[/b]
+[b]1.) Synopsis:[/b] ${ans(r.synopsis)}
+[b]2.) Reason for Autopsy:[/b] ${ans(r.causeDetail)}
+[/divbox]
+[divbox=white]
+[b]SECTION 4: OOC INFORMATION[/b]
+[b]1.) PK/CK:[/b] ${r.deathType === 'CK' ? 'CK' : 'PK'}
+[b]2.) /cexamine:[/b] ${raw(r.cexamineImg) ? `[img]${raw(r.cexamineImg)}[/img]` : 'Image not provided'}
+[b]3.) /cinjuries:[/b] ${raw(r.cinjuriesImg) ? `[img]${raw(r.cinjuriesImg)}[/img]` : 'Image not provided'}
+[/divbox]`;
+};
+
+/** Missing-field list for a private request (mirrors the modal's guards). */
+export const validatePrivateAutopsyRequest = ({
+    requester = {}, justification = '', forumAccountUrl = '', decedentName = '',
+} = {}) => {
+    const missing = [];
+    const agency = String(requester.agencyForum || '').trim().toUpperCase();
+    if (!isLeAgency(agency)) missing.push('Agency forum (law enforcement only)');
+    if (!String(requester.name || '').trim()) missing.push('Name');
+    if (!String(requester.rank || '').trim()) missing.push('Rank');
+    if (!String(requester.dept || '').trim()) missing.push('Department / Assignment');
+    if (!String(decedentName || '').trim()) missing.push('Decedent name');
+    if (String(justification || '').trim().length < PRIVATE_JUSTIFICATION_MIN) {
+        missing.push(`Private justification (min ${PRIVATE_JUSTIFICATION_MIN} characters)`);
+    }
+    if (!isLspdRequester({ agencyForum: agency, requesterDept: requester.dept }) && !String(forumAccountUrl || '').trim()) {
+        missing.push('Forum Account URL');
+    }
+    return missing;
+};
+
+/**
+ * Firebase payload for autopsy-requests/private-pending. The bot consumes the
+ * structured fields and builds the confidential f=266 case itself; no public
+ * topic title/BBCode is ever written here.
+ */
+export const buildPrivateAutopsyRequestPayload = ({
+    record = {}, requester = {}, details = {}, justification = '',
+    characterName = '', agencyForum = '', forumAccountUrl = '', deathType = 'PK',
+    decedentName = '', oocName = '', gender = '', ethnicity = '',
+    dateOfDeath = '', timeOfDeath = '', placeOfDeath = '',
+} = {}) => ({
+    requestType: 'private',
+    isPrivate: true,
+    status: 'pending',
+    caseId: String(record?.caseId || ''),
+    decedentName: String(decedentName || '').trim(),
+    oocName: String(oocName || '').trim(),
+    gender: String(gender || '').trim(),
+    ethnicity: String(ethnicity || '').trim(),
+    dateOfDeath: String(dateOfDeath || '').trim(),
+    timeOfDeath: String(timeOfDeath || '').trim(),
+    placeOfDeath: String(placeOfDeath || '').trim(),
+    requesterName: String(requester.name || '').trim(),
+    requesterRank: String(requester.rank || '').trim(),
+    requesterDept: String(requester.dept || '').trim(),
+    requesterBadge: String(requester.badge || '').trim(),
+    guidelinesRead: !!requester.guidelinesRead,
+    requesterCell: String(requester.cell || '').trim(),
+    requesterDiscord: String(requester.discord || '').trim(),
+    agencyForum: String(agencyForum || '').trim().toUpperCase(),
+    forumAccountUrl: String(forumAccountUrl || '').trim(),
+    deathType: deathType === 'CK' ? 'CK' : 'PK',
+    synopsis: String(details.synopsis || '').trim(),
+    causeDetail: String(details.causeDetail || '').trim(),
+    privateJustification: String(justification || '').trim(),
+    cexamineImg: String(details.cexamineImg || '').trim(),
+    cinjuriesImg: String(details.cinjuriesImg || '').trim(),
+    createdAt: Date.now(),
+    createdBy: characterName || null,
+    source: 'web-morgue-private',
+});
+
 // Records -> de-duplicated, ordered batch rows (one per selected morgue record).
 export const toMassRequestBodies = (records = []) => {
     const seen = new Set();
@@ -235,14 +371,16 @@ export const validateMassRequestBody = (body) => {
     return problems;
 };
 
-/** Validate the whole batch the same way the modal does. */
+/** Validate the whole batch the same way the modal does. LSPD requesters have
+ * no forum profiles, so the Forum Account URL is exempt for them (same rule
+ * as the single-request modal). */
 export const validateMassRequest = ({ incidentLabel, requester = {}, bodies = [] } = {}) => {
     const missing = [];
     if (!String(incidentLabel || '').trim()) missing.push('Incident / operation name');
     if (!String(requester.name || '').trim()) missing.push("Requester name");
     if (!String(requester.rank || '').trim()) missing.push('Requester rank');
     if (!String(requester.dept || '').trim()) missing.push('Requester department');
-    if (!String(requester.forumAccountUrl || '').trim()) missing.push('Forum account URL');
+    if (!isLspdRequester({ agencyForum: requester.agencyForum, requesterDept: requester.dept }) && !String(requester.forumAccountUrl || '').trim()) missing.push('Forum account URL');
     if (bodies.length < 2) missing.push('At least 2 bodies selected');
     bodies.forEach((b, i) => {
         for (const p of validateMassRequestBody(b)) missing.push(`Body ${i + 1}: ${p}`);

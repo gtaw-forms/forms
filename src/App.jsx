@@ -15,7 +15,6 @@ import Admin from './components/Admin/Admin.jsx';
 // chunk and reorders module evaluation (TDZ crash at boot). Keep the boundary.
 const LoadCaseRoute = lazy(() => import('./components/ui-new/LoadCaseRoute.jsx'));
 import SplashGate, { AppLoadingScreen } from './components/ui-new/SplashGate.jsx';
-import MigrationNoticeGate from './components/ui-new/MigrationNotice.jsx';
 
 function SessionExpiredBanner() {
     const { sessionExpired, dismissSessionExpiry, logout } = useAuth();
@@ -274,7 +273,6 @@ function App() {
                 <SessionExpiredBanner />
                 <UpdateBanner />
                 <SplashGate>
-                    <MigrationNoticeGate>
                     <Router>
                         <Suspense fallback={<AppLoadingScreen />}>
                             <Routes>
@@ -303,7 +301,6 @@ function App() {
                             </Routes>
                         </Suspense>
                     </Router>
-                    </MigrationNoticeGate>
                 </SplashGate>
             </FormProvider>
         </Sentry.ErrorBoundary>

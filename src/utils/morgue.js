@@ -128,8 +128,100 @@ export const parseBulkMorgueRecords = (text) => {
 };
 
 // ---------------------------------------------------------------------------
+// CK marker detection
+// ---------------------------------------------------------------------------
+
+/**
+ * Matches a literal "(CK)" marker (case-insensitive, tolerant of inner
+ * spacing like "( CK )"). Kept strict on the parens so everyday words
+ * containing "ck" (sick, stock, block) never match.
+ */
+export const CK_MARKER_RE = /\(\s*ck\s*\)/i;
+
+/**
+ * True when any textual field of a morgue record contains a "(CK)" marker —
+ * name, cause of death, location, descriptions, notes, ballistics, findings.
+ */
+export const recordContainsCK = (record) => {
+    if (!record || typeof record !== 'object') return false;
+    const parts = [];
+    for (const key of ['name', 'causeOfDeath', 'location', 'physicalDescription',
+        'adminNote', 'tattoos', 'sex', 'identified', 'timeOfDeath',
+        'timeOfDeathISO', 'dnaProfile', 'estimatedAge', 'bac', 'narcotics']) {
+        if (record[key] != null && record[key] !== '') parts.push(String(record[key]));
+    }
+    if (Array.isArray(record.bullets)) {
+        for (const b of record.bullets) {
+            if (typeof b === 'string') parts.push(b);
+            else if (b && typeof b === 'object') {
+                if (b.type) parts.push(String(b.type));
+                if (b.id) parts.push(String(b.id));
+            }
+        }
+    }
+    if (Array.isArray(record.findings)) {
+        for (const f of record.findings) {
+            if (f && typeof f === 'object') {
+                parts.push([f.time, f.type, f.part, f.dist].filter(Boolean).join(' '));
+            } else if (f != null) {
+                parts.push(String(f));
+            }
+        }
+    }
+    return parts.some((v) => CK_MARKER_RE.test(v));
+};
+
+// ---------------------------------------------------------------------------
 // Morgue BBCode Generation
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Freshness (Morgue Records panel)
+// ---------------------------------------------------------------------------
+// Records are transcribed from the in-game morgue by hand, roughly every two
+// days. The panel states that cadence rather than promising a fixed schedule,
+// and flags anything past the window as overdue.
+export const MORGUE_REFRESH_CADENCE_MS = 48 * 60 * 60 * 1000;
+
+/**
+ * Latest import time, in epoch ms, across the loaded records — floored by the
+ * data-version timestamp (which is the only signal that covers deletions).
+ * Returns null when neither source has a timestamp.
+ *
+ * The version is a counter in some paths (MorgueManager increments it) and an
+ * epoch in others (morgue-api stamps Date.now()), so only epoch-sized values
+ * are used as a time. Epoch 1e12 ≈ Sep 2001 — anything smaller is a counter.
+ */
+export function morgueLastUpdatedAt(records, versionAt) {
+    let latest = 0;
+    if (Array.isArray(records)) {
+        for (const r of records) {
+            const t = Number(r?.lastUpdated) || 0;
+            if (t > latest) latest = t;
+        }
+    }
+    const version = Number(versionAt) || 0;
+    if (version > 1e12 && version > latest) latest = version;
+    return latest || null;
+}
+
+/** True when the data is older than the usual refresh window. */
+export function isMorgueOverdue(lastUpdatedAt, now = Date.now()) {
+    if (!lastUpdatedAt) return false;
+    return now - Number(lastUpdatedAt) > MORGUE_REFRESH_CADENCE_MS;
+}
+
+/** Human relative age: "just now", "12 minutes ago", "2 days ago". */
+export function formatMorgueAge(ts, now = Date.now()) {
+    if (!ts) return 'never';
+    const mins = Math.round(Math.max(0, now - Number(ts)) / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins} minute${mins === 1 ? '' : 's'} ago`;
+    const hours = Math.round(mins / 60);
+    if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+    const days = Math.round(hours / 24);
+    return `${days} day${days === 1 ? '' : 's'} ago`;
+}
 
 export const generateMorgueBBCode = (record, { redacted = false } = {}) => {
     if (!record) return '';

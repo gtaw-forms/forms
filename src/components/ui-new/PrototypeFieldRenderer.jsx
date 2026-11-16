@@ -11,6 +11,7 @@ import { formatCharacterNameForDisplay } from '../../utils/identityUtils';
 import { mapAgencyOptions } from '../../utils/agencyOptions';
 import { triggerCheckOfficerName, triggerGetOfficerRoster } from '../../services/firebaseFunctions';
 import { readOfficerRoster, refreshOfficerRoster, searchOfficerRoster } from '../../utils/officerRosterCache';
+import { MAX_EXTRA_RECIPIENTS } from '../../utils/recipients';
 import { useNotification } from '../../contexts/NotificationContext';
 
 // Debug logger — only logs when running the Vite dev server. Keeps the noisy
@@ -762,6 +763,10 @@ const PrototypeFieldRenderer = ({
     case 'officer_info':
       return <OfficerSearch field={field} value={value} onChange={onChange} allValues={allValues} onFieldChange={onFieldChange} agencyOptions={agencyOptions} noCheckbox={field.type === 'officer_info'} />;
 
+    /* ─── Additional Officers (multi-recipient fan-out, up to 4 extra) ─── */
+    case 'multi_officer':
+      return <MultiOfficerRecipients field={field} value={value} onChange={onChange} allValues={allValues} onFieldChange={onFieldChange} agencyOptions={agencyOptions} />;
+
     /* ─── Attach Report Button ─── */
     case 'attach_report_button': {
       const extractMassFatalityOoc = (bbCode) => {
@@ -1110,7 +1115,7 @@ const PrototypeFieldRenderer = ({
 };
 
 /* ─── Officer Search Component (extracted so hooks are at top level) ─── */
-const OfficerSearch = ({ field, value, onChange, allValues, onFieldChange = () => {}, agencyOptions, noCheckbox = false, disabled, hideDeptSelect = false, hideLabel = false, inline = false }) => {
+const OfficerSearch = ({ field, value, onChange, allValues, onFieldChange = () => {}, agencyOptions, noCheckbox = false, disabled, hideDeptSelect = false, hideLabel = false, inline = false, deptValue, onDeptChange = null, onOfficerSelect = null }) => {
   const reqOn = noCheckbox ? true : !!value;
   // Keep the RAW (untrimmed) value for the input so multi-word names with spaces
   // can be typed; trim only for the search trigger.
@@ -1126,7 +1131,16 @@ const OfficerSearch = ({ field, value, onChange, allValues, onFieldChange = () =
     { value: 'dao', label: 'District Attorney Office' },
     { value: 'saaa', label: 'San Andreas Aviation Administration' },
   ];
-  const currentDept = allValues?.department || allValues?.requestingOfficerDepartment || '';
+  // Per-row department override (multi-officer rows): when deptValue is
+  // provided it replaces the shared department/requestingOfficerDepartment
+  // fields, and department picks are reported via onDeptChange instead of
+  // clobbering the primary recipient's department.
+  const sharedDept = allValues?.department || allValues?.requestingOfficerDepartment || '';
+  const currentDept = deptValue !== undefined ? deptValue : sharedDept;
+  const writeDept = (code, raw) => {
+    if (onDeptChange) onDeptChange(code);
+    else { onFieldChange('department', raw); onFieldChange('requestingOfficerDepartment', raw); }
+  };
   const deptRaw = currentDept && typeof currentDept === 'object' ? (currentDept.value || currentDept.label || '') : currentDept;
   const deptCode = String(deptRaw || '').toLowerCase();
   // Roster lookup exists for LSPD/LSSD/SADCR/DAO. A BLANK department means
@@ -1289,10 +1303,17 @@ const OfficerSearch = ({ field, value, onChange, allValues, onFieldChange = () =
                   // requestingOfficerDepartment empty.
                   const deptCode = String(m.department || '').toLowerCase();
                   devLog(`[OfficerSearch] Selected: "${m.name}" — setting department to "${deptCode}"`);
-                  onChange(m.name);
-                  if (deptCode && onFieldChange) {
-                    onFieldChange('department', deptCode);
-                    onFieldChange('requestingOfficerDepartment', deptCode);
+                  // Per-row (multi-officer) mode takes ONE atomic update: name
+                  // and department must land in the same array write, or the
+                  // second setRow overwrites the first on stale state and the
+                  // name is lost while the department sticks.
+                  if (onOfficerSelect) {
+                    onOfficerSelect(m.name, deptCode);
+                  } else {
+                    onChange(m.name);
+                    if (deptCode) {
+                      writeDept(deptCode, deptCode);
+                    }
                   }
                   setSearchResults([]); setWaiting(false); setSearching(false); setNoMatch(false); lastSearched.current = m.name;
                 }}
@@ -1308,13 +1329,71 @@ const OfficerSearch = ({ field, value, onChange, allValues, onFieldChange = () =
         </div>
         {!hideDeptSelect && (
           <select value={currentDept}
-            onChange={e => { const code = String(e.target.value || '').toLowerCase(); if (!supportsRosterCode(code)) notifyManualEntry(); onFieldChange('department', e.target.value); onFieldChange('requestingOfficerDepartment', e.target.value); }}
+            onChange={e => { const code = String(e.target.value || '').toLowerCase(); if (!supportsRosterCode(code)) notifyManualEntry(); writeDept(code, e.target.value); }}
             style={{ flex: 1, background: 'var(--bg-surface)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 8, padding: '10px 12px', fontSize: 13 }}>
             <option value="">— Requesting Department —</option>
             {deptOptions.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
           </select>
         )}
       </div>
+    </div>
+  );
+};
+
+/* ─── Additional Officers editor (multi-recipient fan-out) ───
+ * Up to MAX_EXTRA_RECIPIENTS extra { officer, department } rows, each with its
+ * own roster-validated OfficerSearch. Departments are stored per-row so picks
+ * never clobber the primary recipient's shared department fields. */
+const MultiOfficerRecipients = ({ field, value, onChange, allValues, onFieldChange = () => {}, agencyOptions }) => {
+  const rows = Array.isArray(value) ? value : [];
+  const setRow = (idx, patch) => {
+    const next = rows.map((r, i) => (i === idx ? { officer: '', department: '', ...(r || {}), ...patch } : r));
+    onChange(next);
+  };
+  const removeRow = (idx) => {
+    onChange(rows.filter((_, i) => i !== idx));
+  };
+  const addRow = () => {
+    if (rows.length >= MAX_EXTRA_RECIPIENTS) return;
+    onChange([...rows, { officer: '', department: '' }]);
+  };
+
+  return (
+    <div className={`field${field.layout !== 'compact-50' ? ' full' : ''}`}>
+      <label>{field.label || 'Additional Officers'}</label>
+      <div style={{ fontSize: 11.5, color: 'var(--text-faint)', marginBottom: 8 }}>
+        Same report goes to each officer as a personalized copy — up to {MAX_EXTRA_RECIPIENTS} extra ({MAX_EXTRA_RECIPIENTS + 1} total with the requesting officer above).
+      </div>
+      {rows.map((row, idx) => (
+        <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 8 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <OfficerSearch
+              field={{ ...field, label: `Officer ${idx + 2}` }}
+              value={row?.officer || ''}
+              onChange={(name) => setRow(idx, { officer: name })}
+              onOfficerSelect={(name, deptCode) => setRow(idx, { officer: name, ...(deptCode ? { department: deptCode } : {}) })}
+              allValues={allValues}
+              onFieldChange={onFieldChange}
+              agencyOptions={agencyOptions}
+              noCheckbox
+              inline
+              hideLabel
+              deptValue={row?.department || ''}
+              onDeptChange={(code) => setRow(idx, { department: code })}
+            />
+          </div>
+          <button type="button" className="btn btn-ghost" title={`Remove officer ${idx + 2}`} aria-label={`Remove officer ${idx + 2}`}
+            onClick={() => removeRow(idx)}
+            style={{ fontSize: 12, padding: '10px 12px', flexShrink: 0 }}>
+            <i className="fas fa-times" />
+          </button>
+        </div>
+      ))}
+      {rows.length < MAX_EXTRA_RECIPIENTS && (
+        <button type="button" className="btn btn-ghost" onClick={addRow} style={{ fontSize: 12, padding: '8px 12px' }}>
+          <i className="fas fa-plus me-1" /> Add another officer ({rows.length}/{MAX_EXTRA_RECIPIENTS})
+        </button>
+      )}
     </div>
   );
 };

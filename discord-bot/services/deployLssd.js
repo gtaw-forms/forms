@@ -10,6 +10,7 @@ import { EmbedBuilder } from 'discord.js';
 import { logFnCall } from './deployLogger.js';
 import { getForumClient } from './forumClient.js';
 import { notifySelfHeal, sendLogMessage } from './logChannel.js';
+import { isNonIdentityPlaceholder } from './doePlaceholders.js';
 
 export const LSSD_AUTOPSY_FORUM_ID = 2263;
 export const LSSD_BASE = 'https://lssd.gta.world';
@@ -42,14 +43,18 @@ const refFor = (db, path) => (typeof db.ref === 'function' ? db.ref(path) : db.c
 export async function searchLssdRequestTopic(client, { oocName = '', name = '' } = {}, { forumId = LSSD_AUTOPSY_FORUM_ID, baseUrl = LSSD_BASE } = {}) {
     const ooc = (oocName || '').trim();
     const decedent = (name || '').trim();
-    const isGeneric = /^john\s*doe$/i.test(decedent);
+    // Placeholder names ("Unknown", "John/Jane Doe", ...) are NOT identities:
+    // searching the bare name and title-matching on it attributes one
+    // unidentified decedent's thread to every other (t=84490 collected four
+    // unrelated Unknown cases). Only a usable name may seed or verify a term.
+    const nameUsable = !!decedent && !isNonIdentityPlaceholder(decedent);
 
     const terms = [];
-    if (ooc && decedent && !isGeneric) terms.push(`${decedent} (( ${ooc} ))`);
+    if (ooc && decedent && nameUsable) terms.push(`${decedent} (( ${ooc} ))`);
     if (ooc) terms.push(ooc);
-    if (decedent && !isGeneric) terms.push(decedent);
+    if (nameUsable) terms.push(decedent);
     if (terms.length === 0) {
-        console.log('[AUTO-CROSSPOST] No searchable name for LSSD request lookup');
+        console.log('[AUTO-CROSSPOST] No searchable name for LSSD request lookup (placeholder name only) — refusing to match a stranger\u2019s thread');
         return null;
     }
 
@@ -60,7 +65,7 @@ export async function searchLssdRequestTopic(client, { oocName = '', name = '' }
         if (!results || results.length === 0) continue;
         const match = results.find(r => {
             const t = (r.title || '').toLowerCase();
-            return (oocL && t.includes(oocL)) || (decL && !isGeneric && t.includes(decL));
+            return (oocL && t.includes(oocL)) || (decL && nameUsable && t.includes(decL));
         });
         if (match) {
             console.log(`[AUTO-CROSSPOST] LSSD request found via "${term}" → #${match.topicId} "${match.title}"`);

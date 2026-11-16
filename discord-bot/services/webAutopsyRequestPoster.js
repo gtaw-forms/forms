@@ -211,6 +211,17 @@ function scheduleRetry(id, entry) {
 }
 
 async function postOne(db, id, entry) {
+    // Belt and braces: private requests belong to
+    // services/privateWebAutopsyIntake.js and must NEVER be published to f=265.
+    if (entry.isPrivate === true || String(entry.requestType || '').toLowerCase() === 'private') {
+        console.error(`[WEB-REQ] #${id} is a PRIVATE request in the public queue — refused and parked`);
+        await db.ref(`${PENDING_PATH}/${id}`).update({
+            status: 'rejected',
+            lastError: 'Private request in the public queue — never posted publicly',
+            lastAttemptAt: Date.now(),
+        });
+        return;
+    }
     const title = String(entry.topicTitle || '').trim();
     const bbCode = String(entry.requestBBCode || '').trim();
     if (!title || !bbCode) {

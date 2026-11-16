@@ -32,11 +32,15 @@ export const triggerDeleteMorgueRecord = (data) => triggerFunction('deleteMorgue
 export const triggerDeleteMorgueRecords = (data) => triggerFunction('deleteMorgueRecords', data);
 export const triggerPurgeMorgueRecords = () => triggerFunction('purgeMorgueRecords', { confirmed: true });
 export const triggerSyncMorgueFile = () => triggerFunction('syncMorgueFile', {});
+// Manual "please re-import the morgue" note to the maintainer (morgue panel).
+export const triggerRequestMorgueUpdate = () => triggerFunction('requestMorgueUpdate', {});
 export const triggerCheckOfficerName = (data) => triggerFunction('checkOfficerName', data);
 // Full roster snapshot (name-only, ~9 KB) cached in IndexedDB for 24 h — backs
 // the offline-safe officer autocomplete. See src/utils/officerRosterCache.js.
 export const triggerGetOfficerRoster = () => triggerFunction('getOfficerRoster', {});
 export const triggerGetAgencyCredentials = () => triggerFunction('getAgencyCredentials', {});
+export const triggerGetCctvData = (data) => triggerFunction('getCctvData', data);
+export const triggerCctvFetch = () => triggerFunction('triggerCctvFetch', {});
 export const triggerListSavedReports = (data) => triggerFunction('listSavedReports', data);
 export const triggerListRecentSavedReports = (data) => triggerFunction('listRecentSavedReports', data);
 export const triggerGetSavedReport = (data) => triggerFunction('getSavedReport', data);

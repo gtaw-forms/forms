@@ -20,6 +20,7 @@ import { reportLogicalError } from '../utils/logging';
 import { useAuth } from '../contexts/AuthContext';
 import { checkConsentDirect } from './useConsent';
 import { getAppBuildId } from '../utils/buildVersion';
+import { normalizeRecipients } from '../utils/recipients';
 
 const isLocalHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
@@ -407,6 +408,19 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated, rosterData = {}) 
             }
         }
 
+        // ── Multi-recipient normalization ──
+        // Canonicalize additionalRecipients at save time (trim, drop empties,
+        // dedupe vs the primary, cap at 4 extras). The editor already enforces
+        // this, but restores/migrations can carry stale shapes.
+        if (Array.isArray(dataToSave.additionalRecipients)) {
+            dataToSave.additionalRecipients = normalizeRecipients({
+                requestingOfficer: formValues.requestingOfficer ?? formValues.requesting_officer ?? formValues.officerName ?? '',
+                department: formValues.department ?? formValues.requestingOfficerDepartment ?? '',
+                additionalRecipients: dataToSave.additionalRecipients,
+            }).slice(1);
+            if (dataToSave.additionalRecipients.length === 0) delete dataToSave.additionalRecipients;
+        }
+
         // ── Edit & Repost: apply changes to an already-deployed report in place ──
         // The ME fixed the form after a deploy; instead of enqueueing a fresh deploy,
         // write the updated data + BBCode and queue a `reportEdits` request that the
@@ -423,7 +437,11 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated, rosterData = {}) 
                 updatedAt: Date.now(),
                 deployMessage: 'Edit queued — the bot will update the forum post in place.',
             });
-            await set(ref(database, `scheduledReportsBBCode/${editAuthor}/${editKey}`), { bbCode, updatedAt: Date.now() });
+            await set(ref(database, `scheduledReportsBBCode/${editAuthor}/${editKey}`), {
+                bbCode,
+                ...(options.bbcodeVariants ? { variants: sanitizeForFirebase(options.bbcodeVariants) } : {}),
+                updatedAt: Date.now(),
+            });
             await set(ref(database, `reportEdits/${editAuthor}/${editKey}`), {
                 status: 'requested',
                 requestedAt: new Date().toISOString(),
@@ -554,7 +572,12 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated, rosterData = {}) 
                 const bbCodeRef = ref(database, bbCodePath);
                 promises = [set(reportRef, reportDataToSave)];
                 if (bbCodeBasePath === 'scheduledReportsBBCode' || bbCodeBasePath === 'dev-reports-bbcode') {
-                    promises.push(set(bbCodeRef, { bbCode }));
+                    // Multi-recipient variants ride alongside the base BBCode —
+                    // one personalized copy per extra officer, rendered at save.
+                    promises.push(set(bbCodeRef, {
+                        bbCode,
+                        ...(options.bbcodeVariants ? { variants: sanitizeForFirebase(options.bbcodeVariants) } : {}),
+                    }));
                 } else {
                     // Legacy BBCode proxy retired (3b-11): unified report+BBCode
                     // save covers this path (localhost dev for non-deploy forms).
@@ -790,6 +813,16 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated, rosterData = {}) 
                 }
                 if (webhookPayload.department) {
                     discordPayload.embeds[0].fields.push({ name: 'Department', value: webhookPayload.department, inline: true });
+                }
+                // Multi-recipient: surface the extra officers on the save
+                // notice so it's obvious the report fans out beyond primary.
+                const savedExtras = normalizeRecipients(formValues).slice(1);
+                if (savedExtras.length > 0) {
+                    discordPayload.embeds[0].fields.push({
+                        name: `Additional Officers (${savedExtras.length})`,
+                        value: savedExtras.map((r) => r.department ? `${r.officer} (${r.department})` : r.officer).join(', ').slice(0, 1000),
+                        inline: false,
+                    });
                 }
 
                 triggerWebhookProxy('forms', discordPayload).catch(error => {

@@ -20,6 +20,7 @@
  */
 
 import { registerTick, unregisterTick } from './scheduler.js';
+import { appendDrdbSend } from './drdbAudit.js';
 
 export const FORM_QUEUE_NODE = 'lspd-portal-form-queue';
 const BACKOFF_MS = [30 * 60 * 1000, 2 * 60 * 60 * 1000, 6 * 60 * 60 * 1000];
@@ -30,8 +31,10 @@ const SWEEP_MS = 10 * 60 * 1000;
 let _db = null;
 const _inFlight = new Set();
 
-export function formKey(form, authorId, reportKey) {
-  return `${form}|${authorId}|${reportKey}`;
+export function formKey(form, authorId, reportKey, idx = 0) {
+  // Per-recipient entities carry a numeric suffix; idx 0 keeps the legacy
+  // key so in-flight single-recipient entities are untouched.
+  return idx > 0 ? `${form}|${authorId}|${reportKey}|${idx}` : `${form}|${authorId}|${reportKey}`;
 }
 
 /**
@@ -42,7 +45,7 @@ export function formKey(form, authorId, reportKey) {
  * @returns {Promise<string|null>} entity key, or null when skipped/refused
  */
 export async function enqueuePortalForm(db, {
-  form, authorId, reportKey, recipient, data = {}, context = {},
+  form, authorId, reportKey, recipient, data = {}, context = {}, idx = 0,
 }) {
   if (form !== 'coroner-report' && form !== 'medical-examiner') {
     console.warn(`[FORMS-QUEUE] Refusing to enqueue — unknown form "${form}"`);
@@ -60,7 +63,7 @@ export async function enqueuePortalForm(db, {
     console.error(`[FORMS-QUEUE] Refusing to enqueue ${form} ${authorId}|${reportKey} — ${(built.errors || []).join(' | ').slice(0, 300)}`);
     return null;
   }
-  const key = formKey(form, authorId, reportKey);
+  const key = formKey(form, authorId, reportKey, idx);
   try {
     const existing = (await db.ref(`${FORM_QUEUE_NODE}/${key}`).once('value')).val();
     if (existing && !['failed'].includes(existing.status)) {
@@ -173,8 +176,12 @@ async function processOneForm(key, _entity) {
       const forms = await import('./lspdPortalForms.js');
       // LIVE submits (Nov 2026: filings enabled by operator). The driver
       // still refuses unless LSPD_PORTAL_ENABLED + LSPD_FORMS_DRY_RUN=false.
+      // Multi-recipient: the entity owns its leg's addressee — stamp it onto
+      // the rebuilt payload so the "Requesting officer" text field names the
+      // officer this filing is actually for, not the report's primary.
+      const legData = { ...report.data, requestingOfficer: fresh.recipient || report.data.requestingOfficer };
       const deliver = fresh.form === 'coroner-report'
-        ? forms.deliverCoronerReportForm({ recipient: fresh.recipient, data: report.data, submit: true })
+        ? forms.deliverCoronerReportForm({ recipient: fresh.recipient, data: legData, submit: true })
         : forms.deliverMedicalExaminerForm({
           recipient: fresh.recipient, data: report.data,
           context: { ...(fresh.context || {}), meName: (fresh.context || {}).meName || report.data?.coronerEmployee || '', approvedBy: (fresh.context || {}).approvedBy || forms.ME_APPROVED_BY },
@@ -218,6 +225,18 @@ async function processOneForm(key, _entity) {
         [`lspdFormSentAt_${fresh.form}`]: new Date().toISOString(),
       });
     } catch { /* best effort */ }
+    // drdb-sent audit: this IS the automatic LSPD send (consent-gated deploy
+    // path), so record it. The flag itself is derived from this log at read
+    // time — no report mutation, pre-DRDB reports keep reading false.
+    try {
+      const sentSnap = await _db.ref(`scheduledReports/${fresh.authorId}/${fresh.reportKey}/originalKey`).once('value');
+      appendDrdbSend({
+        author: fresh.authorId, key: fresh.reportKey,
+        title: sentSnap.exists() ? sentSnap.val() : fresh.reportKey,
+        agency: 'lspd', recipient: fresh.recipient,
+        formUrl: result.formUrl || null, reference: result.reference || null,
+      });
+    } catch { /* best effort — the send already landed */ }
     console.log(`[FORMS-QUEUE] ${key} SENT → ${fresh.recipient}${result.formUrl ? ` (${result.formUrl})` : ''}`);
   } else {
     // No exhaustion: failures retry forever on the backoff schedule.

@@ -4,6 +4,9 @@
 // newest 50 are cached in IndexedDB (instant open, offline-tolerant) and every
 // open is audited: live opens server-side, cache hits via logLeoReportView.
 import React, { useMemo, useState } from 'react';
+import { ref, get, set } from 'firebase/database';
+import { database } from '../../firebase';
+import { useNotification } from '../../contexts/NotificationContext';
 import ReportDetail, {
   AutopsyCaseInformation, Card, PhotoGroups, reportHistory, reportPhotoCount, reportPhotoGroups,
 } from './ReportDetail';
@@ -16,9 +19,23 @@ import {
 } from './viewModel';
 import { leoCacheId } from '../../utils/leoReportCache';
 import { LEO_CACHE_LIMIT } from './leoModel';
+import ForwardToDrdbModal from './ForwardToDrdbModal';
+import {
+  FORWARD_FORM,
+  FORWARD_QUEUE_NODE,
+  buildForwardEntity,
+  findExistingLeg,
+  forwardEntityKey,
+  nextForwardIdx,
+  validateForwardName,
+} from '../../utils/forwardDrdb';
 
-function LeoReportDetail({ row, payload, fromCache, demo, viewerName, onBack }) {
+function LeoReportDetail({ row, payload, fromCache, demo, viewerName, isAuthenticated, onBack }) {
   const [tab, setTab] = useState('overview');
+  const [forwardOpen, setForwardOpen] = useState(false);
+  const [forwarding, setForwarding] = useState(false);
+  const [forwardError, setForwardError] = useState('');
+  const { showNotification } = useNotification();
   const report = useMemo(() => payload?.report || {}, [payload]);
   const values = useMemo(
     () => (report.data && typeof report.data === 'object' ? report.data : {}),
@@ -38,12 +55,84 @@ function LeoReportDetail({ row, payload, fromCache, demo, viewerName, onBack }) 
   const photoCount = useMemo(() => reportPhotoCount(kind, values), [kind, values]);
   const history = useMemo(() => reportHistory(kind, values, meta), [kind, values, meta]);
   const hasPhotos = photoGroups.some((g) => (g.urls || []).length);
+  const canForward = isAuthenticated && !demo && kind === 'coroner' && row?.author && row?.key;
+
+  // Manual "Send to DRDB": queue one portal leg for the named officer. The
+  // bot worker files it like an automatic leg (rebuilds from the live record
+  // at delivery, exact-single-recipient match or ABORT). The record itself is
+  // restored first when missing — delivery refuses without it.
+  const forwardToDrdb = async (rawName) => {
+    const v = validateForwardName(rawName);
+    if (!v.ok) { setForwardError(v.error); return; }
+    setForwardError('');
+    setForwarding(true);
+    try {
+      const author = row.author;
+      const reportKey = row.key;
+      const queueRef = ref(database, FORWARD_QUEUE_NODE);
+      const existing = (await get(queueRef)).val() || {};
+      const dup = findExistingLeg(existing, {
+        form: FORWARD_FORM, authorId: author, reportKey, recipient: v.name,
+      });
+      if (dup) {
+        setForwardOpen(false);
+        showNotification(`This report is already queued for ${v.name}.`, 'info-circle');
+        return;
+      }
+      const recRef = ref(database, `scheduledReports/${author}/${reportKey}`);
+      if (!(await get(recRef)).exists() && payload?.report) {
+        await set(recRef, payload.report);
+        if (payload.bbCode) {
+          const bbRef = ref(database, `scheduledReportsBBCode/${author}/${reportKey}`);
+          if (!(await get(bbRef)).exists()) await set(bbRef, { bbCode: payload.bbCode });
+        }
+      }
+      // Allocate idx from a fresh read (min 1 — 0 belongs to the automatic
+      // leg). Retry if a concurrent forward took the key first.
+      let entityKey = null;
+      let idx = 1;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const ents = (await get(queueRef)).val() || {};
+        idx = nextForwardIdx(Object.keys(ents), FORWARD_FORM, author, reportKey);
+        entityKey = forwardEntityKey(FORWARD_FORM, author, reportKey, idx);
+        const clash = ents[entityKey];
+        if (clash && String(clash.recipient || '').trim().toLowerCase() !== v.name.toLowerCase()) continue;
+        break;
+      }
+      await set(ref(database, `${FORWARD_QUEUE_NODE}/${entityKey}`), buildForwardEntity({
+        form: FORWARD_FORM, authorId: author, reportKey,
+        recipient: v.name, forwardedBy: viewerName || 'Unknown', idx,
+      }));
+      const check = await get(ref(database, `${FORWARD_QUEUE_NODE}/${entityKey}/recipient`));
+      if (String(check.val() || '').trim().toLowerCase() !== v.name.toLowerCase()) {
+        throw new Error('the queue write did not stick — please retry');
+      }
+      setForwardOpen(false);
+      showNotification(`This report will be sent soon to ${v.name}.`, 'check-circle');
+    } catch (err) {
+      const reason = err?.message || 'unknown error';
+      setForwardError(`Could not queue this report: ${reason}`);
+      showNotification(`Could not queue this report for ${v?.name || 'that officer'}.`, 'exclamation-circle');
+    } finally {
+      setForwarding(false);
+    }
+  };
 
   return (
     <div className="wrap">
       <div className="switchrow">
         <button type="button" className="btn ghost" onClick={onBack}>← Back to LEO reports</button>
         <span className="cap" style={{ marginLeft: 6 }}>FORWARDED REPORT</span>
+        {canForward ? (
+          <button
+            type="button"
+            className="btn"
+            style={{ marginLeft: 'auto' }}
+            onClick={() => { setForwardError(''); setForwardOpen(true); }}
+          >
+            ⇪ Send to DRDB
+          </button>
+        ) : null}
       </div>
 
       <div className="agency-banner">
@@ -55,6 +144,12 @@ function LeoReportDetail({ row, payload, fromCache, demo, viewerName, onBack }) 
           Forwarded {formatTimestampShortUTC(forwardedAt)}
           <br />
           {values.requestingOfficer ? `Requesting officer: ${values.requestingOfficer}` : 'No requesting officer recorded'}
+          {Array.isArray(values.additionalRecipients) && values.additionalRecipients.some((r) => r && String(r.officer || '').trim()) ? (
+            <>
+              <br />
+              {`Additional officers: ${values.additionalRecipients.filter((r) => r && String(r.officer || '').trim()).map((r) => String(r.officer).trim()).join(', ')}`}
+            </>
+          ) : null}
         </div>
       </div>
 
@@ -117,6 +212,15 @@ function LeoReportDetail({ row, payload, fromCache, demo, viewerName, onBack }) 
         <summary>Raw payload (what the API stores / returns)</summary>
         <pre>{JSON.stringify({ kind, agency, forwardedAt, report }, null, 2)}</pre>
       </details>
+
+      <ForwardToDrdbModal
+        open={forwardOpen}
+        reportTitle={title}
+        submitting={forwarding}
+        error={forwardError}
+        onSubmit={forwardToDrdb}
+        onClose={() => { if (!forwarding) { setForwardError(''); setForwardOpen(false); } }}
+      />
     </div>
   );
 }
@@ -156,6 +260,7 @@ export default function LeoView({
         fromCache={selected.fromCache}
         demo={selected.demo}
         viewerName={viewerName}
+        isAuthenticated={isAuthenticated}
         onBack={() => { setSelected(null); window.scrollTo(0, 0); }}
       />
     );

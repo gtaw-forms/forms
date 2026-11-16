@@ -30,6 +30,7 @@ SDK (rules bypassed); the web app reads through rules (mostly authenticated).
     rotation/{list, position}
     loa/<name>                     # ME leave-of-absence
     pending/<id>                   # web "Request Autopsy" submissions
+    private-pending/<id>           # web "Private Autopsy" submissions (never public)
     discord-members/<forumName>    # ME forum-name → Discord id
 /webhooks/<id>                     # custom Discord webhooks
 /userReportCounts/<uid>/total

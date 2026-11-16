@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync, existsSync, renameSync, mkdirSync,
-readdirSync, rmSync, statSync, appendFileSync } from 'fs';
+readdirSync, rmSync, statSync, appendFileSync, createWriteStream } from 'fs';
 import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { randomUUID, createHash } from 'crypto';
@@ -51,6 +51,7 @@ import { API_KEY_LABEL_RE } from './services/apiKeyUtil.js';
 import { isExcludedAuthor } from './services/statsExclusions.js';
 import { getClientIp, isLoopbackIp, parseTrustedProxies, detectForwardedSpoof } from './services/clientIp.js';
 import { BLOCKED_MESSAGE, parseBlockedLabels, isBlockedLabel } from './services/apiConsumerBlock.js';
+import { getDrdbSentSet, isDrdbSent } from './services/drdbAudit.js';
 
 // ── Labeled API keys ──
 // MORGUE_API_KEYS="forms-functions:pmc_morgue_xxx,facebrowser:pmc_morgue_yyy"
@@ -2277,6 +2278,197 @@ app.get('/api/roster/:faction', validateApiKey, rateLimiter, (req, res) => {
     res.json(data);
 });
 
+// ----------------------------------------------------------------------------
+// CCTV Data Routes
+// ----------------------------------------------------------------------------
+const CCTV_DATA_PATH = '/opt/phmc-bot/cctv-script/output/cctv-data.json';
+const CCTV_CAMERAS_PATH = '/opt/phmc-bot/cctv-script/cameras.json';
+
+function loadCctvData() {
+    if (!existsSync(CCTV_DATA_PATH)) return null;
+    try { return JSON.parse(readFileSync(CCTV_DATA_PATH, 'utf-8')); }
+    catch { return null; }
+}
+
+function loadCctvCameras() {
+    if (!existsSync(CCTV_CAMERAS_PATH)) return null;
+    try { return JSON.parse(readFileSync(CCTV_CAMERAS_PATH, 'utf-8')); }
+    catch { return null; }
+}
+
+/**
+ * GET /api/cctv/cameras
+ * Returns list of all cameras with metadata (log count, latestId, recent activity)
+ */
+app.get('/api/cctv/cameras', validateApiKey, rateLimiter, (req, res) => {
+    const cameras = loadCctvCameras();
+    const data = loadCctvData();
+
+    if (!cameras) {
+        return res.status(503).json({ success: false, error: 'Camera config not available.' });
+    }
+
+    const result = cameras.map(cam => {
+        const stored = data?.cameras?.[String(cam.id)];
+        return {
+            id: cam.id,
+            name: cam.name,
+            logCount: stored?.logs?.length ?? 0,
+            latestId: stored?.latestId ?? 0,
+            hasLogs: (stored?.logs?.length ?? 0) > 0,
+        };
+    });
+
+    res.json({ success: true, data: result });
+});
+
+/**
+ * GET /api/cctv/search?q=keyword
+ * Searches all camera logs for a keyword (case-insensitive).
+ * Returns matches grouped by camera.
+ */
+app.get('/api/cctv/search', validateApiKey, rateLimiter, (req, res) => {
+    const data = loadCctvData();
+    if (!data) {
+        return res.status(503).json({ success: false, error: 'CCTV data not available.' });
+    }
+
+    const query = (req.query.q || '').trim().toLowerCase();
+    if (!query) {
+        return res.status(400).json({ success: false, error: 'Search query "q" is required.' });
+    }
+
+    const cameras = data.cameras || {};
+    const results = [];
+
+    for (const [camId, camData] of Object.entries(cameras)) {
+        const matches = (camData.logs || []).filter(
+            (entry) =>
+                (entry.message || '').toLowerCase().includes(query) ||
+                (entry.date || '').toLowerCase().includes(query)
+        );
+        if (matches.length > 0) {
+            results.push({
+                cameraId: parseInt(camId, 10),
+                cameraName: camData.name || `Camera ${camId}`,
+                matchCount: matches.length,
+                logs: matches,
+            });
+        }
+    }
+
+    // Sort by cameraId for consistent ordering
+    results.sort((a, b) => a.cameraId - b.cameraId);
+
+    const totalMatches = results.reduce((sum, r) => sum + r.matchCount, 0);
+
+    res.json({
+        success: true,
+        data: {
+            query: req.query.q,
+            totalMatches,
+            camerasWithMatches: results.length,
+            results,
+        },
+    });
+});
+
+/**
+ * GET /api/cctv/cameras/:id
+ * Returns full log entries for a specific camera.
+ */
+app.get('/api/cctv/cameras/:id', validateApiKey, rateLimiter, (req, res) => {
+    const data = loadCctvData();
+    if (!data) {
+        return res.status(503).json({ success: false, error: 'CCTV data not available.' });
+    }
+
+    const camData = data.cameras?.[req.params.id];
+    if (!camData) {
+        return res.status(404).json({ success: false, error: `Camera ${req.params.id} not found.` });
+    }
+
+    res.json({
+        success: true,
+        data: {
+            id: parseInt(req.params.id, 10),
+            name: camData.name,
+            latestId: camData.latestId,
+            logs: camData.logs || [],
+        },
+    });
+});
+
+/**
+ * GET /api/cctv/stats
+ * Aggregate statistics for all cameras.
+ */
+app.get('/api/cctv/stats', validateApiKey, rateLimiter, (req, res) => {
+    const data = loadCctvData();
+    if (!data) {
+        return res.status(503).json({ success: false, error: 'CCTV data not available.' });
+    }
+
+    const cameras = data.cameras || {};
+    const camIds = Object.keys(cameras);
+    let totalEntries = 0;
+    let camerasWithData = 0;
+
+    for (const id of camIds) {
+        const count = cameras[id]?.logs?.length ?? 0;
+        totalEntries += count;
+        if (count > 0) camerasWithData++;
+    }
+
+    res.json({
+        success: true,
+        data: {
+            totalCameras: camIds.length,
+            camerasWithData,
+            totalLogEntries: totalEntries,
+            lastFetched: data.metadata?.lastFetched || null,
+        },
+    });
+});
+
+/**
+ * POST /api/cctv/fetch
+ * Triggers fetch-all.cjs on the VPS to pull latest CCTV data.
+ * Returns immediately -- the script runs in the background.
+ * (Firebase callable functions have a 60s timeout, so we can't wait.)
+ */
+app.post('/api/cctv/fetch', validateApiKey, rateLimiter, async (req, res) => {
+    const scriptPath = '/opt/phmc-bot/cctv-script';
+    const logFile = 'output/fetch-trigger.log';
+
+    try {
+        const { spawn } = await import('child_process');
+        const child = spawn('node', ['fetch-all.cjs', '--headless'], {
+            cwd: scriptPath,
+            detached: true,
+            stdio: ['ignore', 'pipe', 'pipe'],
+        });
+
+        const timestamp = new Date().toISOString();
+        const logStream = createWriteStream(`${scriptPath}/${logFile}`, { flags: 'a' });
+        logStream.write(`\n[${timestamp}] Manual fetch triggered via API\n`);
+        child.stdout.pipe(logStream);
+        child.stderr.pipe(logStream);
+        child.unref();
+
+        console.log('[CCTV] Manual fetch triggered via API');
+        req.fetchSummary = 'Fetch triggered';
+
+        res.json({
+            success: true,
+            message: 'Fetch triggered in background.',
+        });
+    } catch (err) {
+        console.error('[CCTV] Failed to trigger fetch:', err.message);
+        res.status(500).json({ success: false, error: `Failed to trigger fetch: ${err.message}` });
+    }
+});
+
 // ── Saved-report store (P3: report metadata + BBCode off RTDB) ──
 // NOTE (3b-11): the P2 BBCode-only store (GET/POST /api/report-bbcode +
 // data/saved-report-bbcode/) was retired 2026-09-14 — all 15 legacy files were
@@ -2551,6 +2743,8 @@ function isForwardedReport(report) {
 
 function leoReportRows() {
     if (!existsSync(REPORTS_DIR)) return [];
+    // drdb-sent is derived from the send audit (one cached scan per change).
+    const drdbSent = getDrdbSentSet();
     const rows = [];
     for (const author of readdirSync(REPORTS_DIR)) {
         const authorDir = join(REPORTS_DIR, author);
@@ -2580,6 +2774,9 @@ function leoReportRows() {
                 requestingOfficer: String(values.requestingOfficer || '').trim(),
                 decedentName: values.decedentName || values.patientName || decedentNames,
                 forwarded: true,
+                // Derived from the DRDB send audit: true only when the
+                // automatic LSPD filing (or a DRDB pull) was recorded.
+                'drdb-sent': drdbSent.has(`${payload.author}/${payload.key}`),
                 hasBbCode: typeof payload.bbCode === 'string' && payload.bbCode.length > 0,
             });
         }
@@ -2658,7 +2855,7 @@ app.get('/api/reports/leo/:author/:key', validateLeoApiKey, rateLimiter, (req, r
             return res.status(404).json({ success: false, error: 'Forwarded report not found.' });
         }
         recordLeoReportView({ req, author, key, report, source: 'live', clientCharacterName: req.query.viewer });
-        return res.json({ success: true, report: report, bbCode: payload.bbCode || '' });
+        return res.json({ success: true, report: report, bbCode: payload.bbCode || '', 'drdb-sent': isDrdbSent(author, key) });
     } catch (err) {
         console.error('[MORGUE-API] LEO report read error:', err.message);
         return res.status(500).json({ success: false, error: 'LEO report read failed.' });
@@ -2683,7 +2880,7 @@ app.post('/api/reports/leo/:author/:key/view', validateLeoApiKey, rateLimiter, (
         }
         const source = req.body?.source === 'cache' ? 'cache' : 'live';
         recordLeoReportView({ req, author, key, report, source, clientCharacterName: req.body?.characterName });
-        return res.json({ success: true, logged: true, source });
+        return res.json({ success: true, logged: true, source, 'drdb-sent': isDrdbSent(author, key) });
     } catch (err) {
         console.error('[MORGUE-API] LEO view audit error:', err.message);
         return res.status(500).json({ success: false, error: 'LEO view audit failed.' });

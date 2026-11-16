@@ -21,6 +21,9 @@ const checkLeoViewRateLimit = createRateLimiter({ windowMs: 60000, maxCalls: 60 
 const checkLeoPanelRateLimit = createRateLimiter({ windowMs: 60000, maxCalls: 20 });
 // Every report open writes one audit line; 120/min per UID is far above human use.
 const checkReportViewRateLimit = createRateLimiter({ windowMs: 60000, maxCalls: 120 });
+// "Request morgue update" is one click; 5/min per UID absorbs double-taps while
+// still stopping a scripted client from churning the request node.
+const checkMorgueUpdateRequestRateLimit = createRateLimiter({ windowMs: 60000, maxCalls: 5 });
 
 const MORGUE_API_URL = process.env.MORGUE_API_URL || 'http://88.208.243.254';
 const MORGUE_API_KEY = process.env.MORGUE_API_KEY;
@@ -474,6 +477,304 @@ export const syncMorgueFile = onCall({
         if (err instanceof functions.https.HttpsError) throw err;
         console.error('[syncMorgueFile] Error:', err.message);
         throw new functions.https.HttpsError('internal', `Failed to sync morgue file: ${err.message}`);
+    }
+});
+
+/**
+ * requestMorgueUpdate — a signed-in user asks the morgue maintainer to import
+ * the latest in-game morgue logs (the records are transcribed by hand, roughly
+ * every 48 hours). The panel is the only requester-facing entry point, so this
+ * is the one manual "please refresh" path.
+ *
+ * Behaviour:
+ *   - Writes the request to `appMetadata/morgueUpdateRequest` so every client
+ *     can show "last requested <when> by <who>" without polling Discord.
+ *   - Pings the maintainer in the bot's admin channel via morgue-api
+ *     /api/notify (same transport as the tow audit; no webhook URLs).
+ *   - One request per MORGUE_UPDATE_COOLDOWN_MS window: further clicks return
+ *     the existing request instead of pinging again (staff are not spammed by
+ *     every user who opens the panel).
+ *
+ * Request data: {} (identity comes from the Auth claims, never the client)
+ * Returns: { success, posted, notified, at, by, cooldownRemainingMs, ... }
+ */
+const MORGUE_UPDATE_REQUEST_PATH = 'appMetadata/morgueUpdateRequest';
+const MORGUE_UPDATE_VERSION_PATH = 'appMetadata/morgueDataVersion';
+const MORGUE_UPDATE_COOLDOWN_MS = 2 * 60 * 60 * 1000; // 2 hours
+// Same maintainer the system monitor pings for "morgue overdue".
+const MORGUE_UPDATE_OWNER_MENTION = '<@228306972204597248>';
+
+export const requestMorgueUpdate = onCall({
+    region: "europe-west2",
+    memory: "256MiB",
+    cors: [
+        'https://gtaw-forms.github.io',
+        'https://phmc-tools.gta.world',
+        'http://localhost:3000'
+    ]
+}, async (request) => {
+    if (!request.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'Sign in to request a morgue update.');
+    }
+    if (!checkMorgueUpdateRequestRateLimit(request.auth.uid)) {
+        throw new functions.https.HttpsError('resource-exhausted', 'Too many update requests — try again in a minute.');
+    }
+
+    const now = Date.now();
+
+    // Existing request inside the cooldown window: report it, ping nothing.
+    let prev = null;
+    try {
+        prev = (await adminDb.ref(MORGUE_UPDATE_REQUEST_PATH).once('value')).val() || null;
+    } catch (err) {
+        console.warn('[requestMorgueUpdate] Could not read previous request:', err.message);
+    }
+    const lastAt = Number(prev?.at) || 0;
+    const cooldownRemainingMs = lastAt ? MORGUE_UPDATE_COOLDOWN_MS - (now - lastAt) : 0;
+    if (cooldownRemainingMs > 0) {
+        return {
+            success: true,
+            posted: false,
+            at: lastAt,
+            by: prev?.by || null,
+            cooldownRemainingMs,
+        };
+    }
+
+    const token = request.auth.token || {};
+    const cleanName = (v) => String(v || '').replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, 80);
+    const by = cleanName(token.displayCharacterName || token.characterName
+        || token.oauthName || token.gtawUsername || token.name || token.email) || 'Unknown';
+
+    // Freshness snapshot: the panel shows the same timestamp, so staff can see
+    // age at request time even if the request is read hours later. The API is
+    // authoritative (records sorted by lastUpdated desc); appMetadata's version
+    // is an epoch in morgue-api paths but a counter in the MorgueManager path,
+    // so it is only a fallback when it is epoch-sized (1e12 ≈ Sep 2001).
+    let versionAt = 0;
+    if (MORGUE_API_KEY) {
+        try {
+            const res = await fetch(`${MORGUE_API_URL}/api/morgue?limit=1`, {
+                headers: { 'x-api-key': MORGUE_API_KEY },
+                signal: AbortSignal.timeout(4000),
+            });
+            if (res.ok) {
+                const body = await res.json();
+                versionAt = Number(body?.records?.[0]?.lastUpdated) || 0;
+            }
+        } catch (err) {
+            console.warn('[requestMorgueUpdate] Could not read morgue freshness:', err.message);
+        }
+    }
+    if (!versionAt) {
+        try {
+            const stored = Number((await adminDb.ref(MORGUE_UPDATE_VERSION_PATH).once('value')).val()) || 0;
+            if (stored > 1e12) versionAt = stored;
+        } catch (err) {
+            console.warn('[requestMorgueUpdate] Could not read morgueDataVersion:', err.message);
+        }
+    }
+
+    const entry = {
+        at: now,
+        by,
+        uid: String(request.auth.uid || '').slice(0, 128),
+        dataVersionAt: versionAt || null,
+        source: 'morgue-panel',
+    };
+
+    // Persist first: the cooldown and the panel note must reflect the request
+    // even when the Discord transport is down.
+    try {
+        await adminDb.ref(MORGUE_UPDATE_REQUEST_PATH).set(entry);
+    } catch (err) {
+        console.warn('[requestMorgueUpdate] Could not record request:', err.message);
+    }
+
+    let notified = false;
+    if (MORGUE_API_KEY) {
+        const ageHours = versionAt ? Math.max(0, Math.floor((now - versionAt) / 3600000)) : null;
+        const embed = {
+            title: 'Morgue records — update requested',
+            color: 0x2a9d8f,
+            description: `**${by}** asked for a morgue records refresh from the web panel.`,
+            fields: [
+                {
+                    name: 'Data last updated',
+                    value: versionAt
+                        ? `${new Date(versionAt).toISOString().replace('T', ' ').slice(0, 16)} UTC (${ageHours}h ago)`
+                        : 'unknown',
+                    inline: true,
+                },
+                { name: 'Requested at', value: `${new Date(now).toISOString().replace('T', ' ').slice(0, 16)} UTC`, inline: true },
+            ],
+            footer: { text: 'PHMC Forms — Morgue Records panel' },
+            timestamp: new Date(now).toISOString(),
+        };
+        try {
+            const res = await fetch(`${MORGUE_API_URL}/api/notify`, {
+                method: 'POST',
+                headers: { 'x-api-key': MORGUE_API_KEY, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    channel: 'admin',
+                    content: `${MORGUE_UPDATE_OWNER_MENTION} — morgue records refresh requested from the app.`,
+                    embeds: [embed],
+                }),
+                signal: AbortSignal.timeout(5000),
+            });
+            notified = res.ok;
+            if (!res.ok) {
+                console.warn(`[requestMorgueUpdate] notify transport returned ${res.status}`);
+            }
+        } catch (err) {
+            console.warn('[requestMorgueUpdate] notify transport failed:', err.message);
+        }
+    }
+
+    return {
+        success: true,
+        posted: true,
+        notified,
+        ...entry,
+        cooldownRemainingMs: MORGUE_UPDATE_COOLDOWN_MS,
+    };
+});
+
+/**
+ * getCctvData -- Returns CCTV camera data from the VPS.
+ *
+ * Proxies to the morgue-api's /api/cctv/* endpoints.
+ *
+ * Request data:
+ *   { cameraId?: number | 'cameras' | 'stats' }
+ *     omitted / 'cameras'  --  list all cameras with metadata
+ *     'stats'              --  aggregate statistics
+ *     <number>             --  logs for a specific camera
+ */
+export const getCctvData = onCall({
+    region: "europe-west2",
+    memory: "256MiB",
+    cors: [
+        'https://gtaw-forms.github.io',
+        'https://phmc-tools.gta.world',
+        'http://localhost:3000'
+    ]
+}, async (request) => {
+    if (!request.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'Authentication required.');
+    }
+
+    if (!MORGUE_API_KEY) {
+        console.error('[getCctvData] MORGUE_API_KEY environment variable is not set.');
+        throw new functions.https.HttpsError('internal', 'Server configuration error.');
+    }
+
+    const { cameraId, search } = request.data || {};
+    let url;
+
+    if (search) {
+        url = `${MORGUE_API_URL}/api/cctv/search?q=${encodeURIComponent(search)}`;
+    } else if (cameraId === 'stats') {
+        url = `${MORGUE_API_URL}/api/cctv/stats`;
+    } else if (cameraId && cameraId !== 'cameras') {
+        url = `${MORGUE_API_URL}/api/cctv/cameras/${cameraId}`;
+    } else {
+        url = `${MORGUE_API_URL}/api/cctv/cameras`;
+    }
+
+    const t0 = Date.now();
+    console.log(`[getCctvData] Fetching: ${url}`);
+
+    try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 15000); // 15s timeout
+
+        const response = await fetch(url, {
+            headers: { 'x-api-key': MORGUE_API_KEY },
+            signal: controller.signal,
+        });
+        clearTimeout(timeout);
+
+        const t1 = Date.now();
+        console.log(`[getCctvData] VPS responded in ${t1 - t0}ms with status ${response.status}`);
+
+        if (!response.ok) {
+            const text = await response.text();
+            console.error(`[getCctvData] VPS API returned ${response.status}: ${text}`);
+            throw new functions.https.HttpsError('internal', 'Failed to fetch CCTV data from data source.');
+        }
+
+        const data = await response.json();
+        console.log(`[getCctvData] Parsed JSON, total ${Date.now() - t0}ms`);
+        return data;
+    } catch (err) {
+        if (err instanceof functions.https.HttpsError) throw err;
+        if (err.name === 'AbortError') {
+            console.error(`[getCctvData] VPS API timed out after 15s`);
+            throw new functions.https.HttpsError('deadline-exceeded', 'CCTV data source timed out.');
+        }
+        console.error(`[getCctvData] Error after ${Date.now() - t0}ms:`, err.message);
+        throw new functions.https.HttpsError('internal', `Failed to fetch CCTV data: ${err.message}`);
+    }
+});
+
+/**
+ * triggerCctvFetch -- Triggers a manual CCTV data fetch on the VPS.
+ * Calls POST /api/cctv/fetch which spawns fetch-all.cjs --headless in the
+ * background and returns immediately.
+ */
+export const triggerCctvFetch = onCall({
+    region: "europe-west2",
+    memory: "256MiB",
+    cors: [
+        'https://gtaw-forms.github.io',
+        'https://phmc-tools.gta.world',
+        'http://localhost:3000'
+    ]
+}, async (request) => {
+    if (!request.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'Authentication required.');
+    }
+
+    if (!MORGUE_API_KEY) {
+        console.error('[triggerCctvFetch] MORGUE_API_KEY environment variable is not set.');
+        throw new functions.https.HttpsError('internal', 'Server configuration error.');
+    }
+
+    console.log('[triggerCctvFetch] Triggering manual CCTV fetch...');
+
+    const t0 = Date.now();
+    console.log('[triggerCctvFetch] Calling VPS...');
+
+    try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10000); // 10s timeout
+
+        const response = await fetch(`${MORGUE_API_URL}/api/cctv/fetch`, {
+            method: 'POST',
+            headers: { 'x-api-key': MORGUE_API_KEY },
+            signal: controller.signal,
+        });
+        clearTimeout(timeout);
+
+        console.log(`[triggerCctvFetch] VPS responded in ${Date.now() - t0}ms with status ${response.status}`);
+
+        if (!response.ok) {
+            const text = await response.text();
+            console.error(`[triggerCctvFetch] VPS API returned ${response.status}: ${text}`);
+            throw new functions.https.HttpsError('internal', 'Failed to trigger CCTV fetch.');
+        }
+
+        const data = await response.json();
+        return data;
+    } catch (err) {
+        if (err instanceof functions.https.HttpsError) throw err;
+        if (err.name === 'AbortError') {
+            console.error('[triggerCctvFetch] VPS API timed out after 10s');
+            throw new functions.https.HttpsError('deadline-exceeded', 'CCTV fetch trigger timed out.');
+        }
+        console.error(`[triggerCctvFetch] Error after ${Date.now() - t0}ms:`, err.message);
+        throw new functions.https.HttpsError('internal', `Failed to trigger CCTV fetch: ${err.message}`);
     }
 });
 

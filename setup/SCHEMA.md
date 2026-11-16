@@ -5,6 +5,39 @@ tree; this is the per-node schema. Notation: `type · required? · description`.
 
 ---
 
+## Write model (`functions/database.rules.json`)
+
+Root `.read` is `auth != null`; **root `.write` is `false`** — every client write
+is granted per path. The bot, Cloud Functions and `tools/*` use the Admin SDK and
+bypass rules entirely.
+
+| Path | Who may write |
+|---|---|
+| `scheduledReports/$author`, `scheduledReportsBBCode/$author`, `newSavedReports/$author`, `newSavedReportBBCode/$author`, `recoveredReports/$author`, `reportEdits/$author`, `shortLinksByReport/$author` | the owner or staff/admin. **The key is the author's sanitized character name** (`comprehensiveSanitize(getCharacterName(user))`), not the uid, so the rule matches the token's `characterName` / `displayCharacterName` / `gtawUsername` run through the same transformation (space, `.`, `/`, `#` → `_`, runs collapsed), the uid, or the staff claims. Rules `replace()` is a **literal** substring replace here (proven by probe — `[.]` does not match a dot), and `string(...)` is unavailable |
+| `user-consent/$uid` | the owner only |
+| `shortLinks/$code`, `lspd-portal-form-queue/$key` | create-only (`!data.exists()`) for any signed-in client |
+| `autopsy-requests/pending/$id`, `autopsy-requests/private-pending/$id` | create-only, any signed-in client (bot consumes) |
+| `autopsy-requested/**`, `autopsy-requests/{rotation,loa,discord-members,web-meta}`, `completionStepRetries`, `deployNotifications`, `forms_staging` seeds, `webhooks` (non-admin) | never (bot writes with the Admin SDK) |
+| `forms/$formId`, `forms_staging/$formId`, `selectOptions/$category`, `morgue-records`, `lscc/*`, `factions/$factionId`, `audit/faction_uploads`, `webhooks/$id`, whitelisted `appMetadata` keys | staff/admin |
+| `verified_locations`, `unprocessedCKs`, `morgueMatchLogs`, `presence`, `analytics/visitors` | any signed-in client (low-risk reference/telemetry) |
+
+**Staff/admin predicate:** `auth.token.isSuperAdmin === true` (GTA World staff and
+superadmins — the token sets `isSuperAdmin` from `isElevated`) or
+`auth.token.accessLevel` in `superadmin` / `admin` / `management` (PHMC rank 12+).
+
+> **Known gap:** PHMC rank **11** has `accessLevel: "member"` and no admin claim,
+> but the Admin panel gate admits rank 11+ (`AdminDashboard.hasAdminPageAccess`).
+> Those two accounts are currently denied admin-panel writes. Fix = add a
+> `scriptRank` (or `canAdminPanel`) claim in `processGtaWorldAuth` /
+> `refreshGtawUser` and extend the predicate once the refreshed tokens roll out.
+
+> **Read residual:** reads are still granted at the root, so a child `.read: false`
+> cannot restrict them (Firebase: a shallower grant cannot be revoked). A
+> read-lockdown for `autopsy-requested` and `autopsy-requests/private-pending`
+> is a separate phase.
+
+---
+
 ## `forms/<formKey>`
 
 A form definition. The web app renders `fields` and substitutes `{{name}}`
@@ -164,6 +197,28 @@ requestBBCode, source:'web-morgue', status:'pending', createdAt, createdBy`
 > entries are posted to PHMC f=265 automatically (`webAutopsyRequestPoster.js`),
 > then `status` flips to `posted` with `topicUrl`/`postedAt`. Failures set
 > `attempts`/`lastError` and retry up to 3× with `nextRetryAt` backoff.
+
+### `autopsy-requests/private-pending/<id>` (web PRIVATE submission)
+
+`requestType:'private', isPrivate:true, status:'pending', caseId, decedentName,
+oocName, gender, ethnicity, dateOfDeath, timeOfDeath, placeOfDeath,
+requesterName, requesterRank, requesterDept, requesterBadge, guidelinesRead,
+requesterCell, requesterDiscord, agencyForum (LSPD/LSSD/SADCR/DAO),
+forumAccountUrl, deathType (PK/CK), synopsis, causeDetail,
+privateJustification, cexamineImg, cinjuriesImg, source:'web-morgue-private',
+createdAt, createdBy`
+
+> **Never public:** the f=265 poster listens only on `autopsy-requests/pending`
+> and refuses `isPrivate` entries, so a private submission can never be posted
+> publicly. `privateWebAutopsyIntake.js` consumes this node with
+> `PRIVATE_WEB_MODE` = `off` (default) | `dryrun` | `live` and creates the
+> confidential f=266 case directly. Bot adds `status` (`creating` / `posted` /
+> `rejected` / `duplicate` / `needs-review` / `dryrun`), `attempts`,
+> `lastError`, `nextRetryAt`, `caseNum`, `caseTopicId`, `caseUrl`,
+> `assignedTo`. The `autopsy-requested/<caseTopicId>` entry carries
+> `isPrivate`, `faction` (agency lower-case), `formsAutopsy`, `pmForum`,
+> `deliveryDRDB` (LSPD only), `privateJustification` and the parsed request
+> fields the completion pipeline reads.
 
 ---
 

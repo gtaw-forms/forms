@@ -1,15 +1,16 @@
 /**
  * requesterWebhook.js — Faction completion notifications for autopsy requests.
  *
- * When an autopsy completes for a CASELINK-posted request, posts a notification
- * to the requesting faction's Discord webhook:
+ * Posts a notification to the requesting faction's Discord webhook when invoked
+ * (manual sends via /forward-autopsy-complete; the automatic completion-flow
+ * call was retired with CASELINK on 2026-11-09):
  *
  *   content   <@ID> ping when a numeric Discord ID resolves (from the request's
  *             Contact Information or the officer-discord mapping), otherwise a
  *             bold-name salutation: "Katherine Olsen, your autopsy request ..."
  *   embed     Case NR/title, Medical Examiner name, ME Discord mention
- *   buttons   CASELINK (faction's autopsy-record forum — deep link when the bot
- *             replied there), PHMC Inbox, PHMC Discord invite
+ *   buttons   Autopsy Records (faction's autopsy-record forum — deep link when
+ *             the bot replied there), PHMC Inbox, PHMC Discord invite
  *
  * Faction routing mirrors AGENCY_FORUMS in the monitor/completion pipeline.
  * NOTE: LSSD/SADCR/DAO forums all live on lssd.gta.world — link constants share
@@ -169,11 +170,6 @@ function cleanCaseTitle(title) {
  * Build the full Discord webhook payload for a completed request.
  * Exported for byte-identical rendering in test tooling.
  *
- * Copy is channel-aware per CASELINK dev feedback: only requests actually
- * posted BY CASELINK may say "CASELINK". Human-posted requests get a viable
- * alternative instead (PHMC inbox copy + the agency's Autopsy Records),
- * never a system they didn't use.
- *
  * @param {object} p
  * @param {string} [p.caseTitle]
  * @param {string|number} [p.caseNumber]
@@ -183,16 +179,13 @@ function cleanCaseTitle(title) {
  * @param {string|null} p.requesterDiscordId — ping target when resolved
  * @param {string} p.factionKey — LSSD | SADCR | DAO | LSPD | other
  * @param {string|null} [p.agencyTopicUrl] — deep link to the faction forum reply
- * @param {boolean} [p.postedByCaselink=true] — request origin; flips copy + button label
  * @returns {object} fetch-ready payload
  */
 export function buildCompletionPayload({
     caseTitle, caseNumber, meName, meDiscordId,
     requesterSalutation, requesterDiscordId, factionKey, agencyTopicUrl,
-    postedByCaselink = true,
 }) {
     const key = String(factionKey || '').toUpperCase();
-    const isCaselinkOrigin = postedByCaselink !== false;
     const ping = requesterDiscordId ? `<@${requesterDiscordId}>` : '';
     const greeting = ping || `**${(requesterSalutation || 'Requesting Officer').trim()}**`;
 
@@ -209,20 +202,17 @@ export function buildCompletionPayload({
     ];
 
     // Agency record button: deep link when the bot replied into the faction's
-    // own forum, otherwise the forum listing. Label mirrors the request origin —
-    // "CASELINK" only for CASELINK-submitted requests; humans get a neutral,
-    // equally-clickable "Autopsy Records" (DAO keeps its record forum even
-    // while its webhook stays blank).
+    // own forum, otherwise the forum listing. Neutral "Autopsy Records" label.
     const buttons = [];
     const forumFallback = FORUM_FALLBACK_URLS[key];
-    // Same target backs the inline copy link ("your SD Intranet"/"agency
+    // Same target backs the inline copy link ("your SD intranet"/"agency
     // intranet") and the button, so text and action never disagree.
     const recordUrl = agencyTopicUrl || forumFallback || null;
     if (forumFallback) {
         buttons.push({
             type: 2,
             style: 5,
-            label: isCaselinkOrigin ? 'CASELINK' : 'Autopsy Records',
+            label: 'Autopsy Records',
             url: recordUrl,
         });
     }
@@ -231,17 +221,11 @@ export function buildCompletionPayload({
         { type: 2, style: 5, label: 'PHMC Discord', url: PHMC_DISCORD_INVITE },
     );
 
-    // Content line — one phrase per origin so every requester sees a valid path
-    // to their report. Both paths hyperlink the intranet mention (<url> wrapper
-    // guards against stray punctuation breaking Discord's markdown parsing).
+    // Content line — every requester sees a valid path to their report.
     // Factions outside the registry have no URL to link — fall back to the
     // plain-text phrasing rather than emitting a dead [link](<null>).
     let content;
-    if (isCaselinkOrigin && recordUrl) {
-        content = `${greeting}, your autopsy request has been completed, you can view it in CASELINK or via [your SD Intranet](<${recordUrl}>).`;
-    } else if (isCaselinkOrigin) {
-        content = `${greeting}, your autopsy request has been completed, you can view it in CASELINK or via your SD Intranet.`;
-    } else if (recordUrl) {
+    if (recordUrl) {
         content = `${greeting}, your autopsy request has been completed. A full copy has been sent to your PHMC inbox, and it is available under your [agency intranet](<${recordUrl}>).`;
     } else {
         content = `${greeting}, your autopsy request has been completed. A full copy has been sent to your PHMC inbox.`;
@@ -299,8 +283,8 @@ export async function sendRequesterWebhook(url, payload, context = '') {
 
 /**
  * Notify the requesting faction that an autopsy request completed.
- * Gating (postedByCaselink / private cases / multi-decedent deferral) lives in
- * deployAutopsyReply.js — this only builds and delivers.
+ * Gating (private cases / multi-decedent deferral) lives in the caller —
+ * this only builds and delivers.
  *
  * @param {object} db — Firebase Admin RTDB
  * @param {object} entry — autopsy-requested record
@@ -341,7 +325,6 @@ export async function notifyRequesterOfCompletion(db, entry, opts = {}) {
         requesterSalutation: salutation,
         requesterDiscordId: discordId,
         factionKey,
-        postedByCaselink: entry?.postedByCaselink === true,
         // Deep link preference: explicit override > this entry's saved faction
         // topic id (covers retry sweeps, which pass no context).
         agencyTopicUrl: opts.agencyTopicUrl

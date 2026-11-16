@@ -45,6 +45,26 @@ export async function handleTopic(report) {
     const DRY_POST = process.env.DRY_POST !== 'false';
     const forumLabel = forumInfo.name || 'Forum';
 
+    // After topic is posted, trigger coroner email if report was requested.
+    // Shared by the live and dry-run paths (a simulated topic must not
+    // swallow the email fan-out — the email legs have their own dry-run
+    // flags governing delivery).
+    const queueCoronerEmailIfRequested = (topicUrl) => {
+        const isRequested = reportData.formId === 'coroner-report'
+            ? reportData.data?.ReportRequested === true || reportData.data?.ReportRequested === 'true'
+            : reportData.formId === 'mass-ftality-test' && !!reportData.data?.requestingOfficer;
+        if (isRequested) {
+            console.log('[AUTO]  Report requested — queueing auto coroner email (dedicated entity)');
+            import('./deployCoronerEmail.js').then(({ handleCoronerEmail }) => {
+                handleCoronerEmail({ authorId, key, report: reportData, db, topicUrl }).catch(err => {
+                    console.error('[CORONER-EMAIL] Handler error:', err.message);
+                });
+            }).catch(err => {
+                console.error('[CORONER-EMAIL] Failed to import handler:', err.message);
+            });
+        }
+    };
+
     if (DRY_POST) {
         const simUrl = `${forumInfo.url}&dry_run=SIM_${Date.now()}`;
         const label = reportData.originalKey || key;
@@ -52,6 +72,10 @@ export async function handleTopic(report) {
         await progress.finalize('complete');
         await markReportComplete(db, authorId, key, label, 'topic_simulated', simUrl);
         console.log(`[AUTO]  ${key}  Simulated topic post to ${forumInfo.name} (DRY_POST)`);
+        // Dry-run still walks the follow-on flow: the email/PM legs carry
+        // their own dry-run flags, so a simulated topic must not swallow a
+        // requested coroner email (multi-recipient tests would never fan out).
+        queueCoronerEmailIfRequested(null);
         return;
     }
 
@@ -79,19 +103,6 @@ export async function handleTopic(report) {
         await markReportComplete(db, authorId, key, label, 'topic', result.url);
         console.log(`[AUTO]  ${key}  Topic posted: ${result.url}`);
 
-        // After topic is posted, trigger coroner email if report was requested
-        const isRequested = reportData.formId === 'coroner-report'
-            ? reportData.data?.ReportRequested === true || reportData.data?.ReportRequested === 'true'
-            : reportData.formId === 'mass-ftality-test' && !!reportData.data?.requestingOfficer;
-        if (isRequested) {
-            console.log('[AUTO]  Report requested — queueing auto coroner email (dedicated entity)');
-            import('./deployCoronerEmail.js').then(({ handleCoronerEmail }) => {
-                handleCoronerEmail({ authorId, key, report: reportData, db, topicUrl: result.url || null }).catch(err => {
-                    console.error('[CORONER-EMAIL] Handler error:', err.message);
-                });
-            }).catch(err => {
-                console.error('[CORONER-EMAIL] Failed to import handler:', err.message);
-            });
-        }
+        queueCoronerEmailIfRequested(result.url || null);
     }
 }

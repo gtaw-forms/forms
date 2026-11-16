@@ -6,6 +6,9 @@ import {
     buildMassAutopsyTopicTitle,
     buildMassAutopsyRequestPayload,
     deriveAgencyTag,
+    isLspdRequester,
+    isLspdMassBlocked,
+    LSPD_MASS_BLOCK_MESSAGE,
     validateMassRequest,
     toMassRequestBodies,
 } from '../../utils/autopsyRequest';
@@ -169,6 +172,13 @@ const MassRequestAutopsyModal = ({ show, onClose, records = [], showNotification
     const details = useMemo(() => ({ synopsis, causeDetail, cexamineImg, cinjuriesImg }), [synopsis, causeDetail, cexamineImg, cinjuriesImg]);
 
     const agencyTag = deriveAgencyTag({ agencyForum, requesterDept });
+    // LSPD runs its own portal and has no forum profiles: the Forum Account
+    // URL is neither required (see validateMassRequest) nor shown here.
+    const isLspd = isLspdRequester({ agencyForum, requesterDept });
+    // Batch requests cannot be filed through LSPD's DRDB portal (one ME form per
+    // decedent/report), so an LSPD batch is refused with a clear message rather
+    // than leaving the completed reports with nowhere to go.
+    const lspdBlocked = isLspdMassBlocked({ agencyForum, requesterDept });
     const topicTitle = buildMassAutopsyTopicTitle({ incidentLabel, agency: agencyTag });
     const missing = useMemo(() => validateMassRequest({ incidentLabel, requester, bodies }), [incidentLabel, requester, bodies]);
     const preview = useMemo(
@@ -186,6 +196,10 @@ const MassRequestAutopsyModal = ({ show, onClose, records = [], showNotification
     };
 
     const handleSubmit = async () => {
+        if (lspdBlocked) {
+            showNotification?.(LSPD_MASS_BLOCK_MESSAGE, 'error');
+            return;
+        }
         if (missing.length) {
             showNotification?.(`Complete required fields: ${missing.slice(0, 3).join(', ')}${missing.length > 3 ? '…' : ''}`, 'warning');
             return;
@@ -230,6 +244,15 @@ const MassRequestAutopsyModal = ({ show, onClose, records = [], showNotification
                         <i className="fas fa-triangle-exclamation me-1" />{seedWarning}
                     </div>
                 )}
+                {lspdBlocked && (
+                    <div style={{ marginTop: 8, padding: '9px 11px', borderRadius: 6, background: 'rgba(220,38,38,0.10)', border: '1px solid var(--danger)', color: 'var(--danger)', fontSize: 12, fontWeight: 600 }}>
+                        <i className="fas fa-circle-exclamation me-1" />
+                        {LSPD_MASS_BLOCK_MESSAGE}
+                        <div style={{ fontWeight: 400, fontSize: 11, marginTop: 4, color: 'var(--text-faint)' }}>
+                            DRDB accepts one medical-examiner filing per decedent. Request these bodies individually — each one is filed to LSPD separately.
+                        </div>
+                    </div>
+                )}
 
                 {section('INCIDENT')}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 220px', gap: 12, marginBottom: 4 }}>
@@ -253,7 +276,15 @@ const MassRequestAutopsyModal = ({ show, onClose, records = [], showNotification
                     <div><span style={labelStyle}>Rank {reqStar}</span><input style={inputStyle} value={requesterRank} onChange={e => setRequesterRank(e.target.value)} placeholder="e.g. Officer I" /></div>
                     <div><span style={labelStyle}>Department / Assignment {reqStar}{infoBubble('Detects the agency and routes the request.')}</span><input style={inputStyle} value={requesterDept} onChange={e => setRequesterDept(e.target.value)} placeholder="e.g. LSPD - Homicide" /></div>
                     <div><span style={labelStyle}>Badge/Serial Number</span><input style={inputStyle} value={requesterBadge} onChange={e => setRequesterBadge(e.target.value)} placeholder="Serial #" /></div>
-                    <div><span style={labelStyle}>Forum Account URL {reqStar}{infoBubble('The completed reports are delivered here.')}</span><input style={inputStyle} value={forumAccountUrl} onChange={e => setForumAccountUrl(e.target.value)} placeholder="https://lspd.gta.world/… member profile" /></div>
+                    <div><span style={labelStyle}>Forum Account URL {isLspd ? optionalTag : <>{reqStar}{infoBubble('The completed reports are delivered here.')}</>}</span>
+                        {isLspd ? (
+                            <div style={{ fontSize: 11.5, color: 'var(--text-faint)', background: 'var(--bg-surface)', border: '1px dashed var(--border)', borderRadius: 6, padding: '8px 10px', marginTop: 4 }}>
+                                LSPD officers have no forum profiles — skipped. Completed reports route via the LSPD portal.
+                            </div>
+                        ) : (
+                            <input style={inputStyle} value={forumAccountUrl} onChange={e => setForumAccountUrl(e.target.value)} placeholder="https://lssd.gta.world/… member profile" />
+                        )}
+                    </div>
                     <div><span style={labelStyle}>Cell Number{optionalTag}</span><input style={inputStyle} value={requesterCell} onChange={e => setRequesterCell(e.target.value)} placeholder="555-0123" /></div>
                     <div><span style={labelStyle}>(( Discord Name )){optionalTag}</span><input style={inputStyle} value={requesterDiscord} onChange={e => setRequesterDiscord(e.target.value)} placeholder="(( Discord username ))" /></div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', alignSelf: 'end', paddingBottom: 4 }}>
@@ -309,9 +340,9 @@ const MassRequestAutopsyModal = ({ show, onClose, records = [], showNotification
                     <button onClick={onClose} style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, padding: '8px 14px', fontSize: 12.5, cursor: 'pointer' }}>Cancel</button>
                     <button
                         onClick={handleSubmit}
-                        disabled={submitting || missing.length > 0}
-                        title={missing.length > 0 ? `Required: ${missing.join(', ')}` : `Submit one request for ${bodies.length} bodies`}
-                        style={{ background: 'var(--teal-dim)', border: '1px solid var(--teal)', color: 'var(--teal)', borderRadius: 6, padding: '8px 16px', fontSize: 12.5, cursor: (submitting || missing.length > 0) ? 'not-allowed' : 'pointer', opacity: (submitting || missing.length > 0) ? 0.45 : 1 }}
+                        disabled={submitting || missing.length > 0 || lspdBlocked}
+                        title={lspdBlocked ? LSPD_MASS_BLOCK_MESSAGE : (missing.length > 0 ? `Required: ${missing.join(', ')}` : `Submit one request for ${bodies.length} bodies`)}
+                        style={{ background: 'var(--teal-dim)', border: '1px solid var(--teal)', color: 'var(--teal)', borderRadius: 6, padding: '8px 16px', fontSize: 12.5, cursor: (submitting || missing.length > 0 || lspdBlocked) ? 'not-allowed' : 'pointer', opacity: (submitting || missing.length > 0 || lspdBlocked) ? 0.45 : 1 }}
                     >
                         {submitting
                             ? <><i className="fas fa-spinner fa-spin me-1" />Submitting…</>

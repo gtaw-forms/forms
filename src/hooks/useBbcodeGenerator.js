@@ -14,15 +14,11 @@ const useBbcodeGenerator = (selectedForm, formValues, finalSelectOptions, agency
   const [showBBCode, setShowBBCode] = useState(false);
   // const [limitWarning, setLimitWarning] = useState("");
 
-  const generateBBCode = useCallback(() => {
-    if (!selectedForm?.template) {
-      setGeneratedBBCode("");
-      setGeneratedTitle(""); 
-      // setLimitWarning("");
-      return;
-    }
+  // Shared render pipeline (hoisted to hook level so both the preview path
+  // and the multi-recipient variant path run the exact same code).
+  const performGeneration = useCallback((decedentsOverride = null, valuesOverride = null) => {
+    if (!selectedForm?.template) return { bbcode: '', finalTitle: '' };
 
-    const performGeneration = (decedentsOverride = null) => {
       // Helper to find a member in factionsData across all factions
       const findMemberAcrossFactions = (name) => {
         if (!factionsData) return null;
@@ -125,8 +121,13 @@ const useBbcodeGenerator = (selectedForm, formValues, finalSelectOptions, agency
         || selectedForm?.name?.toLowerCase().includes('death')
         || selectedForm?.name?.toLowerCase().includes('mass fatality');
 
+      // Multi-recipient override: re-render the same pipeline with a different
+      // addressee (requestingOfficer + department). Coroner identity fields
+      // stay the author's own — only the recipient changes per copy.
+      const baseValues = valuesOverride ? { ...formValues, ...valuesOverride } : formValues;
+
       // Process formValues to extract primitive values from select objects and format employee names
-      const processedFormValues = Object.entries(formValues).reduce((acc, [key, value]) => {
+      const processedFormValues = Object.entries(baseValues).reduce((acc, [key, value]) => {
         // Find the field definition from selectedForm.fields
         const fieldDef = selectedForm.fields?.find(f => f.name === key);
         
@@ -172,8 +173,8 @@ const useBbcodeGenerator = (selectedForm, formValues, finalSelectOptions, agency
                 if (typeof v === 'object') return (v && (v.value || v.label)) || '';
                 return String(v);
               };
-              let cleanedRank = cleanRankText(pick(formValues[siblingRankKey]));
-              let badge = pick(formValues[siblingBadgeKey]);
+              let cleanedRank = cleanRankText(pick(baseValues[siblingRankKey]));
+              let badge = pick(baseValues[siblingBadgeKey]);
               // Only attribute the signed-in ME's OWN identity (coronerEmployee /
               // phmcEmployee) to their own fields — NEVER to requestingOfficer /
               // investigator / etc., or the ME's rank+SN get stamped onto another
@@ -376,7 +377,7 @@ const useBbcodeGenerator = (selectedForm, formValues, finalSelectOptions, agency
         const condensed = buildLspdCondensedEmail(
           {
             ...processedFormValues,
-            requestingOfficer: bareName(formValues?.requestingOfficer) || processedFormValues.requestingOfficer,
+            requestingOfficer: bareName(baseValues?.requestingOfficer) || processedFormValues.requestingOfficer,
             coronerEmployee: bareName(formValues?.coronerEmployee) || processedFormValues.coronerEmployee,
           },
           { departmentFullName: getDepartmentFullName(processedFormValues.department, agencyDataStore) },
@@ -432,7 +433,14 @@ const useBbcodeGenerator = (selectedForm, formValues, finalSelectOptions, agency
       }
 
       return { bbcode, finalTitle };
-    };
+  }, [selectedForm, formValues, agencyDataStore, gtaWorldUser, factionsData, factionListData, resolvedCredentials]);
+
+  const generateBBCode = useCallback(() => {
+    if (!selectedForm?.template) {
+      setGeneratedBBCode("");
+      setGeneratedTitle("");
+      return;
+    }
 
     const { bbcode, finalTitle } = performGeneration();
 
@@ -442,7 +450,7 @@ const useBbcodeGenerator = (selectedForm, formValues, finalSelectOptions, agency
 
     // Return the generated values so callers (e.g. Save & Queue) can use them synchronously
     return { bbcode, finalTitle };
-  }, [selectedForm, formValues, agencyDataStore, gtaWorldUser, factionsData, factionListData, resolvedCredentials]);
+  }, [selectedForm, performGeneration]);
 
   const clearBBCode = useCallback(() => {
     setGeneratedBBCode("");
@@ -450,12 +458,28 @@ const useBbcodeGenerator = (selectedForm, formValues, finalSelectOptions, agency
     setShowBBCode(false);
   }, []);
 
+  // ── Multi-recipient variants ──
+  // Re-runs the same pipeline (incl. the LSPD condensed override) with an
+  // overridden addressee, WITHOUT touching preview state. Used at save time
+  // to build one personalized copy per extra recipient.
+  const generateBBCodeFor = useCallback((valuesOverride) => {
+    if (!selectedForm?.template || !valuesOverride) return null;
+    try {
+      return performGeneration(null, valuesOverride);
+    } catch (err) {
+      console.warn('[BBCode] Variant generation failed:', err?.message || err);
+      return null;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [performGeneration]);
+
   return {
     generatedBBCode,
     generatedTitle,
     showBBCode,
     setShowBBCode,
     generateBBCode,
+    generateBBCodeFor,
     clearBBCode,
     // limitWarning
   };

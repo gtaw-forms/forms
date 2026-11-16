@@ -19,6 +19,7 @@ import EmployeeManager from './EmployeeManager';
 import LsccManager from './LsccManager';
 import FormsManager from './FormsManager';
 import MorgueManager from './MorgueManager';
+import CctvViewer from './CctvViewer';
 
 const AdminDashboard = ({
 
@@ -185,7 +186,12 @@ const AdminDashboard = ({
     
     // Permission helper functions based on ranks and auth type
     const scriptRank = gtaWorldUser?.faction?.scriptRank;
-    const isSuperAdminAccess = accessLevel === 'superadmin' || permissions.includes('superadmin_access');
+    // GTAW staff (accessLevel 'staff') are platform admins, same as Admin.jsx's
+    // outer gate which lists 'staff' alongside 'president'/'superadmin'. The
+    // section gate must too — staff have no PHMC scriptRank, so without this
+    // every section renders DENIED (Giga 2026-11-10: Rank Check N/A on all).
+    const isStaffAccess = accessLevel === 'staff';
+    const isSuperAdminAccess = accessLevel === 'superadmin' || isStaffAccess || permissions.includes('superadmin_access');
 
     // Simplified: Rank 11+ sees everything. Rank Permissions stays hardcoded at 15+.
     const isRank11OrHigher = scriptRank >= 11;
@@ -202,6 +208,7 @@ const AdminDashboard = ({
             case 'factions': return hasAdminPageAccess;
             case 'database': return hasAdminPageAccess;
             case 'morgue': return hasAdminPageAccess;
+            case 'cctv': return hasAdminPageAccess;
             case 'dev': return hasAdminPageAccess;
             default: return true;
         }
@@ -215,6 +222,7 @@ const AdminDashboard = ({
             case 'factions': return 10;
             case 'database': return 12;
             case 'morgue': return 12;
+            case 'cctv': return 11;
             case 'dev': return 11;
             default: return null;
         }
@@ -362,6 +370,9 @@ const AdminDashboard = ({
                         <div className={`form-item ${selectedSection === 'morgue' ? 'active' : ''}`} onClick={() => handleSectionChange('morgue', 'Morgue Records')}>
                             <span className="dot" />Morgue Records
                         </div>
+                        <div className={`form-item ${selectedSection === 'cctv' ? 'active' : ''}`} onClick={() => handleSectionChange('cctv', 'CCTV')}>
+                            <span className="dot" />CCTV
+                        </div>
 
                         <div className="cat-head" style={{ cursor: 'default', marginTop: 12 }}><span>System</span></div>
                         <div className={`form-item ${selectedSection === 'maintenance' ? 'active' : ''}`} onClick={() => handleSectionChange('maintenance', 'System Maintenance')}>
@@ -464,6 +475,10 @@ const AdminDashboard = ({
 
                         {selectedSection === 'morgue' && (
                             hasAdminPageAccess ? <MorgueManager showNotification={showInAppNotification} /> : <div className="admin-section"><div className="alert alert-warning border-0 bg-opacity-25 shadow-sm p-4">Denied</div></div>
+                        )}
+
+                        {selectedSection === 'cctv' && (
+                            hasAdminPageAccess ? <CctvViewer showInAppNotification={showInAppNotification} /> : <div className="admin-section"><div className="alert alert-danger border-0 bg-opacity-25 shadow-sm p-4">Access Denied</div></div>
                         )}
 
                         {selectedSection === 'maintenance' && (

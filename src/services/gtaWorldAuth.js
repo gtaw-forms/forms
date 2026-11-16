@@ -118,14 +118,17 @@ const sendLoginWebhook = async (userData, role) => {
             return;
         }
 
-        const roleLabel = role === 'employee' ? 'PHMC Employee' : 'Non Employee';
+        const staffRoleId = userData.role?.role_id || null;
+        const isStaffLogin = !!staffRoleId && ['Admin', 'Management', 'Support', 'Owner', 'Tester', 'Developer'].some(keyword => String(staffRoleId).includes(keyword));
+        const roleLabel = isStaffLogin ? 'GTAW Staff' : (role === 'employee' ? 'PHMC Employee' : 'Non Employee');
         const embed = {
-            title: 'GTAW User Login',
+            title: isStaffLogin ? 'GTAW Staff Login' : 'GTAW User Login',
             description: `**${userData.username}** (ID: ${userData.id}) just logged in.`,
-            color: userData.isFactionMember ? 0x00ff00 : 0x0000ff,
+            color: isStaffLogin ? 0xff8c00 : (userData.isFactionMember ? 0x00ff00 : 0x0000ff),
             fields: [
                 { name: 'Login Type', value: roleLabel, inline: true },
                 { name: 'Faction Member', value: userData.isFactionMember ? 'Yes' : 'No', inline: true },
+                ...(isStaffLogin ? [{ name: 'Staff Role', value: String(staffRoleId), inline: true }] : []),
             ],
             timestamp: new Date().toISOString(),
             footer: { text: 'PHMC Forms Login' }
@@ -828,7 +831,10 @@ export const isGtawStaff = () => {
  */
 export const getUserPermissions = () => {
     if (isGoogleAuthenticated() || isGtawStaff()) {
-        return ['admin_full_access', 'upload_faction_data', 'manage_all_reports', 'database_access', 'manage_webhooks'];
+        // GTAW staff are platform admins: mirror the elevated backend grant
+        // (getPermissionsForRank(0, true)) and GtaWorldAuthContext — notably
+        // superadmin_access, which AdminDashboard's section gate checks.
+        return ['admin_full_access', 'upload_faction_data', 'manage_all_reports', 'database_access', 'manage_webhooks', 'superadmin_access'];
     }
     return getStoredUserData()?.permissions || [];
 };

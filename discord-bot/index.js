@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, REST, Routes, Collection, MessageFlags, EmbedBuilder } from 'discord.js';
+import { Client, GatewayIntentBits, Partials, REST, Routes, Collection, MessageFlags, EmbedBuilder } from 'discord.js';
 import { readFileSync, existsSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -49,7 +49,10 @@ const client = new Client({
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.GuildEmojisAndStickers,
+        GatewayIntentBits.DirectMessages,
+        GatewayIntentBits.MessageContent,
     ],
+    partials: [Partials.Channel],
 });
 
 client.commands = new Collection();
@@ -100,7 +103,6 @@ async function registerCommands() {
     const outstandingAutopsies = await import('./commands/outstanding-autopsies.js');
     const testPing = await import('./commands/test-ping.js');
     const checkBackground = await import('./commands/background.js');
-    const pmIntakeDryrun = await import('./commands/pm-intake-dryrun.js');
     const morgueAdd = await import('./commands/morgue-add.js');
     const fixAutopsy = await import('./commands/fix-autopsy.js');
     const groupMorgueCheck = await import('./commands/group-morgue-check.js');
@@ -118,6 +120,8 @@ async function registerCommands() {
     const debugChannels = await import('./commands/debug-channels.js');
     const manageForms = await import('./commands/manage-forms.js');
     const infoPanel = await import('./commands/info-panel.js');
+    const feedback = await import('./commands/feedback.js');
+    const feedbackList = await import('./commands/feedback-list.js');
     // Personal AGH dashboard — optional. The files are gitignored/not part of a
     // fork; guard so the bot still boots when they're absent.
     let aghDashboard = null;
@@ -156,7 +160,6 @@ async function registerCommands() {
         outstandingAutopsies.data.toJSON(),
         testPing.data.toJSON(),
         checkBackground.data.toJSON(),
-        pmIntakeDryrun.data.toJSON(),
         morgueAdd.data.toJSON(),
         groupMorgueCheck.data.toJSON(),
         faceRedraft.data.toJSON(),
@@ -173,6 +176,8 @@ async function registerCommands() {
         debugChannels.data.toJSON(),
         manageForms.data.toJSON(),
         infoPanel.data.toJSON(),
+        feedback.data.toJSON(),
+        feedbackList.data.toJSON(),
         ...(aghDashboard ? [aghDashboard.data.toJSON()] : []),
     ];
 
@@ -371,21 +376,21 @@ client.once('clientReady', async () => {
         console.warn('[BOT] ⚠️ Auto-deploy client failed to register (non-fatal):', err.message);
     }
 
-    // ── Register PM intake client now; the monitor itself starts in the
-    // phased boot queue below (forum-heavy — never at T+0) ──
-    try {
-        const { setPmIntakeClient } = await import('./services/privateAutopsyPmMonitor.js');
-        setPmIntakeClient(client);
-    } catch (err) {
-        console.warn('[BOT] ⚠️ PM intake client failed to register (non-fatal):', err.message);
-    }
-
     // ── Start web autopsy request poster (autopsy-requests/pending -> f=265) ──
     try {
         const { startWebAutopsyRequestPoster } = await import('./services/webAutopsyRequestPoster.js');
         startWebAutopsyRequestPoster();
     } catch (err) {
         console.warn('[BOT] ⚠️ Web autopsy request poster failed to start (non-fatal):', err.message);
+    }
+
+    // ── Start web PRIVATE autopsy intake (autopsy-requests/private-pending ->
+    // confidential f=266 case; PRIVATE_WEB_MODE=off by default) ──
+    try {
+        const { startPrivateWebAutopsyIntake } = await import('./services/privateWebAutopsyIntake.js');
+        startPrivateWebAutopsyIntake();
+    } catch (err) {
+        console.warn('[BOT] ⚠️ Web private autopsy intake failed to start (non-fatal):', err.message);
     }
 
     // ── Start deploy notifier (deployNotifications -> log channel) ──
@@ -459,12 +464,28 @@ client.once('clientReady', async () => {
         console.warn('[BOT] ⚠️ Queue dashboard failed to start (non-fatal):', err.message);
     }
 
+    // ── Start CCTV scheduler (daily fetch of all cameras via fetch-all.cjs) ──
+    try {
+        const { startCctvScheduler } = await import('./services/cctvScheduler.js');
+        startCctvScheduler();
+    } catch (err) {
+        console.warn('[BOT] ⚠️ CCTV scheduler failed to start (non-fatal):', err.message);
+    }
+
     // ── Start Face publish sweep (publishes scheduled Face posts after their delay) ──
     try {
         const { startFacePublishSweep } = await import('./services/deathRecordDraftFace.js');
         startFacePublishSweep().catch((err) => console.warn('[BOT] ⚠️ Face publish sweep failed to start (non-fatal):', err.message));
     } catch (err) {
         console.warn('[BOT] ⚠️ Face publish sweep failed to start (non-fatal):', err.message);
+    }
+
+    // ── Restore feedback session (single-slot; reattach to OpenCode) ──
+    try {
+        const { restoreActiveSession } = await import('./services/feedback/controller.js');
+        await restoreActiveSession(client);
+    } catch (err) {
+        console.warn('[BOT] ⚠️ Feedback restore failed (non-fatal):', err.message);
     }
 
     // ── Phased boot queue (forum-heavy starters, one at a time) ──
@@ -500,16 +521,6 @@ client.once('clientReady', async () => {
                     startAutopsyRequestMonitor({ immediate: false });
                 },
             },
-            {
-                // Awaits the real first poll, then schedules the interval
-                // without repeating it.
-                name: 'pm-intake',
-                run: async () => {
-                    const { pollOnce, startPrivateAutopsyPmMonitor } = await import('./services/privateAutopsyPmMonitor.js');
-                    await pollOnce();
-                    startPrivateAutopsyPmMonitor({ immediate: false });
-                },
-            },
         ];
         runStartupQueue(queue).catch((err) => console.warn('[BOT] ⚠️ Phased boot queue failed (non-fatal):', err.message));
     } catch (err) {
@@ -531,6 +542,12 @@ client.on('interactionCreate', async (interaction) => {
         const { handleDashboardRefresh } = await import('./services/dashboardManager.js');
         await handleDashboardRefresh(interaction);
         return;
+    }
+
+    // Handle Feedback bot buttons (fb:<action>:<sessionId> — owner only)
+    if (interaction.isButton() && interaction.customId.startsWith('fb:')) {
+        const { onFeedbackButton } = await import('./services/feedback/controller.js');
+        if (await onFeedbackButton(interaction)) return;
     }
 
     // Handle /global-stats page buttons (Overview / Full Breakdown / Heatmap)
@@ -682,11 +699,16 @@ client.on('interactionCreate', async (interaction) => {
         return;
     }
 
-    // Handle private-autopsy PM intake approval buttons (Approve / Deny)
-    if (interaction.isButton() && (interaction.customId.startsWith('pmintake_ok_') || interaction.customId.startsWith('pmintake_no_'))) {
-        const { handlePmIntakeButton } = await import('./services/privateAutopsyPmMonitor.js');
-        await handlePmIntakeButton(interaction);
-        return;
+    // Handle Feedback ask-question modal (fb:ask:new — opened by /feedback)
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('fb:ask:')) {
+        const { onFeedbackAskModal } = await import('./services/feedback/controller.js');
+        if (await onFeedbackAskModal(interaction)) return;
+    }
+
+    // Handle Feedback answer-questions modal (fb:answer:<sessionId>)
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('fb:answer:')) {
+        const { onFeedbackModal } = await import('./services/feedback/controller.js');
+        if (await onFeedbackModal(interaction)) return;
     }
 
     // Handle /report-retry select menu
@@ -860,6 +882,18 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
+// ── Feedback DMs: the owner answers plan questions by DM; that DM is the session ──
+client.on('messageCreate', async (message) => {
+    try {
+        if (message.author?.bot) return;
+        if (message.guildId) return; // DMs only
+        const { onOwnerDm } = await import('./services/feedback/controller.js');
+        await onOwnerDm(message);
+    } catch (err) {
+        console.warn('[BOT] Feedback DM handler failed (non-fatal):', err.message);
+    }
+});
+
 // ── Guild join/leave flags (abuse-observable: a surprise server join pages
 // the owner immediately; leaves are logged quietly) ──
 client.on('guildCreate', async (guild) => {
@@ -1024,9 +1058,6 @@ async function start() {
     const checkBackgroundCmd = await import('./commands/background.js');
     client.commands.set(checkBackgroundCmd.data.name, { execute: checkBackgroundCmd.execute });
 
-    const pmIntakeDryrunCmd = await import('./commands/pm-intake-dryrun.js');
-    client.commands.set(pmIntakeDryrunCmd.data.name, { execute: pmIntakeDryrunCmd.execute });
-
     const morgueAddCmd = await import('./commands/morgue-add.js');
     client.commands.set(morgueAddCmd.data.name, { execute: morgueAddCmd.execute });
 
@@ -1071,6 +1102,12 @@ async function start() {
 
     const manageFormsCmd = await import('./commands/manage-forms.js');
     client.commands.set(manageFormsCmd.data.name, { execute: manageFormsCmd.execute });
+
+    const feedbackCmd = await import('./commands/feedback.js');
+    client.commands.set(feedbackCmd.data.name, { execute: feedbackCmd.execute });
+
+    const feedbackListCmd = await import('./commands/feedback-list.js');
+    client.commands.set(feedbackListCmd.data.name, { execute: feedbackListCmd.execute });
 
     const infoPanelCmd = await import('./commands/info-panel.js');
     client.commands.set(infoPanelCmd.data.name, { execute: infoPanelCmd.execute });

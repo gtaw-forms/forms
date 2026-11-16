@@ -110,6 +110,23 @@ const Chips = ({ label, items }) => {
   );
 };
 
+/** Multi-recipient extras: "Name — Department" per officer, collapsed when none. */
+const extraOfficerLabel = (r) => {
+  const name = String(r?.officer || r?.name || '').trim();
+  if (!name) return '';
+  const rawDept = r?.department ?? r?.dept ?? '';
+  const dept = typeof rawDept === 'object' && rawDept !== null
+    ? (rawDept.label || rawDept.value || '')
+    : String(rawDept || '');
+  return dept ? `${name} — ${agencyLabel(dept)}` : name;
+};
+
+const AdditionalOfficers = ({ items }) => {
+  const list = (Array.isArray(items) ? items : []).map(extraOfficerLabel).filter(Boolean);
+  if (!list.length) return null;
+  return <ListRows label="ADDITIONAL OFFICERS" items={list} />;
+};
+
 const rankBadge = (v) => `${v.coronerRank || EMPTY} · SN: ${v.coronerBadge || EMPTY}`;
 
 function CoronerDetail({ v }) {
@@ -129,6 +146,7 @@ function CoronerDetail({ v }) {
             <Row label="RANK / BADGE" value={rankBadge(v)} />
             <Row label="REQUESTING DEPARTMENT" value={agencyLabel(v.department)} />
             {isTruthyFlag(v.ReportRequested) ? <Row label="REQUESTING OFFICER" value={v.requestingOfficer || EMPTY} /> : null}
+            <AdditionalOfficers items={v.additionalRecipients} />
             <Chips label="ASSISTING STAFF" items={v.additionalstaff} />
           </div>
         </div>
@@ -194,6 +212,7 @@ function MassDetail({ m }) {
             <Row label="RANK / BADGE" value={rankBadge(m)} />
             <Row label="REQUESTING DEPARTMENT" value={agencyLabel(m.department)} />
             <Row label="REQUESTING OFFICER" value={requested ? (officerName || 'Requested — no name recorded') : 'Not requested'} />
+            <AdditionalOfficers items={m.additionalRecipients} />
           </div>
         </div>
         <div className="row" style={{ marginTop: 14 }}>
@@ -382,6 +401,7 @@ function EmailDetail({ v = {} }) {
             <Row label="OOC NAME" value={v.decedentOOC} />
           </div>
         </div>
+        <AdditionalOfficers items={v.additionalRecipients} />
       </Card>
 
       <Card icon="▤" heading="Attached report">

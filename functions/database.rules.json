@@ -1,10 +1,16 @@
 {
   "rules": {
     ".read": "auth != null",
-    ".write": "auth != null",
+    ".write": false,
     "appMetadata": {
       ".read": true,
+      "$key": {
+        ".write": "auth != null && (auth.token.isSuperAdmin === true || auth.token.accessLevel === 'superadmin' || auth.token.accessLevel === 'admin' || auth.token.accessLevel === 'management') && ($key === 'factionsDataVersion' || $key === 'formsDataVersion' || $key === 'formsDataVersion_staging' || $key === 'lsccDataVersion' || $key === 'morgueDataVersion' || $key === 'reportsDataVersion' || $key === 'selectOptionsDataVersion' || $key === 'globalKillSwitch' || $key === 'maintenance' || $key === 'maintenanceMode' || $key === 'botMaintenance' || $key === 'morgueBanner')"
+      },
       "infoPanels": {
+        ".write": false
+      },
+      "aghDashboard": {
         ".write": false
       }
     },
@@ -17,45 +23,110 @@
       }
     },
     "forms": {
-      ".read": true
+      ".read": true,
+      "$formId": {
+        ".write": "auth != null && (auth.token.isSuperAdmin === true || auth.token.accessLevel === 'superadmin' || auth.token.accessLevel === 'admin' || auth.token.accessLevel === 'management')"
+      }
+    },
+    "forms_staging": {
+      "$formId": {
+        ".write": "auth != null && (auth.token.isSuperAdmin === true || auth.token.accessLevel === 'superadmin' || auth.token.accessLevel === 'admin' || auth.token.accessLevel === 'management')"
+      }
     },
     "selectOptions": {
-      ".read": true
+      ".read": true,
+      "$category": {
+        ".write": "auth != null && (auth.token.isSuperAdmin === true || auth.token.accessLevel === 'superadmin' || auth.token.accessLevel === 'admin' || auth.token.accessLevel === 'management')"
+      }
     },
     "verified_locations": {
-      ".read": true
+      ".read": true,
+      "$locationKey": {
+        ".write": "auth != null"
+      }
     },
     "lscc": {
       "keywords": {
-        ".read": true
+        ".read": true,
+        "$id": {
+          ".write": "auth != null && (auth.token.isSuperAdmin === true || auth.token.accessLevel === 'superadmin' || auth.token.accessLevel === 'admin' || auth.token.accessLevel === 'management')"
+        }
       },
       "injuries": {
-        ".read": true
+        ".read": true,
+        "$id": {
+          ".write": "auth != null && (auth.token.isSuperAdmin === true || auth.token.accessLevel === 'superadmin' || auth.token.accessLevel === 'admin' || auth.token.accessLevel === 'management')"
+        }
+      },
+      "protocols": {
+        ".write": "auth != null && (auth.token.isSuperAdmin === true || auth.token.accessLevel === 'superadmin' || auth.token.accessLevel === 'admin' || auth.token.accessLevel === 'management')"
       }
     },
     "presence": {
       "$sessionId": {
         ".read": true,
-        ".write": true
+        ".write": "auth != null"
       }
     },
     "analytics": {
       "visitors": {
         "$date": {
-          "$sessionId": {
-            ".read": true,
-            ".write": true
-          }
+          ".read": true,
+          ".write": "auth != null"
         }
       }
     },
     "newSavedReports": {
       ".read": false,
-      ".write": false
+      "$uid": {
+        ".write": "auth != null && ( auth.token.isSuperAdmin === true || auth.token.accessLevel === 'superadmin' || auth.token.accessLevel === 'admin' || auth.token.accessLevel === 'management' || $uid === auth.uid || $uid === auth.token.characterName || ( auth.token.characterName != null && $uid === auth.token.characterName.replace(\" \", \"_\").replace(\".\", \"_\").replace(\"/\", \"_\").replace(\"#\", \"_\").replace(\"__\", \"_\").replace(\"__\", \"_\")) || $uid === auth.token.displayCharacterName || ( auth.token.displayCharacterName != null && $uid === auth.token.displayCharacterName.replace(\" \", \"_\").replace(\".\", \"_\").replace(\"/\", \"_\").replace(\"#\", \"_\").replace(\"__\", \"_\").replace(\"__\", \"_\")) || $uid === auth.token.gtawUsername || ( auth.token.gtawUsername != null && $uid === auth.token.gtawUsername.replace(\" \", \"_\").replace(\".\", \"_\").replace(\"/\", \"_\").replace(\"#\", \"_\").replace(\"__\", \"_\").replace(\"__\", \"_\")) )"
+      }
     },
     "newSavedReportBBCode": {
       ".read": false,
-      ".write": false
+      "$uid": {
+        ".write": "auth != null && ( auth.token.isSuperAdmin === true || auth.token.accessLevel === 'superadmin' || auth.token.accessLevel === 'admin' || auth.token.accessLevel === 'management' || $uid === auth.uid || $uid === auth.token.characterName || ( auth.token.characterName != null && $uid === auth.token.characterName.replace(\" \", \"_\").replace(\".\", \"_\").replace(\"/\", \"_\").replace(\"#\", \"_\").replace(\"__\", \"_\").replace(\"__\", \"_\")) || $uid === auth.token.displayCharacterName || ( auth.token.displayCharacterName != null && $uid === auth.token.displayCharacterName.replace(\" \", \"_\").replace(\".\", \"_\").replace(\"/\", \"_\").replace(\"#\", \"_\").replace(\"__\", \"_\").replace(\"__\", \"_\")) || $uid === auth.token.gtawUsername || ( auth.token.gtawUsername != null && $uid === auth.token.gtawUsername.replace(\" \", \"_\").replace(\".\", \"_\").replace(\"/\", \"_\").replace(\"#\", \"_\").replace(\"__\", \"_\").replace(\"__\", \"_\")) )"
+      }
+    },
+    "scheduledReports": {
+      "$uid": {
+        ".write": "auth != null && ( auth.token.isSuperAdmin === true || auth.token.accessLevel === 'superadmin' || auth.token.accessLevel === 'admin' || auth.token.accessLevel === 'management' || $uid === auth.uid || $uid === auth.token.characterName || ( auth.token.characterName != null && $uid === auth.token.characterName.replace(\" \", \"_\").replace(\".\", \"_\").replace(\"/\", \"_\").replace(\"#\", \"_\").replace(\"__\", \"_\").replace(\"__\", \"_\")) || $uid === auth.token.displayCharacterName || ( auth.token.displayCharacterName != null && $uid === auth.token.displayCharacterName.replace(\" \", \"_\").replace(\".\", \"_\").replace(\"/\", \"_\").replace(\"#\", \"_\").replace(\"__\", \"_\").replace(\"__\", \"_\")) || $uid === auth.token.gtawUsername || ( auth.token.gtawUsername != null && $uid === auth.token.gtawUsername.replace(\" \", \"_\").replace(\".\", \"_\").replace(\"/\", \"_\").replace(\"#\", \"_\").replace(\"__\", \"_\").replace(\"__\", \"_\")) )"
+      }
+    },
+    "scheduledReportsBBCode": {
+      "$uid": {
+        ".write": "auth != null && ( auth.token.isSuperAdmin === true || auth.token.accessLevel === 'superadmin' || auth.token.accessLevel === 'admin' || auth.token.accessLevel === 'management' || $uid === auth.uid || $uid === auth.token.characterName || ( auth.token.characterName != null && $uid === auth.token.characterName.replace(\" \", \"_\").replace(\".\", \"_\").replace(\"/\", \"_\").replace(\"#\", \"_\").replace(\"__\", \"_\").replace(\"__\", \"_\")) || $uid === auth.token.displayCharacterName || ( auth.token.displayCharacterName != null && $uid === auth.token.displayCharacterName.replace(\" \", \"_\").replace(\".\", \"_\").replace(\"/\", \"_\").replace(\"#\", \"_\").replace(\"__\", \"_\").replace(\"__\", \"_\")) || $uid === auth.token.gtawUsername || ( auth.token.gtawUsername != null && $uid === auth.token.gtawUsername.replace(\" \", \"_\").replace(\".\", \"_\").replace(\"/\", \"_\").replace(\"#\", \"_\").replace(\"__\", \"_\").replace(\"__\", \"_\")) )"
+      }
+    },
+    "recoveredReports": {
+      "$uid": {
+        ".write": "auth != null && ( auth.token.isSuperAdmin === true || auth.token.accessLevel === 'superadmin' || auth.token.accessLevel === 'admin' || auth.token.accessLevel === 'management' || $uid === auth.uid || $uid === auth.token.characterName || ( auth.token.characterName != null && $uid === auth.token.characterName.replace(\" \", \"_\").replace(\".\", \"_\").replace(\"/\", \"_\").replace(\"#\", \"_\").replace(\"__\", \"_\").replace(\"__\", \"_\")) || $uid === auth.token.displayCharacterName || ( auth.token.displayCharacterName != null && $uid === auth.token.displayCharacterName.replace(\" \", \"_\").replace(\".\", \"_\").replace(\"/\", \"_\").replace(\"#\", \"_\").replace(\"__\", \"_\").replace(\"__\", \"_\")) || $uid === auth.token.gtawUsername || ( auth.token.gtawUsername != null && $uid === auth.token.gtawUsername.replace(\" \", \"_\").replace(\".\", \"_\").replace(\"/\", \"_\").replace(\"#\", \"_\").replace(\"__\", \"_\").replace(\"__\", \"_\")) )"
+      }
+    },
+    "reportEdits": {
+      "$uid": {
+        ".write": "auth != null && ( auth.token.isSuperAdmin === true || auth.token.accessLevel === 'superadmin' || auth.token.accessLevel === 'admin' || auth.token.accessLevel === 'management' || $uid === auth.uid || $uid === auth.token.characterName || ( auth.token.characterName != null && $uid === auth.token.characterName.replace(\" \", \"_\").replace(\".\", \"_\").replace(\"/\", \"_\").replace(\"#\", \"_\").replace(\"__\", \"_\").replace(\"__\", \"_\")) || $uid === auth.token.displayCharacterName || ( auth.token.displayCharacterName != null && $uid === auth.token.displayCharacterName.replace(\" \", \"_\").replace(\".\", \"_\").replace(\"/\", \"_\").replace(\"#\", \"_\").replace(\"__\", \"_\").replace(\"__\", \"_\")) || $uid === auth.token.gtawUsername || ( auth.token.gtawUsername != null && $uid === auth.token.gtawUsername.replace(\" \", \"_\").replace(\".\", \"_\").replace(\"/\", \"_\").replace(\"#\", \"_\").replace(\"__\", \"_\").replace(\"__\", \"_\")) )"
+      }
+    },
+    "user-consent": {
+      "$uid": {
+        ".write": "auth != null && $uid === auth.uid"
+      }
+    },
+    "shortLinks": {
+      "$code": {
+        ".write": "auth != null && !data.exists()"
+      }
+    },
+    "shortLinksByReport": {
+      "$uid": {
+        ".write": "auth != null && ( auth.token.isSuperAdmin === true || auth.token.accessLevel === 'superadmin' || auth.token.accessLevel === 'admin' || auth.token.accessLevel === 'management' || $uid === auth.uid || $uid === auth.token.characterName || ( auth.token.characterName != null && $uid === auth.token.characterName.replace(\" \", \"_\").replace(\".\", \"_\").replace(\"/\", \"_\").replace(\"#\", \"_\").replace(\"__\", \"_\").replace(\"__\", \"_\")) || $uid === auth.token.displayCharacterName || ( auth.token.displayCharacterName != null && $uid === auth.token.displayCharacterName.replace(\" \", \"_\").replace(\".\", \"_\").replace(\"/\", \"_\").replace(\"#\", \"_\").replace(\"__\", \"_\").replace(\"__\", \"_\")) || $uid === auth.token.gtawUsername || ( auth.token.gtawUsername != null && $uid === auth.token.gtawUsername.replace(\" \", \"_\").replace(\".\", \"_\").replace(\"/\", \"_\").replace(\"#\", \"_\").replace(\"__\", \"_\").replace(\"__\", \"_\")) )"
+      }
+    },
+    "lspd-portal-form-queue": {
+      "$entityKey": {
+        ".write": "auth != null && !data.exists()"
+      }
     },
     "savedReports": {
       ".read": false,
@@ -71,17 +142,37 @@
     },
     "factions": {
       ".read": "auth != null",
-      ".write": "auth != null"
+      "$factionId": {
+        ".write": "auth != null && (auth.token.isSuperAdmin === true || auth.token.accessLevel === 'superadmin' || auth.token.accessLevel === 'admin' || auth.token.accessLevel === 'management')"
+      }
+    },
+    "audit": {
+      "faction_uploads": {
+        ".write": "auth != null && (auth.token.isSuperAdmin === true || auth.token.accessLevel === 'superadmin' || auth.token.accessLevel === 'admin' || auth.token.accessLevel === 'management')",
+        "$entry": {
+          ".write": "auth != null && (auth.token.isSuperAdmin === true || auth.token.accessLevel === 'superadmin' || auth.token.accessLevel === 'admin' || auth.token.accessLevel === 'management')"
+        }
+      }
     },
     "webhooks": {
       ".read": "auth != null",
-      ".write": "auth != null"
+      "$webhookId": {
+        ".write": "auth != null && (auth.token.isSuperAdmin === true || auth.token.accessLevel === 'superadmin' || auth.token.accessLevel === 'admin' || auth.token.accessLevel === 'management')"
+      }
     },
     "deathRecordDrafts": {
-      ".indexOn": ["needsMorgue", "deploying", "needsBetterMorgue", "verifyAfter", "status"]
+      ".indexOn": [
+        "needsMorgue",
+        "deploying",
+        "needsBetterMorgue",
+        "verifyAfter",
+        "status"
+      ]
     },
     "facePostDrafts": {
-      ".indexOn": ["status"]
+      ".indexOn": [
+        "status"
+      ]
     },
     "completionStepRetries": {
       ".read": false,
@@ -89,21 +180,74 @@
     },
     "morgue-records": {
       ".read": false,
-      ".indexOn": "lastUpdated"
+      ".indexOn": "lastUpdated",
+      ".write": "auth != null && (auth.token.isSuperAdmin === true || auth.token.accessLevel === 'superadmin' || auth.token.accessLevel === 'admin' || auth.token.accessLevel === 'management')"
+    },
+    "unprocessedCKs": {
+      "$reportKey": {
+        ".write": "auth != null"
+      }
+    },
+    "morgueMatchLogs": {
+      "$logKey": {
+        ".write": "auth != null"
+      }
     },
     "autopsy-requested": {
-    ".indexOn": ["oocName", "name", "completedAt", "caseTopicId", "lssdCrosspostStatus", "lspdCrosspostStatus", "lssdTopicId", "lspd-acknowledge-reply", "lssd-acknowledge-reply", "phmc-acknowledge-reply", "sadcr-acknowledge-reply", "dao-acknowledge-reply"]
+      ".indexOn": [
+        "oocName",
+        "name",
+        "completedAt",
+        "caseTopicId",
+        "lssdCrosspostStatus",
+        "lspdCrosspostStatus",
+        "lssdTopicId",
+        "lspd-acknowledge-reply",
+        "lssd-acknowledge-reply",
+        "phmc-acknowledge-reply",
+        "sadcr-acknowledge-reply",
+        "dao-acknowledge-reply"
+      ],
+      ".write": false
+    },
+    "autopsy-requests": {
+      "pending": {
+        "$id": {
+          ".write": "auth != null && !data.exists()"
+        }
+      },
+      "private-pending": {
+        ".read": false,
+        "$id": {
+          ".write": "auth != null && !data.exists()"
+        }
+      },
+      "rotation": {
+        ".write": false
+      },
+      "loa": {
+        ".write": false
+      },
+      "discord-members": {
+        ".write": false
+      },
+      "web-meta": {
+        ".write": false
+      }
     },
     "deployNotifications": {
-      ".indexOn": ["createdAt"]
+      ".indexOn": [
+        "createdAt"
+      ],
+      ".write": false
     },
     "dev-reports": {
       ".read": true,
-      ".write": true
+      ".write": "auth != null"
     },
     "dev-reports-bbcode": {
       ".read": true,
-      ".write": true
+      ".write": "auth != null"
     }
   }
 }

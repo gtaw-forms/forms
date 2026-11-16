@@ -5,15 +5,17 @@
  * flow's last-resort NAME match, which accepted the placeholder and completed
  * EVERY open entry answering to it — one decedent's report written onto two
  * unrelated stale duplicates (t=10076/t=10083) plus two junk LSPD crossposts.
- * The DM step then failed forever because the CASELINK fallback literal
- * ('CASELINK [BOT]') never matched its own guard ('CASELINK [Bot]').
+ * The DM step then failed forever on the unresolvable target and the recovery
+ * sweep retried it forever.
  *
  * These are the pure predicates the flow now uses; keep them behaviour-locked.
+ * (CASELINK-specific guards were removed 2026-11-09 when the bot was
+ * deauthorized; the retired account string no longer exists in the module.)
  */
 import { describe, it, expect } from 'vitest';
 import { isDoePlaceholder, isNonIdentityPlaceholder } from '../discord-bot/services/doePlaceholders.js';
 import {
-    CASELINK_ACCOUNT, isCaselinkAccount, isUnusableDmTarget, nameFallbackVerdict,
+    isUnusableDmTarget, nameFallbackVerdict,
 } from '../discord-bot/services/autopsyCompletionGuards.js';
 
 describe('isNonIdentityPlaceholder', () => {
@@ -42,17 +44,9 @@ describe('isNonIdentityPlaceholder', () => {
     });
 });
 
-describe('isCaselinkAccount / isUnusableDmTarget', () => {
-    it('matches every CASELINK casing the forum returns', () => {
-        for (const v of ['CASELINK [Bot]', 'CASELINK [BOT]', 'caselink [bot]', 'CASELINK']) {
-            expect(isCaselinkAccount(v), v).toBe(true);
-        }
-        expect(isCaselinkAccount('Sarah Bell')).toBe(false);
-        expect(isCaselinkAccount('')).toBe(false);
-    });
-
-    it('never lets a placeholder or CASELINK target reach sendPM', () => {
-        for (const v of ['', '   ', 'Requesting Party', 'requesting party', 'PHMC Forms Bot', 'CASELINK [BOT]', CASELINK_ACCOUNT]) {
+describe('isUnusableDmTarget', () => {
+    it('never lets a placeholder or template target reach sendPM', () => {
+        for (const v of ['', '   ', 'Requesting Party', 'requesting party', 'PHMC Forms Bot', 'phmc bot', 'none', 'Unknown', 'unknown']) {
             expect(isUnusableDmTarget(v), JSON.stringify(v)).toBe(true);
         }
         for (const v of ['Raizy Faulkner', 'ISU-IGI', 'Jacob Hall']) {

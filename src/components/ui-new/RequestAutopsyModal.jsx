@@ -1,7 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { ref, push } from 'firebase/database';
 import { database } from '../../firebase';
-import { parseTimeOfDeath, inferEthnicity } from '../../utils/autopsyRequest';
+import {
+    parseTimeOfDeath,
+    inferEthnicity,
+    isLspdRequester,
+    isLeAgency,
+    PRIVATE_JUSTIFICATION_MIN,
+    buildPrivateAutopsyCaseBBCode,
+    buildPrivateAutopsyRequestPayload,
+} from '../../utils/autopsyRequest';
 import AutopsyGuidelinesModal from './AutopsyGuidelinesModal';
 
 const inputStyle = {
@@ -25,7 +33,9 @@ const requiredNote = (
     </span>
 );
 
-const RequestAutopsyModal = ({ show, onClose, record, showNotification, characterName }) => {
+const RequestAutopsyModal = ({ show, onClose, record, showNotification, characterName, user }) => {
+    const [requestKind, setRequestKind] = useState('standard');
+    const [privateJustification, setPrivateJustification] = useState('');
     const [deathType, setDeathType] = useState('PK');
     const [requesterName, setRequesterName] = useState('');
     const [requesterRank, setRequesterRank] = useState('');
@@ -52,6 +62,8 @@ const RequestAutopsyModal = ({ show, onClose, record, showNotification, characte
 
     useEffect(() => {
         if (show) {
+            setRequestKind('standard');
+            setPrivateJustification('');
             setDeathType('PK');
             setRequesterName('');
             setRequesterRank('');
@@ -132,12 +144,40 @@ const RequestAutopsyModal = ({ show, onClose, record, showNotification, characte
     const requestBBCode = buildRequestBBCode();
 
     // Live validity: submit stays disabled until every mandatory field is
-    // filled. The missing list doubles as the inline prompt + submit guard.
+    // filled. LSPD runs its own portal and has no forum profiles, so the
+    // Forum Account URL is neither required nor shown for LSPD requesters.
+    // The missing list doubles as the inline prompt + submit guard.
+    const isLspd = isLspdRequester({ agencyForum, requesterDept });
+    const isPrivate = requestKind === 'private';
+
+    // Private autopsies never reach the public forums, so they are restricted to
+    // law-enforcement requesters. The OAuth faction name is a best-effort hint
+    // only (it can legitimately be missing — see docs/coroner-credentials-blank-bug.md);
+    // the bot re-validates the agency + department and fails closed.
+    const factionName = String(user?.faction?.name || user?.faction?.factionName || '').toUpperCase();
+    const factionLooksNonLe = !!factionName
+        && !/LSPD|POLICE|LSSD|SHERIFF|SADCR|CORRECTION|DAO|DISTRICT ATTORNEY|MARSHAL/.test(factionName);
+    const privateAllowed = !factionLooksNonLe;
+
     const missingRequired = [];
     if (!requesterName.trim()) missingRequired.push('Name');
     if (!requesterRank.trim()) missingRequired.push('Rank');
     if (!requesterDept.trim()) missingRequired.push('Department / Assignment');
-    if (!forumAccountUrl.trim()) missingRequired.push('Forum Account URL');
+    if (!isLspd && !forumAccountUrl.trim()) missingRequired.push('Forum Account URL');
+    if (isPrivate) {
+        if (!isLeAgency(agencyForum)) missingRequired.push('Agency forum (law enforcement only)');
+        if (privateJustification.trim().length < PRIVATE_JUSTIFICATION_MIN) missingRequired.push('Private justification');
+    }
+
+    const privatePreviewBBCode = isPrivate
+        ? buildPrivateAutopsyCaseBBCode({
+            requesterName, requesterRank, requesterDept, requesterBadge, guidelinesRead,
+            requesterCell, requesterDiscord, forumAccountUrl, privateJustification,
+            decedentName, oocName, gender: record?.sex || '', ethnicity,
+            dateOfDeath, timeOfDeath, placeOfDeath: record?.location || '',
+            deathType, synopsis, causeDetail, cexamineImg, cinjuriesImg,
+        })
+        : '';
 
     const handleSubmit = async () => {
         // Backstop (button is disabled while invalid, but never trust UI alone).
@@ -145,8 +185,42 @@ const RequestAutopsyModal = ({ show, onClose, record, showNotification, characte
             showNotification(`Required fields missing: ${missingRequired.join(', ')}.`, 'warning');
             return;
         }
+        if (isPrivate && !privateAllowed) {
+            showNotification('Private autopsies are available to law enforcement requesters only.', 'error');
+            return;
+        }
         setSubmitting(true);
         try {
+            if (isPrivate) {
+                // Never written to the public queue: the bot watches
+                // autopsy-requests/private-pending and opens the confidential
+                // f=266 case directly (no f=265 topic, no public trace).
+                const payload = buildPrivateAutopsyRequestPayload({
+                    record,
+                    requester: {
+                        name: requesterName, rank: requesterRank, dept: requesterDept,
+                        badge: requesterBadge, guidelinesRead, cell: requesterCell,
+                        discord: requesterDiscord,
+                    },
+                    details: { synopsis, causeDetail, cexamineImg, cinjuriesImg },
+                    justification: privateJustification,
+                    characterName,
+                    agencyForum,
+                    forumAccountUrl,
+                    deathType,
+                    decedentName,
+                    oocName,
+                    gender: record?.sex || '',
+                    ethnicity,
+                    dateOfDeath,
+                    timeOfDeath,
+                    placeOfDeath: record?.location || '',
+                });
+                await push(ref(database, 'autopsy-requests/private-pending'), payload);
+                showNotification(`Private autopsy request submitted for ${decedentName} — the ME team will open a confidential case.`, 'check-circle');
+                onClose();
+                return;
+            }
             const payload = {
                 caseId: record?.caseId || '',
                 decedentName,
@@ -202,8 +276,92 @@ const RequestAutopsyModal = ({ show, onClose, record, showNotification, characte
                     <i className="fas fa-microscope" style={{ marginRight: 6, color: 'var(--teal)' }} />Request Autopsy
                 </div>
                 <p style={{ fontSize: 11.5, color: 'var(--text-faint)', margin: '0 0 14px' }}>
-                    Case #{record?.caseId || '—'} — mirrors the f=265 Autopsy Request form. Submitted to the ME team for review.
+                    Case #{record?.caseId || '—'} — {isPrivate
+                        ? 'no public request topic. The ME team receives a confidential case file.'
+                        : 'mirrors the f=265 Autopsy Request form. Submitted to the ME team for review.'}
                 </p>
+
+                {section('REQUEST TYPE')}
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+                    {[
+                        { key: 'standard', label: 'Standard Autopsy', icon: 'fa-globe' },
+                        { key: 'private', label: 'Private Autopsy', icon: 'fa-lock' },
+                    ].map(opt => {
+                        const selected = requestKind === opt.key;
+                        const disabled = opt.key === 'private' && !privateAllowed;
+                        return (
+                            <button
+                                key={opt.key}
+                                type="button"
+                                disabled={disabled}
+                                onClick={() => setRequestKind(opt.key)}
+                                title={disabled
+                                    ? 'Private autopsies are available to law enforcement requesters only.'
+                                    : opt.key === 'private'
+                                        ? 'No public forum post — delivered to your department only.'
+                                        : 'Posted to the PHMC public forums as a routine request.'}
+                                style={{
+                                    padding: '8px 14px', fontSize: 12.5, fontWeight: 700,
+                                    borderRadius: 6, cursor: disabled ? 'not-allowed' : 'pointer',
+                                    opacity: disabled ? 0.45 : 1,
+                                    border: `1px solid ${selected ? 'var(--teal)' : 'var(--border)'}`,
+                                    background: selected ? 'var(--teal-dim)' : 'var(--bg-surface)',
+                                    color: selected ? 'var(--teal)' : 'var(--text-muted)',
+                                }}
+                            >
+                                <i className={`fas ${opt.icon} me-1`} />{opt.label}
+                            </button>
+                        );
+                    })}
+                </div>
+                <div style={{
+                    fontSize: 11.5, lineHeight: 1.5,
+                    background: isPrivate ? 'rgba(245,158,11,0.08)' : 'var(--bg-surface)',
+                    border: `1px solid ${isPrivate ? 'var(--amber, #f59e0b)' : 'var(--border)'}`,
+                    borderLeft: `3px solid ${isPrivate ? 'var(--amber, #f59e0b)' : 'var(--teal)'}`,
+                    borderRadius: 6, padding: '8px 11px', marginBottom: 10,
+                    color: isPrivate ? 'var(--amber, #f59e0b)' : 'var(--text-faint)',
+                }}>
+                    {isPrivate ? (
+                        <>
+                            <i className="fas fa-lock me-1" />
+                            Nothing will be posted to the PHMC Public Forums. You&apos;ll receive the information in your department inbox. LSPD will get it delivered via DRDB. Information in these private autopsies is withheld from public disclosure.*
+                            <div style={{ marginTop: 6, fontSize: 10.5, color: 'var(--text-faint)' }}>
+                                * Withheld from public disclosure — the report is filed in the confidential Case Management section and delivered to the requesting department only.
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <i className="fas fa-globe me-1" />
+                            Autopsies are posted to the PHMC Public Forums as a routine request.
+                        </>
+                    )}
+                </div>
+
+                {isPrivate && (
+                    <div style={{ marginBottom: 10 }}>
+                        <span style={labelStyle}>
+                            PRIVATE REQUEST — JUSTIFICATION / AUTHORITY {reqStar}
+                            {infoBubble('Why this autopsy is confidential and who authorised it (CF number, supervisor, case file). Recorded on the confidential case file.')}
+                        </span>
+                        <textarea
+                            style={{ ...inputStyle, minHeight: 60, resize: 'vertical' }}
+                            value={privateJustification}
+                            onChange={e => setPrivateJustification(e.target.value)}
+                            placeholder="e.g. CF-2026-114 active investigation — authorised by Lieutenant Reyes"
+                        />
+                        <div style={{ fontSize: 10.5, color: 'var(--text-faint)', marginTop: 4 }}>
+                            Minimum {PRIVATE_JUSTIFICATION_MIN} characters. Visible to the ME team only.
+                        </div>
+                    </div>
+                )}
+
+                {isPrivate && !isLeAgency(agencyForum) && (
+                    <div style={{ marginBottom: 10, padding: '7px 10px', borderRadius: 6, background: 'rgba(220,38,38,0.10)', border: '1px solid var(--danger)', color: 'var(--danger)', fontSize: 11.5 }}>
+                        <i className="fas fa-triangle-exclamation me-1" />
+                        Private autopsies require a law enforcement agency forum (LSPD, LSSD, SADCR or DAO) — select one in Section 1 below.
+                    </div>
+                )}
 
                 <div onClick={() => setShowDecedent(o => !o)} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12, fontWeight: 800, color: 'var(--teal)', borderBottom: '1px solid var(--border)', paddingBottom: 4, marginBottom: 10, marginTop: 6, userSelect: 'none' }}>
                     <i className={`fas fa-chevron-${showDecedent ? 'down' : 'right'}`} style={{ fontSize: 9 }} />
@@ -247,8 +405,14 @@ const RequestAutopsyModal = ({ show, onClose, record, showNotification, characte
                             {['LSPD', 'LSSD', 'SADCR', 'DAO', 'PHMC'].map(a => <option key={a} value={a}>{a} Forum</option>)}
                         </select>
                     </div>
-                    <div><span style={labelStyle}>Forum Account URL {reqStar}{infoBubble('Your forum member profile URL — the ME team delivers the completed report here.')}</span>
-                        <input style={inputStyle} value={forumAccountUrl} onChange={e => setForumAccountUrl(e.target.value)} placeholder="https://lspd.gta.world/… member profile" />
+                    <div><span style={labelStyle}>Forum Account URL {isLspd ? optionalTag : <>{reqStar}{infoBubble('Your forum member profile URL — the ME team delivers the completed report here.')}</>}</span>
+                        {isLspd ? (
+                            <div style={{ fontSize: 11.5, color: 'var(--text-faint)', background: 'var(--bg-surface)', border: '1px dashed var(--border)', borderRadius: 6, padding: '8px 10px', marginTop: 4 }}>
+                                LSPD officers have no forum profiles — skipped. Completed reports route via the LSPD portal.
+                            </div>
+                        ) : (
+                            <input style={inputStyle} value={forumAccountUrl} onChange={e => setForumAccountUrl(e.target.value)} placeholder="https://lssd.gta.world/… member profile" />
+                        )}
                     </div>
                     <div style={{ gridColumn: 'span 2', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, cursor: 'pointer', fontSize: 12, color: 'var(--text)', margin: 0 }}>
@@ -275,14 +439,19 @@ const RequestAutopsyModal = ({ show, onClose, record, showNotification, characte
                     <div><span style={labelStyle}>3.) /cinjuries image URL</span><input style={inputStyle} value={cinjuriesImg} onChange={e => setCinjuriesImg(e.target.value)} placeholder="https://… /cinjuries screenshot" /></div>
                 </div>
 
-                {/* Live forum preview */}
+                {/* Live preview — the public topic for standard, the confidential
+                    case file for private (never posted to a public forum). */}
                 <div style={{ marginTop: 6 }}>
-                    <div style={{ fontSize: 11, color: 'var(--text-faint)', marginBottom: 4 }}>Forum topic preview:</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-faint)', marginBottom: 4 }}>
+                        {isPrivate ? 'Confidential Case Management preview (not public):' : 'Forum topic preview:'}
+                    </div>
                     <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 6, padding: '8px 10px' }}>
-                        <div style={{ fontSize: 11.5, color: 'var(--teal)', fontFamily: 'var(--mono)', wordBreak: 'break-all' }}>{topicTitle}</div>
+                        <div style={{ fontSize: 11.5, color: 'var(--teal)', fontFamily: 'var(--mono)', wordBreak: 'break-all' }}>
+                            {isPrivate ? `Confidential case — ${decedentName}${oocName ? ` ((${oocName}))` : ''} [${String(agencyForum || 'AGENCY').toUpperCase()}]` : topicTitle}
+                        </div>
                         <details>
                             <summary style={{ fontSize: 10.5, color: 'var(--text-faint)', cursor: 'pointer', marginTop: 4 }}>Show generated BBCode</summary>
-                            <pre style={{ fontSize: 10, color: 'var(--text-muted)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 180, overflowY: 'auto', margin: '6px 0 0', fontFamily: 'var(--mono)' }}>{requestBBCode}</pre>
+                            <pre style={{ fontSize: 10, color: 'var(--text-muted)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 180, overflowY: 'auto', margin: '6px 0 0', fontFamily: 'var(--mono)' }}>{isPrivate ? privatePreviewBBCode : requestBBCode}</pre>
                         </details>
                     </div>
                 </div>
@@ -300,7 +469,11 @@ const RequestAutopsyModal = ({ show, onClose, record, showNotification, characte
                         title={missingRequired.length > 0 ? `Required: ${missingRequired.join(', ')}` : 'Submit request'}
                         style={{ background: 'var(--teal-dim)', border: '1px solid var(--teal)', color: 'var(--teal)', borderRadius: 6, padding: '8px 16px', fontSize: 12.5, cursor: (submitting || missingRequired.length > 0) ? 'not-allowed' : 'pointer', opacity: (submitting || missingRequired.length > 0) ? 0.45 : 1 }}
                     >
-                        {submitting ? <><i className="fas fa-spinner fa-spin me-1" />Submitting…</> : <><i className="fas fa-paper-plane me-1" />Submit Request</>}
+                        {submitting
+                            ? <><i className="fas fa-spinner fa-spin me-1" />Submitting…</>
+                            : isPrivate
+                                ? <><i className="fas fa-lock me-1" />Submit Private Request</>
+                                : <><i className="fas fa-paper-plane me-1" />Submit Request</>}
                     </button>
                 </div>
             </div>

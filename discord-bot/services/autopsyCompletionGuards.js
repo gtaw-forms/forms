@@ -6,42 +6,26 @@
  * cheap to import from the deploy flow — no forum/Discord/Firebase graph.
  *
  * Why these exist (Hawick incident, 2026-10-14):
- *   1. A report filed as `decedentName: "Unknown"` (the morgue's unidentified/
- *      PK convention) fell through the caseTopicId and OOC matches to the
- *      last-resort NAME lookup. `isDoePlaceholder("Unknown")` is false, the
- *      lookup returned every "Unknown" entry, and the flow completed ALL of the
- *      open ones (t=10076/t=10083) — writing one decedent's report onto two
- *      unrelated stale duplicate requests and creating two junk LSPD crossposts.
- *   2. The DM fallback target was the literal 'CASELINK [BOT]' while the guard
- *      that skips that account tested 'CASELINK [Bot]'. Case-sensitive
- *      comparison → the guard never fired, the bot really composed a PM to a
- *      username that does not exist, the step stayed failed, and the hourly
- *      Recovery Sweep retried it forever.
+ *   A report filed as `decedentName: "Unknown"` (the morgue's unidentified/
+ *   PK convention) fell through the caseTopicId and OOC matches to the
+ *   last-resort NAME lookup, which returned every "Unknown" entry, and the
+ *   flow completed ALL of the open ones (t=10076/t=10083).
+ *
+ * CASELINK note (retired 2026-11-09): the automated CASELINK requester
+ * account used to be the DM fallback target here, guarded by a
+ * case-sensitive comparison that never matched — the bot composed a PM to a
+ * nonexistent username and the step stayed failed, retried forever. With
+ * CASELINK deauthorized, the fallback is gone: an unresolvable DM target is
+ * simply skipped. No CASELINK-specific handling remains in this module.
  */
 
 import { isNonIdentityPlaceholder } from './doePlaceholders.js';
-
-/** The automated CASELINK requester account (display casing). */
-export const CASELINK_ACCOUNT = 'CASELINK [Bot]';
-
-/**
- * True when a recipient is the CASELINK bot. Matches any casing/variant
- * ("CASELINK [BOT]", "CASELINK [Bot]", "caselink") — the forum returns whatever
- * phpBB stores, and the monitor already identifies it with /caselink/i.
- *
- * @param {string} value
- * @returns {boolean}
- */
-export function isCaselinkAccount(value) {
-    return /caselink/i.test(String(value || '').trim());
-}
 
 /** Template "recipients" that are never real forum accounts. */
 const UNUSABLE_DM_TARGETS = new Set(['requesting party', 'phmc forms bot', 'phmc bot', 'none', 'unknown']);
 
 /**
- * True when a DM target must NOT be PM'd: empty, a template placeholder, or the
- * CASELINK bot (which reads the forums directly and cannot receive these PMs).
+ * True when a DM target must NOT be PM'd: empty or a template placeholder.
  * The DM step records a skipped step in that case — never a failure, so the
  * recovery sweep cannot retry a permanently unsendable DM forever.
  *
@@ -51,7 +35,6 @@ const UNUSABLE_DM_TARGETS = new Set(['requesting party', 'phmc forms bot', 'phmc
 export function isUnusableDmTarget(value) {
     const v = String(value || '').trim();
     if (!v) return true;
-    if (isCaselinkAccount(v)) return true;
     return UNUSABLE_DM_TARGETS.has(v.toLowerCase());
 }
 

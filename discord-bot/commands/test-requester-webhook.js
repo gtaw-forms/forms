@@ -91,7 +91,7 @@ export async function execute(interaction) {
             .setDescription([
                 `**Case:** ${caseTitle}`,
                 `**Resolved from:** \`${topicId}\``,
-                `**CASELINK posted:** ${entry.postedByCaselink === true ? 'yes' : 'no (webhook gates on this in live flow)'}`,
+                `**Requester poster:** \`${entry.requesterPoster || 'unknown'}\``,
                 `**Requester tag:** ${entry.requesterDiscordTag ? `\`${entry.requesterDiscordTag}\`` : '(not parsed)'}`,
                 `**Routing:** ${routingStatus}`,
                 '',

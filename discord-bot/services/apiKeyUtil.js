@@ -12,9 +12,13 @@ export const API_KEY_LABEL_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$/;
  * Strip an optional "label:" prefix from a single key entry.
  * Entries whose prefix is not a valid label are returned untouched, so raw
  * keys (even ones containing ':') never break.
+ * Surrounding single/double quotes are stripped first: the naive .env
+ * loaders keep them (morgue-api's own parser does this per entry), and a
+ * stray leading quote otherwise poisons the label check and every loopback
+ * call built with firstApiKey answers 401 (false morgue-overdue alerts).
  */
 export function stripKeyLabel(entry) {
-    const e = String(entry || '').trim();
+    const e = String(entry || '').trim().replace(/^["']|["']$/g, '').trim();
     if (!e) return '';
     const ci = e.indexOf(':');
     if (ci > 0) {

@@ -299,6 +299,11 @@ stored value.
 The list itself does **not** write an audit line. Log a panel open (5.4) when a
 user opens your report viewer.
 
+Each row carries `drdb-sent`: whether the report was sent through the
+automatic LSPD filing (derived from the send audit at read time, never
+stored on the report). The single-report read (5.2) and the cached-view
+audit (5.3) return the same flag top-level.
+
 ### 5.2 Read one report (live — audited)
 
 ```http
@@ -432,6 +437,7 @@ still written.
 | `requestingOfficer` | string | Requester name |
 | `decedentName` | string | Decedent (single, or comma-joined from `decedents[]`) |
 | `forwarded` | boolean | Always `true` in this feed |
+| `drdb-sent` | boolean | `true` only when the report was sent through the automatic LSPD filing (recorded in the send audit). Reports filed before the DRDB system existed read `false` — viewing a report does not set it |
 | `hasBbCode` | boolean | Whether `bbCode` is stored |
 
 ---

@@ -684,11 +684,15 @@ export const refreshGtawUser = onCall({
                     (current.character.scriptRank > max.character.scriptRank) ? current : max, factionMembers[0]
                 );
 
+                // Preserve the elevated grant for staff/superadmins who also
+                // hold a PHMC character — mirrors processGtaWorldAuth. Without
+                // this, a refresh silently downgrades them to rank-only
+                // permissions and the admin panel starts denying sections.
                 factionResult = {
                     isMember: true,
                     character: highestRankMember.character,
-                    permissions: highestRankMember.permissions,
-                    accessLevel: highestRankMember.accessLevel,
+                    permissions: isElevated ? getPermissionsForRank(0, true) : highestRankMember.permissions,
+                    accessLevel: isElevated ? getAccessLevel(0, finalUser.username, isSuperAdmin) : highestRankMember.accessLevel,
                     allFactionCharacters: factionMembers
                 };
             }

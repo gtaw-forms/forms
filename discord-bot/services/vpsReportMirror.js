@@ -17,10 +17,14 @@ const LOCAL_API_URL = 'http://127.0.0.1:3001';
 
 /** First key from a labeled/comma-separated env value ("label:key,key2"). */
 export function firstApiKey(value = '') {
-    const first = String(value || '').split(',')[0].trim();
+    const first = String(value || '').split(',')[0].trim().replace(/^["']|["']$/g, '').trim();
     if (!first) return '';
     // MORGUE_API_KEYS uses "label:key"; a bare key has no colon.
-    return first.includes(':') ? first.slice(first.lastIndexOf(':') + 1).trim() : first;
+    // Quote-tolerant (see apiKeyUtil.stripKeyLabel): a quoted .env value must
+    // not leak a stray quote into the key.
+    if (!first.includes(':')) return first;
+    const key = first.slice(first.lastIndexOf(':') + 1).trim().replace(/^["']|["']$/g, '').trim();
+    return key;
 }
 
 export function resolveVpsConfig(env = process.env) {

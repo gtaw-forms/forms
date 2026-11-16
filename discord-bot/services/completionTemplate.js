@@ -14,8 +14,6 @@ Dear REQUESTER_NAME
 
 We have completed the autopsy investigation, and the detailed report has been sent out. I have thoroughly reviewed all findings and compiled the results into a comprehensive document. Please review the report at your earliest convenience, and feel free to reach out if you have any questions or require further information.
 
-[b]Forms Autopsy:[/b] FORMS_AUTOPSY
-
 [b]Autopsy Findings will be sent to your respective Gov Intranet. GOV_LINK_LINE [/b]
 
 [i]Best regards,[/i]
@@ -38,7 +36,7 @@ Website: [url]www.phmc.health[/url][/size]
  *   - completionUrl set → direct completion-reply link on the requesting
  *     faction's own forum (param keeps the historical name `lssdUrl` for
  *     back-compat with the picker/force-copy callers)
- *   - faction 'lssd' → LSSD CASELINK/records fallback
+ *   - faction 'lssd' → LSSD Autopsy Records fallback
  *   - faction 'sadcr'/'dao' → agency Autopsy Records subforum link
  *     (SADCR f=2328 / DAO f=2331 live on the shared lssd.gta.world domain)
  *   - faction 'lspd' → LSPD records portal line (forum crosspost retired Nov 2026)
@@ -54,7 +52,11 @@ import { FORUM_FALLBACK_URLS } from './agencyForums.js';
 
 export function buildCompletionBb(caseTitle, requesterName, linkContext = {}) {
     const ctx = typeof linkContext === 'string' ? { lssdUrl: linkContext } : (linkContext || {});
-    const { faction, lssdUrl, formsAutopsy } = ctx;
+    // `formsAutopsy` is still accepted in ctx for caller compatibility, but it
+    // is deliberately NOT rendered: it leaked internal state ("Forms Autopsy:
+    // True") into public completion notices. Never put diagnostics in a
+    // requester-facing template.
+    const { faction, lssdUrl } = ctx;
     const f = String(faction || '').toLowerCase();
     const facTag = String(faction || '').toUpperCase();
 
@@ -63,7 +65,7 @@ export function buildCompletionBb(caseTitle, requesterName, linkContext = {}) {
         const agencyLabel = ['lssd', 'sadcr', 'dao'].includes(f) ? facTag : 'LSSD';
         govLine = `For ${agencyLabel}, please review your completed report here: [url]${lssdUrl}[/url]`;
     } else if (f === 'lssd') {
-        govLine = 'For LSSD, please review your completed report here: the CASELINK PORTAL or LSSD Autopsy Records';
+        govLine = 'For LSSD, please review your completed report here: LSSD Autopsy Records';
     } else if (f === 'sadcr' || f === 'dao') {
         govLine = `For ${facTag}, please review your completed report in the ${facTag} Autopsy Records forum: [url=${FORUM_FALLBACK_URLS[facTag]}]${facTag} Autopsy Records[/url]`;
     } else if (f === 'lspd') {
@@ -75,6 +77,5 @@ export function buildCompletionBb(caseTitle, requesterName, linkContext = {}) {
     return COMPLETION_TEMPLATE
         .replace('CASE_TITLE', caseTitle)
         .replace('REQUESTER_NAME', requesterName)
-        .replace('FORMS_AUTOPSY', formsAutopsy ? 'True' : 'False')
         .replace('GOV_LINK_LINE', govLine);
 }

@@ -6,6 +6,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useData } from '../../contexts/DataContext';
 import { formatTimestampShortUTC, isLocalPreview } from './viewModel';
 import { DEMO_MORGUE_RECORDS } from './demoData';
+import { recordContainsCK } from '../../utils/morgue';
 
 const EMPTY = '—';
 const norm = (value) => String(value || '').trim();
@@ -214,6 +215,7 @@ export default function MorgueView({ onBackToRecords, isAuthenticated = false })
   const { morgueRecords, morgueLoading, loadMorgueRecords, morgueRecordsError } = useData();
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('all'); // all | identified | unidentified
+  const [ckOnly, setCkOnly] = useState(false);
   const [selected, setSelected] = useState(null);
   const [demoMode, setDemoMode] = useState(false);
 
@@ -253,6 +255,7 @@ export default function MorgueView({ onBackToRecords, isAuthenticated = false })
       const identified = isIdentified(record);
       if (status === 'identified' && !identified) return false;
       if (status === 'unidentified' && identified) return false;
+      if (ckOnly && !recordContainsCK(record)) return false;
       if (!needle) return true;
       const hay = [
         record.name, record.caseId, record.location, record.causeOfDeath,
@@ -260,7 +263,7 @@ export default function MorgueView({ onBackToRecords, isAuthenticated = false })
       ].join(' ').toLowerCase();
       return hay.includes(needle);
     });
-  }, [sorted, status, query]);
+  }, [sorted, status, query, ckOnly]);
 
   if (selected) {
     return (
@@ -323,6 +326,10 @@ export default function MorgueView({ onBackToRecords, isAuthenticated = false })
             </button>
           ))}
         </div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13, whiteSpace: 'nowrap' }}>
+          <input type="checkbox" checked={ckOnly} onChange={(e) => setCkOnly(e.target.checked)} />
+          CK only
+        </label>
       </div>
 
       {morgueRecordsError && !demoMode ? (

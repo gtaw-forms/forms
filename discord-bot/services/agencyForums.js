@@ -9,7 +9,7 @@
  *   - autopsyRequestMonitor.js  (request-topic search/create + acknowledgement)
  *   - deployAutopsyReply.js     (combined completion+report reply target)
  *   - completionTemplate.js     (Gov Intranet link line)
- *   - requesterWebhook.js       (CASELINK button URLs)
+ *   - requesterWebhook.js       (Autopsy Records button URLs)
  */
 
 export const AGENCY_FORUM_BASE_URL = 'https://lssd.gta.world';

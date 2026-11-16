@@ -26,6 +26,7 @@ import { useLeoReports } from '../migration-ui/useLeoReports';
 import LspdGuideModal from '../migration-ui/LspdGuideModal';
 import { hasSeenLspdGuide, markLspdGuideSeen } from '../migration-ui/lspdGuide';
 import { buildShortReportUrl } from '../report-share/shareLink';
+import { normalizeRecipients, validateRecipients } from '../../utils/recipients';
 import TimeDisplay from './TimeDisplay';
 import ServiceStatusTicker from './ServiceStatusTicker';
 import BusinessCardModal from '../UI/BusinessCard';
@@ -39,6 +40,10 @@ import phmcLogo from '../../assets/phmc.png';
 // so the progress memo below never recomputes on unrelated renders).
 const fillableTypes = ['input', 'textarea', 'select', 'multi_select', 'checkbox', 'radio', 'timer', 'employee_select', 'multi_employee_select', 'dynamic_text_list', 'requesting_officer', 'medicine_block', 'body_tampered'];
 
+// Forms that support multi-recipient fan-out (one save → N personalized
+// copies). The editor field is injected at runtime so no Firebase
+// form-template migration is needed.
+const MULTI_RECIPIENT_FORM_KEYS = ['coroner-report', 'coroner_email', 'mass-ftality-test'];
 // Credential fields preserved across draft restore/clear (module scope: static
 // list, so effects keyed on the selected form never re-fire on its identity).
 const CREDENTIAL_KEYS = [
@@ -374,7 +379,7 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
   }, [formKey]);
 
   // ── BBCode Generator ──
-  const { generatedBBCode, generatedTitle, showBBCode, generateBBCode, clearBBCode } = useBbcodeGenerator(
+  const { generatedBBCode, generatedTitle, showBBCode, generateBBCode, generateBBCodeFor, clearBBCode } = useBbcodeGenerator(
     selectedForm, formValues, finalSelectOptions, agencyDataStore, user, factionsData, factionListData, resolvedCredentials
   );
 
@@ -586,9 +591,43 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
       showNotification('Failed to generate BBCode. Check form fields.', 'error');
       return;
     }
+    // ── Multi-recipient variants ──
+    // One personalized copy per extra officer, rendered through the same
+    // pipeline (incl. the LSPD condensed override). Fail-closed: an extra
+    // without a valid name blocks the save so nobody is silently skipped.
+    let bbcodeVariants = null;
+    const extraRows = Array.isArray(formValues.additionalRecipients)
+      ? formValues.additionalRecipients.filter(r => r && String(r.officer || '').trim())
+      : [];
+    if (extraRows.length > 0) {
+      const allRecipients = normalizeRecipients(formValues);
+      const problems = validateRecipients(allRecipients);
+      if (problems.length > 0) {
+        showNotification('Check additional officers: ' + problems[0], 'error', 8000);
+        return;
+      }
+      const primaryDept = formValues.department ?? formValues.requestingOfficerDepartment ?? '';
+      bbcodeVariants = [];
+      for (const r of allRecipients.slice(1)) {
+        const dept = r.department || primaryDept;
+        const variant = generateBBCodeFor({
+          requestingOfficer: r.officer,
+          department: dept,
+          requestingOfficerDepartment: dept,
+        });
+        if (!variant?.bbcode) {
+          showNotification(`Could not build the copy for ${r.officer} — save cancelled, nothing was sent.`, 'error', 8000);
+          return;
+        }
+        bbcodeVariants.push({ officer: r.officer, department: typeof dept === 'object' ? (dept.value || dept.label || '') : String(dept || ''), bbCode: variant.bbcode, title: variant.finalTitle || title });
+      }
+    }
     const result = await saveReport(
       selectedForm, formValues, title, bbcode,
-      editingDeployedReport ? { editDeployedReport: editingDeployedReport } : {}
+      {
+        ...(editingDeployedReport ? { editDeployedReport: editingDeployedReport } : {}),
+        ...(bbcodeVariants ? { bbcodeVariants } : {}),
+      }
     );
     if (result.success) {
       clearFormBackups();
@@ -1127,7 +1166,31 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
     });
   };
 
-  const activeForm = selectedForm;
+  const activeForm = useMemo(() => {
+    if (!selectedForm || !MULTI_RECIPIENT_FORM_KEYS.includes(selectedForm.firebaseKey)) return selectedForm;
+    if ((selectedForm.fields || []).some(f => f.name === 'additionalRecipients')) return selectedForm;
+    const extraField = {
+      id: 'field-additional-recipients',
+      name: 'additionalRecipients',
+      label: 'Additional Officers',
+      type: 'multi_officer',
+      layout: 'full',
+    };
+    const fields = [...(selectedForm.fields || [])];
+    // Slot the editor directly after the primary officer block — not at the
+    // bottom of the form. Matches the requesting_officer compound field, a
+    // bare requestingOfficer input, the ReportRequested checkbox (whose
+    // associated input carries the officer name), or the department select.
+    const anchorIdx = fields.findIndex(f =>
+      f.type === 'requesting_officer' || f.type === 'officer_info'
+      || f.name === 'requestingOfficer'
+      || f.associatedInputField?.name === 'requestingOfficer'
+      || f.name === 'department' || f.name === 'requestingOfficerDepartment'
+    );
+    if (anchorIdx >= 0) fields.splice(anchorIdx + 1, 0, extraField);
+    else fields.push(extraField);
+    return { ...selectedForm, fields };
+  }, [selectedForm]);
   const displayName = characterName || user?.username || 'Guest';
 
   return (

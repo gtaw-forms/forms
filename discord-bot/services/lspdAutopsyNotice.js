@@ -22,7 +22,7 @@ export function isLspdAutopsyTarget(entry = {}) {
 /**
  * Portal recipient: the requesting officer's CHARACTER name. Strict — '' when
  * absent so callers fail closed instead of guessing (forum usernames and
- * CASELINK-style placeholders are never valid portal recipients).
+ * placeholder names are never valid portal recipients).
  */
 export function autopsyNoticeRecipient(entry = {}) {
   return String(entry?.parsed?.requesterName || '').trim();

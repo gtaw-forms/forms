@@ -377,7 +377,11 @@ export const DataProvider = ({ children }) => {
     morgueLoaderDepsRef.current = { updateCacheSegment };
 
     // Lazy-load morgue records on demand (not fetched during initial app load)
-    const loadMorgueRecords = useCallback(async () => {
+    // `loadMorgueRecords({ force: true })` is the explicit "reload from the API"
+    // path (the panel's refresh control): it drops the in-memory/IndexedDB
+    // short-circuit so the user actually gets fresh rows instead of the cache.
+    const loadMorgueRecords = useCallback(async (options = {}) => {
+        const force = options === true || options?.force === true;
         // Read the latest deps at call time (see ref note above).
         const { updateCacheSegment } = morgueLoaderDepsRef.current;
         // In-flight dedup: concurrent callers (auth init + sidebar + autopsy modal)
@@ -386,6 +390,7 @@ export const DataProvider = ({ children }) => {
         setMorgueLoading(true);
         morgueFetchInFlightRef.current = (async () => {
         setMorgueRecordsError(null); // Clear any previous error
+        if (force) morgueRecordsLoadedRef.current = false;
 
         // Already loaded — return cached data
         if (morgueRecordsLoadedRef.current && dataCache.current[CACHE_SEGMENTS.MORGUE_RECORDS]) {
@@ -395,7 +400,7 @@ export const DataProvider = ({ children }) => {
         const segment = CACHE_SEGMENTS.MORGUE_RECORDS;
 
         // Try loading from IndexedDB cache first (supports large data, unlike localStorage)
-        if (!morgueRecordsLoadedRef.current) {
+        if (!morgueRecordsLoadedRef.current && !force) {
             try {
                 const idbData = await idbGet('morgue-records');
                 if (idbData && idbData.data && idbData.version) {

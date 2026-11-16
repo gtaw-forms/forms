@@ -1,7 +1,10 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { generateMorgueBBCode } from '../../utils/morgue';
+import {
+  generateMorgueBBCode, recordContainsCK, morgueLastUpdatedAt, isMorgueOverdue, formatMorgueAge,
+} from '../../utils/morgue';
 import { ref, onValue } from 'firebase/database';
 import { database } from '../../firebase';
+import { triggerRequestMorgueUpdate } from '../../services/firebaseFunctions';
 import RequestAutopsyModal from './RequestAutopsyModal';
 import MassRequestAutopsyModal from './MassRequestAutopsyModal';
 import MorgueBodyMapModal from './MorgueBodyMapModal';
@@ -9,12 +12,18 @@ import MorgueBodyMapModal from './MorgueBodyMapModal';
 const PAGE_SIZE = 50;
 const IS_LOCALHOST = window.location.hostname === 'localhost';
 
+// Mirrors functions/index.js MORGUE_UPDATE_COOLDOWN_MS (one ping per window).
+const REQUEST_COOLDOWN_MS = 2 * 60 * 60 * 1000;
+
+const formatStamp = (ts) => (ts ? new Date(Number(ts)).toLocaleString() : 'unknown');
+
 // Stable selection identity — firebaseKey is the record key; caseId is the
 // human-facing fallback so a cached record without firebaseKey still selects.
 const recordKey = (r) => String(r?.firebaseKey || r?.caseId || r?.name || '');
 
 const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAuthenticated, characterName, user, accessLevel }) => {
   const [search, setSearch] = useState('');
+  const [ckOnly, setCkOnly] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [requestingAutopsy, setRequestingAutopsy] = useState(null);
@@ -48,6 +57,75 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
     return () => unsub();
   }, []);
 
+  // ── Freshness: when the records were last imported, and the last manual
+  // "please refresh" request (shared across users, written by the callable). ──
+  const [dataVersionAt, setDataVersionAt] = useState(null);
+  const [updateRequest, setUpdateRequest] = useState(null);
+  const [requestingUpdate, setRequestingUpdate] = useState(false);
+  // Minute ticker so "updated 3 hours ago" / the cooldown label stay honest
+  // without re-rendering the (large) record list on a timer.
+  const [clockTick, setClockTick] = useState(() => Date.now());
+
+  useEffect(() => {
+    const versionUnsub = onValue(ref(database, 'appMetadata/morgueDataVersion'), (snap) => {
+      const v = Number(snap.val()) || 0;
+      setDataVersionAt(v || null);
+    });
+    const requestUnsub = onValue(ref(database, 'appMetadata/morgueUpdateRequest'), (snap) => {
+      const v = snap.val();
+      setUpdateRequest(v && Number(v.at) ? { at: Number(v.at), by: v.by || null } : null);
+    });
+    const timer = setInterval(() => setClockTick(Date.now()), 60000);
+    return () => { versionUnsub(); requestUnsub(); clearInterval(timer); };
+  }, []);
+
+  // The records themselves carry `lastUpdated` (import time). The version
+  // metadata is authoritative for deletions, so use whichever is newer.
+  const recordsLastUpdated = useMemo(
+    () => morgueLastUpdatedAt(records, dataVersionAt),
+    [records, dataVersionAt],
+  );
+
+  const isOverdue = isMorgueOverdue(recordsLastUpdated, clockTick);
+  const cooldownRemainingMs = updateRequest?.at
+    ? Math.max(0, REQUEST_COOLDOWN_MS - (clockTick - updateRequest.at))
+    : 0;
+
+  const handleRequestUpdate = async () => {
+    if (requestingUpdate || cooldownRemainingMs > 0) return;
+    setRequestingUpdate(true);
+    try {
+      const res = await triggerRequestMorgueUpdate();
+      if (res?.at) setUpdateRequest({ at: Number(res.at), by: res.by || null });
+      if (res?.posted) {
+        if (res.notified === false) {
+          showNotification?.('Update request recorded, but the Discord ping failed — staff will still see it in the panel.', 'warning');
+        } else {
+          showNotification?.('Morgue update requested — the records team has been notified.', 'success');
+        }
+      } else {
+        showNotification?.(
+          `An update was already requested ${formatMorgueAge(res?.at)}${res?.by ? ` by ${res.by}` : ''} — the records team has been notified.`,
+          'info',
+        );
+      }
+    } catch (err) {
+      const message = String(err?.message || '');
+      const code = String(err?.code || '');
+      let note = `Could not send the update request: ${message || 'unknown error'}`;
+      if (code === 'functions/not-found' || /not-found|does not exist/i.test(message)) {
+        note = 'Update requests are not available yet — the request service has not been deployed.';
+      } else if (code === 'functions/unauthenticated' || /unauthenticated|sign in/i.test(message)) {
+        note = 'Sign in to request a morgue update.';
+      } else if (code === 'functions/resource-exhausted') {
+        note = message;
+      }
+      showNotification?.(note, 'error');
+    } finally {
+      setRequestingUpdate(false);
+    }
+  };
+
   // ── Set banner function for admins (passed via prop) ──
   // This gets wired from the prototype's misc panel
 
@@ -63,16 +141,19 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
   }, [canAccess, isLoading, loadRecords, records.length]);
 
   // Reset to page 1 when search/filter changes
-  useEffect(() => { setPage(1); }, [search]);
+  useEffect(() => { setPage(1); }, [search, ckOnly]);
+
+  const ckCount = useMemo(() => records.filter(recordContainsCK).length, [records]);
 
   const filtered = useMemo(() => {
     let list = records;
+    if (ckOnly) list = list.filter(recordContainsCK);
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(r => (r.name || '').toLowerCase().includes(q) || String(r.caseId || '').includes(q));
     }
     return [...list].sort((a, b) => String(b.caseId || '').localeCompare(String(a.caseId || ''), undefined, { numeric: true }));
-  }, [records, search]);
+  }, [records, search, ckOnly]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -170,10 +251,14 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
           <span style={{ flex: 1 }}>{morgueBanner.text}</span>
         </div>
       )}
-      <div style={{ padding: '16px 22px', borderBottom: '1px solid var(--border)' }}>
-        <div className="lookup-bar">
+      <div style={{ padding: '8px 18px 10px', borderBottom: '1px solid var(--border)' }}>
+        <div className="lookup-bar" style={{ marginBottom: 8 }}>
           <input type="text" placeholder="Search by decedent name or case ID…" value={search}
             onChange={e => setSearch(e.target.value)} />
+          <label title="Show only records with a (CK) marker in any field">
+            <input type="checkbox" checked={ckOnly} onChange={e => setCkOnly(e.target.checked)} />
+            CK only{ckOnly ? ` (${filtered.length})` : ckCount > 0 ? ` (${ckCount})` : ''}
+          </label>
           {selectedCount > 0 && (
             <div className="batch-tools">
               <span className="batch-count" title="Selection is kept while paging and filtering">
@@ -200,13 +285,13 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
             <i className="fas fa-map-location-dot me-1" /> Body Map
           </button>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, fontSize: 10.5, color: 'var(--text-faint)', fontFamily: 'var(--mono)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 10.5, color: 'var(--text-faint)', fontFamily: 'var(--mono)' }}>
           <i className="fas fa-circle-info" />
           <span>Tick bodies to request several autopsies in one case thread. Shift-click selects a range.</span>
         </div>
       </div>
 
-      <div style={{ flex: 1, overflow: 'auto', padding: '12px 22px', position: 'relative' }}>
+      <div style={{ flex: 1, overflow: 'auto', padding: '10px 18px', position: 'relative' }}>
         {isLoading && (
           <div style={{
             position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
@@ -228,7 +313,7 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '3rem', gap: 12 }}>
             <i className="fas fa-database" style={{ fontSize: 28, opacity: 0.3, color: 'var(--text-faint)' }} />
             <p style={{ color: 'var(--text-faint)', fontSize: 13, margin: 0 }}>No morgue records loaded.</p>
-            <button className="btn btn-ghost" onClick={() => loadRecords?.()} style={{ fontSize: 12 }}>
+            <button className="btn btn-ghost" onClick={() => loadRecords?.({ force: true })} style={{ fontSize: 12 }}>
               <i className="fas fa-sync me-1" /> Load Records
             </button>
           </div>
@@ -279,18 +364,47 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
         {filtered.length === 0 && !isLoading && !(records.length === 0 && !search) && (
           <div className="no-results" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-faint)', fontSize: 13 }}>
             <i className="fas fa-microscope" style={{ fontSize: 28, display: 'block', marginBottom: 8, opacity: 0.3 }} />
-            {records.length === 0 ? 'No morgue records loaded.' : 'No records match your search.'}
+            {records.length === 0 ? 'No morgue records loaded.' : ckOnly && !search.trim() ? 'No records contain a (CK) marker.' : 'No records match your search.'}
           </div>
         )}
         </>}
       </div>
 
-      <div className="doc-footer" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="doc-footer" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '12px 18px' }}>
         <span style={{ fontSize: 11.5, color: 'var(--text-faint)', fontFamily: 'var(--mono)' }}>
           Page {safePage} of {totalPages} ({filtered.length} filtered of {records.length} total)
+          {ckOnly && <span style={{ color: 'var(--amber)' }}> · CK only</span>}
           {selectedCount > 0 && <span style={{ color: 'var(--teal)' }}> · {selectedCount} selected for batch</span>}
+          {' · '}
+          <span
+            style={{ color: isOverdue ? 'var(--amber)' : 'var(--text-faint)' }}
+            title={`Morgue records are re-imported by hand about every 48 hours, sometimes longer.\nLast import: ${formatStamp(recordsLastUpdated)}`}
+          >
+            {recordsLastUpdated
+              ? <>
+                  Updated {formatMorgueAge(recordsLastUpdated, clockTick)}{isOverdue ? ' — overdue' : ''}
+                  <span style={{ opacity: 0.7 }}> (about every 48h)</span>
+                </>
+              : records.length > 0 ? 'Update time unavailable' : 'No records loaded'}
+          </span>
         </span>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <button
+            className="btn btn-ghost"
+            style={{ fontSize: 11.5, padding: '6px 12px', whiteSpace: 'nowrap' }}
+            disabled={requestingUpdate || cooldownRemainingMs > 0}
+            title={
+              cooldownRemainingMs > 0
+                ? `A refresh was already requested ${formatMorgueAge(updateRequest?.at, clockTick)}${updateRequest?.by ? ` by ${updateRequest.by}` : ''} — the records team has been notified`
+                : updateRequest?.at
+                  ? `Last requested ${formatMorgueAge(updateRequest.at, clockTick)}${updateRequest.by ? ` by ${updateRequest.by}` : ''} — ask again if the records still look stale`
+                  : 'Ask the records team to re-import the latest in-game morgue logs (about every 48 hours)'
+            }
+            onClick={handleRequestUpdate}
+          >
+            <i className={`fas ${cooldownRemainingMs > 0 ? 'fa-check' : 'fa-bullhorn'} me-1`} />
+            {requestingUpdate ? 'Requesting…' : cooldownRemainingMs > 0 ? 'Update Requested' : 'Request Morgue Records Updates'}
+          </button>
           <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: '6px 12px' }}
             disabled={safePage <= 1} onClick={() => setPage(p => Math.max(1, p - 1))}>
             <i className="fas fa-chevron-left me-1" /> Prev
@@ -302,7 +416,10 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
             disabled={safePage >= totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))}>
             Next <i className="fas fa-chevron-right ms-1" />
           </button>
-          <button className="btn btn-ghost" onClick={() => { setSearch(''); setPage(1); loadRecords?.(); }} style={{ fontSize: 11.5, padding: '6px 12px' }}>
+          <button className="btn btn-ghost"
+            title="Re-download the morgue database (this does not ask staff to re-import the in-game morgue)"
+            onClick={() => { setSearch(''); setPage(1); loadRecords?.({ force: true }); }}
+            style={{ fontSize: 11.5, padding: '6px 12px' }}>
             <i className="fas fa-sync" />
           </button>
         </div>
@@ -458,6 +575,7 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
           onClose={() => setRequestingAutopsy(null)}
           showNotification={showNotification}
           characterName={characterName}
+          user={user}
         />
       )}
       {showMassModal && (

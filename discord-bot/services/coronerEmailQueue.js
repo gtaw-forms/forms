@@ -30,18 +30,21 @@ const SWEEP_MS = 10 * 60 * 1000;
 let _db = null;
 const _inFlight = new Set();
 
-export function emailKey(authorId, reportKey) {
-    return `${authorId}|${reportKey}`;
+export function emailKey(authorId, reportKey, idx = 0) {
+    // Per-recipient entities carry a numeric suffix; idx 0 keeps the legacy
+    // key so in-flight single-recipient entities are untouched.
+    return idx > 0 ? `${authorId}|${reportKey}|${idx}` : `${authorId}|${reportKey}`;
 }
 
 /**
  * Enqueue an email delivery. Idempotent: an existing non-terminal entity is
  * left alone; terminal (sent/failed/dry_run) entities are never requeued.
+ * Pass idx > 0 for additional recipients (one entity per officer).
  * @returns {Promise<string|null>} entity key, or null when skipped
  */
 export async function enqueueCoronerEmail(db, {
     authorId, reportKey, topicId = null, topicUrl = null,
-    recipient, department = '', forumLabel, subject, bbCode,
+    recipient, department = '', forumLabel, subject, bbCode, idx = 0,
 }) {
     if (!authorId || !reportKey || !recipient) {
         console.warn('[CORONER-QUEUE] Refusing to enqueue — missing author/report/recipient');
@@ -54,7 +57,7 @@ export async function enqueueCoronerEmail(db, {
         console.warn('[CORONER-QUEUE] Refusing to enqueue — missing bbCode');
         return null;
     }
-    const key = emailKey(authorId, reportKey);
+    const key = emailKey(authorId, reportKey, idx);
     try {
         const existing = (await db.ref(`${EMAIL_NODE}/${key}`).once('value')).val();
         if (existing && !['failed'].includes(existing.status)) {

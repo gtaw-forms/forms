@@ -1,6 +1,5 @@
 {
   "name": "phmc-tools",
-  "version": "3.8.6e",
   "type": "module",
   "private": true,
   "dependencies": {
@@ -74,5 +73,23 @@
     "brace-expansion": "1.1.21",
     "source-map-js": "1.2.2",
     "uuid": ">=11.1.1"
-  }
+  },
+  "version": "1.0.0",
+  "description": "Toolset for Pillbox Hill Medical Center (PHMC) on GTA World — a BBCode form\r generation web app, a Discord/forum automation bot, and Firebase Cloud\r Functions. Built with React + Vite + Firebase, with a Playwright-driven Discord\r bot that auto-deploys reports to phpBB forums.",
+  "main": "eslint.config.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gtaw-forms/forms.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/gtaw-forms/forms/issues"
+  },
+  "homepage": "https://github.com/gtaw-forms/forms#readme"
 }
