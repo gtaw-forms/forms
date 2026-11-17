@@ -12,8 +12,7 @@ import ReportDetail, {
 } from './ReportDetail';
 import { formatDateTimeUTC } from './viewModel';
 import { useNotification } from '../../contexts/NotificationContext';
-import { ensureShareCode } from '../../utils/shareCodes';
-import { buildShortReportUrl } from '../report-share/shareLink';
+import { copyReportShareLink } from '../report-share/shareAction';
 
 const KIND_PREFIX = { coroner: 'Coroner Report — ', mass: 'Mass Fatality — ', autopsy: 'Autopsy — ', email: 'Coroner Email — ' };
 const DATASETS = [
@@ -51,25 +50,12 @@ export default function ReportView({
   const hasPhotos = photoGroups.some((g) => (g.urls || []).length);
 
   const shareLink = async () => {
-    if (!author || !reportKey) {
-      showNotification('No share link for this view.', 'error');
-      return;
-    }
     if (sharing) return;
     setSharing(true);
     try {
-      const code = await ensureShareCode({ author, key: reportKey });
-      if (!code) {
-        showNotification('Could not create a share link right now.', 'error');
-        return;
-      }
-      const url = buildShortReportUrl(code);
-      try {
-        await navigator.clipboard.writeText(url);
-        showNotification('Share link copied.', 'success');
-      } catch {
-        showNotification(`Copy this link: ${url}`, 'success', 15000);
-      }
+      await copyReportShareLink({
+        author, key: reportKey, formId: values?.formId || '', showNotification,
+      });
     } finally {
       setSharing(false);
     }

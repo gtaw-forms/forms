@@ -44,6 +44,9 @@ export const triggerCctvFetch = () => triggerFunction('triggerCctvFetch', {});
 export const triggerListSavedReports = (data) => triggerFunction('listSavedReports', data);
 export const triggerListRecentSavedReports = (data) => triggerFunction('listRecentSavedReports', data);
 export const triggerGetSavedReport = (data) => triggerFunction('getSavedReport', data);
+// Share codes: minted server-side so a report can be shared by anyone who can
+// read it (the reverse index is author-scoped in the RTDB rules).
+export const triggerEnsureReportShareCode = (data) => triggerFunction('ensureReportShareCode', data);
 // LEO (law-enforcement) forwarded reports: list + audited open + cache-hit log.
 export const triggerListLeoReports = (data) => triggerFunction('listLeoReports', data);
 export const triggerGetLeoReport = (data) => triggerFunction('getLeoReport', data);

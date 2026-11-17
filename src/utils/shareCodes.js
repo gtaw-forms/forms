@@ -9,6 +9,7 @@
 import { database } from '../firebase';
 import { ref, get, set } from 'firebase/database';
 import { generateShareCode } from '../components/report-share/shareLink';
+import { triggerEnsureReportShareCode } from '../services/firebaseFunctions';
 
 const CODE_NODE = 'shortLinks';
 const REVERSE_NODE = 'shortLinksByReport';
@@ -39,13 +40,28 @@ export async function codeForReport(author, key) {
 }
 
 /**
- * Ensure a report has a code: return the existing one, else generate + write
- * both index directions (create-wins verified per attempt). Never throws —
- * callers fall back to long links when this returns null.
+ * Ensure a report has a code, returning it or null (never throws — callers fall
+ * back to long links).
+ *
+ * `preferLocal` is for the author's own save path (`useFormSaver`): the saver
+ * wrote the report, so the author-scoped reverse index accepts a direct write
+ * and no callable invocation is needed. Every other surface (records view, LEO
+ * reports) goes server-first, because a viewer who did not write the report can
+ * read it but cannot write `shortLinksByReport/<author>/<key>`.
  */
-export async function ensureShareCode({ author, key, formId = '' } = {}) {
+export async function ensureShareCode({ author, key, formId = '', preferLocal = false } = {}) {
+  if (!author || !key) return null;
+
+  if (!preferLocal) {
+    try {
+      const minted = await triggerEnsureReportShareCode({ author, key, formId });
+      if (minted?.code) return String(minted.code);
+    } catch {
+      // Callable unavailable (undeployed/offline): fall through to the local path.
+    }
+  }
+
   try {
-    if (!author || !key) return null;
     const existing = await codeForReport(author, key);
     if (existing) return existing;
     for (let i = 0; i < ASSIGN_ATTEMPTS; i++) {
@@ -56,10 +72,18 @@ export async function ensureShareCode({ author, key, formId = '' } = {}) {
         await set(ref(database, `${CODE_NODE}/${code}`), {
           author, key, formId: String(formId || ''), createdAt: new Date().toISOString(),
         });
+      } catch {
+        // Code collided (or offline) — try a fresh one.
+        continue;
+      }
+      try {
         await set(ref(database, `${REVERSE_NODE}/${author}/${key}`), code);
         return code;
       } catch {
-        // Lost a race (or offline) — try a fresh code.
+        // The report -> code binding was refused (not the author, or offline).
+        // Retrying would only mint more unused shortLinks entries, so stop: the
+        // caller reports no link and the report keeps working without sharing.
+        return null;
       }
     }
     return null;

@@ -20,6 +20,7 @@ import {
 import { leoCacheId } from '../../utils/leoReportCache';
 import { LEO_CACHE_LIMIT } from './leoModel';
 import ForwardToDrdbModal from './ForwardToDrdbModal';
+import { copyReportShareLink } from '../report-share/shareAction';
 import {
   FORWARD_FORM,
   FORWARD_QUEUE_NODE,
@@ -35,6 +36,7 @@ function LeoReportDetail({ row, payload, fromCache, demo, viewerName, isAuthenti
   const [forwardOpen, setForwardOpen] = useState(false);
   const [forwarding, setForwarding] = useState(false);
   const [forwardError, setForwardError] = useState('');
+  const [sharing, setSharing] = useState(false);
   const { showNotification } = useNotification();
   const report = useMemo(() => payload?.report || {}, [payload]);
   const values = useMemo(
@@ -56,6 +58,29 @@ function LeoReportDetail({ row, payload, fromCache, demo, viewerName, isAuthenti
   const history = useMemo(() => reportHistory(kind, values, meta), [kind, values, meta]);
   const hasPhotos = photoGroups.some((g) => (g.urls || []).length);
   const canForward = isAuthenticated && !demo && kind === 'coroner' && row?.author && row?.key;
+
+  // Short share link (`#/r/<code>`) — same action and wording as the records
+  // view, so a forwarded report can be handed to a colleague. The code is
+  // minted server-side (ensureReportShareCode): the reverse index is
+  // author-scoped, and an LEO viewer did not write the report.
+  const shareLink = async () => {
+    if (sharing) return;
+    if (demo || !row?.author || !row?.key) {
+      showNotification('Sample reports cannot be shared.', 'error');
+      return;
+    }
+    setSharing(true);
+    try {
+      await copyReportShareLink({
+        author: row.author,
+        key: row.key,
+        formId: report.formId || row.formId || '',
+        showNotification,
+      });
+    } finally {
+      setSharing(false);
+    }
+  };
 
   // Manual "Send to DRDB": queue one portal leg for the named officer. The
   // bot worker files it like an automatic leg (rebuilds from the live record
@@ -175,6 +200,15 @@ function LeoReportDetail({ row, payload, fromCache, demo, viewerName, isAuthenti
         <button type="button" className={tab === 'overview' ? 'active' : ''} onClick={() => setTab('overview')}>▤ Overview</button>
         <button type="button" className={tab === 'photos' ? 'active' : ''} onClick={() => setTab('photos')}>◍ Photos<span className="n">{photoCount}</span></button>
         <button type="button" className={tab === 'history' ? 'active' : ''} onClick={() => setTab('history')}>◷ History<span className="n">{history.length}</span></button>
+        <button
+          type="button"
+          onClick={shareLink}
+          disabled={sharing || demo}
+          title={demo ? 'Sample reports cannot be shared' : 'Copy a short share link for this report'}
+          style={{ marginLeft: 6, color: 'var(--teal)' }}
+        >
+          {sharing ? '…' : '⤴ Share'}
+        </button>
       </div>
 
       {tab === 'overview' && (

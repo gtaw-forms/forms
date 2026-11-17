@@ -639,6 +639,9 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated, rosterData = {}) 
                 shareCode = await ensureShareCode({
                     author: sanitizedAuthorId, key: sanitizedKey,
                     formId: selectedForm?.firebaseKey || '',
+                    // The saver owns this report, so the author-scoped reverse
+                    // index accepts a direct write — skip the callable.
+                    preferLocal: true,
                 });
             } catch { /* index unavailable — long links still work */ }
 

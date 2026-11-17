@@ -5,6 +5,7 @@ import { getDatabase } from "firebase-admin/database";
 import { initializeApp, getApps } from "firebase-admin/app";
 import { syncFactionMembers } from './src/maintenance/factionSync.js';
 import { createRateLimiter } from './src/utils/rateLimit.js';
+import { isShareSegment, newShareCode } from './src/utils/shareCode.js';
 
 // Burst guard for full-dump reads (2026-10-01: a client render loop fired
 // 4,534 getMorgueRecords calls in one hour): 10 calls per rolling 60s per
@@ -24,6 +25,8 @@ const checkReportViewRateLimit = createRateLimiter({ windowMs: 60000, maxCalls: 
 // "Request morgue update" is one click; 5/min per UID absorbs double-taps while
 // still stopping a scripted client from churning the request node.
 const checkMorgueUpdateRequestRateLimit = createRateLimiter({ windowMs: 60000, maxCalls: 5 });
+// Share links are minted once per report; 20/min per UID is far above human use.
+const checkShareCodeRateLimit = createRateLimiter({ windowMs: 60000, maxCalls: 20 });
 
 const MORGUE_API_URL = process.env.MORGUE_API_URL || 'http://88.208.243.254';
 const MORGUE_API_KEY = process.env.MORGUE_API_KEY;
@@ -1134,6 +1137,88 @@ export const getSavedReport = onCall({ region: 'europe-west2', memory: '256MiB' 
     if (!author || !key) throw new functions.https.HttpsError('invalid-argument', 'author and key are required.');
     // Read: any signed-in user may fetch any author's report (2026-10-02).
     return callSavedReportsApi(`/api/reports/${encodeURIComponent(author)}/${encodeURIComponent(key)}`, {}, request);
+});
+
+/**
+ * ensureReportShareCode — mint (or return) the `#/r/<code>` link for a saved
+ * report, whoever wrote it.
+ *
+ * Why this exists: the reverse index `shortLinksByReport/<author>/<key>` is
+ * scoped to the report's author by the 2026-11-14 rules lockdown. Sharing
+ * *someone else's* report — an LEO officer sharing a forwarded coroner report, a
+ * colleague sharing a teammate's work — therefore failed client-side (and the
+ * retry loop left orphan `shortLinks` entries behind). Reads were opened to any
+ * signed-in user on 2026-10-02, so minting the link grants nothing new: the
+ * share page still requires sign-in and its open is audited.
+ *
+ * Returns { success, code, created }. `created=false` means an existing code
+ * was returned, so a report's link never changes once minted.
+ */
+export const ensureReportShareCode = onCall({
+    region: 'europe-west2',
+    memory: '256MiB',
+    cors: [
+        'https://gtaw-forms.github.io',
+        'https://phmc-tools.gta.world',
+        'http://localhost:3000'
+    ]
+}, async (request) => {
+    if (!request.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'Sign in to create a share link.');
+    }
+    if (!checkShareCodeRateLimit(request.auth.uid)) {
+        throw new functions.https.HttpsError('resource-exhausted', 'Too many share links — try again in a minute.');
+    }
+
+    const author = String(request.data?.author || '').trim();
+    const key = String(request.data?.key || '').trim();
+    const formId = String(request.data?.formId || '').trim().slice(0, 80);
+    if (!isShareSegment(author) || !isShareSegment(key)) {
+        throw new functions.https.HttpsError('invalid-argument', 'author and key must be plain report address segments.');
+    }
+
+    const reverseRef = adminDb.ref(`shortLinksByReport/${author}/${key}`);
+    try {
+        const existing = (await reverseRef.once('value')).val();
+        if (typeof existing === 'string' && existing.trim()) {
+            return { success: true, code: existing.trim(), created: false };
+        }
+    } catch (err) {
+        console.warn('[ensureReportShareCode] reverse lookup failed:', err.message);
+    }
+
+    // Allocate a fresh forward entry (create-wins: never re-point an existing
+    // code), then claim the reverse entry (also create-wins, so two callers
+    // converge on one code — the loser's forward entry still resolves to the
+    // same report, it just stays unused).
+    const entry = { author, key, formId, createdAt: new Date().toISOString() };
+    for (let attempt = 0; attempt < 5; attempt++) {
+        const code = newShareCode();
+        try {
+            const forward = await adminDb.ref(`shortLinks/${code}`).transaction((cur) => {
+                if (cur && (cur.author !== author || cur.key !== key)) return; // code belongs to another report: abort
+                return cur || entry;
+            });
+            if (!forward.committed) continue;
+
+            let finalCode = code;
+            try {
+                const claim = await reverseRef.transaction((cur) => (
+                    typeof cur === 'string' && cur.trim() ? cur : code
+                ));
+                const claimed = claim.snapshot.val();
+                if (typeof claimed === 'string' && claimed.trim()) finalCode = claimed.trim();
+            } catch (err) {
+                // Reverse index unavailable: the link still resolves via shortLinks.
+                console.warn('[ensureReportShareCode] reverse claim failed:', err.message);
+            }
+            return { success: true, code: finalCode, created: true };
+        } catch (err) {
+            console.warn(`[ensureReportShareCode] attempt ${attempt + 1} failed:`, err.message);
+        }
+    }
+
+    throw new functions.https.HttpsError('internal', 'Could not allocate a share link right now — please retry.');
 });
 
 // ── LEO forwarded reports (list + audited opens) ──
