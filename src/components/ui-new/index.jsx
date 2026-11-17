@@ -27,6 +27,7 @@ import LspdGuideModal from '../migration-ui/LspdGuideModal';
 import { hasSeenLspdGuide, markLspdGuideSeen } from '../migration-ui/lspdGuide';
 import { buildShortReportUrl } from '../report-share/shareLink';
 import { normalizeRecipients, validateRecipients } from '../../utils/recipients';
+import { CK_OPINION_MIN_MORE_THAN, ckOpinionProblem } from '../../utils/autopsyOpinion';
 import TimeDisplay from './TimeDisplay';
 import ServiceStatusTicker from './ServiceStatusTicker';
 import BusinessCardModal from '../UI/BusinessCard';
@@ -577,6 +578,23 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
     if (missing.length > 0) {
       showNotification('Fill in ' + missing.join(' and ') + ' before saving.', 'warning');
       return;
+    }
+    // CK quality gate: a Character Kill opinion is a permanent record, so it
+    // must be more than 250 characters (see utils/autopsyOpinion). Scoped to the
+    // autopsy form by its own fields (deathType + synopsis) — coroner reports
+    // have typeOfDeath/mannerOfDeath and are unaffected. Blocking here keeps the
+    // rule identical to the field hint.
+    if (formFieldNames.has('synopsis') && formFieldNames.has('deathType')) {
+      const opinionIssue = ckOpinionProblem(formValues);
+      if (opinionIssue) {
+        showNotification(
+          `CK autopsies need an Opinion longer than ${CK_OPINION_MIN_MORE_THAN} characters — `
+          + `${opinionIssue.length} so far, ${opinionIssue.remaining} more needed.`,
+          'warning',
+          10000,
+        );
+        return;
+      }
     }
     // Always regenerate BBCode from the LATEST formValues —
     // reusing cached output could ship an earlier (blank)

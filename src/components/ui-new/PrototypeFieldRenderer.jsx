@@ -12,6 +12,9 @@ import { mapAgencyOptions } from '../../utils/agencyOptions';
 import { triggerCheckOfficerName, triggerGetOfficerRoster } from '../../services/firebaseFunctions';
 import { readOfficerRoster, refreshOfficerRoster, searchOfficerRoster } from '../../utils/officerRosterCache';
 import { MAX_EXTRA_RECIPIENTS } from '../../utils/recipients';
+import {
+  CK_OPINION_MIN_MORE_THAN, isCkDeath, opinionLength, ckOpinionProblem,
+} from '../../utils/autopsyOpinion';
 import { useNotification } from '../../contexts/NotificationContext';
 
 // Debug logger — only logs when running the Vite dev server. Keeps the noisy
@@ -375,11 +378,27 @@ const PrototypeFieldRenderer = ({
     /* ─── Textarea ─── */
     case 'textarea': {
       const isCompact = field.layout === 'compact' || field.layout === 'compact-50';
+      // CK quality gate: the Opinion is a permanent record, so a CK needs more
+      // than 250 characters (see src/utils/autopsyOpinion.js). PK is untouched.
+      const ckOpinion = field.name === 'synopsis' && isCkDeath(allValues);
+      const ckProblem = ckOpinion ? ckOpinionProblem(allValues) : null;
+      const draftLength = ckOpinion ? opinionLength({ synopsis: value }) : 0;
       return (
         <div className={`field${isCompact ? '' : ' full'}`}>
           <label>{field.label}</label>
           <textarea value={value || ''} onChange={e => onChange(e.target.value)}
             placeholder={field.placeholder || ''} rows={field.rows || 4} />
+          {ckOpinion && (
+            <div style={{
+              marginTop: 6, fontSize: 10.5, fontFamily: 'var(--mono)', lineHeight: 1.5,
+              color: ckProblem ? 'var(--amber)' : 'var(--teal)',
+            }}>
+              <i className={`fas ${ckProblem ? 'fa-triangle-exclamation' : 'fa-circle-check'} me-1`} />
+              {ckProblem
+                ? `CK opinion: ${draftLength} characters — needs more than ${CK_OPINION_MIN_MORE_THAN} (${ckProblem.remaining} more).`
+                : `CK opinion: ${draftLength} characters — meets the CK minimum.`}
+            </div>
+          )}
         </div>
       );
     }
