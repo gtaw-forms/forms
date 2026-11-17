@@ -9,6 +9,48 @@
 - Receipt detection for this form is still unverified (never live-submitted) — dry runs only until the first approved live filing captures the receipt shape.
 - Tests: payload mapping, keyedRows shaping, locker derivation, <2-decedent abort, real-sample time parsing (`15/11/2026 20:05` → `20:05`, `23/JAN/2026 - 19:41` → `19:41`). Dry-run verified row add/fill/read-back against the live form (own context, nothing submitted).
 
+## UNDEPLOYED — Panel "Reassign" no longer times out (missing `performReassign`) (2026-11-17)
+
+### Fixed
+- **Every V2 panel "Reassign (Supervisors)" press failed with "application didn't respond in time".** `singlePanelV2.js` and `massPanelV2.js` import `performReassign` from `commands/reassign-autopsy.js`, but that function was **never implemented or exported** — and `getMeNames` (used to build the ME picker) wasn't exported either. The single-panel handler threw a TypeError before acknowledging the interaction, so Discord reported the 3-second timeout; the mass panel had the same latent failure.
+- Extracted the reassignment core from the slash command into **`export async function performReassign({ db, client, topicId, caseIdx, newME, basePath, dryRun })`**, returning `{ ok, already, dryRun, error, currentAssigned, newME, decedentName, caseUrl }`. It handles single cases and per-body `cases/<idx>` records, retitles the f=266 topic, posts the reassignment notice, syncs `assignedTo`/`caseTitle`, moves the rotation count, pings the new ME, and **never throws** (errors come back as `{ok:false}` so a deferred interaction can always answer).
+- `getMeNames` is exported; `openSingleReassignModal` loads it defensively and replies with a clear message if the rotation can't be read.
+- Ack-first hardening: `/reassign-autopsy`'s case menu now `deferUpdate()`s before its DB read (the menu previously acked only after building itself), and the single panel's modal submit defers before any I/O.
+- Tests: new `tests/reassign-autopsy.test.js` (5) — single case, already-assigned, per-body `caseIdx`, dry run, unresolved-topic error. Suite 48 files / 415 green; imports clean.
+- **Not yet deployed** — the working tree also carries the concurrent mass-fatality session's in-progress portal changes, and a whole-tree bot deploy would ship those too.
+
+## UNDEPLOYED — Metal Objects Extracted no longer de-duplicates (2026-11-17)
+
+### Fixed
+- **Recovered metal objects were collapsed to their distinct descriptions.** `buildMedicalExaminerPayload` built "Metal Objects Extracted" with `normalizeTextList(data.casings)`, which de-duplicates lines. Live case #10492 (Anthony Sorrentino → Joyce Pawironadi, MER-26-0005) had **9 recovered projectiles carrying only 2 distinct serials** (4× 9mm #290284483, 5× 5.56mm #290684439): Radiology correctly said "9 projectiles/slugs", but the portal listed only 2.
+- `normalizeTextList` now takes `{ dedupe: false }`; the ME builder passes it for casings, so every recovered object is listed. Causes/findings keep their de-duplication.
+- Regression test asserts 9 casings → 9 lines (4 of them 9mm).
+- The already-filed MER-26-0005 keeps 2 lines — correcting it needs a re-filing or a manual portal amendment.
+
+## UNDEPLOYED — LSPD time parser + mass-fatality routing hotfixes (2026-11-17)
+
+### Fixed
+- **`extractTime()` no longer files a bare 4-digit time as midnight.** `extractTime('2134')` fell through to `new Date('2134')` — the *year* 2134 — and returned `00:00`; 15 of 21 historical bare values would have been filed as midnight, and overall coverage was 320/464. Rewritten: bare `HHmm` → `HH:mm` (range-validated, never a year), `HH:mm`/`HH.mm`/`H am|pm` (`8.20pm`, `7:41 PM`, `8pm`, `12am`), and for longer strings the **last** time-like token (`23/JAN/2026 - 19:41`, ISO, `15 Nov 2026 20:27`). Placeholders (`DD/MM/YYYY - HH:mm`) and out-of-range values abort instead of guessing. `splitDateTime()` also refuses a bare 4-digit token rather than parsing it as a year.
+- **Mass-fatality coroner emails no longer hit the single-decedent portal builder.** `deployCoronerEmail.js` queued `coroner-report` for every LSPD portal target, so a mass report aborted with "Place of death is empty" and retried forever. Added `isMassFatalityFormId()` (covers `mass-fatality` and the legacy `mass-ftality-test`) and a visible skip for that portal leg (`Mass Fatality → DRDB not supported yet — see plan`). The multi-decedent email subject check uses the same predicate.
+- Tests: `tests/lspd-portal-forms.test.js` +4 (34 total in that file). No receipt or mass-fatality builder work yet — see `plan/lspd-mass-fatality-portal-plan.md`.
+
+## UNDEPLOYED — LSPD ME form: portal field-length truncation (2026-11-17)
+
+### Fixed
+- **DRDB medical-examiner filings aborted on long free-text fields.** The portal caps Physical Description at 400 chars and silently truncates; worse, the report text was CRLF and the browser normalises textareas to LF, so the read-back was both shorter and different. The guard aborted with `Field "Physical Description" did not stick (wrote 403 chars, read 400)` — a permanent retry loop (live: private case #10492 / topic 10492).
+- `fillField` now (a) normalises CRLF/CR → LF for textareas before filling (`normalizePortalText`, exported + unit-tested), (b) respects an explicit `limit` on the field declaration — Physical Description carries `limit: 400` — truncating to it first (`applyPortalFieldLimit`), and (c) ignores the HTML textarea default `maxLength` (524288 / -1) which never reflects the portal's JS-side cap.
+- Read-back gained a tolerant fallback for controls that slice in JS: an exact prefix of the written text is accepted as a portal truncation (loud warning) instead of aborting the filing. Text/textarea only, never date/time masks, so real mismatches still fail — and a genuine mismatch now logs the first divergent character plus the control's attr/prop maxlength.
+- Verified with a fill-only dry run against case #10492: 25 fields filled, `ok: true, dryRun: true` (no submission). The failed completion step retries on the next recovery sweep and files normally.
+- Applies to both portal forms (medical-examiner and coroner-report).
+
+## UNDEPLOYED — Private cases: duplicate ME assignment reply fixed (2026-11-16)
+
+### Fixed
+- **Private f=266 cases posted the "You have been assigned this autopsy case file" reply twice.** `privateCaseCreation.js` posted the reply but never recorded `assignmentReplyStatus`, which `autopsyRequestMonitor.retryFailedAssignmentReplies` uses to decide whether a case is missing its reply. The 30-minute self-heal sweep therefore saw every new private case as un-acknowledged and posted the reply again (live evidence: three cases created 2026-11-16 17:57–18:00 each got the initial reply from `createPrivateCase` and a second from `[AUTOPSY-MON] Retried assignment reply ... — OK`).
+- `createPrivateCase` now writes `assignmentReplyStatus: 'completed'` when the reply posts (or `'failed'` when it does not, so the sweep still self-heals a genuine failure). The field is only set when an ME was actually assigned.
+- Regression covered in `tests/privateAutopsyWeb.test.js` (asserts the entry carries `assignmentReplyStatus: 'completed'`).
+- The three affected topics already carry the field (set by the sweep when it reposted), so no further duplicates will be posted. The extra replies themselves need a manual/forum delete.
+
 ## UNDEPLOYED — LSPD PM intake deleted (2026-11-15)
 
 ### Removed

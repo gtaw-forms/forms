@@ -10,7 +10,7 @@ export const data = new SlashCommandBuilder()
     .setDescription('Reassign autopsy cases via interactive menu');
 
 /** Load ME names from the Firebase rotation list */
-async function getMeNames(db) {
+export async function getMeNames(db) {
     try {
         const snap = await db.ref('autopsy-requests/rotation/list').once('value');
         const list = snap.val();
@@ -94,6 +94,11 @@ export async function execute(interaction) {
  */
 export async function onCasePick(interaction) {
     const topicId = interaction.values[0];
+    // Select-menu interactions must be acknowledged within 3 s. Acknowledge
+    // first: the DB read + menu build below can be delayed when the event loop
+    // is busy with forum work (that timeout was reported as "application
+    // didn't respond in time").
+    try { await interaction.deferUpdate(); } catch { /* already acknowledged */ }
     firebase.init();
     const db = firebase.db;
     const meNames = await getMeNames(db);
@@ -108,14 +113,145 @@ export async function onCasePick(interaction) {
                 })))
         );
 
-    await interaction.update({
+    await interaction.editReply({
         content: `Selected topic #${topicId}. Now pick the new ME:`,
         components: [row],
     });
 }
 
 /**
- * Handle the ME selection — perform the actual reassignment.
+ * Shared reassignment core — used by the slash command's ME picker and by the
+ * V2 panels (single + mass), which import it as `performReassign`.
+ *
+ * Handles one case (top-level entry) or one body of a multi/mass collection
+ * (`caseIdx`): resolves the f=266 case topic, retitles it, posts the
+ * reassignment notice, updates Firebase, moves the rotation count and pings the
+ * new ME. `dryRun` skips every forum/Discord write.
+ *
+ * @returns {Promise<{ok:boolean, already?:boolean, dryRun?:boolean,
+ *   error?:string, currentAssigned?:string, newME?:string,
+ *   decedentName?:string, caseUrl?:string}>}
+ *
+ * `client` is an OPTIONAL forum client (used by tests). The V2 panels pass
+ * `interaction.client` — a discord.js client with no ensureBrowser — so only a
+ * forum-shaped client is accepted and anything else falls back to the shared
+ * forum client. (Passing the Discord client through blindly produced
+ * "forum.ensureBrowser is not a function".)
+ */
+export async function performReassign({
+    db,
+    client = null,
+    topicId,
+    caseIdx = null,
+    newME,
+    basePath = 'autopsy-requested',
+    dryRun = false,
+} = {}) {
+    const name = String(newME || '').trim();
+    if (!db || !topicId || !name) return { ok: false, error: 'Missing db, topic or new ME' };
+
+    try {
+    const entry = ((await db.ref(`${basePath}/${topicId}`).once('value')).val()) || {};
+    const hasCase = caseIdx !== null && caseIdx !== undefined && caseIdx !== '';
+    const caseRec = hasCase ? ((entry.cases || {})[String(caseIdx)] || null) : null;
+    if (hasCase && !caseRec) return { ok: false, error: `Case ${caseIdx} not found on this request` };
+
+    const currentAssigned = String(caseRec?.assignedTo || entry.assignedTo || 'UNASSIGNED');
+    if (currentAssigned.toLowerCase() === name.toLowerCase()) {
+        return {
+            ok: true, already: true, dryRun, currentAssigned, newME: name,
+            decedentName: caseRec?.name || entry.name || topicId,
+        };
+    }
+
+    const sourceTitle = String(caseRec?.caseTitle || entry.caseTitle || entry.title || '');
+    const oocMatch = sourceTitle.match(/\(\(\s*(.*?)\s*\)\)/);
+    const oocName = oocMatch ? oocMatch[1] : null;
+    let caseTopicId = caseRec?.caseTopicId || entry.caseTopicId || null;
+    let oldTitle = sourceTitle || null;
+
+    const forum = (client && typeof client.ensureBrowser === 'function') ? client : getForumClient();
+    const baseUrl = process.env.FORUM_BASE_URL;
+
+    // Fall back to a forum search only when the stored topic/title is missing.
+    if ((!caseTopicId || !oldTitle) && oocName) {
+        await forum.ensureBrowser();
+        await forum.login(process.env.FORUM_USERNAME, process.env.FORUM_PASSWORD, { baseUrl });
+        const results = await forum.searchForum(`((${oocName}))`, 266, { baseUrl });
+        const hit = results.find((t) => t.title && t.title.includes('Case'));
+        if (hit) { caseTopicId = hit.topicId; oldTitle = hit.title; }
+    }
+    if (!caseTopicId || !oldTitle) return { ok: false, error: 'Could not find case topic in f=266 for this request' };
+
+    // Replace the ME suffix; "- UNASSIGNED" is the creation-time placeholder.
+    let newTitle;
+    if (oldTitle.includes('- UNASSIGNED')) {
+        newTitle = oldTitle.replace('- UNASSIGNED', `- ${name}`);
+    } else {
+        const lastDash = oldTitle.lastIndexOf(' - ');
+        newTitle = lastDash > 3 ? oldTitle.substring(0, lastDash + 3) + name : `- ${name}`;
+    }
+
+    // "Case 472 - Samuel Cerniglia [LSPD] - ME" -> "Samuel Cerniglia"
+    const decedentMatch = oldTitle.match(/Case\s+\w+\s*-\s*(.*?)\s*(?:\[|\s*-)/);
+    const decedentName = caseRec?.name || (decedentMatch ? decedentMatch[1].trim() : (oocName || topicId));
+
+    if (!dryRun) {
+        await forum.ensureBrowser();
+        await forum.login(process.env.FORUM_USERNAME, process.env.FORUM_PASSWORD, { baseUrl });
+        await forum.editTopicTitle(caseTopicId, 266, newTitle, { baseUrl });
+
+        let newUid = '0';
+        try {
+            const memberList = await forum.getGroupMembers(50, { baseUrl, exclude: ['PHMC Forms Bot'], paginate: true });
+            newUid = memberList.find((m) => m.name.toLowerCase() === name.toLowerCase())?.userId || '0';
+        } catch (err) {
+            console.warn(`[CMD] reassign: ME member lookup failed: ${err.message}`);
+        }
+        const reassignBBCode = `[quote="${name}" user_id=${newUid}]\n[/quote]\n\n[b]Reassigned:[/b] [b]${currentAssigned}[/b] → [color=#33D6C0][b]${name}[/b][/color]\n[b]Case:[/b] ${decedentName}`;
+        await forum.replyToTopic(caseTopicId, 266, reassignBBCode, { dryRun: false, baseUrl }).catch((err) => {
+            console.warn(`[CMD] reassign: reply post failed: ${err.message}`);
+        });
+    }
+
+    // Per-body state lives under cases/<idx>; single cases at the top level.
+    const scope = caseRec ? `${basePath}/${topicId}/cases/${caseIdx}` : `${basePath}/${topicId}`;
+    await db.ref(`${scope}/assignedTo`).set(name);
+    if (newTitle !== oldTitle) {
+        await db.ref(`${scope}/caseTitle`).set(newTitle).catch((err) => {
+            console.warn(`[CMD] reassign: caseTitle sync failed: ${err.message}`);
+        });
+    }
+
+    await reassignME(db, caseRec?.assignedTo || entry.assignedTo || null, name, topicId).catch((err) => {
+        console.warn(`[CMD] reassign: rotation tracking error: ${err.message}`);
+    });
+
+    if (!dryRun) {
+        const caseUrl = `${baseUrl}/viewtopic.php?t=${caseTopicId}`;
+        await notifyAssignment(db, name, decedentName || oldTitle, caseUrl, {
+            label: 'Autopsy Case Reassigned',
+            embedTitle: '🔬 Autopsy Case Reassigned',
+        }).catch((err) => {
+            console.warn(`[CMD] reassign: notifyAssignment failed: ${err.message}`);
+        });
+    }
+
+    return {
+        ok: true, already: false, dryRun, currentAssigned, newME: name, decedentName,
+        caseUrl: `${baseUrl}/viewtopic.php?t=${caseTopicId}`,
+    };
+    } catch (err) {
+        // Never throw into an interaction handler: a rejected promise after a
+        // deferred reply leaves the user on "thinking..." until the token dies.
+        console.error('[CMD] reassign core error:', err.message);
+        return { ok: false, error: err.message };
+    }
+}
+
+/**
+ * Handle the ME selection from /reassign-autopsy — thunk over performReassign,
+ * keeping the command's richer confirmation embed.
  */
 export async function onMePick(interaction) {
     if (!isSupervisorUp(interaction)) {
@@ -129,8 +265,7 @@ export async function onMePick(interaction) {
 
     await interaction.deferUpdate();
 
-    // Give immediate visual feedback — the heavy forum/Firebase work below
-    // takes several seconds and would otherwise look like a silent hang.
+    // Give immediate visual feedback — the forum work below takes seconds.
     await interaction.editReply({
         content: `Reassigning topic #${topicId} to **${newME}**... please wait (editing forum title + posting notice).`,
         components: [],
@@ -140,112 +275,25 @@ export async function onMePick(interaction) {
     const db = firebase.db;
 
     try {
-        // Get the entry from Firebase
-        const entrySnap = await db.ref(`autopsy-requested/${topicId}`).once('value');
-        const entry = entrySnap.val() || {};
-        const currentAssigned = entry.assignedTo || 'UNASSIGNED';
+        const res = await performReassign({ db, topicId, newME });
 
-        if (currentAssigned.toLowerCase() === newME.toLowerCase()) {
+        if (res.already) {
             await interaction.editReply({ content: `Already assigned to **${newME}**.`, components: [] });
             return;
         }
-
-        // Extract OOC name — try caseTitle first, fall back to request title
-        const oocMatch = (entry.caseTitle || entry.title || '').match(/\(\(\s*(.*?)\s*\)\)/);
-        const oocName = oocMatch ? oocMatch[1] : null;
-
-        // Try stored caseTopicId first (most reliable — avoids forum search)
-        let topicIdNum = entry.caseTopicId || null;
-        let oldTitle = entry.caseTitle || null;
-
-        // Fall back to forum search if no stored caseTopicId
-        if (!topicIdNum || !oldTitle) {
-            if (oocName) {
-                const searchClient = getForumClient();
-                await searchClient.ensureBrowser();
-                await searchClient.login(process.env.FORUM_USERNAME, process.env.FORUM_PASSWORD, { baseUrl: process.env.FORUM_BASE_URL });
-                const caseResults = await searchClient.searchForum(`((${oocName}))`, 266, { baseUrl: process.env.FORUM_BASE_URL });
-                const caseTopic = caseResults.find(t => t.title && t.title.includes('Case'));
-                if (caseTopic) {
-                    topicIdNum = caseTopic.topicId;
-                    oldTitle = caseTopic.title;
-                }
-            }
-        }
-
-        if (!topicIdNum || !oldTitle) {
-            await interaction.editReply({ content: `Could not find case topic in f=266 for this request.`, components: [] });
+        if (!res.ok) {
+            await interaction.editReply({ content: `Error: ${res.error || 'reassign failed'}`, components: [] });
             return;
         }
-
-        // Build new title
-        let newTitle;
-        if (oldTitle.includes('- UNASSIGNED')) {
-            newTitle = oldTitle.replace('- UNASSIGNED', `- ${newME}`);
-        } else {
-            const lastDash = oldTitle.lastIndexOf(' - ');
-            newTitle = lastDash > 3 ? oldTitle.substring(0, lastDash + 3) + newME : `- ${newME}`;
-        }
-
-        // Extract decedent name from the case title (e.g. "Case 472 - Samuel Cerniglia [LSPD] - ME")
-        const decedentMatch = oldTitle.match(/Case\s+\w+\s*-\s*(.*?)\s*(?:\[|\s*-)/);
-        const decedentName = decedentMatch ? decedentMatch[1].trim() : oocName || topicId;
-
-        // Update forum title
-        const client = getForumClient();
-        await client.ensureBrowser();
-        await client.login(process.env.FORUM_USERNAME, process.env.FORUM_PASSWORD, { baseUrl: process.env.FORUM_BASE_URL });
-        await client.editTopicTitle(topicIdNum, 266, newTitle, { baseUrl: process.env.FORUM_BASE_URL });
-
-        // Post a reassignment notice reply so the topic body reflects the change.
-        // Quote the new ME (user_id resolves the ping) and bold the old ME.
-        let newUid = '0';
-        try {
-            const memberList = await client.getGroupMembers(50, { baseUrl: process.env.FORUM_BASE_URL, exclude: ['PHMC Forms Bot'], paginate: true });
-            const member = memberList.find(m => m.name.toLowerCase() === newME.toLowerCase());
-            newUid = member?.userId || '0';
-        } catch (err) {
-            console.warn(`[CMD] reassign: ME member lookup failed: ${err.message}`);
-        }
-        const reassignBBCode = `[quote="${newME}" user_id=${newUid}]\n[/quote]\n\n[b]Reassigned:[/b] [b]${currentAssigned}[/b] → [color=#33D6C0][b]${newME}[/b][/color]\n[b]Case:[/b] ${decedentName}`;
-        await client.replyToTopic(topicIdNum, 266, reassignBBCode, { dryRun: false, baseUrl: process.env.FORUM_BASE_URL }).catch(err => {
-            console.warn(`[CMD] reassign: reply post failed: ${err.message}`);
-        });
-
-        // Update Firebase
-        await db.ref(`autopsy-requested/${topicId}/assignedTo`).set(newME);
-        // Persist the updated case title too — the forum topic title was just
-        // edited above, so keep the DB in sync (otherwise the stale old-ME
-        // title leaks into notifications / webhook embeds).
-        if (newTitle && newTitle !== oldTitle) {
-            await db.ref(`autopsy-requested/${topicId}/caseTitle`).set(newTitle).catch(err => {
-                console.warn(`[CMD] reassign: caseTitle sync failed: ${err.message}`);
-            });
-        }
-
-        // Update active case counts in the rotation tracker
-        await reassignME(db, entry.assignedTo || null, newME, topicId).catch(err => {
-            console.warn(`[CMD] reassign: rotation tracking error: ${err.message}`);
-        });
-
-        // Ping the newly-assigned ME (Discord + webhook) so they know they've
-        // been reassigned this case — same path as an initial assignment.
-        const caseUrl = `${process.env.FORUM_BASE_URL}/viewtopic.php?t=${topicIdNum}`;
-        await notifyAssignment(db, newME, decedentName || oldTitle, caseUrl, {
-            label: 'Autopsy Case Reassigned',
-            embedTitle: '🔬 Autopsy Case Reassigned',
-        }).catch(err => {
-            console.warn(`[CMD] reassign: notifyAssignment failed: ${err.message}`);
-        });
 
         const embed = new EmbedBuilder()
             .setColor(0x3498db)
             .setTitle('Autopsy Case Reassigned')
-            .setDescription(`**${decedentName}** — reassigned from **${currentAssigned}** to **${newME}**`)
+            .setDescription(`**${res.decedentName}** — reassigned from **${res.currentAssigned}** to **${res.newME}**`)
             .addFields(
-                { name: 'Previous', value: currentAssigned, inline: true },
-                { name: 'New', value: newME, inline: true },
-                { name: 'Topic', value: `[View Case](<${process.env.FORUM_BASE_URL}/viewtopic.php?t=${topicIdNum}>)`, inline: false }
+                { name: 'Previous', value: res.currentAssigned, inline: true },
+                { name: 'New', value: res.newME, inline: true },
+                { name: 'Topic', value: `[View Case](<${res.caseUrl}>)`, inline: false }
             )
             .setFooter({ text: `Reassigned by ${interaction.user.tag}` })
             .setTimestamp();
@@ -253,6 +301,6 @@ export async function onMePick(interaction) {
         await interaction.editReply({ content: null, embeds: [embed], components: [] });
     } catch (err) {
         console.error('[CMD] reassign-autopsy error:', err.message);
-        await interaction.editReply({ content: `Error: ${err.message}`, components: [] });
+        await interaction.editReply({ content: `Error: ${err.message}`, components: [] }).catch(() => {});
     }
 }

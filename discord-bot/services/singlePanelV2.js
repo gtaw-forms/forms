@@ -916,9 +916,23 @@ export async function openSingleReassignModal(interaction, panelId, pending) {
             return true;
         }
     } catch { /* check is best-effort; the core re-checks state anyway */ }
-    const { getMeNames } = await import('../commands/reassign-autopsy.js');
-    const meNames = (await getMeNames(db).catch(() => [])) || [];
+    // Load the rotation list defensively: a missing/broken export here used to
+    // throw before any acknowledgement — Discord then showed "application
+    // didn't respond in time" and the button looked dead.
+    let meNames = [];
+    try {
+        const mod = await import('../commands/reassign-autopsy.js');
+        if (typeof mod.getMeNames === 'function') meNames = (await mod.getMeNames(db)) || [];
+    } catch (err) {
+        console.warn(`[SINGLE-V2] Panel ${panelId}: ME list load failed: ${err.message}`);
+    }
     const meOptions = meNames.slice(0, 10).map((n) => ({ label: String(n).slice(0, 100), value: String(n).slice(0, 100) }));
+    if (!meNames.length) {
+        try {
+            await interaction.reply({ content: 'Could not load the ME rotation — use /reassign-autopsy instead.', flags: MessageFlags.Ephemeral });
+        } catch { /* [OK] rotation-load notice ignored: interaction token already expired or double-acked */ }
+        return true;
+    }
     if (meOptions.length < 2) {
         try {
             await interaction.reply({ content: 'Not enough MEs on rotation to offer a pick — use /reassign-autopsy instead.', flags: MessageFlags.Ephemeral });
@@ -990,16 +1004,17 @@ export async function handleSinglePanelV2ReassignModal(interaction) {
         } catch { /* [OK] missing-pick notice ignored: interaction token already expired or double-acked */ }
         return true;
     }
-    const db = await singleV2Db();
-    if (!db) {
-        try {
-            await interaction.reply({ content: 'Firebase not ready — try again in a moment.', flags: MessageFlags.Ephemeral });
-        } catch { /* [OK] db-not-ready notice ignored: interaction token already expired or double-acked */ }
-        return true;
-    }
+    // Acknowledge before any I/O: the modal submit has the same 3 s window.
     try {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     } catch { /* [OK] defer ignored: already deferred or acked; editReply below targets whichever state holds */ }
+    const db = await singleV2Db();
+    if (!db) {
+        try {
+            await interaction.editReply({ content: 'Firebase not ready — try again in a moment.' });
+        } catch { /* [OK] db-not-ready notice ignored: interaction token already expired or double-acked */ }
+        return true;
+    }
     const { performReassign } = await import('../commands/reassign-autopsy.js');
     const res = await performReassign({
         db,
