@@ -40,6 +40,12 @@ function subtitleFor(kind, values = {}) {
 export default function ReportView({
   kind, values, title, meta = {}, notice = '', onSwitchDataset, onBack, readOnly = false,
   author = '', reportKey = '',
+  // Shared-frame slots: the records view and the LEO view render the same page,
+  // and only the wrapper differs (back label, extra header controls, agency
+  // banner, status line). Keeping them as props is what stops the two views
+  // from drifting apart again.
+  backLabel = 'Back to records', eyebrow = 'REPORT DATASET:', showDatasetSwitcher = true,
+  header = null, headerActions = null, subtitle = null, statusLine = null,
 }) {
   const { showNotification } = useNotification();
   const [tab, setTab] = useState('overview');
@@ -65,27 +71,37 @@ export default function ReportView({
     <div className="wrap">
       {readOnly ? null : (
         <div className="switchrow">
-          <button type="button" className="btn ghost" onClick={onBack}>← Back to records</button>
-          <span className="cap" style={{ marginLeft: 6 }}>REPORT DATASET:</span>
-          <div className="tabs rep-switch">
-            {DATASETS.map((d) => (
-              <button
-                key={d.kind}
-                type="button"
-                className={kind === d.kind ? 'active' : ''}
-                onClick={() => onSwitchDataset?.(d.kind)}
-              >
-                {d.label}
-              </button>
-            ))}
-          </div>
+          <button type="button" className="btn ghost" onClick={onBack}>← {backLabel}</button>
+          {showDatasetSwitcher ? (
+            <>
+              <span className="cap" style={{ marginLeft: 6 }}>{eyebrow}</span>
+              <div className="tabs rep-switch">
+                {DATASETS.map((d) => (
+                  <button
+                    key={d.kind}
+                    type="button"
+                    className={kind === d.kind ? 'active' : ''}
+                    onClick={() => onSwitchDataset?.(d.kind)}
+                  >
+                    {d.label}
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : eyebrow ? (
+            <span className="cap" style={{ marginLeft: 6 }}>{eyebrow}</span>
+          ) : null}
+          {headerActions ? <span style={{ marginLeft: 'auto' }}>{headerActions}</span> : null}
         </div>
       )}
+
+      {header}
 
       {notice ? <div className="notice warn">{notice}</div> : null}
 
       <div className="report-title">{KIND_PREFIX[kind] || ''}{title}</div>
-      <div className="report-sub">{subtitleFor(kind, values)}</div>
+      <div className="report-sub">{subtitle || subtitleFor(kind, values)}</div>
+      {statusLine}
 
       <div className="tabs">
         <button type="button" className={tab === 'overview' ? 'active' : ''} onClick={() => setTab('overview')}>

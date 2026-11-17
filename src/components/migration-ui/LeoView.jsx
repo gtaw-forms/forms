@@ -7,9 +7,7 @@ import React, { useMemo, useState } from 'react';
 import { ref, get, set } from 'firebase/database';
 import { database } from '../../firebase';
 import { useNotification } from '../../contexts/NotificationContext';
-import ReportDetail, {
-  AutopsyCaseInformation, Card, PhotoGroups, reportHistory, reportPhotoCount, reportPhotoGroups,
-} from './ReportDetail';
+import ReportView from './ReportView';
 import {
   LEO_AGENCY_FILTERS, leoAgencyBadge, leoRowMeta,
 } from './leoModel';
@@ -20,7 +18,6 @@ import {
 import { leoCacheId } from '../../utils/leoReportCache';
 import { LEO_CACHE_LIMIT } from './leoModel';
 import ForwardToDrdbModal from './ForwardToDrdbModal';
-import { copyReportShareLink } from '../report-share/shareAction';
 import {
   FORWARD_FORM,
   FORWARD_QUEUE_NODE,
@@ -31,12 +28,14 @@ import {
   validateForwardName,
 } from '../../utils/forwardDrdb';
 
+// The LEO detail is ReportView plus an agency banner, a forwarded-report status
+// line and the DRDB control — the frame, tabs, photos, history, raw payload and
+// Share button all come from ReportView. It used to be a hand-copied page,
+// which is how Share came to exist in one view and not the other.
 function LeoReportDetail({ row, payload, fromCache, demo, viewerName, isAuthenticated, onBack }) {
-  const [tab, setTab] = useState('overview');
   const [forwardOpen, setForwardOpen] = useState(false);
   const [forwarding, setForwarding] = useState(false);
   const [forwardError, setForwardError] = useState('');
-  const [sharing, setSharing] = useState(false);
   const { showNotification } = useNotification();
   const report = useMemo(() => payload?.report || {}, [payload]);
   const values = useMemo(
@@ -53,34 +52,12 @@ function LeoReportDetail({ row, payload, fromCache, demo, viewerName, isAuthenti
     () => ({ savedAt: report.timestamp || row.timestamp, updatedAt: row.updatedAt }),
     [report.timestamp, row.timestamp, row.updatedAt],
   );
-  const photoGroups = useMemo(() => reportPhotoGroups(kind, values), [kind, values]);
-  const photoCount = useMemo(() => reportPhotoCount(kind, values), [kind, values]);
-  const history = useMemo(() => reportHistory(kind, values, meta), [kind, values, meta]);
-  const hasPhotos = photoGroups.some((g) => (g.urls || []).length);
   const canForward = isAuthenticated && !demo && kind === 'coroner' && row?.author && row?.key;
-
-  // Short share link (`#/r/<code>`) — same action and wording as the records
-  // view, so a forwarded report can be handed to a colleague. The code is
-  // minted server-side (ensureReportShareCode): the reverse index is
-  // author-scoped, and an LEO viewer did not write the report.
-  const shareLink = async () => {
-    if (sharing) return;
-    if (demo || !row?.author || !row?.key) {
-      showNotification('Sample reports cannot be shared.', 'error');
-      return;
-    }
-    setSharing(true);
-    try {
-      await copyReportShareLink({
-        author: row.author,
-        key: row.key,
-        formId: report.formId || row.formId || '',
-        showNotification,
-      });
-    } finally {
-      setSharing(false);
-    }
-  };
+  const additionalOfficers = useMemo(
+    () => (Array.isArray(values.additionalRecipients) ? values.additionalRecipients : [])
+      .filter((r) => r && String(r.officer || '').trim()),
+    [values.additionalRecipients],
+  );
 
   // Manual "Send to DRDB": queue one portal leg for the named officer. The
   // bot worker files it like an automatic leg (rebuilds from the live record
@@ -143,109 +120,71 @@ function LeoReportDetail({ row, payload, fromCache, demo, viewerName, isAuthenti
     }
   };
 
+  const banner = (
+    <div className="agency-banner">
+      <div>
+        <div className="cap">DESIGNATED AGENCY</div>
+        <div className="name">{agencyCode} — {agency}</div>
+      </div>
+      <div className="meta">
+        Forwarded {formatTimestampShortUTC(forwardedAt)}
+        <br />
+        {values.requestingOfficer ? `Requesting officer: ${values.requestingOfficer}` : 'No requesting officer recorded'}
+        {additionalOfficers.length ? (
+          <>
+            <br />
+            {`Additional officers: ${additionalOfficers.map((r) => String(r.officer).trim()).join(', ')}`}
+          </>
+        ) : null}
+      </div>
+    </div>
+  );
+
+  const subtitle = (
+    <>
+      <span className="pill">{agencyCode}</span>
+      {demo
+        ? <span className="pill amber">Sample</span>
+        : <span className={`pill ${fromCache ? 'amber' : 'teal'}`}>{fromCache ? 'Cached copy' : 'Live record'}</span>}
+      <span>Reported by {values.coronerEmployee || row.authorName || row.author || '—'} · {formatDateTimeUTC(values.dateTime || values.autopsyStartTime)}</span>
+    </>
+  );
+
+  const statusLine = (
+    <div className="cache-line">
+      {demo
+        ? <span>Sample data — local preview only. This is not a real forwarded report and nothing is logged.</span>
+        : <span>Viewed as {viewerName || 'signed-in user'} — this open was logged for audit.</span>}
+    </div>
+  );
+
   return (
-    <div className="wrap">
-      <div className="switchrow">
-        <button type="button" className="btn ghost" onClick={onBack}>← Back to LEO reports</button>
-        <span className="cap" style={{ marginLeft: 6 }}>FORWARDED REPORT</span>
-        {canForward ? (
+    <>
+      <ReportView
+        kind={kind}
+        values={values}
+        title={title}
+        meta={meta}
+        // Sample rows carry no real address, so they can never mint a code.
+        author={demo ? '' : (row?.author || '')}
+        reportKey={demo ? '' : (row?.key || '')}
+        onBack={onBack}
+        backLabel="Back to LEO reports"
+        eyebrow="FORWARDED REPORT"
+        showDatasetSwitcher={false}
+        header={banner}
+        subtitle={subtitle}
+        statusLine={statusLine}
+        headerActions={canForward ? (
           <button
             type="button"
             className="btn"
-            style={{ marginLeft: 'auto' }}
             onClick={() => { setForwardError(''); setForwardOpen(true); }}
           >
             ⇪ Send to DRDB
           </button>
         ) : null}
-      </div>
-
-      <div className="agency-banner">
-        <div>
-          <div className="cap">DESIGNATED AGENCY</div>
-          <div className="name">{agencyCode} — {agency}</div>
-        </div>
-        <div className="meta">
-          Forwarded {formatTimestampShortUTC(forwardedAt)}
-          <br />
-          {values.requestingOfficer ? `Requesting officer: ${values.requestingOfficer}` : 'No requesting officer recorded'}
-          {Array.isArray(values.additionalRecipients) && values.additionalRecipients.some((r) => r && String(r.officer || '').trim()) ? (
-            <>
-              <br />
-              {`Additional officers: ${values.additionalRecipients.filter((r) => r && String(r.officer || '').trim()).map((r) => String(r.officer).trim()).join(', ')}`}
-            </>
-          ) : null}
-        </div>
-      </div>
-
-      <div className="report-title">
-        {kind === 'coroner' ? 'Coroner Report — ' : kind === 'mass' ? 'Mass Fatality — ' : 'Autopsy — '}
-        {title}
-      </div>
-      <div className="report-sub">
-        <span className="pill">{agencyCode}</span>
-        {demo
-          ? <span className="pill amber">Sample</span>
-          : <span className={`pill ${fromCache ? 'amber' : 'teal'}`}>{fromCache ? 'Cached copy' : 'Live record'}</span>}
-        <span>Reported by {values.coronerEmployee || row.authorName || row.author || '—'} · {formatDateTimeUTC(values.dateTime || values.autopsyStartTime)}</span>
-      </div>
-
-      <div className="cache-line">
-        {demo
-          ? <span>Sample data — local preview only. This is not a real forwarded report and nothing is logged.</span>
-          : <span>Viewed as {viewerName || 'signed-in user'} — this open was logged for audit.</span>}
-      </div>
-
-      <div className="tabs">
-        <button type="button" className={tab === 'overview' ? 'active' : ''} onClick={() => setTab('overview')}>▤ Overview</button>
-        <button type="button" className={tab === 'photos' ? 'active' : ''} onClick={() => setTab('photos')}>◍ Photos<span className="n">{photoCount}</span></button>
-        <button type="button" className={tab === 'history' ? 'active' : ''} onClick={() => setTab('history')}>◷ History<span className="n">{history.length}</span></button>
-        <button
-          type="button"
-          onClick={shareLink}
-          disabled={sharing || demo}
-          title={demo ? 'Sample reports cannot be shared' : 'Copy a short share link for this report'}
-          style={{ marginLeft: 6, color: 'var(--teal)' }}
-        >
-          {sharing ? '…' : '⤴ Share'}
-        </button>
-      </div>
-
-      {tab === 'overview' && (
-        <>
-          {kind === 'autopsy'
-            ? <AutopsyCaseInformation values={values} caseUrl={values.caseUrl || ''} />
-            : null}
-          <ReportDetail kind={kind} values={values} />
-        </>
-      )}
-
-      {tab === 'photos' && (
-        <Card icon="◍" heading="All photos">
-          {hasPhotos
-            ? <PhotoGroups groups={photoGroups} />
-            : <div className="empty">No photos attached to this report.</div>}
-        </Card>
-      )}
-
-      {tab === 'history' && (
-        <Card icon="◷" heading="History">
-          {history.map((entry, i) => (
-            <div className="hist" key={`${entry.title}-${i}`}>
-              <div className="dot" />
-              <div>
-                <div className="t">{entry.title}</div>
-                <div className="d">{entry.detail}</div>
-              </div>
-            </div>
-          ))}
-        </Card>
-      )}
-
-      <details className="raw" style={{ marginTop: 18 }}>
-        <summary>Raw payload (what the API stores / returns)</summary>
-        <pre>{JSON.stringify({ kind, agency, forwardedAt, report }, null, 2)}</pre>
-      </details>
+      />
 
       <ForwardToDrdbModal
         open={forwardOpen}
@@ -255,7 +194,7 @@ function LeoReportDetail({ row, payload, fromCache, demo, viewerName, isAuthenti
         onSubmit={forwardToDrdb}
         onClose={() => { if (!forwarding) { setForwardError(''); setForwardOpen(false); } }}
       />
-    </div>
+    </>
   );
 }
 
