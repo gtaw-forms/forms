@@ -1,10 +1,14 @@
 /**
  * Shared reassignment core (`performReassign`, commands/reassign-autopsy.js).
  *
- * The V2 panels import this function; it was missing from the module (only the
- * slash command had the inline logic), so every panel Reassign press threw
- * before acknowledging — Discord then showed "application didn't respond in
- * time". These tests pin the contract the panels rely on.
+ * Contract the V2 panels rely on:
+ *  - the original assignment panel is EDITED in place after a reassign (full
+ *    context kept), falling back to a complete assignment card only when no
+ *    panel exists;
+ *  - a discord.js client is accepted as `client` (the panels pass
+ *    interaction.client) — the forum client is separate;
+ *  - errors come back as {ok:false} instead of throwing (deferred interactions
+ *    must always be able to answer).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -14,8 +18,10 @@ vi.mock('../discord-bot/services/autopsyRotation.js', () => ({
 vi.mock('../discord-bot/services/meDiscordNotify.js', () => ({
     notifyAssignment: vi.fn(async () => {}),
 }));
-// The shared forum client is the fallback when a caller passes a non-forum
-// client (the V2 panels pass interaction.client, which is discord.js).
+vi.mock('../discord-bot/services/singlePanelV2.js', () => ({
+    refreshSinglePanelAssignment: vi.fn(async () => ({ refreshed: true })),
+}));
+// The shared forum client is used when no forumClient override is supplied.
 vi.mock('../discord-bot/services/forumClient.js', () => {
     const calls = { edit: [], reply: [] };
     const client = {
@@ -33,6 +39,7 @@ vi.mock('../discord-bot/services/forumClient.js', () => {
 const { performReassign } = await import('../discord-bot/commands/reassign-autopsy.js');
 const { notifyAssignment } = await import('../discord-bot/services/meDiscordNotify.js');
 const { reassignME } = await import('../discord-bot/services/autopsyRotation.js');
+const { refreshSinglePanelAssignment } = await import('../discord-bot/services/singlePanelV2.js');
 const sharedForum = (await import('../discord-bot/services/forumClient.js')).__client;
 
 process.env.FORUM_BASE_URL = 'https://phmc.test';
@@ -50,7 +57,7 @@ function makeDb(entry) {
     return { db: { ref: (p) => node(p) }, writes };
 }
 
-function makeClient() {
+function makeForumClient() {
     const calls = { edit: [], reply: [] };
     return {
         calls,
@@ -65,39 +72,70 @@ function makeClient() {
 
 beforeEach(() => {
     vi.clearAllMocks();
+    refreshSinglePanelAssignment.mockResolvedValue({ refreshed: true });
 });
 
 describe('performReassign', () => {
-    it('retitles, replies, updates Firebase and pings the new ME', async () => {
+    it('retitles, replies, updates Firebase and edits the existing panel', async () => {
         const entry = {
             assignedTo: 'Old ME',
             caseTopicId: 555,
             caseTitle: 'Case 12 - John Doe ((JD)) [LSPD] - Old ME',
         };
         const { db, writes } = makeDb(entry);
-        const client = makeClient();
+        const forum = makeForumClient();
 
-        const res = await performReassign({ db, client, topicId: 'T1', newME: 'New ME' });
+        const res = await performReassign({ db, forumClient: forum, topicId: 'T1', newME: 'New ME' });
 
         expect(res.ok).toBe(true);
         expect(res.already).toBe(false);
         expect(res.currentAssigned).toBe('Old ME');
         expect(res.caseUrl).toBe('https://phmc.test/viewtopic.php?t=555');
-        expect(client.calls.edit[0][2]).toBe('Case 12 - John Doe ((JD)) [LSPD] - New ME');
-        expect(client.calls.reply[0][2]).toContain('Reassigned');
+        expect(forum.calls.edit[0][2]).toBe('Case 12 - John Doe ((JD)) [LSPD] - New ME');
+        expect(forum.calls.reply[0][2]).toContain('Reassigned');
         expect(writes).toContainEqual({ path: 'autopsy-requested/T1/assignedTo', v: 'New ME' });
         expect(writes).toContainEqual({ path: 'autopsy-requested/T1/caseTitle', v: 'Case 12 - John Doe ((JD)) [LSPD] - New ME' });
         expect(reassignME).toHaveBeenCalledWith(db, 'Old ME', 'New ME', 'T1');
-        expect(notifyAssignment).toHaveBeenCalled();
+        // Full-context panel is edited in place; no second (minimal) card.
+        expect(refreshSinglePanelAssignment).toHaveBeenCalledWith(db, null, { requestTopicId: 'T1', caseIdx: null });
+        expect(notifyAssignment).not.toHaveBeenCalled();
+    });
+
+    it('posts a complete assignment card only when no panel exists', async () => {
+        refreshSinglePanelAssignment.mockResolvedValue({ refreshed: false, reason: 'no-panel-ref' });
+        const entry = {
+            assignedTo: 'Old ME',
+            caseTopicId: 556,
+            caseTitle: 'Case 5 - Unknown ((Charles Brigante)) - Old ME',
+            caseNum: '560',
+            name: 'Unknown',
+            oocName: 'Charles Brigante',
+            parsed: { deathType: 'CK' },
+        };
+        const { db } = makeDb(entry);
+        const forum = makeForumClient();
+
+        const res = await performReassign({ db, forumClient: forum, topicId: 'T1', newME: 'New ME' });
+
+        expect(res.ok).toBe(true);
+        expect(notifyAssignment).toHaveBeenCalledTimes(1);
+        expect(notifyAssignment.mock.calls[0][4]).toMatchObject({
+            decedent: 'Unknown',
+            ooc: 'Charles Brigante',
+            caseNumber: '560',
+            deathType: 'CK',
+            requestTopicId: 'T1',
+        });
     });
 
     it('reports already-assigned without writing anything', async () => {
         const { db, writes } = makeDb({ assignedTo: 'New ME', caseTopicId: 1, caseTitle: 'Case 1 - X - New ME' });
-        const client = makeClient();
-        const res = await performReassign({ db, client, topicId: 'T1', newME: 'new me' });
+        const forum = makeForumClient();
+        const res = await performReassign({ db, forumClient: forum, topicId: 'T1', newME: 'new me' });
         expect(res).toMatchObject({ ok: true, already: true });
         expect(writes).toHaveLength(0);
-        expect(client.calls.edit).toHaveLength(0);
+        expect(forum.calls.edit).toHaveLength(0);
+        expect(notifyAssignment).not.toHaveBeenCalled();
     });
 
     it('updates the per-body record for a case index', async () => {
@@ -108,27 +146,29 @@ describe('performReassign', () => {
             },
         };
         const { db, writes } = makeDb(entry);
-        const client = makeClient();
-        const res = await performReassign({ db, client, topicId: 'T1', caseIdx: '0', newME: 'New ME' });
+        const forum = makeForumClient();
+        const res = await performReassign({ db, forumClient: forum, topicId: 'T1', caseIdx: '0', newME: 'New ME' });
         expect(res.ok).toBe(true);
         expect(writes).toContainEqual({ path: 'autopsy-requested/T1/cases/0/assignedTo', v: 'New ME' });
         expect(writes).toContainEqual({ path: 'autopsy-requested/T1/cases/0/caseTitle', v: 'Case 9 - Body One - New ME' });
         expect(writes.some((w) => w.path === 'autopsy-requested/T1/assignedTo')).toBe(false);
+        expect(refreshSinglePanelAssignment).toHaveBeenCalledWith(db, null, { requestTopicId: 'T1', caseIdx: '0' });
     });
 
-    it('dry run skips forum and Discord writes but keeps Firebase in sync', async () => {
+    it('dry run skips forum, panel and Discord writes but keeps Firebase in sync', async () => {
         const entry = { assignedTo: 'Old ME', caseTopicId: 5, caseTitle: 'Case 3 - Y - Old ME' };
         const { db, writes } = makeDb(entry);
-        const client = makeClient();
-        const res = await performReassign({ db, client, topicId: 'T1', newME: 'New ME', dryRun: true });
+        const forum = makeForumClient();
+        const res = await performReassign({ db, forumClient: forum, topicId: 'T1', newME: 'New ME', dryRun: true });
         expect(res).toMatchObject({ ok: true, dryRun: true });
-        expect(client.calls.edit).toHaveLength(0);
-        expect(client.calls.reply).toHaveLength(0);
+        expect(forum.calls.edit).toHaveLength(0);
+        expect(forum.calls.reply).toHaveLength(0);
+        expect(refreshSinglePanelAssignment).not.toHaveBeenCalled();
         expect(notifyAssignment).not.toHaveBeenCalled();
         expect(writes).toContainEqual({ path: 'autopsy-requested/T1/assignedTo', v: 'New ME' });
     });
 
-    it('ignores a non-forum client (interaction.client) and uses the shared forum client', async () => {
+    it('passes a discord.js client through to the panel refresh and uses the shared forum client', async () => {
         const entry = { assignedTo: 'Old ME', caseTopicId: 900, caseTitle: 'Case 4 - Z - Old ME' };
         const { db } = makeDb(entry);
         const discordClient = { user: { tag: 'Supervisor#0001' }, channels: {} };
@@ -138,12 +178,13 @@ describe('performReassign', () => {
 
         expect(res.ok).toBe(true);
         expect(sharedForum.calls.edit[0][2]).toBe('Case 4 - Z - New ME');
+        expect(refreshSinglePanelAssignment).toHaveBeenCalledWith(db, discordClient, { requestTopicId: 'T1', caseIdx: null });
     });
 
     it('returns an error instead of throwing when the topic cannot be resolved', async () => {
         const { db } = makeDb({ assignedTo: 'Old ME' });
-        const client = makeClient();
-        const res = await performReassign({ db, client, topicId: 'T1', newME: 'New ME' });
+        const forum = makeForumClient();
+        const res = await performReassign({ db, forumClient: forum, topicId: 'T1', newME: 'New ME' });
         expect(res.ok).toBe(false);
         expect(String(res.error)).toMatch(/case topic/i);
     });

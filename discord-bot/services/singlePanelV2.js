@@ -739,6 +739,104 @@ export async function refreshSinglePanelV2(db, client, requestTopicId, caseIdx, 
 }
 
 /**
+ * Rebuild and EDIT an existing single-assignment panel in place — used after a
+ * reassignment so the original "Autopsy Case Assigned" card keeps its full
+ * context (decedent, case number, deadline, morgue status, links) instead of a
+ * minimal "Autopsy Case Reassigned" message appearing beside it.
+ *
+ * Unlike refreshSinglePanelV2 this does not require a definitive morgue match;
+ * it re-resolves the morgue status itself and mirrors the live assignment.
+ * Best-effort — never throws.
+ *
+ * @returns {Promise<{refreshed:boolean, reason?:string}>}
+ */
+export async function refreshSinglePanelAssignment(db, client, { requestTopicId, caseIdx = null } = {}) {
+    try {
+        if (!requestTopicId) return { refreshed: false, reason: 'no-topic' };
+        const rdb = db || await singleV2Db();
+        if (!rdb) return { refreshed: false, reason: 'no-db' };
+        const idx = (caseIdx === null || caseIdx === undefined || caseIdx === '') ? null : caseIdx;
+        const entry = (await rdb.ref(`autopsy-requested/${requestTopicId}`).once('value')).val() || {};
+        if (entry.completedAt) return { refreshed: false, reason: 'request-complete' };
+        const rec = (idx !== null && entry.cases && typeof entry.cases === 'object') ? (entry.cases[idx] || {}) : null;
+        const r = rec || {};
+        if (r.completedAt) return { refreshed: false, reason: 'case-complete' };
+
+        const nodePath = idx === null
+            ? `autopsy-requested/${requestTopicId}/singlePanel`
+            : `autopsy-requested/${requestTopicId}/cases/${idx}/singlePanel`;
+        const pref = (await rdb.ref(nodePath).once('value')).val() || null;
+        if (!pref || !pref.panelId || !pref.channelId || !pref.messageId) {
+            return { refreshed: false, reason: 'no-panel-ref' };
+        }
+
+        const snapshot = {
+            me: r.assignedTo || entry.assignedTo || '',
+            caseNumber: r.caseNum || entry.caseNum || entry.caseNumber || '',
+            caseTitle: r.caseTitle || entry.caseTitle || entry.title || '',
+            decedent: r.name || entry.name || '',
+            ooc: r.oocName || entry.oocName || '',
+            caseUrl: entry.caseUrl || r.caseUrl || '',
+            deathType: r.deathType || (entry.parsed && entry.parsed.deathType) || entry.deathType || '',
+            deadline: '',
+            synopsis: (entry.parsed && entry.parsed.synopsis) || '',
+            title: 'Autopsy Case Assigned',
+            morgueStatus: 'NOT FOUND',
+            morgueCaseId: null,
+        };
+        try {
+            const morgue = await resolveMorgueStatus(rdb, { ooc: snapshot.ooc, decedent: snapshot.decedent });
+            if (morgue) {
+                snapshot.morgueStatus = morgue.status || snapshot.morgueStatus;
+                snapshot.morgueCaseId = morgue.caseId || null;
+            }
+        } catch { /* morgue status is informational on the panel */ }
+
+        snapshot.deadline = (await import('./assignmentWebhook.js')).deathTypeWindow(snapshot.deathType) || '';
+        snapshot.deadlineUnix = await resolveDeadlineUnix(rdb, snapshot.me, requestTopicId, snapshot.deathType);
+
+        let discordId = null;
+        if (snapshot.me) {
+            try {
+                const snap = await rdb.ref(`autopsy-requests/discord-members/${String(snapshot.me).toLowerCase()}`).once('value');
+                discordId = snap.val() || null;
+            } catch { /* bold-name fallback */ }
+        }
+
+        const rebuilt = buildSinglePanelV2Payload(pref.panelId, {
+            ...snapshot,
+            loadUrl: `${SINGLE_V2_FORMS_URL}#/load/${requestTopicId}/${idx === null ? 0 : idx}`,
+        }, { discordId });
+        if (rebuilt.metrics.textChars > V2_TEXT_BUDGET || rebuilt.metrics.componentCount > V2_COMPONENT_BUDGET || rebuilt.metrics.topLevel > 10) {
+            return { refreshed: false, reason: 'over-budget' };
+        }
+
+        const botClient = client || _discordClient;
+        if (!botClient) return { refreshed: false, reason: 'no-client' };
+        const channel = await botClient.channels.fetch(pref.channelId).catch(() => null);
+        if (!channel || typeof channel.send !== 'function') return { refreshed: false, reason: 'channel-not-sendable' };
+        const message = await channel.messages.fetch(pref.messageId).catch(() => null);
+        if (!message || typeof message.edit !== 'function') return { refreshed: false, reason: 'message-gone' };
+
+        await message.edit({ flags: rebuilt.flags, components: rebuilt.components });
+        pendingSingleV2Panels.set(pref.panelId, {
+            snapshot,
+            requestTopicId,
+            caseIdx: idx,
+            channelId: pref.channelId,
+            messageId: pref.messageId,
+            components: rebuilt.components,
+            createdAt: Date.now(),
+        });
+        console.log(`[SINGLE-V2] Refreshed panel ${pref.panelId} for #${requestTopicId}${idx !== null ? `/${idx}` : ''} — reassigned to ${snapshot.me || '?'}`);
+        return { refreshed: true };
+    } catch (err) {
+        console.warn(`[SINGLE-V2] refreshSinglePanelAssignment failed for #${requestTopicId}: ${err.message}`);
+        return { refreshed: false, reason: err.message };
+    }
+}
+
+/**
  * Restart healing for button presses on panels unknown to this process:
  * look the panelId up in the Firebase registry, rebuild the snapshot from
  * the live row, and re-seat the in-memory entry against the pressed message

@@ -132,15 +132,14 @@ export async function onCasePick(interaction) {
  *   error?:string, currentAssigned?:string, newME?:string,
  *   decedentName?:string, caseUrl?:string}>}
  *
- * `client` is an OPTIONAL forum client (used by tests). The V2 panels pass
- * `interaction.client` — a discord.js client with no ensureBrowser — so only a
- * forum-shaped client is accepted and anything else falls back to the shared
- * forum client. (Passing the Discord client through blindly produced
- * "forum.ensureBrowser is not a function".)
+ * `client` is the discord.js client (used to edit the original assignment panel
+ * or post a fallback card); `forumClient` is an optional forum-client override
+ * used by tests. Both default to the process singletons.
  */
 export async function performReassign({
     db,
     client = null,
+    forumClient = null,
     topicId,
     caseIdx = null,
     newME,
@@ -170,7 +169,7 @@ export async function performReassign({
     let caseTopicId = caseRec?.caseTopicId || entry.caseTopicId || null;
     let oldTitle = sourceTitle || null;
 
-    const forum = (client && typeof client.ensureBrowser === 'function') ? client : getForumClient();
+    const forum = forumClient || getForumClient();
     const baseUrl = process.env.FORUM_BASE_URL;
 
     // Fall back to a forum search only when the stored topic/title is missing.
@@ -229,12 +228,39 @@ export async function performReassign({
 
     if (!dryRun) {
         const caseUrl = `${baseUrl}/viewtopic.php?t=${caseTopicId}`;
-        await notifyAssignment(db, name, decedentName || oldTitle, caseUrl, {
-            label: 'Autopsy Case Reassigned',
-            embedTitle: '🔬 Autopsy Case Reassigned',
-        }).catch((err) => {
-            console.warn(`[CMD] reassign: notifyAssignment failed: ${err.message}`);
-        });
+        // Prefer editing the ORIGINAL assignment panel in place: it already
+        // carries the full context (decedent, case number, deadline, morgue
+        // status, links). Only post a fresh assignment card when no panel ref
+        // exists or the message is gone.
+        let refreshed = false;
+        try {
+            const { refreshSinglePanelAssignment } = await import('../services/singlePanelV2.js');
+            const refreshedRes = await refreshSinglePanelAssignment(db, client, {
+                requestTopicId: topicId,
+                caseIdx: hasCase ? caseIdx : null,
+            });
+            refreshed = !!(refreshedRes && refreshedRes.refreshed);
+            if (!refreshed) {
+                console.log(`[CMD] reassign: panel refresh skipped (${refreshedRes?.reason || 'unknown'}) — posting a full assignment card`);
+            }
+        } catch (err) {
+            console.warn(`[CMD] reassign: panel refresh failed: ${err.message}`);
+        }
+        if (!refreshed) {
+            await notifyAssignment(db, name, decedentName || oldTitle, caseUrl, {
+                decedent: caseRec?.name || entry.name || '',
+                ooc: caseRec?.oocName || entry.oocName || '',
+                caseNumber: caseRec?.caseNum || entry.caseNum || '',
+                deathType: caseRec?.deathType || (entry.parsed && entry.parsed.deathType) || entry.deathType || '',
+                requestTopicId: topicId,
+                caseIdx: hasCase ? caseIdx : null,
+                client: client || undefined,
+                label: 'Autopsy Case Reassigned',
+                embedTitle: '🔬 Autopsy Case Reassigned',
+            }).catch((err) => {
+                console.warn(`[CMD] reassign: notifyAssignment failed: ${err.message}`);
+            });
+        }
     }
 
     return {
@@ -275,7 +301,7 @@ export async function onMePick(interaction) {
     const db = firebase.db;
 
     try {
-        const res = await performReassign({ db, topicId, newME });
+        const res = await performReassign({ db, client: interaction.client, topicId, newME });
 
         if (res.already) {
             await interaction.editReply({ content: `Already assigned to **${newME}**.`, components: [] });
