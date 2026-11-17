@@ -419,6 +419,16 @@ describe('lspdPortalForms receipt detection', () => {
     }).received).toBe(false);
     expect(detectReceipt({}).received).toBe(false);
   });
+
+  it('recognises the live mass-fatality receipt (MFR reference, request-ID URL)', () => {
+    // Captured from the approved 2026-11-17 live test filing (MFR-26-0001).
+    const r = detectReceipt({
+      url: 'https://lspd.gta.world/portal/records/mass-fatality-report/01m7msj0pazdstt9v553nc0d44',
+      bodyHead: 'Home / Community Portal / MFR-26-0001 Multi Fatality Report Where your request has got to REFERENCE MFR-26-0001 STATUS Received FILED 17 Nov 2026 13:01 UTC HANDLED BY Los Santos Police Department',
+    });
+    expect(r.received).toBe(true);
+    expect(r.reference).toBe('MFR-26-0001');
+  });
 });
 
 const massDec = (over = {}) => ({
