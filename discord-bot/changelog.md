@@ -1,5 +1,11 @@
 # PHMC Discord Bot — Changelog
 
+## UNDEPLOYED — LSPD ME form: Decedent block carries IC + OOC (2026-11-17)
+
+### Changed
+- **The medical-examiner case submission's "Decedent" field now reads `IC ((OOC))`** — e.g. `Unknown ((Charles Brigante))` — because that form has no separate "Player OOC name" field (the coroner and mass-fatality forms do). An existing `((…))` suffix in the IC name is never doubled, and a blank IC name with an OOC falls back to `Unknown ((OOC))` instead of aborting.
+- Tests: +1 in `tests/lspd-portal-forms.test.js` (IC+OOC, IC only, already-suffixed). Mass-fatality/coroner payloads unchanged.
+
 ## UNDEPLOYED — LSPD DRDB Mass Fatality Report support (2026-11-17)
 
 ### Added

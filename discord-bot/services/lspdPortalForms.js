@@ -642,8 +642,16 @@ export function buildMedicalExaminerPayload(data = {}, ctx = {}) {
   if (!str(ctx.caseNum)) errors.push('Case number is empty — aborting');
   else fields.push(req('Case', 'text', ctx.caseNum));
 
-  if (!str(data.decedentName)) errors.push('Decedent is empty — aborting');
-  else fields.push(req('Decedent', 'text', data.decedentName));
+  // The ME form has no OOC field (unlike the coroner/mass forms): put the OOC
+  // name in the Decedent block so the LSPD record identifies the autopsy even
+  // when the IC name is "Unknown".
+  const decedentIC = str(data.decedentName);
+  const decedentOOC = str(data.decedentOOC);
+  const decedentValue = decedentIC
+    ? (decedentOOC && !decedentIC.includes('((') ? `${decedentIC} ((${decedentOOC}))` : decedentIC)
+    : (decedentOOC ? `Unknown ((${decedentOOC}))` : '');
+  if (!decedentValue) errors.push('Decedent is empty — aborting');
+  else fields.push(req('Decedent', 'text', decedentValue));
 
   if (!str(ctx.requestLink)) errors.push('Autopsy & Death Certificate Request link is empty — aborting');
   else fields.push(req('Autopsy & Death Certificate Request (PHMC link)', 'text', ctx.requestLink));

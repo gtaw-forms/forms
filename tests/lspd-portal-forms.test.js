@@ -262,6 +262,19 @@ describe('lspdPortalForms — medical-examiner payload', () => {
     expect(byLabel('Metal Objects Extracted')[0].value).toContain('striation marks');
   });
 
+  it('puts both IC and OOC in the Decedent block (the ME form has no OOC field)', () => {
+    const decedentOf = (r) => r.fields.find((f) => f.label === 'Decedent').value;
+    expect(decedentOf(buildMedicalExaminerPayload(autopsyData({ decedentName: 'Unknown', decedentOOC: 'Charles Brigante' }), meCtx())))
+      .toBe('Unknown ((Charles Brigante))');
+    expect(decedentOf(buildMedicalExaminerPayload(autopsyData(), meCtx())))
+      .toBe('Tom Beckett ((TomB_22))');
+    expect(decedentOf(buildMedicalExaminerPayload(autopsyData({ decedentOOC: '' }), meCtx())))
+      .toBe('Tom Beckett');
+    // Already carries an ((OOC)) suffix — never double it.
+    expect(decedentOf(buildMedicalExaminerPayload(autopsyData({ decedentName: 'X ((Y))', decedentOOC: 'Y' }), meCtx())))
+      .toBe('X ((Y))');
+  });
+
   it('keeps every recovered metal object, including repeated descriptions (#10492: 9 projectiles, 2 serials)', () => {
     const casings = [
       'Bullet found with striation marks - 9mm #290284483',
