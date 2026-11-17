@@ -12,8 +12,9 @@ const coroner = (department) => ({ formId: 'coroner-report', data: { department 
 describe('lspdReportRoute — portal routing predicate', () => {
   it('routes coroner + mass-fatality LSPD reports to the portal', () => {
     expect(isLspdPortalReport(coroner('lspd'))).toBe(true);
+    expect(isLspdPortalReport({ formId: 'mass-fatality', data: { department: 'lspd' } })).toBe(true);
     expect(isLspdPortalReport({ formId: 'mass-ftality-test', data: { department: 'lspd' } })).toBe(true);
-    expect(PORTAL_FORM_IDS).toEqual(['coroner-report', 'mass-ftality-test']);
+    expect(PORTAL_FORM_IDS).toEqual(['coroner-report', 'mass-fatality', 'mass-ftality-test']);
   });
 
   it('keeps every other department on the forum path', () => {

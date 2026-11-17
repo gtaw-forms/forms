@@ -19,6 +19,7 @@ import { getForumClient } from './forumClient.js';
 import { isMaintenanceMode } from './deployQueue.js';
 import { isLspdPortalReport, isLspdEmailReport } from './lspdReportRoute.js';
 import { normalizeRecipients } from './recipients.js';
+import { isMassFatalityFormId } from './lspdPortalForms.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -188,7 +189,7 @@ export async function handleCoronerEmail(report) {
 
     // Build subject line — use decedent name(s), not the coroner report's raw title
     let subject;
-    if (reportData.formId === 'mass-ftality-test' && Array.isArray(data.decedents)) {
+    if (isMassFatalityFormId(reportData.formId) && Array.isArray(data.decedents)) {
         // Mass fatality: list decedent names
         const names = data.decedents
             .map(d => d.decedentName || '')
@@ -262,18 +263,22 @@ export async function handleCoronerEmail(report) {
         const legDept = leg.department || department;
         const legData = { ...data, requestingOfficer: leg.officer, department: legDept };
 
-        // ── LSPD portal path: native coroner-report form filing ONLY ──
+        // ── LSPD portal path: native liaison form filing ONLY ──
+        // Mass-fatality reports take the mass-fatality DRDB form; everything
+        // else LSPD takes the single-decedent coroner-report form.
         const isPortalTarget = isLspdPortalReport({ formId: reportData.formId, data: legData })
             || isLspdEmailReport({ formId: reportData.formId, data: legData });
+
         if (isPortalTarget) {
             try {
                 const { enqueuePortalForm } = await import('./lspdPortalFormQueue.js');
+                const form = isMassFatalityFormId(reportData.formId) ? 'mass-fatality' : 'coroner-report';
                 const formKey = await enqueuePortalForm(db, {
-                    form: 'coroner-report', authorId, reportKey: key,
+                    form, authorId, reportKey: key,
                     recipient: leg.officer, data: legData, context: {}, idx: i,
                 });
                 if (formKey) {
-                    await progress.addStep(`Form Queued${tag}`, 'ok', `Coroner form queued (LSPD → ${leg.officer})`);
+                    await progress.addStep(`Form Queued${tag}`, 'ok', `${form === 'mass-fatality' ? 'Mass Fatality' : 'Coroner'} form queued (LSPD → ${leg.officer})`);
                     queuedKeys.push(formKey);
                 } else {
                     await progress.addStep(`Form Queued${tag}`, 'fail', 'Form payload unbuildable — see bot log (ABORT, no default)');

@@ -1,11 +1,13 @@
 /**
- * lspdPortalForms.js — Playwright driver + pure field maps for the two LSPD
+ * lspdPortalForms.js — Playwright driver + pure field maps for the three LSPD
  * Community Portal liaison forms:
  *
  *   medical-examiner : /portal/records/medical-examiner-case-submission
  *                      recipients: GET /portal/liaison/medical-examiner-case-submission/recipients?q=
  *   coroner-report   : /portal/records/coroner-report
  *                      recipients: GET /portal/liaison/coroner-report/recipients?q=
+ *   mass-fatality    : /portal/records/mass-fatality-report
+ *                      recipients: GET /portal/liaison/mass-fatality-report/recipients?q=
  *
  * Provenance: recon 2026-11 (25 inputs / 0 selects / 0 CSRF on the ME form;
  * 17 inputs / 3 selects / 2 URL-row spawners on the coroner form; both
@@ -35,6 +37,19 @@ export function lspdFormsDryRun() {
   return process.env.LSPD_FORMS_DRY_RUN !== 'false';
 }
 
+/**
+ * Mass Fatality reports use their own portal form
+ * (/portal/records/mass-fatality-report), built by
+ * buildMassFatalityPayload below. Callers must not feed a mass report into
+ * the single-decedent coroner-report builder — it aborts on the missing
+ * single-decedent fields. Note the legacy typo formId is real.
+ */
+export const MASS_FATALITY_FORM_IDS = ['mass-fatality', 'mass-ftality-test'];
+
+export function isMassFatalityFormId(formId) {
+  return MASS_FATALITY_FORM_IDS.includes(String(formId ?? '').trim());
+}
+
 export const PORTAL_FORMS = {
   'medical-examiner': {
     path: '/portal/records/medical-examiner-case-submission',
@@ -45,6 +60,11 @@ export const PORTAL_FORMS = {
     path: '/portal/records/coroner-report',
     recipientsPath: '/portal/liaison/coroner-report/recipients',
     label: 'Coroner Report',
+  },
+  'mass-fatality': {
+    path: '/portal/records/mass-fatality-report',
+    recipientsPath: '/portal/liaison/mass-fatality-report/recipients',
+    label: 'Mass Fatality Report',
   },
 };
 
@@ -94,6 +114,33 @@ export function mapDeathType(raw) {
  */
 export function mapEvidenceLocker(raw) {
   return raw === true ? 'Used' : 'Not used';
+}
+
+/**
+ * Mass-fatality evidence locker derivation. PHMC mass reports carry no
+ * boolean — only evidenceLockerID (a string like 'EV-20261115-850', empty
+ * when the locker was not used). A non-empty string means the locker was
+ * used; anything else means it was not. Stated explicitly because it is a
+ * derivation, not a recorded fact (plan/lspd-mass-fatality-portal-plan.md
+ * B3/contract row). Deliberately string-only (unlike the coroner's boolean
+ * mapEvidenceLocker): the ID column never holds a boolean.
+ */
+export function mapMassEvidenceLocker(raw) {
+  return typeof raw === 'string' && str(raw) ? 'Used' : 'Not used';
+}
+
+/**
+ * Unwrap a PHMC place-of-death value to plain text for the portal's Incident
+ * location. Historical reports store '[url=…]Name[/url]' (108/160); the
+ * display name is preferred by callers, this is the fallback when it is
+ * missing (47/160) — mandatory, the portal field is required.
+ */
+export function stripBbCode(raw) {
+  return String(raw ?? '')
+    .replace(/\[url=[^\]]*\]/gi, '')
+    .replace(/\[\/url\]/gi, '')
+    .replace(/\[[^\]]+\]/g, '')
+    .trim();
 }
 
 /**
@@ -152,6 +199,10 @@ export function extractRecipientOptions(payload) {
 export function splitDateTime(raw) {
   const s = String(raw ?? '').trim();
   if (!s) return { ok: false, reason: 'Empty datetime — aborting' };
+  // A bare 4-digit token is never a datetime: `new Date('2134')` parses it as
+  // the YEAR 2134 and silently yields 00:00, which mis-filed times of death.
+  // Refuse instead of guessing (callers that accept a bare time use extractTime).
+  if (/^\d{4}$/.test(s)) return { ok: false, reason: `"${s}" is a bare time, not a datetime — aborting` };
   let y; let m; let d; let hh; let mm;
   let iso = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?/);
   if (iso) {
@@ -177,30 +228,87 @@ export function splitDateTime(raw) {
   return { ok: true, date, time };
 }
 
-/** Time-of-death extractor: full datetime → HH:mm, bare HH:mm passes through. */
+/**
+ * Time-of-death extractor: full datetime → HH:mm, bare times pass through.
+ *
+ * Deliberately never falls through to `new Date(...)` for a bare 4-digit token:
+ * `new Date('2134')` is the YEAR 2134 and used to yield a silent '00:00'
+ * (15 of 21 historical bare values would have filed as midnight). '2134' is
+ * read as HHmm → 21:34.
+ */
 export function extractTime(raw) {
   const s = String(raw ?? '').trim();
   if (!s) return { ok: false, reason: 'Empty time of death — aborting' };
-  const bare = s.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
-  if (bare) {
-    const hh = String(bare[1]).padStart(2, '0');
-    return { ok: true, time: `${hh}:${bare[2]}` };
+
+  const to24 = (hRaw, mRaw, ap) => {
+    let h = Number(hRaw);
+    const m = Number(mRaw);
+    if (!Number.isFinite(h) || !Number.isFinite(m) || m < 0 || m > 59) return null;
+    if (ap) {
+      const p = String(ap).toLowerCase();
+      if (h < 1 || h > 12) return null;
+      if (p === 'pm' && h !== 12) h += 12;
+      if (p === 'am' && h === 12) h = 0;
+    } else if (h < 0 || h > 23) {
+      return null;
+    }
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  };
+
+  // Bare HH:mm / HH.mm, optional am/pm — '16:12', '8.20pm', '7:41 PM'.
+  let m = s.match(/^(\d{1,2})[:.](\d{2})(?::\d{2})?\s*(am|pm)?$/i);
+  if (m) {
+    const t = to24(m[1], m[2], m[3]);
+    if (t) return { ok: true, time: t };
+    return { ok: false, reason: `Time of death out of range "${s.slice(0, 40)}" — aborting` };
   }
-  const split = splitDateTime(s);
-  if (!split.ok || !split.time) return { ok: false, reason: `Unparseable time of death "${s.slice(0, 60)}" — aborting` };
-  return { ok: true, time: split.time };
+
+  // Bare hour with meridiem — '8pm'.
+  m = s.match(/^(\d{1,2})\s*(am|pm)$/i);
+  if (m) {
+    const t = to24(m[1], '00', m[2]);
+    if (t) return { ok: true, time: t };
+    return { ok: false, reason: `Time of death out of range "${s.slice(0, 40)}" — aborting` };
+  }
+
+  // Bare 4 digits = HHmm ('2134' → 21:34). Never a year.
+  m = s.match(/^(\d{2})(\d{2})$/);
+  if (m) {
+    const t = to24(m[1], m[2], null);
+    if (t) return { ok: true, time: t };
+    return { ok: false, reason: `Time of death out of range "${s.slice(0, 40)}" — aborting` };
+  }
+
+  // A time embedded in a longer datetime — ISO, '23/JAN/2026 - 19:41',
+  // '15 Nov 2026 20:27'. Take the LAST time-like token; placeholders like
+  // 'DD/MM/YYYY - HH:mm' simply match nothing and abort.
+  const embedded = [...s.matchAll(/(\d{1,2})[:.](\d{2})(?::\d{2})?\s*(am|pm)?/gi)];
+  if (embedded.length) {
+    const last = embedded[embedded.length - 1];
+    const t = to24(last[1], last[2], last[3]);
+    if (t) return { ok: true, time: t };
+  }
+
+  return { ok: false, reason: `Unparseable time of death "${s.slice(0, 60)}" — aborting` };
 }
 
 /**
  * Plain-text list normaliser: array or newline-separated string → trimmed,
- * non-empty, de-duplicated lines (causes, findings, casings — NOT URLs).
+ * non-empty lines (causes, findings, casings — NOT URLs).
+ *
+ * Dedupe is the default because form fields often repeat the same line; pass
+ * `{ dedupe: false }` for lists where each entry is a distinct physical item —
+ * e.g. Metal Objects Extracted, where 9 recovered projectiles can legitimately
+ * carry only two distinct descriptions/serials and must stay 9.
  */
-export function normalizeTextList(value) {
+export function normalizeTextList(value, { dedupe = true } = {}) {
   const items = Array.isArray(value) ? value : String(value ?? '').split('\n');
   const out = [];
   for (const it of items) {
     const line = String(typeof it === 'string' ? it : it?.text ?? it?.value ?? '').trim();
-    if (line && !out.includes(line)) out.push(line);
+    if (!line) continue;
+    if (dedupe && out.includes(line)) continue;
+    out.push(line);
   }
   return out;
 }
@@ -319,6 +427,202 @@ const FIXED_HISTOLOGY = 'Representative sections from various organs are preserv
 const FIXED_TOXICOLOGY = 'Femoral blood, EDTA blood, urine, stomach contents and vitreous have been submitted to the lab. A comprehensive screen was requested.';
 
 /**
+ * Fillable columns of the mass-fatality form's "Additional decedents" row
+ * component (div[data-record-rows="additional_decedents"] →
+ * div[data-record-row-entry] → div[data-record-row-cell="<key>"]). 14 of the
+ * 15 schema columns take input; `ooc_heading` is a read-only heading with no
+ * control and is never filled (verified in the 2026-11-17 probe).
+ */
+export const MASS_FATALITY_ROW_COLUMNS = [
+  { key: 'decedent', kind: 'text', label: 'Decedent' },
+  { key: 'time_of_death', kind: 'text', label: 'Pronounced time of death' },
+  { key: 'manner_of_death', kind: 'select', label: 'Manner of death' },
+  { key: 'probable_cause', kind: 'text', label: 'Probable cause' },
+  { key: 'evidence_locker', kind: 'select', label: 'Evidence locker' },
+  { key: 'injuries_notes', kind: 'textarea', label: 'Injuries / notes' },
+  { key: 'scene_photo_1', kind: 'text', label: 'Scene photo 1' },
+  { key: 'scene_photo_2', kind: 'text', label: 'Scene photo 2' },
+  { key: 'scene_photo_3', kind: 'text', label: 'Scene photo 3' },
+  { key: 'type_of_death', kind: 'select', label: 'Type of death' },
+  { key: 'player_ooc_name', kind: 'text', label: 'Player OOC name' },
+  { key: 'ooc_image_1', kind: 'text', label: 'OOC image 1' },
+  { key: 'ooc_image_2', kind: 'text', label: 'OOC image 2' },
+  { key: 'ooc_image_3', kind: 'text', label: 'OOC image 3' },
+];
+
+/**
+ * Validate + normalise one mass-fatality decedent row. Shared by the two
+ * fixed sections (Decedent 1/2) and the dynamic rows (Decedent 3..N) so both
+ * layouts abort on exactly the same gaps. `n` is the 1-based decedent index
+ * used in every error so the queue log names the row.
+ * @returns {{ok:boolean, values?:object, errors:string[], warnings:string[]}}
+ */
+function massDecedentValues(d = {}, n = 0) {
+  const errors = [];
+  const warnings = [];
+  const tag = `Decedent ${n}`;
+
+  const tod = extractTime(d.pronouncedTimeOfDeath);
+  if (!tod.ok) errors.push(`${tag}: time of death — ${tod.reason}`);
+  const manner = mapManner(d.mannerOfDeath);
+  if (!manner.ok) errors.push(`${tag}: manner of death — ${manner.reason}`);
+  if (!str(d.probableCauseOfDeath)) errors.push(`${tag}: probable cause is empty — aborting`);
+  if (!str(d.synopsis)) errors.push(`${tag}: injuries / notes (decedent synopsis) is empty — aborting`);
+  const dtype = mapDeathType(d.typeOfDeath);
+  if (!dtype.ok) errors.push(`${tag}: type of death — ${dtype.reason}`);
+
+  const photos = normalizeUrlList(d.scenePhotos);
+  const oocImages = normalizeUrlList(d.additionalImages);
+  // Dynamic rows cap each URL list at 3 fixed columns (fixed sections grow
+  // unbounded via "Add another"). Never mix evidence into prose — warn only.
+  if (n > 2) {
+    if (photos.length > 3) warnings.push(`${tag}: ${photos.length} scene photos, row cap is 3 — filing first 3`);
+    if (oocImages.length > 3) warnings.push(`${tag}: ${oocImages.length} OOC images, row cap is 3 — filing first 3`);
+  }
+
+  if (errors.length) return { ok: false, errors, warnings };
+  return {
+    ok: true,
+    errors,
+    warnings,
+    values: {
+      name: str(d.decedentName),
+      time: tod.time,
+      manner: manner.value,
+      cause: str(d.probableCauseOfDeath),
+      locker: mapMassEvidenceLocker(d.evidenceLockerID),
+      injuries: str(d.synopsis),
+      photos,
+      dtype: dtype.value,
+      ooc: str(d.decedentOOC),
+      oocImages,
+    },
+  };
+}
+
+/**
+ * Mass-fatality form payload from a mass-fatality report's data.
+ *
+ * Layout contract (plan/lspd-mass-fatality-portal-plan.md): the portal fixes
+ * exactly two required decedent sections; decedents 3..N go in the dynamic
+ * "Additional decedents" rows (15 columns, 3+3 URL cap). Anything the portal
+ * requires but the report lacks aborts with the decedent index — never
+ * invented, never defaulted. Decedent name and Player OOC name stay optional
+ * (the form's oocDetailsRequired is false; blank name = unknown).
+ *
+ * Field labels are unique per section ("Decedent 1 — …") because the portal
+ * labels repeat ("Decedent", "Pronounced time of death" appear twice) — the
+ * label fallback alone cannot disambiguate, so FIELD_ANCHORS carries one
+ * anchor per unique label.
+ *
+ * @returns {{ok:boolean, fields?:object[], warnings?:string[], errors?:string[]}}
+ */
+export function buildMassFatalityPayload(data = {}) {
+  const errors = [];
+  const warnings = [];
+  const fields = [];
+  const decs = Array.isArray(data.decedents) ? data.decedents : [];
+
+  if (!str(data.requestingOfficer)) errors.push('Requesting officer is empty — refusing to file officer-less');
+  else fields.push(req('Requesting officer', 'text', data.requestingOfficer));
+
+  const incidentLocation = str(data.placeOfDeath_display) || stripBbCode(data.placeOfDeath);
+  if (!incidentLocation) errors.push('Incident location is empty (no placeOfDeath_display; placeOfDeath unwraps to nothing) — aborting');
+  else fields.push(req('Incident location', 'text', incidentLocation));
+
+  const dispatched = splitDateTime(data.dateTime);
+  if (!dispatched.ok || !dispatched.time) errors.push(`Dispatched: ${dispatched.reason || 'needs date + time'}`);
+  else {
+    fields.push(req('Dispatched', 'date', dispatched.date));
+    fields.push(req('Dispatched', 'time', dispatched.time));
+  }
+
+  if (!str(data.coronerEmployee)) errors.push('Reporting officer (coronerEmployee) is empty — aborting');
+  else fields.push(req('Reporting officer', 'text', data.coronerEmployee));
+
+  const rankBadge = [str(data.coronerRank), str(data.coronerBadge) ? `(SN: ${str(data.coronerBadge)})` : '']
+    .filter(Boolean).join(' ');
+  if (!rankBadge) errors.push('Rank / badge is empty — aborting');
+  else fields.push(req('Rank / badge', 'text', rankBadge));
+
+  if (!str(data.synopsis)) errors.push('Scene overview (synopsis) is empty — aborting');
+  else fields.push(req('Scene overview', 'textarea', data.synopsis));
+
+  // B1: the portal always renders Decedent 1 AND Decedent 2 with required
+  // fields. A single-decedent report cannot fill Decedent 2 — refusing to
+  // duplicate a person to satisfy the layout.
+  if (decs.length < 2) {
+    errors.push(`Report has ${decs.length} decedent(s); the LSPD form fixes two required decedent sections — refusing to duplicate (Decedent 2 has no source)`);
+  }
+
+  const fixed = [];
+  for (let n = 1; n <= 2; n++) {
+    const parsed = massDecedentValues(decs[n - 1] || {}, n);
+    errors.push(...parsed.errors);
+    warnings.push(...parsed.warnings);
+    if (parsed.ok) fixed.push({ n, v: parsed.values });
+  }
+
+  for (const { n, v } of fixed) {
+    const p = `Decedent ${n} —`;
+    fields.push(opt(`${p} Decedent`, 'text', v.name));
+    fields.push(req(`${p} Pronounced time of death`, 'text', v.time));
+    fields.push(req(`${p} Manner of death`, 'select', v.manner));
+    fields.push(req(`${p} Probable cause`, 'text', v.cause));
+    fields.push(opt(`${p} Evidence locker`, 'select', v.locker));
+    fields.push(req(`${p} Injuries / notes`, 'textarea', v.injuries));
+    if (v.photos.length) {
+      fields.push({
+        kind: 'rows', section: `Decedent ${n}`, addButton: 'Add another',
+        rowLabel: `Decedent ${n} scene photos`, values: v.photos,
+      });
+    }
+    fields.push(req(`${p} Type of death`, 'select', v.dtype));
+    fields.push(opt(`${p} Player OOC name`, 'text', v.ooc));
+    if (v.oocImages.length) {
+      fields.push({
+        kind: 'rows', section: `Decedent ${n}`, addButton: 'Add another',
+        rowLabel: `Decedent ${n} OOC images`, values: v.oocImages,
+      });
+    }
+  }
+
+  if (decs.length > 2) {
+    const items = [];
+    for (let n = 3; n <= decs.length; n++) {
+      const parsed = massDecedentValues(decs[n - 1] || {}, n);
+      errors.push(...parsed.errors);
+      warnings.push(...parsed.warnings);
+      if (!parsed.ok) continue;
+      const v = parsed.values;
+      const item = {
+        decedent: v.name,
+        time_of_death: v.time,
+        manner_of_death: v.manner,
+        probable_cause: v.cause,
+        evidence_locker: v.locker,
+        injuries_notes: v.injuries,
+        type_of_death: v.dtype,
+        player_ooc_name: v.ooc,
+      };
+      v.photos.slice(0, 3).forEach((u, i) => { item[`scene_photo_${i + 1}`] = u; });
+      v.oocImages.slice(0, 3).forEach((u, i) => { item[`ooc_image_${i + 1}`] = u; });
+      items.push(item);
+    }
+    if (items.length) {
+      fields.push({
+        kind: 'keyedRows', section: 'Additional decedents',
+        rowsKey: 'additional_decedents', addText: 'Add another decedent',
+        columns: MASS_FATALITY_ROW_COLUMNS, items,
+      });
+    }
+  }
+
+  if (errors.length) return { ok: false, errors, warnings };
+  return { ok: true, fields, warnings };
+}
+
+/**
  * Standing approver for ME liaison filings (Nov 2026 policy): every Medical
  * Examiner case submission is approved by the Chief Medical Examiner.
  */
@@ -392,7 +696,16 @@ export function buildMedicalExaminerPayload(data = {}, ctx = {}) {
   }
 
   if (!str(data.externalExamination)) errors.push('Physical Description (externalExamination) is empty — aborting');
-  else fields.push(req('Physical Description', 'textarea', data.externalExamination));
+  else {
+    // LSPD raised the portal's Physical Description cap (it was 400). No limit is
+    // declared now: the driver still honours a maxlength attribute if the portal
+    // exposes one, and accepts a shorter read-back as a portal truncation. Pin a
+    // number here (or via LSPD_ME_PHYS_DESC_LIMIT) only if LSPD publishes one.
+    const physDesc = req('Physical Description', 'textarea', data.externalExamination);
+    const configuredLimit = Number(process.env.LSPD_ME_PHYS_DESC_LIMIT);
+    if (Number.isFinite(configuredLimit) && configuredLimit > 0) physDesc.limit = configuredLimit;
+    fields.push(physDesc);
+  }
 
   fields.push(opt('Clothing', 'textarea', str(data.clothing) || FIXED_CLOTHING));
   fields.push(opt('Initial Incision', 'textarea', str(data.initialIncision) || FIXED_INCISION));
@@ -409,7 +722,9 @@ export function buildMedicalExaminerPayload(data = {}, ctx = {}) {
   if (!str(data.RadiologyResult)) errors.push('Radiology is empty — aborting');
   else fields.push(req('Radiology', 'textarea', data.RadiologyResult));
 
-  const metals = normalizeTextList(data.casings);
+  // Metal objects are distinct physical items: keep repeated descriptions
+  // (a 9-projectile recovery can carry only 2 distinct serials).
+  const metals = normalizeTextList(data.casings, { dedupe: false });
   fields.push(opt('Metal Objects Extracted', 'textarea', metals.length ? metals.join('\n') : 'None recovered.'));
 
   if (!str(data.synopsis)) errors.push('Opinion is empty — aborting');
@@ -495,16 +810,52 @@ export const FIELD_ANCHORS = {
     'Type of death': 'type_of_death',
     'Player OOC name': 'player_ooc_name',
   },
+  // Mass-fatality labels are unique per section ("Decedent 1 — …") because
+  // the portal labels repeat ("Decedent", "Pronounced time of death" appear
+  // under both fixed sections) — the label fallback alone cannot
+  // disambiguate, so every field resolves through its anchor here.
+  'mass-fatality': {
+    'Incident location': 'incident_location',
+    'Dispatched': 'dispatched',
+    'Reporting officer': 'reporting_officer',
+    'Rank / badge': 'rank_badge',
+    'Requesting officer': 'requesting_officer',
+    'Scene overview': 'scene_overview',
+    'Decedent 1 — Decedent': 'd1_name',
+    'Decedent 1 — Pronounced time of death': 'd1_time_of_death',
+    'Decedent 1 — Manner of death': 'd1_manner_of_death',
+    'Decedent 1 — Probable cause': 'd1_probable_cause',
+    'Decedent 1 — Evidence locker': 'd1_evidence_locker',
+    'Decedent 1 — Injuries / notes': 'd1_injuries_notes',
+    'Decedent 1 — Type of death': 'd1_type_of_death',
+    'Decedent 1 — Player OOC name': 'd1_player_ooc_name',
+    'Decedent 2 — Decedent': 'd2_name',
+    'Decedent 2 — Pronounced time of death': 'd2_time_of_death',
+    'Decedent 2 — Manner of death': 'd2_manner_of_death',
+    'Decedent 2 — Probable cause': 'd2_probable_cause',
+    'Decedent 2 — Evidence locker': 'd2_evidence_locker',
+    'Decedent 2 — Injuries / notes': 'd2_injuries_notes',
+    'Decedent 2 — Type of death': 'd2_type_of_death',
+    'Decedent 2 — Player OOC name': 'd2_player_ooc_name',
+  },
 };
 
 /** Row-list anchors: div[data-record-field="…"] per URL group; the ME
- *  findings list has no field anchor — it lives in div[data-record-rows]. */
+ *  findings list has no field anchor — it lives in div[data-record-rows],
+ *  as do the mass-fatality "Additional decedents" rows (filled by the
+ *  keyedRows driver, not by this table). */
 export const ROW_ANCHORS = {
   'coroner-report': {
     'Scene photos': 'scene_photos',
     'Morgue screenshots': 'morgue_screenshots',
   },
   'medical-examiner': {},
+  'mass-fatality': {
+    'Decedent 1 scene photos': 'd1_scene_photos',
+    'Decedent 1 OOC images': 'd1_ooc_images',
+    'Decedent 2 scene photos': 'd2_scene_photos',
+    'Decedent 2 OOC images': 'd2_ooc_images',
+  },
 };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -627,16 +978,49 @@ async function resolveControl(page, form, label, kind) {
 }
 
 /**
- * Fill one control via the label-anchored strategy, then read back.
+ * Textareas store LF only — browsers normalise CRLF/CR to LF when a value is
+ * assigned, so a report written on Windows (CRLF) reads back shorter than it
+ * was written and used to fail the read-back guard. Normalise before filling
+ * so the comparison uses the text the portal will actually hold.
+ */
+export function normalizePortalText(value) {
+  return String(value ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+}
+
+/**
+ * Honest truncation to a portal field's own limit.
+ *
+ * The DRDB forms cap textareas/list fields at fixed lengths (Physical
+ * Description is 400). Writing more is silently truncated by the portal, which
+ * used to trip the read-back guard and abort the whole filing — a permanent
+ * retry loop. Truncating to the portal's own limit is the faithful submission
+ * (it is exactly what the field would store), and the caller warns so the
+ * shortening is visible in the logs.
+ *
+ * @param {string} value
+ * @param {number} maxLen — 0/unknown means unlimited
+ * @returns {{value:string, truncated:boolean, limit:number}}
+ */
+export function applyPortalFieldLimit(value, maxLen) {
+  const s = String(value ?? '');
+  const n = Number(maxLen);
+  if (!Number.isFinite(n) || n <= 0 || s.length <= n) {
+    return { value: s, truncated: false, limit: Number.isFinite(n) && n > 0 ? n : 0 };
+  }
+  return { value: s.slice(0, n), truncated: true, limit: n };
+}
+
+/**
+ * Fill one already-resolved control + read back. Shared by the
+ * label-anchored fillField and the keyedRows row-cell filler (whose controls
+ * are located per row-entry, not by label).
  * Date/time kinds use real keystrokes (the portal's text inputs wear
  * DD/MM/YYYY and HH:mm masks); everything else uses the native value
  * setter + input/change events (plain React-controlled inputs).
  * @returns {Promise<{ok:boolean, reason?:string, readback?:string}>}
  */
-async function fillField(page, form, field) {
+async function fillControl(page, el, field) {
   const value = String(field.value ?? '');
-  const el = await resolveControl(page, form, field.label, field.kind);
-  if (!el) return { ok: false, reason: `Control not found for label "${field.label}" (kind ${field.kind})` };
 
   const tag = await el.evaluate((n) => n.tagName.toLowerCase()).catch(() => '');
   if (field.kind === 'select' || tag === 'select') {
@@ -671,6 +1055,32 @@ async function fillField(page, form, field) {
     const m = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
     if (m) fillValue = `${m[3]}-${m[2]}-${m[1]}`;
   }
+  // Textareas hold LF only (the browser normalises CRLF/CR on assignment).
+  if (tag === 'textarea' || field.kind === 'textarea') fillValue = normalizePortalText(fillValue);
+  // Respect the control's own length cap before typing: the portal truncates
+  // silently, and a read-back mismatch here aborted the whole filing.
+  // Prefer a declared field limit; otherwise read the DOM, but ignore the
+  // HTMLTextAreaElement default (524288) — it does not mean "unlimited by the
+  // portal", the page slices in JS long before that.
+  const domLimits = await el.evaluate((n) => {
+    if (!n) return { attr: 0, prop: 0 };
+    const attr = n.getAttribute('maxlength');
+    return {
+      attr: attr != null ? Number(attr) : 0,
+      prop: typeof n.maxLength === 'number' ? n.maxLength : 0,
+    };
+  }).catch(() => ({ attr: 0, prop: 0 }));
+  const declared = Number(field.limit) > 0 ? Number(field.limit) : 0;
+  const domLimit = domLimits.attr > 0
+    ? domLimits.attr
+    : (domLimits.prop > 0 && domLimits.prop < 10000 ? domLimits.prop : 0);
+  const maxLen = [declared, domLimit].filter((n) => n > 0).sort((a, b) => a - b)[0] || 0;
+  const limited = applyPortalFieldLimit(fillValue, maxLen);
+  if (limited.truncated) {
+    console.warn(`[${TAG}] "${field.label}" truncated to the portal limit (${limited.limit} chars, was ${fillValue.length})`);
+  }
+  fillValue = limited.value;
+  const expectedValue = limited.value;
   if ((field.kind === 'date' || field.kind === 'time') && tag === 'input' && inputType !== 'date' && inputType !== 'time') {
     await el.click({ timeout: 15000 }).catch(() => {});
     await el.fill('').catch(() => {});
@@ -696,9 +1106,62 @@ async function fillField(page, form, field) {
   const readback = await el.evaluate((n) => n.value ?? '').catch(() => '');
   const same = field.kind === 'date' && inputType === 'date'
     ? readback === fillValue
-    : readback.trim() === value.trim();
-  if (!same) return { ok: false, reason: `Field "${field.label}" did not stick (wrote ${value.length} chars, read ${String(readback).length})` };
+    : readback.trim() === expectedValue.trim();
+  if (!same) {
+    // Tolerant fallback for portal inputs that slice in JS instead of exposing
+    // a maxlength attribute: an exact prefix means the control truncated the
+    // value to its own cap — that IS the submission the portal accepts, so pass
+    // with a loud warning instead of aborting the filing forever.
+    const textKind = tag === 'input' || tag === 'textarea';
+    const isTruncation = textKind && field.kind !== 'date' && field.kind !== 'time'
+      && readback.length > 0 && readback.length < expectedValue.length
+      && expectedValue.startsWith(readback);
+    if (isTruncation) {
+      console.warn(`[${TAG}] "${field.label}" truncated by the portal (wrote ${expectedValue.length} chars, read ${readback.length}) — accepted`);
+    } else {
+      // Diagnostics for a genuine mismatch: where do they diverge, and does the
+      // control expose a maxlength the driver did not see?
+      let at = 0;
+      while (at < expectedValue.length && at < readback.length && expectedValue[at] === readback[at]) at++;
+      console.warn(`[${TAG}] "${field.label}" mismatch at char ${at}: wrote ${JSON.stringify(expectedValue.slice(at, at + 24))} read ${JSON.stringify(String(readback).slice(at, at + 24))} (attr maxlength=${domLimits.attr}, prop=${domLimits.prop})`);
+      return { ok: false, reason: `Field "${field.label}" did not stick (wrote ${expectedValue.length} chars, read ${String(readback).length})` };
+    }
+  }
   return { ok: true, readback: String(readback).slice(0, 120) };
+}
+
+/**
+ * Fill one control via the label-anchored strategy, then read back.
+ * Resolves the control, then delegates to fillControl.
+ * @returns {Promise<{ok:boolean, reason?:string, readback?:string}>}
+ */
+async function fillField(page, form, field) {
+  const el = await resolveControl(page, form, field.label, field.kind);
+  if (!el) {
+    // Name the failure precisely: a field that exists but renders read-only is
+    // a portal change (not a driver bug), and the alert should say so.
+    let extra = '';
+    const anchorKey = FIELD_ANCHORS[form]?.[field.label];
+    if (anchorKey) {
+      const state = await page.evaluate((key) => {
+        const wrap = document.querySelector(`[data-record-field="${key}"]`);
+        if (!wrap) return 'missing';
+        if (wrap.querySelector('input, textarea, select')) return 'control';
+        if (wrap.querySelector('[data-record-paragraph]')) return 'readonly';
+        return 'empty';
+      }, anchorKey).catch(() => 'unknown');
+      if (state === 'readonly') {
+        extra = ` — the portal renders this field read-only (no input); the LSPD form has changed (anchor ${anchorKey})`;
+      } else if (state === 'missing') {
+        extra = ` — the portal no longer exposes this field (anchor ${anchorKey} missing)`;
+      } else if (state === 'empty') {
+        extra = ` — the portal field ${anchorKey} rendered with no control`;
+      }
+    }
+    return { ok: false, reason: `Control not found for label "${field.label}" (kind ${field.kind})${extra}` };
+  }
+
+  return fillControl(page, el, field);
 }
 
 /**
@@ -802,6 +1265,123 @@ async function fillRows(page, form, rowsField) {
       reason: `Row list mismatch for "${rowsField.rowLabel}" (want ${want.length}, got ${got.length}) — refusing a contaminated submit`,
       results,
     };
+  }
+  return { ok: true, results };
+}
+
+/**
+ * Grow + fill the mass-fatality "Additional decedents" 15-column row
+ * component (div[data-record-rows="<rowsKey>"] →
+ * div[data-record-row-entry] → div[data-record-row-cell="<key>"] →
+ * input/textarea/select; new rows via button[data-record-rows-add]).
+ *
+ * Descriptor: { kind:'keyedRows', section, rowsKey, addText, columns, items }
+ * where columns is MASS_FATALITY_ROW_COLUMNS and items is one object per
+ * row keyed by column key. Empty cells stay blank (required cells are never
+ * empty — the builder aborts first); a non-empty cell that does not read
+ * back aborts, and a final whole-table readback guards against shifted or
+ * extra rows.
+ */
+async function fillKeyedRows(page, form, field) {
+  const rowsKey = String(field.rowsKey || '');
+  const columns = Array.isArray(field.columns) ? field.columns : [];
+  const items = Array.isArray(field.items) ? field.items : [];
+  const results = [];
+  if (!rowsKey) return { ok: false, reason: 'keyedRows field has no rowsKey — aborting', results };
+  if (!columns.length) return { ok: false, reason: `keyedRows "${rowsKey}" has no columns — aborting`, results };
+  if (!items.length) return { ok: true, results };
+
+  const scopeSel = `div[data-record-rows="${rowsKey}"]`;
+  const scopeOk = await page.evaluate((sel) => !!document.querySelector(sel), scopeSel).catch(() => false);
+  if (!scopeOk) {
+    return { ok: false, reason: `Row group "${rowsKey}" not found — the LSPD form may have changed`, results };
+  }
+
+  const rowCount = () => page.evaluate(
+    (sel) => document.querySelector(sel)?.querySelectorAll('[data-record-row-entry]').length ?? 0,
+    scopeSel,
+  ).catch(() => 0);
+
+  for (let i = 0; i < items.length; i++) {
+    if ((await rowCount()) <= i) {
+      const spawned = await page.evaluate(([sel, btnText]) => {
+        const scope = document.querySelector(sel);
+        if (!scope) return false;
+        const add = scope.querySelector('button[data-record-rows-add]');
+        if (add && add.getBoundingClientRect().width > 0) { add.click(); return true; }
+        const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+        const hit = Array.from(scope.querySelectorAll('button, a'))
+          .filter((b) => norm(b.innerText || '') === norm(btnText)
+            && b.getBoundingClientRect().width > 0 && b.getBoundingClientRect().height > 0)[0];
+        if (hit) { hit.click(); return true; }
+        return false;
+      }, [scopeSel, field.addText || '']).catch(() => false);
+      if (!spawned) {
+        return { ok: false, reason: `Row ${i + 1}: no entry and no "${field.addText || 'add'}" button`, results };
+      }
+      await sleep(1200);
+      if ((await rowCount()) <= i) {
+        return { ok: false, reason: `Row ${i + 1}: spawner clicked but no new row appeared`, results };
+      }
+    }
+
+    const entryHandle = await page.evaluateHandle(([sel, idx]) => {
+      const scope = document.querySelector(sel);
+      const entries = scope ? Array.from(scope.querySelectorAll('[data-record-row-entry]')) : [];
+      return entries[idx] || null;
+    }, [scopeSel, i]).catch(() => null);
+    const entry = entryHandle ? await entryHandle.asElement() : null;
+    if (!entry) {
+      return { ok: false, reason: `Row ${i + 1} vanished before fill`, results };
+    }
+
+    for (const col of columns) {
+      const val = items[i]?.[col.key] ?? '';
+      if (!str(val)) continue; // blank cells stay blank (builder aborted any missing required cell)
+      const ctl = await entry.$(`[data-record-row-cell="${col.key}"] input, [data-record-row-cell="${col.key}"] textarea, [data-record-row-cell="${col.key}"] select`).catch(() => null);
+      if (!ctl) {
+        return { ok: false, reason: `Row ${i + 1} cell "${col.key}": no control — the LSPD form may have changed`, results };
+      }
+      const r = await fillControl(page, ctl, { label: `Row ${i + 1} ${col.label}`, kind: col.kind, value: val });
+      if (!r.ok) return { ok: false, reason: r.reason, results };
+      results.push({ index: i, cell: col.key, readback: r.readback });
+    }
+  }
+
+  // Whole-table readback: every non-empty expectation must hold exactly, and
+  // the row count must match (an extra or shifted row fails closed).
+  const got = await page.evaluate(([sel, keys]) => {
+    const scope = document.querySelector(sel);
+    if (!scope) return null;
+    return Array.from(scope.querySelectorAll('[data-record-row-entry]')).map((entry) => {
+      const row = {};
+      for (const k of keys) {
+        const c = entry.querySelector(`[data-record-row-cell="${k}"] input, [data-record-row-cell="${k}"] textarea, [data-record-row-cell="${k}"] select`);
+        if (!c) { row[k] = null; continue; }
+        row[k] = c.tagName === 'SELECT' ? (c.options[c.selectedIndex]?.text || '') : (c.value ?? '');
+      }
+      return row;
+    });
+  }, [scopeSel, columns.map((c) => c.key)]).catch(() => null);
+  if (!got || got.length !== items.length) {
+    return {
+      ok: false,
+      reason: `Row table mismatch for "${rowsKey}" (want ${items.length} rows, got ${got?.length ?? '?'}) — refusing a contaminated submit`,
+      results,
+    };
+  }
+  for (let i = 0; i < items.length; i++) {
+    for (const col of columns) {
+      const want = String(items[i]?.[col.key] ?? '').trim();
+      if (!want) continue;
+      if (String(got[i]?.[col.key] ?? '').trim() !== want) {
+        return {
+          ok: false,
+          reason: `Row ${i + 1} cell "${col.key}" did not stick (want "${want.slice(0, 60)}") — refusing a contaminated submit`,
+          results,
+        };
+      }
+    }
   }
   return { ok: true, results };
 }
@@ -1005,6 +1585,15 @@ export async function runPortalForm({ form, recipient, fields, submit = false, s
         }
         continue;
       }
+      if (f.kind === 'keyedRows') {
+        const r = await fillKeyedRows(page, form, f);
+        fieldResults.push({ label: `${f.section} / ${f.rowsKey}`, ok: r.ok, reason: r.reason || `${(r.results || []).length} cell(s)` });
+        if (!r.ok && f.required !== false) {
+          const dump = await collectDomState(page);
+          return { ok: false, reason: r.reason, fieldResults, dump, suggestions };
+        }
+        continue;
+      }
       if (!str(f.value) && f.required) {
         return { ok: false, reason: `Required field "${f.label}" has no value — aborting` };
       }
@@ -1077,6 +1666,25 @@ export async function deliverCoronerReportForm({ recipient, data, submit = false
     return { ok: false, reason: built.errors[0], errors: built.errors, aborted: true };
   }
   return runPortalForm({ form: 'coroner-report', recipient, fields: built.fields, submit, screenshotPath });
+}
+
+/**
+ * Mass-fatality form end to end (build → verify/submit).
+ * submit=false (default) verifies only; submit=true requires
+ * LSPD_FORMS_DRY_RUN=false + the operator kill-switch lifted.
+ * Builder warnings (row URL-cap overflows) ride along on the result so the
+ * queue can log what the portal could not take.
+ */
+export async function deliverMassFatalityForm({ recipient, data, submit = false, screenshotPath = null }) {
+  const built = buildMassFatalityPayload(data || {});
+  if (!built.ok) {
+    console.error(`[${TAG}] Mass-fatality form ABORT for "${str(recipient)}": ${built.errors.join(' | ').slice(0, 300)}`);
+    return { ok: false, reason: built.errors[0], errors: built.errors, aborted: true };
+  }
+  for (const w of (built.warnings || [])) console.warn(`[${TAG}] Mass-fatality warn for "${str(recipient)}": ${w}`);
+  const result = await runPortalForm({ form: 'mass-fatality', recipient, fields: built.fields, submit, screenshotPath });
+  if (result.ok && (built.warnings || []).length) result.warnings = built.warnings;
+  return result;
 }
 
 /**

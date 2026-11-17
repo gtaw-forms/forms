@@ -1,7 +1,7 @@
 /**
  * lspdPortalFormQueue.js — Dedicated queue for LSPD portal liaison FORM
- * submissions (coroner-report + medical-examiner), mirroring the
- * coroner-email-queue.js entity lifecycle exactly:
+ * submissions (coroner-report + medical-examiner + mass-fatality), mirroring
+ * the coroner-email-queue.js entity lifecycle exactly:
  *
  * Entity: lspd-portal-form-queue/<form>|<authorId>|<reportKey>
  *   { form, authorId, reportKey, recipient, context,
@@ -47,7 +47,7 @@ export function formKey(form, authorId, reportKey, idx = 0) {
 export async function enqueuePortalForm(db, {
   form, authorId, reportKey, recipient, data = {}, context = {}, idx = 0,
 }) {
-  if (form !== 'coroner-report' && form !== 'medical-examiner') {
+  if (form !== 'coroner-report' && form !== 'medical-examiner' && form !== 'mass-fatality') {
     console.warn(`[FORMS-QUEUE] Refusing to enqueue — unknown form "${form}"`);
     return null;
   }
@@ -55,10 +55,12 @@ export async function enqueuePortalForm(db, {
     console.warn('[FORMS-QUEUE] Refusing to enqueue — missing author/report/recipient');
     return null;
   }
-  const { buildCoronerFormPayload, buildMedicalExaminerPayload } = await import('./lspdPortalForms.js');
+  const { buildCoronerFormPayload, buildMedicalExaminerPayload, buildMassFatalityPayload } = await import('./lspdPortalForms.js');
   const built = form === 'coroner-report'
     ? buildCoronerFormPayload(data)
-    : buildMedicalExaminerPayload(data, context);
+    : form === 'mass-fatality'
+      ? buildMassFatalityPayload(data)
+      : buildMedicalExaminerPayload(data, context);
   if (!built.ok) {
     console.error(`[FORMS-QUEUE] Refusing to enqueue ${form} ${authorId}|${reportKey} — ${(built.errors || []).join(' | ').slice(0, 300)}`);
     return null;
@@ -182,12 +184,17 @@ async function processOneForm(key, _entity) {
       const legData = { ...report.data, requestingOfficer: fresh.recipient || report.data.requestingOfficer };
       const deliver = fresh.form === 'coroner-report'
         ? forms.deliverCoronerReportForm({ recipient: fresh.recipient, data: legData, submit: true })
-        : forms.deliverMedicalExaminerForm({
-          recipient: fresh.recipient, data: report.data,
-          context: { ...(fresh.context || {}), meName: (fresh.context || {}).meName || report.data?.coronerEmployee || '', approvedBy: (fresh.context || {}).approvedBy || forms.ME_APPROVED_BY },
-          submit: true,
-        });
+        : fresh.form === 'mass-fatality'
+          ? forms.deliverMassFatalityForm({ recipient: fresh.recipient, data: legData, submit: true })
+          : forms.deliverMedicalExaminerForm({
+            recipient: fresh.recipient, data: report.data,
+            context: { ...(fresh.context || {}), meName: (fresh.context || {}).meName || report.data?.coronerEmployee || '', approvedBy: (fresh.context || {}).approvedBy || forms.ME_APPROVED_BY },
+            submit: true,
+          });
       result = await deliver;
+      if (result.ok && Array.isArray(result.warnings)) {
+        for (const w of result.warnings) console.warn(`[FORMS-QUEUE] ${key} warning: ${w}`);
+      }
     }
   } catch (err) {
     result = { ok: false, reason: err.message };

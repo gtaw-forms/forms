@@ -1,5 +1,14 @@
 # PHMC Discord Bot — Changelog
 
+## UNDEPLOYED — LSPD DRDB Mass Fatality Report support (2026-11-17)
+
+### Added
+- **Mass-fatality reports now file the native DRDB Mass Fatality form** (`/portal/records/mass-fatality-report`) instead of skipping the portal leg. `buildMassFatalityPayload` maps incident fields (BBCode-stripped `placeOfDeath` fallback when `placeOfDeath_display` is missing), the two fixed required decedent sections, and decedents 3..N into the 15-column "Additional decedents" rows via a new `keyedRows` driver kind (`div[data-record-rows]` → `div[data-record-row-entry]` → `div[data-record-row-cell="<key>"]`, grown with `button[data-record-rows-add]`). Evidence locker is derived (`evidenceLockerID` non-empty → `Used`, else `Not used`).
+- Fail-closed contract: aborts (never invents) on <2 decedents ("refusing to duplicate"), unparseable time of death, unmapped manner/type, or empty probable cause / injuries — every error names the 1-based decedent index. Dynamic rows cap scene/OOC images at 3 each (fixed sections grow unbounded); overflow is a logged warning, never prose-mixed.
+- Wiring: `PORTAL_FORMS['mass-fatality']` + `FIELD_ANCHORS`/`ROW_ANCHORS` entries (labels unique per section — portal labels repeat), `enqueuePortalForm` accepts `mass-fatality`, the form queue delivers it via `deliverMassFatalityForm`, and `deployCoronerEmail` routes mass reports there (replacing the temporary skip). `isLspdPortalReport` also covers the canonical `mass-fatality` formId.
+- Receipt detection for this form is still unverified (never live-submitted) — dry runs only until the first approved live filing captures the receipt shape.
+- Tests: payload mapping, keyedRows shaping, locker derivation, <2-decedent abort, real-sample time parsing (`15/11/2026 20:05` → `20:05`, `23/JAN/2026 - 19:41` → `19:41`). Dry-run verified row add/fill/read-back against the live form (own context, nothing submitted).
+
 ## UNDEPLOYED — LSPD PM intake deleted (2026-11-15)
 
 ### Removed

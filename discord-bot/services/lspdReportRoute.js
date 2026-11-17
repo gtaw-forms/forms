@@ -11,12 +11,12 @@
  * at import time): unit-tested in tests/lspd-report-route.test.js and safe
  * for the static bot-import checker.
  *
- * Routing rule: formId is coroner-report or mass-ftality-test AND the
- * department normalises to lspd. Every other department keeps the legacy
- * phpBB forum-PM path untouched.
+ * Routing rule: formId is coroner-report, mass-fatality or mass-ftality-test
+ * AND the department normalises to lspd. Every other department keeps the
+ * legacy phpBB forum-PM path untouched.
  */
 
-export const PORTAL_FORM_IDS = ['coroner-report', 'mass-ftality-test'];
+export const PORTAL_FORM_IDS = ['coroner-report', 'mass-fatality', 'mass-ftality-test'];
 
 /** Canonical public site; hosting moves override via PHMC_SITE_URL env. */
 export const PORTAL_BASE_URL = 'https://gtaw-forms.github.io/forms/';
