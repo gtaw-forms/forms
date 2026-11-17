@@ -238,6 +238,7 @@ export async function performReassign({
             const refreshedRes = await refreshSinglePanelAssignment(db, client, {
                 requestTopicId: topicId,
                 caseIdx: hasCase ? caseIdx : null,
+                reassignNotice: true,
             });
             refreshed = !!(refreshedRes && refreshedRes.refreshed);
             if (!refreshed) {

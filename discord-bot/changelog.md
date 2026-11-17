@@ -17,6 +17,7 @@
 - `getMeNames` is exported; `openSingleReassignModal` loads it defensively and replies with a clear message if the rotation can't be read.
 - Ack-first hardening: `/reassign-autopsy`'s case menu now `deferUpdate()`s before its DB read (the menu previously acked only after building itself), and the single panel's modal submit defers before any I/O.
 - **Reassignment now EDITS the original assignment panel instead of posting a minimal new card.** The panel already carries decedent, case number, deadline, morgue status and links; `refreshSinglePanelAssignment` rebuilds it from the live row (new ME, fresh morgue resolution) and edits the message in place. Only when no panel ref exists (or the message is gone) does it post a full assignment card via `notifyAssignment` — with decedent/OOC/case number/death type filled in, not the old "Decedent — Unknown" placeholder.
+- **The new ME is notified with a reply on the panel** — `<@ME> You have been re-assigned an autopsy, the information is here.` Editing a message cannot ping, so the edit is followed by exactly one reply with an explicit user mention (no ping is possible when no Discord mapping exists; the reply then names the ME in bold).
 - Tests: new `tests/reassign-autopsy.test.js` (5) — single case, already-assigned, per-body `caseIdx`, dry run, unresolved-topic error. Suite 48 files / 415 green; imports clean.
 - **Not yet deployed** — the working tree also carries the concurrent mass-fatality session's in-progress portal changes, and a whole-tree bot deploy would ship those too.
 

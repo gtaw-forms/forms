@@ -97,7 +97,7 @@ describe('performReassign', () => {
         expect(writes).toContainEqual({ path: 'autopsy-requested/T1/caseTitle', v: 'Case 12 - John Doe ((JD)) [LSPD] - New ME' });
         expect(reassignME).toHaveBeenCalledWith(db, 'Old ME', 'New ME', 'T1');
         // Full-context panel is edited in place; no second (minimal) card.
-        expect(refreshSinglePanelAssignment).toHaveBeenCalledWith(db, null, { requestTopicId: 'T1', caseIdx: null });
+        expect(refreshSinglePanelAssignment).toHaveBeenCalledWith(db, null, { requestTopicId: 'T1', caseIdx: null, reassignNotice: true });
         expect(notifyAssignment).not.toHaveBeenCalled();
     });
 
@@ -152,7 +152,7 @@ describe('performReassign', () => {
         expect(writes).toContainEqual({ path: 'autopsy-requested/T1/cases/0/assignedTo', v: 'New ME' });
         expect(writes).toContainEqual({ path: 'autopsy-requested/T1/cases/0/caseTitle', v: 'Case 9 - Body One - New ME' });
         expect(writes.some((w) => w.path === 'autopsy-requested/T1/assignedTo')).toBe(false);
-        expect(refreshSinglePanelAssignment).toHaveBeenCalledWith(db, null, { requestTopicId: 'T1', caseIdx: '0' });
+        expect(refreshSinglePanelAssignment).toHaveBeenCalledWith(db, null, { requestTopicId: 'T1', caseIdx: '0', reassignNotice: true });
     });
 
     it('dry run skips forum, panel and Discord writes but keeps Firebase in sync', async () => {
@@ -178,7 +178,7 @@ describe('performReassign', () => {
 
         expect(res.ok).toBe(true);
         expect(sharedForum.calls.edit[0][2]).toBe('Case 4 - Z - New ME');
-        expect(refreshSinglePanelAssignment).toHaveBeenCalledWith(db, discordClient, { requestTopicId: 'T1', caseIdx: null });
+        expect(refreshSinglePanelAssignment).toHaveBeenCalledWith(db, discordClient, { requestTopicId: 'T1', caseIdx: null, reassignNotice: true });
     });
 
     it('returns an error instead of throwing when the topic cannot be resolved', async () => {

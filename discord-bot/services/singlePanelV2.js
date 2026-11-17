@@ -750,7 +750,7 @@ export async function refreshSinglePanelV2(db, client, requestTopicId, caseIdx, 
  *
  * @returns {Promise<{refreshed:boolean, reason?:string}>}
  */
-export async function refreshSinglePanelAssignment(db, client, { requestTopicId, caseIdx = null } = {}) {
+export async function refreshSinglePanelAssignment(db, client, { requestTopicId, caseIdx = null, reassignNotice = false } = {}) {
     try {
         if (!requestTopicId) return { refreshed: false, reason: 'no-topic' };
         const rdb = db || await singleV2Db();
@@ -829,7 +829,24 @@ export async function refreshSinglePanelAssignment(db, client, { requestTopicId,
             createdAt: Date.now(),
         });
         console.log(`[SINGLE-V2] Refreshed panel ${pref.panelId} for #${requestTopicId}${idx !== null ? `/${idx}` : ''} — reassigned to ${snapshot.me || '?'}`);
-        return { refreshed: true };
+
+        // Editing a message cannot ping, so the newly-assigned ME gets an
+        // explicit reply on the panel. One ping, attached to the full card.
+        let replied = false;
+        if (reassignNotice) {
+            const mention = discordId ? `<@${discordId}>` : `**${snapshot.me || 'Medical Examiner'}**`;
+            try {
+                await message.reply({
+                    content: `${mention} You have been re-assigned an autopsy, the information is here.`,
+                    allowedMentions: discordId ? { users: [String(discordId)] } : { parse: [] },
+                });
+                replied = true;
+                console.log(`[SINGLE-V2] Posted reassignment reply for ${snapshot.me || '?'} on #${requestTopicId}`);
+            } catch (err) {
+                console.warn(`[SINGLE-V2] Reassignment reply failed for ${pref.panelId}: ${err.message}`);
+            }
+        }
+        return { refreshed: true, replied };
     } catch (err) {
         console.warn(`[SINGLE-V2] refreshSinglePanelAssignment failed for #${requestTopicId}: ${err.message}`);
         return { refreshed: false, reason: err.message };
