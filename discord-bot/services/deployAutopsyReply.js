@@ -110,6 +110,13 @@ export function matchCollectionCase(allReq, ooc, name) {
         const s = String(v || '').trim();
         return !!s && !isNonIdentityPlaceholder(s);
     };
+    // A body's OOC slot can carry the death-type marker instead of a name —
+    // the request templates often write "Jane Doe ((PK))", which the parser
+    // stores as oocName:"PK", name:"Jane Doe". "PK"/"CK" is not an identity:
+    // it must never match a report's OOC value, and it must not stop the body
+    // name being matched against the report's OOC either (live: Genevieve
+    // Kennedy's mass body never completed because oocName was "PK").
+    const isTypeMarker = (v) => /^(pk|ck)$/i.test(String(v || '').trim());
     const nameUsable = !!nameL && usable(name);
     const pickBest = (cur, cand) => {
         if (!cur) return cand;
@@ -129,10 +136,11 @@ export function matchCollectionCase(allReq, ooc, name) {
                 if (!c || !/^\d+$/.test(ci)) continue;
                 const bodyOoc = String(c.oocName || '').trim().toLowerCase();
                 const bodyName = String(c.name || '').trim().toLowerCase();
-                const hitOoc = !!bodyOoc && bodyOoc === oocL;
-                // Body has no usable OOC → its IC name IS the identity the report
-                // put in the OOC slot.
-                const hitNameAsOoc = !usable(c.oocName) && usable(c.name) && bodyName === oocL;
+                const hitOoc = !!bodyOoc && !isTypeMarker(bodyOoc) && bodyOoc === oocL;
+                // Body has no usable OOC (blank or a PK/CK marker) → its IC name
+                // IS the identity the report put in the OOC slot.
+                const hitNameAsOoc = (!usable(c.oocName) || isTypeMarker(c.oocName))
+                    && usable(c.name) && !isTypeMarker(c.name) && bodyName === oocL;
                 if (!hitOoc && !hitNameAsOoc) continue;
                 best = pickBest(best, { rkey, ci: parseInt(ci, 10), caseRec: c, entry });
             }

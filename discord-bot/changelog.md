@@ -1,5 +1,12 @@
 # PHMC Discord Bot — Changelog
 
+## UNDEPLOYED — Mass collection: PK/CK marker in the OOC slot no longer blocks completion (2026-11-20)
+
+### Fixed
+- **Mass Autopsy Assignment panels kept bodies OUTSTANDING after the ME filed the report.** Request templates write `Jane Doe ((PK))`, which the mass parser stores as `oocName: "PK"`, `name: "Jane Doe"`. `matchCollectionCase` treated `"PK"` as a real OOC identity, so a report filed as `Jane Doe ((Genevieve Kennedy))` could not match its body (report OOC held the name, body OOC held the death type). The deploy fell through to a forum search, found two threads (an old Case #212 and the live collection), and waited for a staff thread pick that never came — the report was never posted, `cases/<idx>/completedAt` was never set, and the panel (correctly, from stale data) stayed outstanding.
+- `matchCollectionCase` now treats `PK`/`CK` in the body OOC slot as "no OOC" (never an identity, and never a match target), so the body name is compared against the report's OOC. Live case #10493 body 2 (Genevieve Kennedy) filed to shared thread 10494 and the panel auto-refreshed to 1/3 completed after the fix.
+- Tests: +1 in `tests/matchCollectionCase.test.js` (typed bodies match by name; a literal "PK" OOC never matches).
+
 ## UNDEPLOYED — LSPD ME form: Decedent block carries IC + OOC (2026-11-17)
 
 ### Changed

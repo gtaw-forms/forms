@@ -58,6 +58,21 @@ describe('matchCollectionCase — report OOC vs body identity', () => {
         expect(matchCollectionCase(unknownName, '', 'Cara Vale')?.ci).toBe(0);
     });
 
+    it('treats a PK/CK marker in the body OOC slot as "no OOC", not an identity', () => {
+        // Request template style "Jane Doe ((PK))" parses to oocName:"PK".
+        // Live: mass #10493 body Genevieve Kennedy never completed because the
+        // report's OOC held the name while the body's OOC held "PK".
+        const typed = collection({
+            0: { name: 'Cristian Ricci', oocName: 'PK' },
+            1: { name: 'Genevieve Kennedy', oocName: 'PK' },
+            2: { name: 'Maya Zapata', oocName: 'CK' },
+        });
+        expect(matchCollectionCase(typed, 'Genevieve Kennedy', 'Jane Doe')?.ci).toBe(1);
+        expect(matchCollectionCase(typed, 'Maya Zapata', 'Unknown')?.ci).toBe(2);
+        // A report whose OOC is literally "PK" must not match a PK body by type.
+        expect(matchCollectionCase(typed, 'PK', 'Jane Doe')).toBeNull();
+    });
+
     it('prefers an uncompleted body over a completed twin', () => {
         const dup = collection({
             0: { name: 'Zed', oocName: '', completedAt: '2026-10-01T00:00:00Z' },
