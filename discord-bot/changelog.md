@@ -1,5 +1,16 @@
 # PHMC Discord Bot — Changelog
 
+## UNDEPLOYED — LSPD ME form: one DRDB record per body in a shared mass collection (2026-11-23)
+
+### Fixed
+- **A mass collection filed ZERO LSPD medical-examiner forms.** The `lspdMedicalExaminerForm` step deferred with "Deferred — not all bodies complete" on every body, and by the time the last body finished its branch ran with only THAT body's report in hand — a single filing for the whole collection, or none when the last body's report was unusable. Live: Case 561 (#10493, LS Freeway SADCR, Ricci/Kennedy/Zapata) is 3/3 complete and `lspd-portal-form-queue` holds no filing at all.
+- **Shared collections now file one ME form per body**, tracked as `lspdMedicalExaminerForm@<caseIdx>` (same `@idx` convention as the per-topic `lssdCombinedReply@<idx>` steps). The deferral branch is gone: each body files as it completes, and each body's retry is its own step.
+- **The filed identity comes from the request body when the report has none.** `resolveBodyFilingData` uses the body's `name`/`oocName` for a report saved as `Unknown ((PK))` (a PK/CK marker is never filed as an OOC), and drops an OOC that only repeats the IC name (`Jane Doe ((Genevieve Kennedy))` no longer files as "Genevieve Kennedy ((Genevieve Kennedy))").
+- **Per-body report identity is persisted** (`cases/<idx>/reportAuthorId` + `reportKey`). Previously it only landed on the collection once every body was done, so a per-body ME-form retry had no report to build a payload from.
+- **Retries can read an opted-out report.** `fetchSavedReportFromVps` falls back to the VPS saved-report store (`GET /api/reports/:author/:key`) when the RTDB `scheduledReports` copy is absent (retention is opt-in) — otherwise the ME-form retry had nothing to file.
+- Batched agency reply labels no longer print `(( PK ))` as an OOC name.
+- Tests: `tests/meFormPerBody.test.js` (step keying, placeholder identity resolution).
+
 ## UNDEPLOYED — Mass collections: "((PK))" is a death type, not an OOC; identity-less reports get attributed (2026-11-23)
 
 ### Fixed

@@ -73,3 +73,37 @@ export async function mirrorScheduledReportToVps(db, authorId, key, { type = '' 
         return { ok: false, error: err?.message || String(err) };
     }
 }
+
+/**
+ * Read a saved report back from the VPS store.
+ *
+ * Report retention is opt-in: an author who opted OUT has no RTDB
+ * `scheduledReports` copy at all, so a completion-step retry that only reads
+ * RTDB has nothing to file (live: Ricci #10493 — the ME form had no report to
+ * build a payload from). The VPS store is the durable copy either way.
+ *
+ * @returns {Promise<object|null>} the report record ({ data, … }) or null
+ */
+export async function fetchSavedReportFromVps(authorId, key, env = process.env) {
+    if (!authorId || !key) return null;
+    const { apiUrl, apiKey } = resolveVpsConfig(env);
+    if (!apiKey) return null;
+    try {
+        const response = await fetch(`${apiUrl}/api/reports/${encodeURIComponent(authorId)}/${encodeURIComponent(key)}`, {
+            headers: { 'x-api-key': apiKey },
+            signal: AbortSignal.timeout(10_000),
+        });
+        if (!response.ok) {
+            if (response.status !== 404) {
+                console.warn(`[REPORT-MIRROR] ${authorId}/${key} read failed: HTTP ${response.status}`);
+            }
+            return null;
+        }
+        const body = await response.json().catch(() => null);
+        const report = body?.report;
+        return report && typeof report === 'object' ? report : null;
+    } catch (err) {
+        console.warn(`[REPORT-MIRROR] ${authorId}/${key} read failed: ${err?.message || err}`);
+        return null;
+    }
+}

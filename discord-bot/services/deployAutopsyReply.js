@@ -196,11 +196,67 @@ export function pickIdentitylessCollectionBody(allReq, topicId, author) {
     return candidates.length === 1 ? candidates[0] : null;
 }
 
-export function buildBatchedBodiesPayload(casesObj) {    const idxs = Object.keys(casesObj || {}).filter((k) => /^\d+$/.test(k)).map(Number).sort((a, b) => a - b);
+/** A PK/CK marker is a death type — never an OOC identity. */
+function isDeathTypeMarker(value) {
+    return /^(pk|ck)$/i.test(String(value || '').trim());
+}
+
+/**
+ * Completion-step name for the LSPD Medical Examiner liaison form.
+ *
+ * Per-topic multi bodies already track their agency reply as
+ * `lssdCombinedReply@<caseIdx>`. The ME form is a SINGLE-decedent filing, so a
+ * shared mass collection needs the same per-body keying — one filed form per
+ * body. The bare name stays for legacy per-topic/collection records.
+ *
+ * @param {boolean} sharedBatch — shared-thread mass collection?
+ * @param {number|string|null} caseIdx — body index (null outside per-body work)
+ * @returns {string}
+ */
+export function meFormStepName(sharedBatch, caseIdx) {
+    const idx = (caseIdx === null || caseIdx === undefined || caseIdx === '') ? null : Number(caseIdx);
+    return sharedBatch && Number.isInteger(idx) && idx >= 0
+        ? `lspdMedicalExaminerForm@${idx}`
+        : 'lspdMedicalExaminerForm';
+}
+
+/**
+ * The identity to file on a per-body LSPD ME form.
+ *
+ * An autopsy report can be saved with a placeholder identity ("Unknown", or a
+ * PK/CK marker in the OOC slot) while the request body it belongs to names the
+ * decedent. The REQUEST holds the identity for a mass collection, so a usable
+ * report identity wins, and the body fills whatever the report lacks. Filing
+ * "Unknown" for a named body would put the wrong decedent on a DRDB record.
+ *
+ * @param {object} reportData — the autopsy report record ({ data, … })
+ * @param {object|null} caseRec — the collection body (cases/<idx>)
+ * @returns {object} reportData, or a copy whose data carries the resolved identity
+ */
+export function resolveBodyFilingData(reportData, caseRec) {
+    if (!reportData || typeof reportData !== 'object' || !caseRec) return reportData;
+    const data = reportData.data || {};
+    const repName = String(data.decedentName || '').trim();
+    const repOoc = String(data.decedentOOC || '').trim();
+    const bodyName = String(caseRec.name || '').trim();
+    const bodyOoc = String(caseRec.oocName || '').trim();
+    const name = (!isNonIdentityPlaceholder(repName) && repName) ? repName : bodyName;
+    let ooc = (!isDeathTypeMarker(repOoc) && repOoc) ? repOoc
+        : (!isDeathTypeMarker(bodyOoc) && bodyOoc) ? bodyOoc : '';
+    // "Jane Doe ((Genevieve Kennedy))" reports put the character name in the OOC
+    // slot; filing that as "Genevieve Kennedy ((Genevieve Kennedy))" adds nothing.
+    if (ooc && name && ooc.toLowerCase() === name.toLowerCase()) ooc = '';
+    if (name === repName && ooc === repOoc) return reportData;
+    console.log(`[AUTO-COMPLETE] ME form identity from the request body: "${name}" ((${ooc || 'no OOC'})) — report had "${repName}" ((${repOoc || 'no OOC'}))`);
+    return { ...reportData, data: { ...data, decedentName: name, decedentOOC: ooc } };
+}
+
+export function buildBatchedBodiesPayload(casesObj) {
+    const idxs = Object.keys(casesObj || {}).filter((k) => /^\d+$/.test(k)).map(Number).sort((a, b) => a - b);
     const N = idxs.length;
     const parts = idxs.map((i, pos) => {
         const c = casesObj[i] || {};
-        const who = [String(c.name || '').trim(), c.oocName ? `(( ${String(c.oocName).trim()} ))` : ''].filter(Boolean).join(' ').trim();
+        const who = [String(c.name || '').trim(), (c.oocName && !isDeathTypeMarker(c.oocName)) ? `(( ${String(c.oocName).trim()} ))` : ''].filter(Boolean).join(' ').trim();
         const head = `--- BODY ${pos + 1}/${N}${who ? `: ${who}` : ''} ---`;
         return `${head}\n${c.completedBbCode || '(report pending)'}`;
     });
@@ -1358,6 +1414,12 @@ export async function handleAutopsyReply(report) {
                             await ref.child(`cases/${caseIdx}`).update({
                                 completedAt: new Date().toISOString(),
                                 completedBbCode: bbCode,
+                                // Portal identity per body: the collection-level
+                                // keys only land when the LAST body finishes, so
+                                // a per-body ME-form retry had nothing to read
+                                // (Nov 2026 — #10493 filed no DRDB form at all).
+                                reportAuthorId: portalReportAuthor,
+                                reportKey: portalReportKey,
                                 ...(ownBody && f266ReplyPostId ? { replyPostId: f266ReplyPostId } : {}),
                                 ...(ownBody && f266ReplyUrl ? { replyUrl: f266ReplyUrl } : {}),
                             });
@@ -1594,38 +1656,44 @@ export async function handleAutopsyReply(report) {
                         // Private LSPD cases DO file here: DRDB is their only
                         // delivery route (inbox notices retired Nov 2026). Private
                         // cases from other agencies still skip it.
+                        //
+                        // Shared mass collections file ONE form PER BODY, keyed
+                        // `lspdMedicalExaminerForm@<caseIdx>`. The old
+                        // collection-level deferral waited for the last body and
+                        // then only the LAST report was in hand, so a 3-body
+                        // collection produced ZERO DRDB records (live: #10493).
                         const privateLspdDelivery = isPrivateEntry && (entry.deliveryDRDB === true || isLspdCase);
+                        const meStepName = meFormStepName(sharedBatch, caseIdx);
                         if (isPrivateEntry && !privateLspdDelivery) {
-                            await finishCompletionStep(completedTopicId, 'lspdMedicalExaminerForm', true, 'Private case — not an LSPD DRDB delivery');
+                            await finishCompletionStep(completedTopicId, meStepName, true, 'Private case — not an LSPD DRDB delivery');
                             await progress.addStep('LSPD ME Form', 'ok', 'Skipped (private, non-LSPD)');
-                        } else if (sharedBatch && !allCasesDone) {
-                            await startCompletionStep(completedTopicId, 'lspdMedicalExaminerForm', 'Deferred — collection has pending bodies');
-                            await finishCompletionStep(completedTopicId, 'lspdMedicalExaminerForm', true, 'Deferred — not all bodies complete');
-                            await progress.addStep('LSPD ME Form', 'ok', 'Deferred until all bodies complete');
                         } else if (lspdTopicId || isLspdCase || privateLspdDelivery) {
                             await progress.addStep('LSPD ME Form', 'pending');
                             stepPromises.push((async () => {
-                                const stepName = 'lspdMedicalExaminerForm';
-                                await startCompletionStep(completedTopicId, stepName, 'ME liaison form');
+                                await startCompletionStep(completedTopicId, meStepName, 'ME liaison form');
                                 try {
                                     const r = await runMedicalExaminerFormStep({
-                                        entry, reportData,
+                                        entry,
+                                        // Per body: the request names the decedent,
+                                        // the report may not (a placeholder name or a
+                                        // PK/CK marker in the OOC slot).
+                                        reportData: resolveBodyFilingData(reportData, caseRec),
                                         caseNum: caseRec?.caseNum || entry.caseNum || '',
                                         requestLink: entry.caseUrl || entry.topicUrl || '',
                                         meName: completingMe || '',
                                     });
-                                    await finishCompletionStep(completedTopicId, stepName, r.ok, r.detail);
+                                    await finishCompletionStep(completedTopicId, meStepName, r.ok, r.detail);
                                     await progress.addStep('LSPD ME Form', r.ok ? 'ok' : 'fail', r.detail);
                                     if (!r.ok) stepFailed.LSPD = true;
                                 } catch (e) {
                                     console.error('[AUTO-COMPLETE] LSPD ME form error: ' + e.message);
-                                    await finishCompletionStep(completedTopicId, stepName, false, e.message);
+                                    await finishCompletionStep(completedTopicId, meStepName, false, e.message);
                                     await progress.addStep('LSPD ME Form', 'fail', e.message);
                                     stepFailed.LSPD = true;
                                 }
                             })());
                         } else {
-                            await finishCompletionStep(completedTopicId, 'lspdMedicalExaminerForm', true, 'No LSPD topic ID (not an LSPD case)');
+                            await finishCompletionStep(completedTopicId, meStepName, true, 'No LSPD topic ID (not an LSPD case)');
                         }
 
                         // ── 4. DM the requester on its own isolated client ──
@@ -1988,7 +2056,11 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
             // done. Markers are kept so the next sweep picks them up.
             const retryShared = isSharedThreadCollection(entry);
             const retryAllDone = collectionCasesDone(entry);
-            if (retryShared && !retryAllDone && (stepBase === 'phmcCompletionReply' || stepBase === 'dmSent' || stepBase === 'requesterWebhook' || stepBase === 'lssdCombinedReply' || stepBase === 'lspdCrosspost' || stepBase === 'lspdMedicalExaminerForm')) {
+            // The LSPD ME form is per-body (`…@<caseIdx>`) and files as soon as
+            // that body completes; only a legacy bare-name step waits for the
+            // whole collection.
+            const meFormLegacyDefer = stepBase === 'lspdMedicalExaminerForm' && stepCaseIdx === null;
+            if (retryShared && !retryAllDone && (stepBase === 'phmcCompletionReply' || stepBase === 'dmSent' || stepBase === 'requesterWebhook' || stepBase === 'lssdCombinedReply' || stepBase === 'lspdCrosspost' || meFormLegacyDefer)) {
                 console.log(`[AUTO-COMPLETE] ${stepName} for ${caseLabel} — collection partial, deferring (no premature single)`);
                 continue;
             }
@@ -2214,8 +2286,11 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
                         success = true;
                         continue;
                     }
-                    const retryAuthor = entry?.reportAuthorId || null;
-                    const retryKey = entry?.reportKey || null;
+                    // Per body: cases/<idx> carries its own report identity, so
+                    // body 2's retry files body 2's report (not the collection's
+                    // last one). Entry-level keys remain the legacy fallback.
+                    const retryAuthor = stepCaseRec?.reportAuthorId || entry?.reportAuthorId || null;
+                    const retryKey = stepCaseRec?.reportKey || entry?.reportKey || null;
                     if (!retryAuthor || !retryKey) {
                         console.warn(`[AUTO-COMPLETE] Cannot retry ${stepName} for ${caseLabel}: no report identity (verify manually)`);
                         stillFailed++;
@@ -2223,12 +2298,23 @@ export async function retryFailedCompletionSteps(db, { entries } = {}) {
                     }
                     try {
                         const repSnap = await db.ref(`scheduledReports/${retryAuthor}/${retryKey}`).once('value');
-                        const repData = repSnap.exists() ? repSnap.val() : null;
+                        let repData = repSnap.exists() ? repSnap.val() : null;
+                        if (!repData) {
+                            // Opted-out reports live only in the VPS store.
+                            const { fetchSavedReportFromVps } = await import('./vpsReportMirror.js');
+                            repData = await fetchSavedReportFromVps(retryAuthor, retryKey);
+                        }
+                        if (!repData?.data) {
+                            console.warn(`[AUTO-COMPLETE] Cannot retry ${stepName} for ${caseLabel}: report ${retryAuthor}/${retryKey} not found (RTDB or VPS store)`);
+                            stillFailed++;
+                            continue;
+                        }
                         const r = await runMedicalExaminerFormStep({
-                            entry, reportData: repData,
-                            caseNum: entry.caseNum || '',
+                            entry,
+                            reportData: resolveBodyFilingData(repData, stepCaseRec),
+                            caseNum: stepCaseRec?.caseNum || entry.caseNum || '',
                             requestLink: entry.caseUrl || entry.topicUrl || '',
-                            meName: entry.assignedTo || '',
+                            meName: stepCaseRec?.assignedTo || entry.assignedTo || '',
                         });
                         success = !!r.ok;
                         retryDetail = r.detail || (r.ok ? 'Retried on restart — OK' : 'Retry failed');
