@@ -2202,10 +2202,18 @@ function parseDecedentNameLine(raw) {
     if (!raw) return null;
     let rest = String(raw).trim();
     let oocName = '';
+    let typeMarker = '';
     const oocMatch = rest.match(/\(\(\s*([^()]*)\s*\)\)/);
     if (oocMatch) {
         oocName = oocMatch[1].trim();
         rest = rest.replace(oocMatch[0], '').trim();
+        // Request templates often write "Jane Doe ((PK))" — the parenthetical is
+        // the death type, not an OOC name. Keeping it as oocName made bodies
+        // unidentifiable (and let "PK" match a report's OOC later).
+        if (/^(pk|ck)$/i.test(oocName)) {
+            typeMarker = oocName.toUpperCase();
+            oocName = '';
+        }
     }
     // Strip unidentified-person markers — "(J. DOE)" qualifies Jane/John Doe
     // status, it is not part of the name. Without this, the bracket-strip
@@ -2219,7 +2227,7 @@ function parseDecedentNameLine(raw) {
     }
     const name = rest.replace(/[[\]()]/g, '').trim();
     if (!name) return null;
-    return { raw: String(raw).trim(), name, marker, oocName };
+    return { raw: String(raw).trim(), name, marker, oocName, typeMarker };
 }
 
 // ── Mass Autopsy Request detector + parser (Task 2) ──
@@ -2573,8 +2581,9 @@ export function parseMassRequestBbcode(bbcode) {
             timeOfDeath,
             placeOfDeath,
             // Explicit per-body type (may be '' — the shared Section-4 line is
-            // the fallback, resolved after the loop).
-            deathType: bodyDeathType,
+            // the fallback, resolved after the loop). A "((PK))" written in the
+            // name line is the same signal.
+            deathType: bodyDeathType || nameLine.typeMarker || '',
             incomplete,
         });
     }

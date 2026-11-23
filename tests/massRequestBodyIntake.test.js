@@ -208,4 +208,12 @@ describe('the new template body block (7. Type of Death)', () => {
         expect(mass.bodies[0]).toMatchObject({ name: 'Thiago Ferguson', oocName: '', deathType: 'PK' });
         expect(mass.warnings.some((w) => /filed on IC name/.test(w))).toBe(true);
     });
+
+    it('treats "((PK))"/"((CK))" in the name line as the death type, not an OOC name', () => {
+        // The request template style "Jane Doe ((PK))" polluted oocName with the
+        // death type, making the body unidentifiable (live: #10493 Ricci).
+        const typed = NEW_TEMPLATE_BLOCK.replace('ANSWER ((OOC NAME))', 'Genevieve Kennedy ((PK))');
+        const mass = parseMassRequestBbcode(wrapMassPost([typed]));
+        expect(mass.bodies[0]).toMatchObject({ name: 'Genevieve Kennedy', oocName: '', deathType: 'PK' });
+    });
 });

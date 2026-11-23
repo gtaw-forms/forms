@@ -9,7 +9,7 @@
  * (so no body was ever marked completed and the overdue monitor kept firing).
  */
 import { describe, it, expect } from 'vitest';
-import { matchCollectionCase } from '../discord-bot/services/deployAutopsyReply.js';
+import { matchCollectionCase, pickIdentitylessCollectionBody } from '../discord-bot/services/deployAutopsyReply.js';
 
 const collection = (cases) => ({ '10392': { cases } });
 
@@ -87,5 +87,43 @@ describe('matchCollectionCase — report OOC vs body identity', () => {
             10392: hua3['10392'],
         };
         expect(matchCollectionCase(all, 'Ryan Kennedy', 'Unknown')).toMatchObject({ rkey: '10392', ci: 1 });
+    });
+});
+
+describe('pickIdentitylessCollectionBody — identity-less reports', () => {
+    const live = {
+        10493: {
+            isMassSingleThread: true,
+            caseTopicId: '10494',
+            cases: {
+                0: { name: 'Cristian Ricci', oocName: 'PK', assignedTo: 'Sarah Bell', completedAt: null },
+                1: { name: 'Genevieve Kennedy', oocName: 'PK', assignedTo: 'Elena Hill', completedAt: '2026-11-20T15:13:42.731Z' },
+                2: { name: 'Maya Zapata', oocName: 'PK', assignedTo: 'Arthur Blackwood', completedAt: '2026-11-21T05:28:51.506Z' },
+            },
+        },
+    };
+
+    it("attributes an identity-less report to the author's only incomplete body", () => {
+        expect(pickIdentitylessCollectionBody(live, '10494', 'Sarah Bell')).toMatchObject({ rkey: '10493', ci: 0 });
+    });
+
+    it('ignores other authors and other topics', () => {
+        expect(pickIdentitylessCollectionBody(live, '10494', 'Elena Hill')).toBeNull(); // already complete
+        expect(pickIdentitylessCollectionBody(live, '99999', 'Sarah Bell')).toBeNull();
+        expect(pickIdentitylessCollectionBody(live, '10494', '')).toBeNull();
+    });
+
+    it('refuses to guess when the author has two incomplete bodies', () => {
+        const two = {
+            1: {
+                isMassSingleThread: true,
+                caseTopicId: '200',
+                cases: {
+                    0: { name: 'A', assignedTo: 'Sarah Bell', completedAt: null },
+                    1: { name: 'B', assignedTo: 'Sarah Bell', completedAt: null },
+                },
+            },
+        };
+        expect(pickIdentitylessCollectionBody(two, '200', 'Sarah Bell')).toBeNull();
     });
 });

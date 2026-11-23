@@ -164,8 +164,39 @@ export function matchCollectionCase(allReq, ooc, name) {
     return best;
 }
 
-export function buildBatchedBodiesPayload(casesObj) {
-    const idxs = Object.keys(casesObj || {}).filter((k) => /^\d+$/.test(k)).map(Number).sort((a, b) => a - b);
+/**
+ * Identity-less report fallback (shared mass collections).
+ *
+ * A report saved without a usable decedent identity — e.g. "Unknown ((PK))",
+ * where the ((…)) slot held the death type and the name is a placeholder —
+ * cannot be matched by name/OOC. When the reply target IS a shared collection,
+ * attribute the report to the reporting ME's ONLY incomplete body there.
+ * Two or more candidates is ambiguous → null (never guess).
+ *
+ * @param {object} allReq — autopsy-requested snapshot
+ * @param {string|number} topicId — resolved case topic id
+ * @param {string} author — reporting ME (report coronerEmployee / authorName)
+ * @returns {{rkey:string, ci:number, caseRec:object, entry:object}|null}
+ */
+export function pickIdentitylessCollectionBody(allReq, topicId, author) {
+    const topic = String(topicId || '').trim();
+    const who = String(author || '').trim().toLowerCase();
+    if (!topic || !who || !allReq || typeof allReq !== 'object') return null;
+    const candidates = [];
+    for (const [rkey, entry] of Object.entries(allReq)) {
+        if (!entry || !isSharedThreadCollection(entry)) continue;
+        if (String(entry.caseTopicId || entry.topicId || '') !== topic) continue;
+        for (const [ci, c] of Object.entries(entry.cases || {})) {
+            if (!c || !/^\d+$/.test(ci)) continue;
+            if (c.completedAt) continue;
+            if (String(c.assignedTo || '').trim().toLowerCase() !== who) continue;
+            candidates.push({ rkey, ci: parseInt(ci, 10), caseRec: c, entry });
+        }
+    }
+    return candidates.length === 1 ? candidates[0] : null;
+}
+
+export function buildBatchedBodiesPayload(casesObj) {    const idxs = Object.keys(casesObj || {}).filter((k) => /^\d+$/.test(k)).map(Number).sort((a, b) => a - b);
     const N = idxs.length;
     const parts = idxs.map((i, pos) => {
         const c = casesObj[i] || {};
@@ -1111,6 +1142,31 @@ export async function handleAutopsyReply(report) {
             }
         }
     } catch (e) { console.warn('[AUTO] Mass per-body reply lookup failed:', e.message); }
+
+    // Identity-less fallback (see pickIdentitylessCollectionBody): the report
+    // carried no usable identity, but the resolved thread is a shared
+    // collection — attribute it to the reporting ME's only incomplete body
+    // there instead of posting without completing anything (live: Ricci #10493).
+    if (!massBodyCtx) {
+        try {
+            const fOoc = String(reportData.data?.decedentOOC || '').trim();
+            const fName = String(reportData.data?.decedentName || '').trim();
+            const identityUsable = (fOoc && !/^(pk|ck)$/i.test(fOoc))
+                || (fName && !isNonIdentityPlaceholder(fName));
+            if (!identityUsable) {
+                const author = String(
+                    reportData.data?.coronerEmployee || reportData.data?.phmcEmployee || reportData.authorName || ''
+                ).trim();
+                const fSnap = await db.ref('autopsy-requested').once('value');
+                const hit = pickIdentitylessCollectionBody(fSnap.val() || {}, topicId, author);
+                if (hit) {
+                    massBodyCtx = hit;
+                    massReplyTopicId = String(hit.entry.caseTopicId || hit.entry.topicId || topicId);
+                    console.log(`[AUTO] Identity-less report (${fName || '?'} ((${fOoc || '?'}))) — attributing to #${hit.rkey} body ${hit.ci} (${hit.caseRec.name || '?'}) by author ${author}`);
+                }
+            }
+        } catch (e) { console.warn('[AUTO] Identity-less body fallback failed:', e.message); }
+    }
 
     // ── Edit-in-place when this entry already posted ──
     // A re-queued / retried / restarted entry that already has a live reply

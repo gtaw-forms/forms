@@ -1,5 +1,13 @@
 # PHMC Discord Bot — Changelog
 
+## UNDEPLOYED — Mass collections: "((PK))" is a death type, not an OOC; identity-less reports get attributed (2026-11-23)
+
+### Fixed
+- **Request templates that write `Jane Doe ((PK))` no longer store `"PK"` as the body's OOC name.** `parseDecedentNameLine` now recognises a PK/CK parenthetical as the death type (kept as a per-body fallback when no "Type of Death" line exists) and leaves `oocName` empty. This is what let Sarah Bell's report for **Cristian Ricci** (#10493) be saved as `Unknown ((PK))` — Load Case copied the marker into the OOC field and the body had no usable identity.
+- **Identity-less reports no longer post without completing anything.** `pickIdentitylessCollectionBody` attributes a report with no usable identity (placeholder name + PK/CK OOC) to the reporting ME's **only** incomplete body in the resolved shared collection (two candidates ⇒ null, never a guess). Live: Ricci's report was already posted to t=10494 (p=25923) but no body was marked complete; the fallback prevents that class.
+- **Data repair applied** to #10493 body 1 (Ricci): `completedAt`, `replyPostId 25923`, `replyUrl` recorded; the collection is complete and its panel refreshed (3/3 COMPLETED).
+- Tests: `parseMassRequestBbcode` keeps `((PK))` out of `oocName` and files the type; `pickIdentitylessCollectionBody` (single candidate, ambiguous, wrong author/topic).
+
 ## UNDEPLOYED — Mass collection: PK/CK marker in the OOC slot no longer blocks completion (2026-11-20)
 
 ### Fixed
