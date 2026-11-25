@@ -115,6 +115,7 @@ async function registerCommands() {
     const globalStats = await import('./commands/global-stats.js');
     const testRequesterWebhook = await import('./commands/test-requester-webhook.js');
     const enableDevAutopsy = await import('./commands/enable-dev-autopsy.js');
+    const autopsyDevTesting = await import('./commands/autopsy-dev-testing.js');
     const webAutopsyAutopost = await import('./commands/web-autopsy-autopost.js');
     const forwardAutopsyComplete = await import('./commands/forward-autopsy-complete.js');
     const debugChannels = await import('./commands/debug-channels.js');
@@ -171,6 +172,7 @@ async function registerCommands() {
         globalStats.data.toJSON(),
         testRequesterWebhook.data.toJSON(),
         enableDevAutopsy.data.toJSON(),
+        autopsyDevTesting.data.toJSON(),
         webAutopsyAutopost.data.toJSON(),
         forwardAutopsyComplete.data.toJSON(),
         debugChannels.data.toJSON(),
@@ -1090,6 +1092,9 @@ async function start() {
 
     const enableDevAutopsyCmd = await import('./commands/enable-dev-autopsy.js');
     client.commands.set(enableDevAutopsyCmd.data.name, { execute: enableDevAutopsyCmd.execute });
+
+    const autopsyDevTestingCmd = await import('./commands/autopsy-dev-testing.js');
+    client.commands.set(autopsyDevTestingCmd.data.name, { execute: autopsyDevTestingCmd.execute });
 
     const webAutopsyAutopostCmd = await import('./commands/web-autopsy-autopost.js');
     client.commands.set(webAutopsyAutopostCmd.data.name, { execute: webAutopsyAutopostCmd.execute });

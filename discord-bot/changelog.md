@@ -1,5 +1,15 @@
 # PHMC Discord Bot — Changelog
 
+## UNDEPLOYED — "Autopsy Dev Testing" mode: simulate intake + completion, touch nothing (2026-11-25)
+
+### Added
+- **Owner-only `/autopsy-dev-testing` command (enable / disable / status / purge)**, modelled on `/private-web-autopsy`: persists `AUTOPSY_DEV_TESTING` to `.env`, takes effect with no restart, ephemeral replies.
+- **While on:** f=265 intake (singular, legacy-multi, mass) parses + validates, computes the ME pick **without writing it**, and posts a Discord "would do" summary (case title, would-be assignee, topic link). No forum posts/replies, no ME Discord DMs, no crossposts/PMs, no progress embeds. Entries land as `caseState: 'dry_run'` + `dryRun: true` so rescans skip them.
+- **Completion simulation:** `handleAutopsyReply` reads the dry-run flag dynamically, so toggling mid-session takes effect immediately — no f=266 reply, no crossposts/PMs, no completion marking (`deployStatus` goes to `dry_run`).
+- **`selectME` gained a read-only preview (`{ commit: false }`)** for the simulation pick; default behavior unchanged (mass picker already had `commit: false`).
+- **Purge** deletes simulated (`dry_run`) `autopsy-requested` entries; live cases untouched.
+- Scope notes: private intake keeps its own mode; already-posted completions and failed-step retries are never simulated; `AUTOPSY_DEV_TEST`-style forced assignment still applies inside simulations.
+
 ## UNDEPLOYED — LSPD ME form: one DRDB record per body in a shared mass collection (2026-11-23)
 
 ### Fixed

@@ -181,14 +181,19 @@ export function getDevTestME() {
  * @param {import('firebase-admin').database.Database} db
  * @param {string} topicId — the autopsy-requested/<topicId> key
  * @param {string} caseNum — case number string
+ * @param {object} [opts]
+ * @param {boolean} [opts.commit=true] — persist the pick (assignment record +
+ *   rotation pointer). Pass commit:false for a read-only simulation preview
+ *   (dev-testing notices) that leaves rotation + assignment state untouched.
  * @returns {Promise<string|null>} assigned ME username, or null if none available
  */
-export async function selectME(db, topicId, caseNum) {
+export async function selectME(db, topicId, caseNum, opts = {}) {
+    const commit = opts.commit !== false;
     // DEV TEST MODE: force all assignments to the configured dev ME (default Alyson Frost)
     const devName = getDevTestME();
     if (devName) {
         console.log('[ROTATION] DEV TEST — assigning to ' + devName);
-        await recordAssignment(db, devName, topicId, caseNum);
+        if (commit) await recordAssignment(db, devName, topicId, caseNum);
         return devName;
     }
 
@@ -222,11 +227,11 @@ export async function selectME(db, topicId, caseNum) {
             continue;
         }
 
-        // Assign this ME
-        await recordAssignment(db, meName, topicId, caseNum);
+        // Assign this ME (preview only when commit:false — no writes at all)
+        if (commit) await recordAssignment(db, meName, topicId, caseNum);
 
         const newPosition = (position + i + 1) % list.length;
-        await db.ref('autopsy-requests/rotation/position').set(newPosition);
+        if (commit) await db.ref('autopsy-requests/rotation/position').set(newPosition);
 
         // Log full assignment landscape for tracking
         const allCounts = list.map(m => `${m}=${activeCounts[m.toLowerCase()] || 0}${m.toLowerCase() === meName.toLowerCase() ? '+1' : ''}`).join(', ');
@@ -271,13 +276,13 @@ export async function selectME(db, topicId, caseNum) {
         withTimestamps.sort((a, b) => a.lastAssigned - b.lastAssigned);
         const chosen = withTimestamps[0].name;
 
-        await recordAssignment(db, chosen, topicId, caseNum);
+        if (commit) await recordAssignment(db, chosen, topicId, caseNum);
         // Do NOT advance position pointer in surge mode
         console.log(`[ROTATION] SURGE — assigned ${chosen} (${bestCount} active cases, position unchanged)`);
         return chosen;
     }
 
-    await recordAssignment(db, best, topicId, caseNum);
+    if (commit) await recordAssignment(db, best, topicId, caseNum);
     console.log(`[ROTATION] SURGE — assigned ${best} (${bestCount} active cases, position unchanged)`);
     return best;
 }

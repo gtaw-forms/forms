@@ -172,10 +172,20 @@ describe('client-side validation mirrors the parser skip rules', () => {
     it('requires an ((OOC)) for a John/Jane Doe body only', () => {
         const bodies = toMassRequestBodies(RECORDS);
         const doe = { ...bodies[0], decedentName: 'John Doe', oocName: '' };
-        const named = { ...bodies[1], decedentName: 'Ryan Kennedy', oocName: '' };
+        // Unseeded real IC name (seed snapshot cleared): allowed without OOC.
+        const named = { ...bodies[1], decedentName: 'Ryan Kennedy', oocName: '', seededOocName: '' };
         const problems = validateMassRequest({ incidentLabel: 'X', requester: REQUESTER, bodies: [doe, named] });
-        expect(problems.some(p => /John\/Jane|unidentified/.test(p))).toBe(true);
+        // bodies[0] is morgue-seeded (intake OOC Angel_L): the seeded-specific
+        // message fires instead of the generic unidentified one (t=10507).
+        expect(problems.some(p => /OOC identity from morgue intake \(#101\)/.test(p))).toBe(true);
         expect(problems.filter(p => /Body 2/.test(p))).toEqual([]);
+    });
+
+    it('still requires an ((OOC)) for an unseeded unidentified body', () => {
+        const bodies = toMassRequestBodies(RECORDS);
+        const doe = { ...bodies[0], decedentName: 'John Doe', oocName: '', seededOocName: '' };
+        const problems = validateMassRequest({ incidentLabel: 'X', requester: REQUESTER, bodies: [doe] });
+        expect(problems.some(p => /unidentified decedent needs/.test(p))).toBe(true);
     });
 });
 

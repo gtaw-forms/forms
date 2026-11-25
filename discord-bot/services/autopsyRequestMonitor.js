@@ -25,6 +25,7 @@ import { state as deployState } from './deployState.js';
 import { registerTick, unregisterTick } from './scheduler.js';
 import { mutateState } from './vpsState.js';
 import { DOE_PAREN_RE, isDoePlaceholder, isNonIdentityPlaceholder } from './doePlaceholders.js';
+import { effectiveAutopsyDryRun, simNoticeTag } from './autopsyDevTesting.js';
 
 /**
  * Bump a faction intake counter (VPS-local, off RTDB — the totals are only
@@ -947,13 +948,21 @@ export async function checkForNewRequests() {
                 const factionTag = parsed.faction ? ` [${parsed.faction}]` : '';
                 const oocPart = caseOoc ? ` ((${caseOoc}))` : '';
                 const caseTitle = `Case${caseNumStr} - ${caseName}${oocPart}${factionTag} - UNASSIGNED`;
-                const isDryRun = process.env.AUTOPSY_DRY_RUN !== 'false';
+                const isDryRun = effectiveAutopsyDryRun();
 
                 if (isDryRun) {
-                    console.log(`[AUTOPSY-MON] DRY RUN — would create case for #${topic.topicId}`);
-                    await sendWebhookSummary(`**[DRY RUN] Autopsy Case Would Be Created**\n${caseTitle}\nTopic: ${topic.href}`);
-                    // Set caseState to prevent re-processing on the next cycle
+                    const tag = simNoticeTag();
+                    console.log(`[AUTOPSY-MON] ${tag} — would create case for #${topic.topicId}`);
+                    // Simulated ME pick: computed read-only, never written —
+                    // assignedTo stays empty and no DM goes out.
+                    let simAssign = '';
+                    try {
+                        const preview = await selectME(_db, topic.topicId, caseNum || '', { commit: false });
+                        if (preview) simAssign = `\nWould assign (simulated, not written): **${preview}**`;
+                    } catch (e) { console.warn(`[AUTOPSY-MON] ${tag} — assignment preview failed: ${e.message}`); }
+                    await sendWebhookSummary(`**${tag} Autopsy Case Would Be Created**\n${caseTitle}\nTopic: ${topic.href}${simAssign}\nNo forum post, no assignment, no DMs — simulation only.`);
                     await caseRef.child('caseState').set('dry_run').catch(() => {});
+                    await caseRef.child('dryRun').set(true).catch(() => {});
                     newRequests.push(entry);
                     continue;
                 }
@@ -1284,7 +1293,7 @@ async function processMassRequest({ db, topic, parsed, mass, requestBbCode, proc
     const bodies = (mass && mass.bodies) || [];
     const N = bodies.length;
     if (N === 0) return;
-    const isDryRun = process.env.AUTOPSY_DRY_RUN !== 'false';
+    const isDryRun = effectiveAutopsyDryRun();
     const factionTag = parsed.faction ? ` [${parsed.faction}]` : '';
     // phpBB flood control trips on rapid same-author posts. The mass flow
     // emits an OP post + N replies + an ack in one burst, so it paces itself
@@ -1409,15 +1418,18 @@ async function processMassRequest({ db, topic, parsed, mass, requestBbCode, proc
     await rootRef.child('caseTitle').set(caseTitle).catch(() => {});
 
     if (isDryRun) {
-        console.log(`[AUTOPSY-MON] DRY RUN — would create single mass case for #${topicId}: "${caseTitle}"`);
+        const tag = simNoticeTag();
+        console.log(`[AUTOPSY-MON] ${tag} — would create single mass case for #${topicId}: "${caseTitle}"`);
+        let simAssign = '';
         try {
             const sharedOverride = (mass.shared && mass.shared.assignedOverride) || '';
             const preview = await selectMEsForMass(db, N, { overrides: bodies.map(() => sharedOverride), commit: false });
-            console.log(`[AUTOPSY-MON] DRY RUN — mass assignment preview: ${preview.map((p, i) => `Body ${i + 1}->${p || '(none)'}`).join(' | ')}`);
+            simAssign = preview.map((p, i) => `Body ${i + 1}->${p || '(none)'}`).join(' | ');
+            console.log(`[AUTOPSY-MON] ${tag} — mass assignment preview (simulated, not written): ${simAssign}`);
         } catch (e) {
-            console.warn(`[AUTOPSY-MON] DRY RUN — mass assignment preview failed: ${e.message}`);
+            console.warn(`[AUTOPSY-MON] ${tag} — mass assignment preview failed: ${e.message}`);
         }
-        await sendWebhookSummary(`**[DRY RUN] Mass Autopsy Case Would Be Created**\n${caseTitle}\nTopic: ${topic.href}`);
+        await sendWebhookSummary(`**${tag} Mass Autopsy Case Would Be Created**\n${caseTitle}\nTopic: ${topic.href}${simAssign ? `\nWould assign (simulated, not written): ${simAssign}` : ''}\nNo forum post, no assignments, no DMs, no crossposts — simulation only.`);
         return;
     }
 
@@ -1857,7 +1869,7 @@ async function processMultiDecedentRequest({ db, topic, parsed, decedents, reque
     const topicId = topic.topicId;
     const rootRef = db.ref(`autopsy-requested/${topicId}`);
     const existing = processed[topicId] || {};
-    const isDryRun = process.env.AUTOPSY_DRY_RUN !== 'false';
+    const isDryRun = effectiveAutopsyDryRun();
 
     // Marker so the detection loop skips this topic on later cycles.
     await rootRef.child('caseState').set('multi').catch(() => {});
@@ -1932,9 +1944,17 @@ async function processMultiDecedentRequest({ db, topic, parsed, decedents, reque
         if (caseState === 'complete' || caseState === 'dry_run') continue;
 
         if (isDryRun) {
-            console.log(`[AUTOPSY-MON] DRY RUN — would create case for ${decedent.name}${marker}${oocPart}`);
-            await sendWebhookSummary(`**[DRY RUN] Autopsy Case Would Be Created**\n${caseTitle}\nTopic: ${topic.href}`);
+            const tag = simNoticeTag();
+            console.log(`[AUTOPSY-MON] ${tag} — would create case for ${decedent.name}${marker}${oocPart}`);
+            // Simulated ME pick: computed read-only, never written.
+            let simAssign = '';
+            try {
+                const preview = await selectME(db, topicId, caseNum, { commit: false });
+                if (preview) simAssign = `\nWould assign (simulated, not written): **${preview}**`;
+            } catch (e) { console.warn(`[AUTOPSY-MON] ${tag} — assignment preview failed: ${e.message}`); }
+            await sendWebhookSummary(`**${tag} Autopsy Case Would Be Created**\n${caseTitle}\nTopic: ${topic.href}${simAssign}\nNo forum post, no assignment, no DMs — simulation only.`);
             await caseRef.child('caseState').set('dry_run').catch(() => {});
+            await caseRef.child('dryRun').set(true).catch(() => {});
             continue;
         }
 

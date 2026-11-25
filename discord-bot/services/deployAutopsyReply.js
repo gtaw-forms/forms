@@ -24,6 +24,7 @@ import { readState, mutateState } from './vpsState.js';
 import { COMPLETION_TEMPLATE, buildCompletionBb } from './completionTemplate.js';
 import { isNonIdentityPlaceholder } from './doePlaceholders.js';
 import { isUnusableDmTarget, nameFallbackVerdict } from './autopsyCompletionGuards.js';
+import { isAutopsyDevTesting } from './autopsyDevTesting.js';
 
 // ── Constants ──
 export const CASE_MGMT_FORUM_ID = 266;
@@ -790,7 +791,11 @@ export async function handleAutopsyReply(report) {
         return;
     }
 
-    const DRY = AUTOPSY_DRY_RUN;
+    // Dynamic dry-run: legacy AUTOPSY_DRY_RUN (evaluated at boot) OR the
+    // runtime "Autopsy Dev Testing" toggle (no restart needed). Either one
+    // forces the simulation path below: no f=266 reply, no crossposts/PMs,
+    // no completion marking — deployStatus goes to dry_run instead.
+    const DRY = AUTOPSY_DRY_RUN || isAutopsyDevTesting();
 
     console.log(`[AUTO]  handleAutopsyReply called for ${key}  name: "${reportData.data?.decedentName}"`);
 
