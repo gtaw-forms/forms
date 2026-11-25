@@ -98,7 +98,7 @@ const MorgueRecordCard = ({ record }) => {
         <div style={{ fontSize: 13, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{r.physicalDescription || 'No physical description on file.'}</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: 28, marginTop: 6 }}>
           {kv('Tattoos / marks', r.tattoos || 'None')}
-          {kv('Source', r.source || '—')}
+          {kv('Source', 'PHMC Morgue')}
         </div>
 
         {/* Wound chart */}
