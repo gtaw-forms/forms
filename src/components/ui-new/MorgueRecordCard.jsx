@@ -49,7 +49,7 @@ function projectileCounts(bullets) {
   return { total: arr.length, bulletsN, pelletsN };
 }
 
-const MorgueRecordCard = ({ record }) => {
+const MorgueRecordCard = ({ record, actions }) => {
   const r = record || {};
   const findings = Array.isArray(r.findings) ? r.findings : [];
   const { shots, total, parts, max } = woundSummary(findings);
@@ -60,7 +60,7 @@ const MorgueRecordCard = ({ record }) => {
 
   const kv = (label, value, mono = false) => (
     <div key={label} style={{ display: 'flex', justifyContent: 'space-between', gap: 16, padding: '5px 0', borderBottom: `1px solid ${LINE}` }}>
-      <span style={{ color: MUTED, fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</span>
+      <span style={{ color: MUTED, fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.5, whiteSpace: 'nowrap' }}>{label}</span>
       <span style={{ color: INK, fontSize: 13, fontWeight: 600, textAlign: 'right', fontFamily: mono ? "'Courier New', monospace" : 'inherit' }}>{value}</span>
     </div>
   );
@@ -70,7 +70,7 @@ const MorgueRecordCard = ({ record }) => {
   );
 
   return (
-    <div style={{ width: '100%', maxWidth: 760, margin: '0 auto', background: BG, color: INK, fontFamily: "Arial, Helvetica, sans-serif", overflow: 'hidden', borderRadius: 10, border: `1px solid ${LINE}` }}>
+    <div style={{ width: '100%', maxWidth: 860, margin: '0 auto', background: BG, color: INK, fontFamily: "Arial, Helvetica, sans-serif", overflow: 'hidden', borderRadius: 10, border: `1px solid ${LINE}` }}>
       {/* Header */}
       <div style={{ background: NAVY, color: '#fff', padding: '20px 28px 16px' }}>
         <div style={{ fontSize: 12, letterSpacing: 2, opacity: 0.8 }}>PILLBOX HILL MEDICAL CENTER — MORGUE INTAKE RECORD</div>
@@ -92,6 +92,14 @@ const MorgueRecordCard = ({ record }) => {
       </div>
 
       <div style={{ padding: '18px 28px 8px' }}>
+        {/* Legal notice — lives inside the card so shared PNGs carry it too. */}
+        <div style={{
+          background: 'rgba(232,163,76,0.10)', border: '1px solid rgba(232,163,76,0.45)',
+          color: '#e8b64c', fontSize: 12, borderRadius: 8, padding: '10px 14px', marginBottom: 14,
+        }}>
+          <span style={{ fontWeight: 800 }}>⚠ NOTICE:&nbsp;</span>
+          Law Enforcement MAY use the PHMC Morgue Intake Records for PKs as proof of death for court cases. CKs will require a formal autopsy process which can be requested on the PHMC Forums.
+        </div>
         {/* Key facts */}
         <div style={{ fontSize: 13, fontWeight: 800, letterSpacing: 1.5, color: SECTION, borderBottom: `2px solid ${SECTION}`, paddingBottom: 4, marginBottom: 6 }}>CASE DETAILS</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: 28 }}>
@@ -165,6 +173,14 @@ const MorgueRecordCard = ({ record }) => {
           </div>
         ) : (
           <div style={{ fontSize: 13, color: MUTED }}>No projectiles or casings recovered.</div>
+        )}
+
+        {/* In-app actions (Close / Prev / Next / …) — the PNG export renders
+            the card without actions, so exports stay clean. */}
+        {actions && (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 18, paddingTop: 12, borderTop: `1px solid ${LINE}` }}>
+            {actions}
+          </div>
         )}
 
         {/* Footer */}

@@ -22,6 +22,14 @@ import { checkConsentDirect } from './useConsent';
 import { getAppBuildId } from '../utils/buildVersion';
 import { normalizeRecipients } from '../utils/recipients';
 
+// Staff-credentialed forms stay hard-gated to faction members (they stamp
+// employee credentials and feed the deploy queue). Everything else is public:
+// non-members save as standard reports that never auto-deploy. Unknown form
+// (fail-closed) counts as restricted.
+const RESTRICTED_ACCESS_TYPES = new Set(['PHMC', 'Coroner', 'Mental Health']);
+const isRestrictedForm = (form) =>
+    !form || RESTRICTED_ACCESS_TYPES.has(form?.accessType) || form?.firebaseKey === 'death_record';
+
 const isLocalHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
 // Duplicate matching lives in utils/duplicateCheck (pure, unit-tested).
@@ -145,7 +153,7 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated, rosterData = {}) 
     const firebaseUid = authUser?.uid || null;
     const { factionListData = [], resolvedCredentials = null } = rosterData;
 
-    const validateMembership = useCallback(() => {
+    const validateMembership = useCallback((form = null) => {
         // --- LOCALHOST DEVELOPMENT BYPASS ---
         // Allow saving reports on localhost even if faction membership cannot be verified.
         if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
@@ -153,16 +161,20 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated, rosterData = {}) 
             return true;
         }
 
-        if (!isFactionMember) {
-            showNotification('ACCESS DENIED: You are no longer recognized as a faction member. Action blocked.', 'error', 10000);
-            return false;
-        }
-        return true;
+        if (isFactionMember) return true;
+        // Reduced permissions (not a block): public forms still save — they
+        // just never enter the deploy queue (consent is forced off below),
+        // so nothing reaches the forums or the bot. Only staff-credentialed
+        // forms stay hard-gated.
+        if (!isRestrictedForm(form)) return true;
+
+        showNotification('ACCESS DENIED: This form is restricted to PHMC faction members. Public forms remain available.', 'error', 10000);
+        return false;
     }, [isFactionMember, showNotification]);
 
     const saveReport = useCallback(async (selectedForm, formValues, title, bbCode, options = {}) => {
         // validate user's faction membership
-        if (!validateMembership()) {
+        if (!validateMembership(selectedForm)) {
             return { success: false, error: 'Membership validation failed.' };
         }
 
@@ -501,9 +513,14 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated, rosterData = {}) 
 
         // Determine deploy path and consent for this form type
         const isDeployTracked = deployTrackedForms.includes(selectedForm.firebaseKey);
-        const hasConsent = isDeployTracked
+        const storedConsent = isDeployTracked
             ? await checkConsentDirect(firebaseUid, selectedForm.firebaseKey)
             : false;
+        // Reduced permissions: non-members never enter the deploy queue, even
+        // with a stale opt-in on file — their saves stay standard reports.
+        // (Localhost keeps full behavior so deploy flows stay testable.)
+        const hasConsent = storedConsent && (isLocalHost || isFactionMember);
+        const consentDowngraded = storedConsent && !isLocalHost && !isFactionMember;
 
         const reportBasePath = getReportBasePath(selectedForm.firebaseKey, hasConsent);
         const bbCodeBasePath = getBBCodeBasePath(selectedForm.firebaseKey, hasConsent);
@@ -666,6 +683,9 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated, rosterData = {}) 
 
             if (!options.silent) {
                 showNotification(`Report "${finalTitle}" saved successfully!`, 'save');
+                if (consentDowngraded) {
+                    showNotification('Saved as a standard report — auto-deploy is for faction members.', 'info');
+                }
             }
 
             // ── Post-save credential verification (background, non-blocking) ──
@@ -917,7 +937,7 @@ export const useFormSaver = (gtaWorldUser, isGtaAuthenticated, rosterData = {}) 
             }
             return { success: false, error: error.message };
         }
-    }, [gtaWorldUser, isGtaAuthenticated, showNotification, removeNotification, factionListData, resolvedCredentials, firebaseUid, validateMembership]);
+    }, [gtaWorldUser, isGtaAuthenticated, showNotification, removeNotification, factionListData, resolvedCredentials, firebaseUid, validateMembership, isFactionMember]);
 
     return { saveReport, validateMembership };
 };

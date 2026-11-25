@@ -8,7 +8,7 @@ import MorgueRecordCard from '../components/ui-new/MorgueRecordCard';
  * it. The card uses literal inline colors so the export needs no app CSS.
  */
 
-const CARD_WIDTH = 760;
+const CARD_WIDTH = 860;
 const SCALE = 2; // 2x export for crisp text
 
 export async function downloadMorgueRecordCard(record) {

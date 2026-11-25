@@ -102,8 +102,10 @@ export const useReportAttachment = (
     ) => {
         if (event) event.preventDefault();
 
-        // --- FINAL SECURITY FAIL-SAFE ---
-        if (!showSavedReports && validateMembership && !validateMembership()) {
+        // --- FINAL SECURITY FAIL-SAFE (scoped: restricted forms only) ---
+        // Public forms: non-members may still browse/attach their own saved
+        // reports — saves themselves stay standard-only via the saver gate.
+        if (!showSavedReports && validateMembership && !validateMembership(selectedForm)) {
             return;
         }
 
@@ -129,7 +131,7 @@ export const useReportAttachment = (
         }
         
         setShowSavedReports(true);
-    }, [showSavedReports, validateMembership]);
+    }, [showSavedReports, validateMembership, selectedForm]);
 
     return {
         handleReportSelectedForAttachment,

@@ -234,6 +234,17 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
   };
   const clearSelection = () => { setSelectedKeys(new Set()); lastClickedIndexRef.current = -1; };
 
+  // Step through the (filtered, newest-first) list from the open record.
+  const stepRecord = (dir) => {
+    setSelectedRecord(cur => {
+      if (!cur) return cur;
+      const list = (filtered && filtered.length ? filtered : paginated);
+      const i = list.findIndex(r => recordKey(r) === recordKey(cur));
+      if (i < 0) return list[0] || cur;
+      return list[(i + dir + list.length) % list.length];
+    });
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
 
@@ -399,10 +410,10 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-              <button className="btn-view" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }} onClick={() => { setSelectedRecord(r); setShowDetailModal(true); }}>
+              <button className="btn-view" style={{ borderColor: 'transparent', color: 'var(--text-muted)' }} onClick={() => { setSelectedRecord(r); setShowDetailModal(true); }}>
                 <i className="fas fa-eye me-1" style={{ fontSize: 10 }} /> View Record
               </button>
-              <button className="btn-view" onClick={() => { setRequestingAutopsy(r); }}>
+              <button className="btn-view" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }} onClick={() => { setRequestingAutopsy(r); }}>
                 <i className="fas fa-microscope me-1" style={{ fontSize: 10 }} /> Request Autopsy
               </button>
             </div>
@@ -476,65 +487,61 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
       {showDetailModal && selectedRecord && (
         <div className="modal-overlay open" onClick={() => setShowDetailModal(false)} style={{ display: 'flex', zIndex: 1100 }}>
           <div className="modal-box morgue-record-modal" onClick={e => e.stopPropagation()} style={{
-            maxWidth: '96vw', width: '96vw', height: '92vh', maxHeight: '92vh',
+            width: 'auto', maxWidth: '96vw', height: '92vh', maxHeight: '92vh',
             display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden',
+            position: 'relative', margin: '0 auto',
           }}>
-            <div className="modal-head" style={{ flexShrink: 0 }}>
-              <h3 style={{ minWidth: 0 }}>
-                <i className="fas fa-microscope" style={{ color: 'var(--teal)' }} />
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedRecord.name || 'Unknown'}</span>
-              </h3>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
-                <span className="finding-eyebrow" style={{ margin: 0 }}>Case #{selectedRecord.caseId}</span>
-                <div className="modal-close" onClick={() => setShowDetailModal(false)} aria-label="Close">✕</div>
-              </div>
-            </div>
+            {/* No header bar — the Record Card below carries the identity. */}
+            <div className="modal-close" onClick={() => setShowDetailModal(false)} aria-label="Close" title="Close"
+              style={{ position: 'absolute', top: 10, right: 12, zIndex: 2 }}>✕</div>
 
             <div className="modal-body" style={{ flex: 1, overflowY: 'auto', padding: '14px 18px' }}>
-              <div className="notice-bubble notice-warn" style={{ marginBottom: 14 }}>
-                <i className="fas fa-exclamation-triangle" style={{ marginTop: 2, flexShrink: 0 }} />
-                <span>NOTICE: Law Enforcement MAY use the PHMC Morgue Intake Records for PKs as proof of death for court cases. CKs will require a formal autopsy process which can be requested on the PHMC Forums.</span>
-              </div>
-
-              {/* Single source of truth: the same card that exports to PNG. */}
-              <MorgueRecordCard record={selectedRecord} />
+              {/* The card is the whole modal now: notice + actions live inside it. */}
+              <MorgueRecordCard
+                record={selectedRecord}
+                actions={<>
+                  <button className="btn btn-ghost" style={{ padding: '5px 12px', fontSize: 11.5 }} onClick={() => setShowDetailModal(false)}>Close</button>
+                  <button className="btn btn-ghost" style={{ padding: '5px 12px', fontSize: 11.5 }} onClick={() => {
+                    // Copy the OOC-safe REDACTED BBCode — casing IDs/types hidden
+                    // (tox screen + autopsy findings stay full).
+                    const bbcode = generateMorgueBBCode(selectedRecord, { redacted: true });
+                    if (bbcode) {
+                      navigator.clipboard.writeText(bbcode);
+                      showNotification?.('Redacted BBCode copied!', 'success');
+                    }
+                  }}>
+                    <i className="fas fa-file-export me-1" /> Copy BBCode
+                  </button>
+                  <button className="btn btn-ghost" style={{ padding: '5px 12px', fontSize: 11.5 }} disabled={exportingCard} onClick={async () => {
+                    // Export the designed Record Card as a PNG snapshot.
+                    setExportingCard(true);
+                    try {
+                      await downloadMorgueRecordCard(selectedRecord);
+                      showNotification?.(`Record card saved (Case #${selectedRecord?.caseId}).`, 'success');
+                    } catch (err) {
+                      console.warn('[MorgueBrowser] Record card export failed:', err?.message || err);
+                      showNotification?.('Record card export failed.', 'error');
+                    } finally {
+                      setExportingCard(false);
+                    }
+                  }}>
+                    <i className="fas fa-image me-1" /> {exportingCard ? 'Rendering…' : 'Record Card (PNG)'}
+                  </button>
+                  <button className="btn btn-ghost" style={{ padding: '5px 16px', fontSize: 11.5, color: 'var(--teal)', borderColor: 'var(--teal)' }} onClick={() => {
+                    setRequestingAutopsy(selectedRecord);
+                    setShowDetailModal(false);
+                  }}>
+                    <i className="fas fa-microscope me-1" /> Request Autopsy
+                  </button>
+                  <button className="btn btn-ghost" style={{ padding: '5px 12px', fontSize: 11.5 }} onClick={() => stepRecord(-1)} title="Previous record in the list">
+                    <i className="fas fa-chevron-left me-1" /> Prev
+                  </button>
+                  <button className="btn btn-primary" style={{ padding: '5px 16px', fontSize: 11.5, fontWeight: 700, background: 'var(--teal)', borderColor: 'var(--teal)', color: '#062a26' }} onClick={() => stepRecord(1)} title="Next record in the list">
+                    Next <i className="fas fa-chevron-right ms-1" />
+                  </button>
+                </>}
+              />
               <div style={{ height: 10 }} />
-            </div>
-
-            <div className="modal-foot" style={{ flexShrink: 0, padding: '7px 14px', gap: 8, flexWrap: 'wrap' }}>
-              <button className="btn btn-ghost" style={{ padding: '5px 12px', fontSize: 11.5 }} onClick={() => setShowDetailModal(false)}>Close</button>
-              <button className="btn btn-ghost" style={{ padding: '5px 12px', fontSize: 11.5 }} onClick={() => {
-                // Copy the OOC-safe REDACTED BBCode — casing IDs/types hidden
-                // (tox screen + autopsy findings stay full).
-                const bbcode = generateMorgueBBCode(selectedRecord, { redacted: true });
-                if (bbcode) {
-                  navigator.clipboard.writeText(bbcode);
-                  showNotification?.('Redacted BBCode copied!', 'success');
-                }
-              }}>
-                <i className="fas fa-file-export me-1" /> Copy BBCode
-              </button>
-              <button className="btn btn-ghost" style={{ padding: '5px 12px', fontSize: 11.5 }} disabled={exportingCard} onClick={async () => {
-                // Export the designed Record Card as a PNG snapshot.
-                setExportingCard(true);
-                try {
-                  await downloadMorgueRecordCard(selectedRecord);
-                  showNotification?.(`Record card saved (Case #${selectedRecord?.caseId}).`, 'success');
-                } catch (err) {
-                  console.warn('[MorgueBrowser] Record card export failed:', err?.message || err);
-                  showNotification?.('Record card export failed.', 'error');
-                } finally {
-                  setExportingCard(false);
-                }
-              }}>
-                <i className="fas fa-image me-1" /> {exportingCard ? 'Rendering…' : 'Record Card (PNG)'}
-              </button>
-              <button className="btn btn-primary" style={{ padding: '5px 12px', fontSize: 11.5 }} onClick={() => {
-                setRequestingAutopsy(selectedRecord);
-                setShowDetailModal(false);
-              }}>
-                <i className="fas fa-microscope me-1" /> Request Autopsy
-              </button>
             </div>
           </div>
         </div>

@@ -1269,14 +1269,16 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
                 </div>
               </div>
 
+              {isPhmcMember && (
               <div className={`cat${!collapsedCats.has('Administration') ? ' open' : ''}`}>
                 <div className="cat-head" onClick={() => toggleCat('Administration')}><span>Administration</span><span className="chev">▶</span></div>
                 <div className="cat-items">
                   <div onClick={() => navigateTo('/admin')} className="form-item">
-                    <span className="dot" />Admin Panel
+                    Admin Panel
                   </div>
                 </div>
               </div>
+              )}
             </>
           )}
           {Object.entries(groupedForms).map(([cat, forms]) => (
@@ -1324,13 +1326,11 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
             <ServiceStatusTicker />
           </div>
           <div className="topbar-actions">
-                        <div className="status-pill">
-              <span className="led" style={{
-                background: isAuthenticated ? 'var(--teal)' : 'var(--amber)',
-                boxShadow: isAuthenticated ? '0 0 6px var(--teal)' : '0 0 6px var(--amber)',
-              }} />
-              {isAuthenticated ? 'Connected' : 'Offline'}
-            </div>
+            <span className="led" title={isAuthenticated ? 'Connected' : 'Offline'} style={{
+              width: 9, height: 9, borderRadius: '50%', flexShrink: 0,
+              background: isAuthenticated ? 'var(--teal)' : 'var(--amber)',
+              boxShadow: isAuthenticated ? '0 0 6px var(--teal)' : '0 0 6px var(--amber)',
+            }} />
 
             <TimeDisplay compact />
             {isMedicalExaminer && (
@@ -1395,11 +1395,6 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
               )}
             </div>
             )}
-            <div className="icon-btn" title="Auto-Deploy Preferences" onClick={() => setShowConsentPrefs(true)}
-              style={{ display: 'flex', alignItems: 'center', gap: 5, width: 'auto', padding: '0 10px' }}>
-              <i className="fas fa-toggle-on" style={{ fontSize: 11 }} />
-              <span style={{ fontSize: 10.5, fontFamily: 'var(--mono)', fontWeight: 600, whiteSpace: 'nowrap' }}>Deploy Consent</span>
-            </div>
           </div>
         </div>
 
@@ -1591,14 +1586,9 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
                           <span><strong>Non Employee</strong> — You have limited access. Morgue Records and public forms are available.</span>
                         </div>
                       )}
-                      <div className="field">
-                        <label>{isPhmcMember ? 'Employee Name' : 'User'}</label>
-                        <div style={{
-                          padding: '10px 12px', background: 'var(--bg-surface)', borderRadius: 8,
-                          border: '1px solid var(--border)', fontSize: 13, color: 'var(--text)',
-                        }}>
-                          {characterName || user?.username || 'Unknown'}
-                        </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, padding: '7px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
+                        <span style={{ color: 'var(--text-faint)', flexShrink: 0 }}>{isPhmcMember ? 'Employee Name' : 'User'}</span>
+                        <span style={{ fontWeight: 600, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis' }}>{characterName || user?.username || 'Unknown'}</span>
                       </div>
                       {credentialsLoading && (
                         <div className="field">
@@ -1619,14 +1609,9 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
                         </div>
                       )}
                       {factionData?.rank && (
-                        <div className="field">
-                          <label>Rank</label>
-                          <div style={{
-                            padding: '10px 12px', background: 'var(--bg-surface)', borderRadius: 8,
-                            border: '1px solid var(--border)', fontSize: 13, color: 'var(--text)',
-                          }}>
-                            {cleanRankText(factionData.rank)}
-                          </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, padding: '7px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
+                          <span style={{ color: 'var(--text-faint)', flexShrink: 0 }}>Rank</span>
+                          <span style={{ fontWeight: 600, textAlign: 'right' }}>{cleanRankText(factionData.rank)}</span>
                         </div>
                       )}
                       <div className="field">
@@ -1723,6 +1708,10 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
                           <i className="fas fa-sign-out-alt me-1" /> Sign Out
                         </button>
                       </div>
+                      <button className="btn btn-ghost" style={{ width: '100%', justifyContent: 'center', fontSize: 12, marginTop: 8 }}
+                        onClick={() => setShowConsentPrefs(true)} title="Auto-Deploy Preferences">
+                        <i className="fas fa-toggle-on me-1" /> Deploy Consent
+                      </button>
                     </>
                   )}
                   {isLocalhostDev && (

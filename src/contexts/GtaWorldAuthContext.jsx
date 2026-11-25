@@ -737,11 +737,12 @@ export const GtaWorldAuthProvider = ({ children }) => {
                     console.warn('[GtaWorldAuthContext] Real-time check: Character not in faction members path but firebaseIsPhmcMember is true — skipping logout (likely Non Faction Member rank).');
                     return;
                 }
-                console.warn('[GtaWorldAuthContext] Real-time check: Membership revoked or character deleted from DB. Logging out...');
-                handleLogout('Your faction membership has been revoked. Please contact an administrator.');
-                setTimeout(() => {
-                    window.location.reload();
-                }, 1000);
+                // Membership revoked — but the claim is already false, so this
+                // session is already limited everywhere (restricted forms
+                // hidden, saves standard-only). Stay signed in so LEO/Morgue
+                // records remain viewable; logging out would only lock the
+                // user out of read-only views.
+                console.warn('[GtaWorldAuthContext] Real-time check: Membership revoked or character deleted from DB. Continuing with limited access (read-only views stay available).');
             }
         }, (error) => {
             console.error('[GtaWorldAuthContext] Real-time membership listener error:', error);
