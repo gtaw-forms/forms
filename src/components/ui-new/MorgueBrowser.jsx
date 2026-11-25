@@ -8,6 +8,7 @@ import { triggerRequestMorgueUpdate } from '../../services/firebaseFunctions';
 import RequestAutopsyModal from './RequestAutopsyModal';
 import MassRequestAutopsyModal from './MassRequestAutopsyModal';
 import MorgueBodyMapModal from './MorgueBodyMapModal';
+import { downloadMorgueRecordCard } from '../../utils/morgueRecordCard.jsx';
 
 const PAGE_SIZE = 50;
 const IS_LOCALHOST = window.location.hostname === 'localhost';
@@ -30,6 +31,7 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
   const [showMassModal, setShowMassModal] = useState(false);
   const [selectedKeys, setSelectedKeys] = useState(() => new Set());
   const [showBodyMap, setShowBodyMap] = useState(false);
+  const [exportingCard, setExportingCard] = useState(false);
   const [page, setPage] = useState(1);
   const lastClickedIndexRef = useRef(-1);
   const selectAllRef = useRef(null);
@@ -547,6 +549,21 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
                 }
               }}>
                 <i className="fas fa-file-export me-1" /> Copy BBCode
+              </button>
+              <button className="btn btn-ghost" style={{ padding: '5px 12px', fontSize: 11.5 }} disabled={exportingCard} onClick={async () => {
+                // Export the designed Record Card as a PNG snapshot.
+                setExportingCard(true);
+                try {
+                  await downloadMorgueRecordCard(selectedRecord);
+                  showNotification?.(`Record card saved (Case #${selectedRecord?.caseId}).`, 'success');
+                } catch (err) {
+                  console.warn('[MorgueBrowser] Record card export failed:', err?.message || err);
+                  showNotification?.('Record card export failed.', 'error');
+                } finally {
+                  setExportingCard(false);
+                }
+              }}>
+                <i className="fas fa-image me-1" /> {exportingCard ? 'Rendering…' : 'Record Card (PNG)'}
               </button>
               <button className="btn btn-primary" style={{ padding: '5px 12px', fontSize: 11.5 }} onClick={() => {
                 setRequestingAutopsy(selectedRecord);
