@@ -93,7 +93,25 @@ const BodyCard = ({ body, index, canRemove, onChange, onRemove }) => {
             {open && (
                 <div style={{ borderTop: '1px solid var(--border)', padding: '10px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                     <div><span style={labelStyle}>Decedent Name {reqStar}</span><input style={inputStyle} value={body.decedentName} onChange={e => onChange({ decedentName: e.target.value })} /></div>
-                    <div><span style={labelStyle}>(( OOC Name ))</span><input style={inputStyle} value={body.oocName} onChange={e => onChange({ oocName: e.target.value })} placeholder="Required for John/Jane Doe" /></div>
+                    {(() => {
+                        const droppedSeededOoc = !!(body.caseId && String(body.seededOocName || '').trim() && !String(body.oocName || '').trim());
+                        return (
+                            <div>
+                                <span style={labelStyle}>(( OOC Name ))</span>
+                                <input
+                                    style={droppedSeededOoc ? { ...inputStyle, borderColor: 'var(--danger)' } : inputStyle}
+                                    value={body.oocName}
+                                    onChange={e => onChange({ oocName: e.target.value })}
+                                    placeholder="Required for John/Jane Doe"
+                                />
+                                {droppedSeededOoc && (
+                                    <div style={{ fontSize: 10.5, color: 'var(--danger)', marginTop: 3 }}>
+                                        Morgue intake #{body.caseId} carried (({body.seededOocName})) — restore it here or submit stays blocked.
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })()}
                     <div><span style={labelStyle}>Gender</span><input style={inputStyle} value={body.gender} onChange={e => onChange({ gender: e.target.value })} /></div>
                     <div><span style={labelStyle}>Ethnicity</span><input style={inputStyle} value={body.ethnicity} onChange={e => onChange({ ethnicity: e.target.value })} /></div>
                     <div><span style={labelStyle}>Date of Death</span><input style={inputStyle} value={body.dateOfDeath} onChange={e => onChange({ dateOfDeath: e.target.value })} placeholder="DD/MMM/YYYY" /></div>

@@ -101,6 +101,12 @@ export const toMassRequestBody = (record) => {
         caseId: String(record?.caseId || ''),
         decedentName,
         oocName,
+        // Snapshot of what the morgue intake carried: if the requester edits
+        // the OOC away (e.g. moves it into the name field), validation blocks
+        // submit instead of filing a body the bot can't match (t=10507:
+        // "Anthony Sorrentino" filed with no ((OOC))). Never submitted —
+        // builders pick explicit fields only.
+        seededOocName: oocName,
         gender: String(record?.sex || ''),
         ethnicity: inferEthnicity(record),
         dateOfDeath,
@@ -365,8 +371,23 @@ export const validateMassRequestBody = (body) => {
     if (!name) problems.push('missing decedent name');
     // Same policy as parseMassRequestBbcode: a real IC name is an identity on
     // its own, but DOE/UNKNOWN needs the ((OOC)) to tell bodies apart.
-    if (name && !ooc && /^(?:unknown|unidentified|j(?:ohn|ane)?\.?\s+doe)\b/i.test(name)) {
+    // (Skipped when the seeded-OOC rule below fires — one specific message
+    // beats two overlapping ones.)
+    const seededOoc = String(body?.seededOocName || '').trim();
+    const seededOocDropped = !!(body?.caseId && seededOoc && !ooc);
+    if (!seededOocDropped && name && !ooc && /^(?:unknown|unidentified|j(?:ohn|ane)?\.?\s+doe)\b/i.test(name)) {
         problems.push('unidentified decedent needs an ((OOC)) name');
+    }
+    // Morgue-seeded bodies: the intake already carried an ((OOC)) identity.
+    // If it was edited away (classically: moved into Decedent Name, as in
+    // t=10507 where "Anthony Sorrentino" filed with no OOC), block submit —
+    // the bot can't match the body back to its morgue case without it.
+    if (seededOocDropped) {
+        const movedIntoName = name.toLowerCase() === seededOoc.toLowerCase();
+        problems.push(
+            `OOC identity from morgue intake (#${body.caseId}) was removed` +
+            (movedIntoName ? ' — it looks like the OOC name was typed into Decedent Name; put it back in (( OOC Name ))' : ` — restore "${seededOoc}" in (( OOC Name ))`)
+        );
     }
     return problems;
 };
