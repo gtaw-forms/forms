@@ -42,6 +42,7 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
   const [showBodyMap, setShowBodyMap] = useState(false);
   const [exportingCard, setExportingCard] = useState(false);
   const [uploadingCard, setUploadingCard] = useState(false);
+  const [uploadedCard, setUploadedCard] = useState(null); // { key, url } — shown under the buttons until the record changes
   const [page, setPage] = useState(1);
   const lastClickedIndexRef = useRef(-1);
   const selectAllRef = useRef(null);
@@ -524,6 +525,12 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
                     try {
                       const url = await uploadMorgueRecordCard(selectedRecord);
                       try { await navigator.clipboard.writeText(url); } catch { /* clipboard best-effort */ }
+                      // Open the image in a new tab too — the upload takes a
+                      // few seconds, so the toast alone is easy to miss. If the
+                      // popup blocker eats it, the clipboard copy + toast below
+                      // still carry the link.
+                      try { window.open(url, '_blank', 'noopener,noreferrer'); } catch { /* popup blocked — covered above */ }
+                      setUploadedCard({ key: recordKey(selectedRecord), url });
                       showNotification?.(`Record card uploaded — link copied: ${url}`, 'success');
                     } catch (err) {
                       console.warn('[MorgueBrowser] Record card upload failed:', err?.message || err);
@@ -546,6 +553,11 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
                   <button className="btn btn-primary" style={{ padding: '5px 16px', fontSize: 11.5, fontWeight: 700, background: 'var(--teal)', borderColor: 'var(--teal)', color: '#062a26' }} onClick={() => stepRecord(1)} title="Next record in the list">
                     Next <i className="fas fa-chevron-right ms-1" />
                   </button>
+                  {uploadedCard && uploadedCard.key === recordKey(selectedRecord) && (
+                    <div style={{ flexBasis: '100%', fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      Card URL: <a href={uploadedCard.url} target="_blank" rel="noreferrer" style={{ color: 'var(--teal)' }}>{uploadedCard.url}</a>
+                    </div>
+                  )}
                 </>}
               />
               <div style={{ height: 10 }} />

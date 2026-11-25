@@ -98,7 +98,7 @@ const MorgueRecordCard = ({ record, actions }) => {
           color: '#e8b64c', fontSize: 12, borderRadius: 8, padding: '10px 14px', marginBottom: 14,
         }}>
           <span style={{ fontWeight: 800 }}>⚠ NOTICE:&nbsp;</span>
-          Law Enforcement MAY use the PHMC Morgue Intake Records for PKs as proof of death for court cases. CKs will require a formal autopsy process which can be requested on the PHMC Forums.
+          Law Enforcement MAY use the PHMC Morgue Intake Records for PKs as proof of death for court cases. CKs require a formal autopsy — request one here via Request Autopsy, or on the PHMC Forums.
         </div>
         {/* Key facts */}
         <div style={{ fontSize: 13, fontWeight: 800, letterSpacing: 1.5, color: SECTION, borderBottom: `2px solid ${SECTION}`, paddingBottom: 4, marginBottom: 6 }}>CASE DETAILS</div>
