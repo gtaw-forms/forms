@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
-  generateMorgueBBCode, recordContainsCK, morgueLastUpdatedAt, isMorgueOverdue, formatMorgueAge,
+  recordContainsCK, morgueLastUpdatedAt, isMorgueOverdue, formatMorgueAge,
 } from '../../utils/morgue';
 import { ref, onValue } from 'firebase/database';
 import { database } from '../../firebase';
@@ -9,7 +9,7 @@ import RequestAutopsyModal from './RequestAutopsyModal';
 import MassRequestAutopsyModal from './MassRequestAutopsyModal';
 import MorgueBodyMapModal from './MorgueBodyMapModal';
 import MorgueRecordCard from './MorgueRecordCard';
-import { downloadMorgueRecordCard } from '../../utils/morgueRecordCard.jsx';
+import { downloadMorgueRecordCard, uploadMorgueRecordCard } from '../../utils/morgueRecordCard.jsx';
 
 const PAGE_SIZE = 50;
 const IS_LOCALHOST = window.location.hostname === 'localhost';
@@ -41,6 +41,7 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
   const [selectedKeys, setSelectedKeys] = useState(() => new Set());
   const [showBodyMap, setShowBodyMap] = useState(false);
   const [exportingCard, setExportingCard] = useState(false);
+  const [uploadingCard, setUploadingCard] = useState(false);
   const [page, setPage] = useState(1);
   const lastClickedIndexRef = useRef(-1);
   const selectAllRef = useRef(null);
@@ -501,18 +502,7 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
                 record={selectedRecord}
                 actions={<>
                   <button className="btn btn-ghost" style={{ padding: '5px 12px', fontSize: 11.5 }} onClick={() => setShowDetailModal(false)}>Close</button>
-                  <button className="btn btn-ghost" style={{ padding: '5px 12px', fontSize: 11.5 }} onClick={() => {
-                    // Copy the OOC-safe REDACTED BBCode — casing IDs/types hidden
-                    // (tox screen + autopsy findings stay full).
-                    const bbcode = generateMorgueBBCode(selectedRecord, { redacted: true });
-                    if (bbcode) {
-                      navigator.clipboard.writeText(bbcode);
-                      showNotification?.('Redacted BBCode copied!', 'success');
-                    }
-                  }}>
-                    <i className="fas fa-file-export me-1" /> Copy BBCode
-                  </button>
-                  <button className="btn btn-ghost" style={{ padding: '5px 12px', fontSize: 11.5 }} disabled={exportingCard} onClick={async () => {
+                  <button className="btn btn-ghost" style={{ padding: '5px 12px', fontSize: 11.5 }} disabled={exportingCard} title="Save the record card image to this device" onClick={async () => {
                     // Export the designed Record Card as a PNG snapshot.
                     setExportingCard(true);
                     try {
@@ -525,7 +515,24 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
                       setExportingCard(false);
                     }
                   }}>
-                    <i className="fas fa-image me-1" /> {exportingCard ? 'Rendering…' : 'Record Card (PNG)'}
+                    <i className="fas fa-download me-1" /> {exportingCard ? 'Rendering…' : 'Download Record (Local)'}
+                  </button>
+                  <button className="btn btn-ghost" style={{ padding: '5px 12px', fontSize: 11.5 }} disabled={uploadingCard} title="Upload the card image and copy its link" onClick={async () => {
+                    // Upload the same snapshot ImgLink (same host/album as the
+                    // form image uploader) and hand back the URL.
+                    setUploadingCard(true);
+                    try {
+                      const url = await uploadMorgueRecordCard(selectedRecord);
+                      try { await navigator.clipboard.writeText(url); } catch { /* clipboard best-effort */ }
+                      showNotification?.(`Record card uploaded — link copied: ${url}`, 'success');
+                    } catch (err) {
+                      console.warn('[MorgueBrowser] Record card upload failed:', err?.message || err);
+                      showNotification?.(`Record card upload failed: ${err?.message || 'unknown error'}`, 'error');
+                    } finally {
+                      setUploadingCard(false);
+                    }
+                  }}>
+                    <i className="fas fa-link me-1" /> {uploadingCard ? 'Uploading…' : 'Download Record (URL)'}
                   </button>
                   <button className="btn btn-ghost" style={{ padding: '5px 16px', fontSize: 11.5, color: 'var(--teal)', borderColor: 'var(--teal)' }} onClick={() => {
                     setRequestingAutopsy(selectedRecord);
