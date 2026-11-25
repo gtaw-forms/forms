@@ -8,6 +8,7 @@ import { triggerRequestMorgueUpdate } from '../../services/firebaseFunctions';
 import RequestAutopsyModal from './RequestAutopsyModal';
 import MassRequestAutopsyModal from './MassRequestAutopsyModal';
 import MorgueBodyMapModal from './MorgueBodyMapModal';
+import MorgueRecordCard from './MorgueRecordCard';
 import { downloadMorgueRecordCard } from '../../utils/morgueRecordCard.jsx';
 
 const PAGE_SIZE = 50;
@@ -17,6 +18,14 @@ const IS_LOCALHOST = window.location.hostname === 'localhost';
 const REQUEST_COOLDOWN_MS = 2 * 60 * 60 * 1000;
 
 const formatStamp = (ts) => (ts ? new Date(Number(ts)).toLocaleString() : 'unknown');
+
+// Compact intake stamp for the card rows: "Tuesday, 24 November 2026 16:20:13"
+// → "Tue 24 Nov 2026, 16:20". Falls back to the first words when unparseable.
+const shortTOD = (t) => {
+  const m = String(t || '').match(/(\w+),\s*(\d+)\s*(\w+)\s*(\d+)\s*(\d+):(\d+)/);
+  if (!m) return String(t || '—').split(' ').slice(0, 4).join(' ') || '—';
+  return `${m[1].slice(0, 3)} ${m[2]} ${m[3].slice(0, 3)} ${m[4]}, ${m[5]}:${m[6]}`;
+};
 
 // Stable selection identity — firebaseKey is the record key; caseId is the
 // human-facing fallback so a cached record without firebaseKey still selects.
@@ -253,14 +262,32 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
           <span style={{ flex: 1 }}>{morgueBanner.text}</span>
         </div>
       )}
-      <div style={{ padding: '8px 18px 10px', borderBottom: '1px solid var(--border)' }}>
+      <div style={{ padding: '12px 18px 10px', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+          <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)' }}>Morgue Records</span>
+          <span style={{ fontSize: 11, color: 'var(--text-faint)', fontFamily: 'var(--mono)' }}>{records.length.toLocaleString()} intakes</span>
+          <span style={{
+            marginLeft: 'auto', fontSize: 11, whiteSpace: 'nowrap',
+            color: isOverdue ? 'var(--amber)' : 'var(--teal)',
+            border: `1px solid ${isOverdue ? 'var(--amber)' : 'var(--teal)'}`,
+            borderRadius: 20, padding: '4px 12px',
+          }}>
+            {recordsLastUpdated ? <>● Updated {formatMorgueAge(recordsLastUpdated, clockTick)} (about every 48h)</> : 'No records loaded'}
+          </span>
+        </div>
         <div className="lookup-bar" style={{ marginBottom: 8 }}>
-          <input type="text" placeholder="Search by decedent name or case ID…" value={search}
+          <input type="text" placeholder="Search by decedent name, OOC name, case ID or street…" value={search}
             onChange={e => setSearch(e.target.value)} />
-          <label title="Show only records with a (CK) marker in any field">
-            <input type="checkbox" checked={ckOnly} onChange={e => setCkOnly(e.target.checked)} />
+          <button
+            className="btn btn-ghost"
+            style={{
+              fontSize: 12, whiteSpace: 'nowrap', borderRadius: 20, padding: '8px 16px',
+              ...(ckOnly ? { borderColor: 'var(--amber)', color: 'var(--amber)' } : {}),
+            }}
+            onClick={() => setCkOnly(v => !v)}
+            title="Show only records with a (CK) marker in any field">
             CK only{ckOnly ? ` (${filtered.length})` : ckCount > 0 ? ` (${ckCount})` : ''}
-          </label>
+          </button>
           {selectedCount > 0 && (
             <div className="batch-tools">
               <span className="batch-count" title="Selection is kept while paging and filtering">
@@ -288,8 +315,16 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
           </button>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 10.5, color: 'var(--text-faint)', fontFamily: 'var(--mono)' }}>
-          <i className="fas fa-circle-info" />
-          <span>Tick bodies to request several autopsies in one case thread. Shift-click selects a range.</span>
+          <input
+            ref={selectAllRef}
+            type="checkbox"
+            checked={allPageSelected}
+            onChange={toggleSelectAllPage}
+            title="Select every body on this page"
+            aria-label="Select every body on this page"
+          />
+          <span>Showing {filtered.length} of {records.length} · newest first · tick rows for batch requests (shift-click selects a range)</span>
+          {selectedCount > 0 && <span style={{ color: 'var(--teal)' }}>· {selectedCount} selected</span>}
         </div>
       </div>
 
@@ -320,24 +355,24 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
             </button>
           </div>
         )}
-        {!isLoading && <><div className="records-head-row">
-          <input
-            ref={selectAllRef}
-            type="checkbox"
-            checked={allPageSelected}
-            onChange={toggleSelectAllPage}
-            title="Select every body on this page"
-            aria-label="Select every body on this page"
-          />
-          <span>Case ID</span>
-          <span>Decedent</span>
-          <span>Intake Date</span>
-          <span style={{ textAlign: 'center' }}>Action</span>
-        </div>
+        {!isLoading && <>
         {paginated.map((r, index) => {
           const isSelected = selectedKeys.has(recordKey(r));
+          const isCK = recordContainsCK(r);
+          const sexBadge = /^f/i.test(String(r.sex || '')) ? 'FEMALE' : /^m/i.test(String(r.sex || '')) ? 'MALE' : '';
+          const narcRaw = String(r.narcotics || '').trim();
+          const narcParts = narcRaw && !/^(n\/a|none)$/i.test(narcRaw) ? narcRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
+          const narcLabel = narcParts.length > 1 ? `${narcParts[0]} +${narcParts.length - 1}` : narcParts[0] || '';
+          const woundCount = Array.isArray(r.findings) ? r.findings.length : 0;
+          const slugCount = Array.isArray(r.bullets) ? r.bullets.length : 0;
           return (
-          <div key={r.firebaseKey || r.caseId} className={`record-row${isSelected ? ' selected' : ''}`}>
+          <div key={r.firebaseKey || r.caseId} style={{
+            display: 'flex', gap: 12, alignItems: 'center',
+            background: '#111a26',
+            border: `1px solid ${isSelected ? 'var(--teal)' : isCK ? '#e0494f' : '#26374c'}`,
+            borderLeft: `4px solid ${isCK ? '#e0494f' : 'var(--teal)'}`,
+            borderRadius: 10, padding: '12px 16px', marginBottom: 8,
+          }}>
             <input
               type="checkbox"
               checked={isSelected}
@@ -346,17 +381,28 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
               title="Add this body to a batch autopsy request (shift-click for a range)"
               aria-label={`Select ${r.name || 'record'} (case ${r.caseId || 'unknown'})`}
             />
-            <div className="case-id">#{r.caseId}</div>
-            <div className="decedent">
-              {r.name || 'Unknown'}
-              <div className="sub">{r.location || '—'}</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: '#8ea3b8' }}>#{r.caseId}</span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: '#e9f0f7' }}>{r.name || 'Unknown'}</span>
+                {isCK && (
+                  <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: 0.6, padding: '2px 8px', borderRadius: 20, background: '#e0494f', color: '#fff' }}>CK</span>
+                )}
+                {sexBadge && (
+                  <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: 0.6, padding: '2px 8px', borderRadius: 20, background: '#33475f', color: '#fff' }}>{sexBadge}</span>
+                )}
+              </div>
+              <div style={{ fontSize: 12, color: '#8ea3b8', marginTop: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {r.location || '—'} · {shortTOD(r.timeOfDeath)} · {r.causeOfDeath || '—'} · {woundCount} {woundCount === 1 ? 'wound' : 'wounds'}
+                {slugCount > 0 && <> · {slugCount} {slugCount === 1 ? 'projectile' : 'projectiles'}</>}
+                {narcLabel && <> · <span style={{ color: '#e8b64c' }}>● {narcLabel}</span></>}
+              </div>
             </div>
-            <div className="date">{r.timeOfDeath ? r.timeOfDeath.split(' ').slice(0, 5).join(' ') : '—'}</div>
-            <div style={{ display: 'flex', justifyContent: 'center', gap: 6 }}>
-              <button className="btn-view" onClick={() => { setSelectedRecord(r); setShowDetailModal(true); }}>
+            <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+              <button className="btn-view" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }} onClick={() => { setSelectedRecord(r); setShowDetailModal(true); }}>
                 <i className="fas fa-eye me-1" style={{ fontSize: 10 }} /> View Record
               </button>
-              <button className="btn-view" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }} onClick={() => { setRequestingAutopsy(r); }}>
+              <button className="btn-view" onClick={() => { setRequestingAutopsy(r); }}>
                 <i className="fas fa-microscope me-1" style={{ fontSize: 10 }} /> Request Autopsy
               </button>
             </div>
@@ -444,97 +490,15 @@ const MorgueBrowser = ({ records, isLoading, loadRecords, showNotification, isAu
               </div>
             </div>
 
-            <div className="modal-body" style={{ flex: 1, overflowY: 'auto' }}>
-              <div className="notice-bubble notice-warn">
+            <div className="modal-body" style={{ flex: 1, overflowY: 'auto', padding: '14px 18px' }}>
+              <div className="notice-bubble notice-warn" style={{ marginBottom: 14 }}>
                 <i className="fas fa-exclamation-triangle" style={{ marginTop: 2, flexShrink: 0 }} />
                 <span>NOTICE: Law Enforcement MAY use the PHMC Morgue Intake Records for PKs as proof of death for court cases. CKs will require a formal autopsy process which can be requested on the PHMC Forums.</span>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 20, alignItems: 'start' }}>
-                {/* Identity & Discovery */}
-                <div className="finding-section" style={{ marginBottom: 0 }}>
-                  <div className="finding-section-title">Identity &amp; Discovery</div>
-                  <div className="finding-kv"><span>Case ID</span><span className="mono">#{selectedRecord.caseId}</span></div>
-                  <div className="finding-kv"><span>Name</span><span>{selectedRecord.name || 'Unknown'}</span></div>
-                  <div className="finding-kv"><span>Sex</span><span>{selectedRecord.sex || 'Unknown'}</span></div>
-                  <div className="finding-kv"><span>Identified</span><span>{selectedRecord.identified || 'Unknown'}</span></div>
-                  <div className="finding-kv"><span>Estimated Age</span><span>{selectedRecord.estimatedAge || 'Unknown'}</span></div>
-                  <div className="finding-kv"><span>Location of Discovery</span><span>{selectedRecord.location || '—'}</span></div>
-                  <div className="finding-kv"><span>Time of Death</span><span>{selectedRecord.timeOfDeath || '—'}</span></div>
-                  {selectedRecord.timeOfDeathISO && (
-                    <div className="finding-kv"><span>Time of Death (ISO)</span><span className="mono">{selectedRecord.timeOfDeathISO}</span></div>
-                  )}
-                  <div className="finding-kv"><span>Cause of Death</span><span>{selectedRecord.causeOfDeath || '—'}</span></div>
-                  <div className="finding-kv"><span>DNA Profile</span><span className="mono">{selectedRecord.dnaProfile || 'N/A'}</span></div>
-                </div>
-
-                {/* Physical Description */}
-                <div className="finding-section" style={{ marginBottom: 0 }}>
-                  <div className="finding-section-title">Physical Description</div>
-                  <div className="finding-value" style={{ whiteSpace: 'pre-wrap' }}>
-                    {selectedRecord.physicalDescription || 'No physical description on file.'}
-                  </div>
-                  <div style={{ marginTop: 12 }}>
-                    <div className="finding-kv"><span>Tattoos / Marks</span><span>{selectedRecord.tattoos || 'None'}</span></div>
-                    <div className="finding-kv"><span>Estimated Age</span><span>{selectedRecord.estimatedAge || 'Unknown'}</span></div>
-                  </div>
-                </div>
-
-                {/* Forensic Collection & Toxicology */}
-                <div className="finding-section" style={{ marginBottom: 0 }}>
-                  <div className="finding-section-title">Forensic Collection &amp; Toxicology</div>
-                  <div className="finding-kv"><span>Blood Alcohol Concentration</span><span>{selectedRecord.bac || '0.00%'}</span></div>
-                  <div className="finding-kv"><span>Traces of Narcotics</span><span>{selectedRecord.narcotics || 'None'}</span></div>
-                </div>
-
-                {/* Recovered Projectiles / Casings (REDACTED — casing IDs are OOC-sensitive) */}
-                <div className="finding-section" style={{ marginBottom: 0 }}>
-                  <div className="finding-section-title">Recovered Projectiles / Casings</div>
-                  {(() => {
-                    const bArr = Array.isArray(selectedRecord.bullets) ? selectedRecord.bullets : [];
-                    return bArr.length > 0 ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        {bArr.map((b, i) => (
-                          <span key={i} className="mono redacted-text">REDACTED STRIATION - REDACTED {(b.type || '').toLowerCase().includes('gauge') ? 'PELLET' : 'BULLET'} TYPE</span>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="finding-value" style={{ color: 'var(--text-faint)' }}>No projectiles or casings recovered.</div>
-                    );
-                  })()}
-                </div>
-              </div>
-
-              <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '20px 0 16px' }} />
-              <div className="notice-bubble notice-ooc" style={{ marginBottom: 16 }}>
-                <i className="fas fa-lock" style={{ marginTop: 2, flexShrink: 0 }} />
-                <span>OOC Information — The data below is strictly Out of Character. Any use of this information In Character requires a formal autopsy request.</span>
-              </div>
-
-              <div className="finding-section" style={{ marginBottom: 0 }}>
-                <div className="finding-section-title">Autopsy Findings</div>
-                {selectedRecord.findings?.length > 0 ? (
-                  <div className="autopsy-table">
-                    <div className="autopsy-row autopsy-head"><span>Time</span><span>Wound Type</span><span>Body Part</span><span>Dist.</span></div>
-                    {selectedRecord.findings.map((f, i) => (
-                      <div key={i} className="autopsy-row">
-                        <span className="mono">{f.time || '—'}</span>
-                        <span>{f.type || '—'}</span>
-                        <span>{f.part && f.part !== '-' ? f.part : '—'}</span>
-                        <span className="mono">{f.dist && f.dist !== '-' ? f.dist : '—'}</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="finding-value" style={{ color: 'var(--text-faint)' }}>No autopsy findings recorded.</div>
-                )}
-              </div>
-
-              {selectedRecord.lastUpdated && (
-                <div style={{ marginTop: 18, fontSize: 10.5, fontFamily: 'var(--mono)', color: 'var(--text-faint)' }}>
-                  Record last updated {new Date(selectedRecord.lastUpdated).toLocaleString()}
-                </div>
-              )}
+              {/* Single source of truth: the same card that exports to PNG. */}
+              <MorgueRecordCard record={selectedRecord} />
+              <div style={{ height: 10 }} />
             </div>
 
             <div className="modal-foot" style={{ flexShrink: 0, padding: '7px 14px', gap: 8, flexWrap: 'wrap' }}>

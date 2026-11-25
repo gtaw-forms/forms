@@ -7,7 +7,6 @@ import {
     isLspdRequester,
     isLeAgency,
     PRIVATE_JUSTIFICATION_MIN,
-    buildPrivateAutopsyCaseBBCode,
     buildPrivateAutopsyRequestPayload,
 } from '../../utils/autopsyRequest';
 import AutopsyGuidelinesModal from './AutopsyGuidelinesModal';
@@ -168,16 +167,6 @@ const RequestAutopsyModal = ({ show, onClose, record, showNotification, characte
         if (!isLeAgency(agencyForum)) missingRequired.push('Agency forum (law enforcement only)');
         if (privateJustification.trim().length < PRIVATE_JUSTIFICATION_MIN) missingRequired.push('Private justification');
     }
-
-    const privatePreviewBBCode = isPrivate
-        ? buildPrivateAutopsyCaseBBCode({
-            requesterName, requesterRank, requesterDept, requesterBadge, guidelinesRead,
-            requesterCell, requesterDiscord, forumAccountUrl, privateJustification,
-            decedentName, oocName, gender: record?.sex || '', ethnicity,
-            dateOfDeath, timeOfDeath, placeOfDeath: record?.location || '',
-            deathType, synopsis, causeDetail, cexamineImg, cinjuriesImg,
-        })
-        : '';
 
     const handleSubmit = async () => {
         // Backstop (button is disabled while invalid, but never trust UI alone).
@@ -449,10 +438,6 @@ const RequestAutopsyModal = ({ show, onClose, record, showNotification, characte
                         <div style={{ fontSize: 11.5, color: 'var(--teal)', fontFamily: 'var(--mono)', wordBreak: 'break-all' }}>
                             {isPrivate ? `Confidential case — ${decedentName}${oocName ? ` ((${oocName}))` : ''} [${String(agencyForum || 'AGENCY').toUpperCase()}]` : topicTitle}
                         </div>
-                        <details>
-                            <summary style={{ fontSize: 10.5, color: 'var(--text-faint)', cursor: 'pointer', marginTop: 4 }}>Show generated BBCode</summary>
-                            <pre style={{ fontSize: 10, color: 'var(--text-muted)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 180, overflowY: 'auto', margin: '6px 0 0', fontFamily: 'var(--mono)' }}>{isPrivate ? privatePreviewBBCode : requestBBCode}</pre>
-                        </details>
                     </div>
                 </div>
 
