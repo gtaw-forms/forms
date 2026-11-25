@@ -99,7 +99,20 @@ const AssignedAutopsiesModal = ({ show, onClose, onLoadCase, factionsData, loadM
                                     // Per-body PK/CK (mixed mass requests); the
                                     // request-level sentence is only the fallback.
                                     deathType: collapseDeathType(c.deathType) || collapseDeathType(v.parsed?.deathType) || '',
-                                    parsed: v.parsed || null,
+                                    // Mass bodies carry their own DOD/TOD/location on
+                                    // cases/<i> — v.parsed is the shared Section 1/3/4
+                                    // stub with decedent keys stripped, so scoring and
+                                    // the match log must read the per-body row here.
+                                    parsed: {
+                                        ...(v.parsed || {}),
+                                        decedentName: c.name && c.oocName ? `${c.name} ((${c.oocName}))` : (c.name || v.parsed?.decedentName || ''),
+                                        sex: c.sex || v.parsed?.sex || '',
+                                        ethnicity: c.ethnicity || v.parsed?.ethnicity || '',
+                                        dateOfDeath: c.dateOfDeath || v.parsed?.dateOfDeath || '',
+                                        timeOfDeath: c.timeOfDeath || v.parsed?.timeOfDeath || '',
+                                        placeOfDeath: c.placeOfDeath || v.parsed?.placeOfDeath || '',
+                                        deathType: c.deathType || v.parsed?.deathType || '',
+                                    },
                                 });
                             });
                             return entries;
@@ -338,7 +351,11 @@ const AssignedAutopsiesModal = ({ show, onClose, onLoadCase, factionsData, loadM
                                 s += 300;
                                 const parsedTime = (p.timeOfDeath || '').trim();
                                 if (parsedTime && rt.includes(' ')) {
-                                    const recTimePart = rt.split(' ')[1] || '';
+                                    // Morgue rows are "Sunday, 22 November 2026 22:19:53"
+                                    // (time is the LAST token), not "22/NOV/2026 22:19"
+                                    // (time is index 1) — pull the first HH:MM in the row.
+                                    const tm = rt.match(/(\d{1,2}):(\d{2})/);
+                                    const recTimePart = tm ? tm[0] : '';
                                     const parsedMins = parseTimeToMinutes(parsedTime);
                                     const recMins = parseTimeToMinutes(recTimePart);
                                     if (parsedMins !== null && recMins !== null) {

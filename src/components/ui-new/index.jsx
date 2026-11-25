@@ -955,7 +955,19 @@ const NewUIPrototype = ({ basicMode = false, initialView = null, autoLoad = null
             id: `${key}/cases/${ci}`, name: c.name || '?', oocName: c.oocName || '',
             faction: v.faction || '', assignedTo: c.assignedTo,
             topicUrl: v.topicUrl || '', caseUrl: c.caseUrl || v.caseUrl || '',
-            detectedAt: v.detectedAt || '', parsed: v.parsed || null,
+            detectedAt: v.detectedAt || '',
+            // Mass bodies carry their own DOD/TOD/location on cases/<i> —
+            // v.parsed is the shared stub with decedent keys stripped.
+            parsed: {
+              ...(v.parsed || {}),
+              decedentName: c.name && c.oocName ? `${c.name} ((${c.oocName}))` : (c.name || v.parsed?.decedentName || ''),
+              sex: c.sex || v.parsed?.sex || '',
+              ethnicity: c.ethnicity || v.parsed?.ethnicity || '',
+              dateOfDeath: c.dateOfDeath || v.parsed?.dateOfDeath || '',
+              timeOfDeath: c.timeOfDeath || v.parsed?.timeOfDeath || '',
+              placeOfDeath: c.placeOfDeath || v.parsed?.placeOfDeath || '',
+              deathType: c.deathType || v.parsed?.deathType || '',
+            },
           };
         } else {
           entry = {
