@@ -90,12 +90,23 @@ export async function execute(interaction) {
             for (const k of victims) {
                 await firebase.db.ref(`autopsy-requested/${k}`).remove().catch(() => {});
             }
-            console.log(`[DEV-TEST] Purged ${victims.length} simulated autopsy-requested entries via /autopsy-dev-testing by ${interaction.user.username}`);
+            // Simulated web submissions (poster marks them dryrun instead of
+            // posting) pile up the same way — clear those too.
+            const pendSnap = await firebase.db.ref('autopsy-requests/pending').once('value');
+            const pend = pendSnap.val() || {};
+            const pendVictims = Object.entries(pend)
+                .filter(([, v]) => v && String(v.status || '') === 'dryrun')
+                .map(([k]) => k);
+            for (const k of pendVictims) {
+                await firebase.db.ref(`autopsy-requests/pending/${k}`).remove().catch(() => {});
+            }
+            const total = victims.length + pendVictims.length;
+            console.log(`[DEV-TEST] Purged ${victims.length} simulated autopsy-requested + ${pendVictims.length} pending entries via /autopsy-dev-testing by ${interaction.user.username}`);
             await interaction.editReply({
                 embeds: [new EmbedBuilder()
                     .setColor(0x28a745)
                     .setTitle('[OK] Purged simulated entries')
-                    .setDescription(`Deleted **${victims.length}** \`dry_run\` autopsy-requested ${victims.length === 1 ? 'entry' : 'entries'}. Live cases untouched.`)
+                    .setDescription(`Deleted **${total}** simulated ${total === 1 ? 'entry' : 'entries'} (${victims.length} autopsy-requested, ${pendVictims.length} pending). Live cases untouched.`)
                     .setTimestamp()],
             });
             return;

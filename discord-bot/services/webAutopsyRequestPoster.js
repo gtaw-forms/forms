@@ -32,6 +32,7 @@
 import firebase from './firebase.js';
 import { getForumClient } from './forumClient.js';
 import { isDevTestActive, devWebhookUrl } from './devRouting.js';
+import { isAutopsyDevTesting, simNoticeTag } from './autopsyDevTesting.js';
 import { probeMsForHost } from './postingHealth.js';
 import { buildSubmittedNotification, buildPostedNotification } from './webAutopsyRequestEmbed.js';
 
@@ -224,6 +225,22 @@ async function postOne(db, id, entry) {
     }
     const title = String(entry.topicTitle || '').trim();
     const bbCode = String(entry.requestBBCode || '').trim();
+    // Autopsy Dev Testing: web submissions simulate too — no f=265 topic.
+    // Marked dryrun so rescans/replays skip it; the monitor (also gated)
+    // would only ever dry-run the intake anyway.
+    if (isAutopsyDevTesting()) {
+        const tag = simNoticeTag();
+        console.log(`[WEB-REQ] ${tag} #${id} — would post f=265 topic "${title}" (simulation only, nothing posted)`);
+        await postNotification(getNotifyWebhookUrl(), {
+            content: `**${tag}** Would post f=265 topic: **${title}** (web submission #${id}) — simulation only, nothing posted.`,
+        });
+        await db.ref(`${PENDING_PATH}/${id}`).update({
+            status: 'dryrun',
+            lastAttemptAt: Date.now(),
+            dryRunNote: 'Simulated post — f=265 topic not created',
+        }).catch(() => {});
+        return;
+    }
     if (!title || !bbCode) {
         const msg = 'Missing topicTitle or requestBBCode';
         console.warn(`[WEB-REQ] #${id} ${msg} — marking failed`);

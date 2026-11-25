@@ -1,13 +1,22 @@
 # PHMC Discord Bot — Changelog
 
+## UNDEPLOYED — Slash commands auto-load from commands/ (2026-11-25)
+
+### Fixed
+- **New command files no longer need an index.js edit to appear *or* run.** `registerCommands` and the dispatch map were two hand-maintained lists; adding `commands/autopsy-dev-testing.js` without touching both meant the command silently never showed up (seen live 2026-11-25). Both sites now consume `services/commandLoader.js`, which loads every `commands/*.js` exporting `{ data, execute }` (+ optional `autocomplete`).
+- **One previously-dead command is now exposed: `/autopsy-skip`** — it was in the dispatch map but missing from the registration array, so Discord never offered it. Owner-gated, same as the rest.
+- **Deliberately still skipped: `private-web-autopsy.js`** (retired mode switch, superseded by `web-autopsy-autopost`) — loading it would re-expose dead UI. It is on an explicit, documented skip list.
+- A module that fails to import is warned about and skipped instead of sinking the boot (preserves the old `agh-dashboard` absent-file tolerance generically). Duplicate command names warn, first wins.
+- Cosmetic: picker order is now alphabetical (was manual order). The PHMC-guild trimmed set is name-filtered and unaffected.
+
 ## UNDEPLOYED — "Autopsy Dev Testing" mode: simulate intake + completion, touch nothing (2026-11-25)
 
 ### Added
 - **Owner-only `/autopsy-dev-testing` command (enable / disable / status / purge)**, modelled on `/private-web-autopsy`: persists `AUTOPSY_DEV_TESTING` to `.env`, takes effect with no restart, ephemeral replies.
-- **While on:** f=265 intake (singular, legacy-multi, mass) parses + validates, computes the ME pick **without writing it**, and posts a Discord "would do" summary (case title, would-be assignee, topic link). No forum posts/replies, no ME Discord DMs, no crossposts/PMs, no progress embeds. Entries land as `caseState: 'dry_run'` + `dryRun: true` so rescans skip them.
+- **While on:** f=265 intake (singular, legacy-multi, mass) parses + validates, computes the ME pick **without writing it**, and posts a Discord "would do" summary (case title, would-be assignee, topic link). Web submissions (`autopsy-requests/pending`) are simulated too — marked `dryrun`, no f=265 topic. No forum posts/replies, no ME Discord DMs, no crossposts/PMs, no progress embeds. Entries land as `caseState: 'dry_run'` + `dryRun: true` so rescans skip them.
 - **Completion simulation:** `handleAutopsyReply` reads the dry-run flag dynamically, so toggling mid-session takes effect immediately — no f=266 reply, no crossposts/PMs, no completion marking (`deployStatus` goes to `dry_run`).
 - **`selectME` gained a read-only preview (`{ commit: false }`)** for the simulation pick; default behavior unchanged (mass picker already had `commit: false`).
-- **Purge** deletes simulated (`dry_run`) `autopsy-requested` entries; live cases untouched.
+- **Purge** deletes simulated entries from both `autopsy-requested` (`dry_run`) and `autopsy-requests/pending` (`dryrun`); live cases untouched.
 - Scope notes: private intake keeps its own mode; already-posted completions and failed-step retries are never simulated; `AUTOPSY_DEV_TEST`-style forced assignment still applies inside simulations.
 
 ## UNDEPLOYED — LSPD ME form: one DRDB record per body in a shared mass collection (2026-11-23)
