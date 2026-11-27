@@ -35,22 +35,26 @@
  * No webhook URLs in source — destinations come from env / channel map only.
  */
 
-import { MessageFlags, ModalBuilder, LabelBuilder, RadioGroupBuilder, TextDisplayBuilder } from 'discord.js';
+import { MessageFlags, ModalBuilder, LabelBuilder, RadioGroupBuilder, TextDisplayBuilder, TextInputBuilder, TextInputStyle } from 'discord.js';
 import { isDevTestActive } from './devRouting.js';
 import { getChannelId, channelSendEnabled } from './phmcChannels.js';
 import { buildMeSliceEmbed, buildMeSliceText, resolveMassPanelChannelId } from './massAssignmentPanel.js';
 import { readChild, writeChild, removeChild } from './vpsState.js';
+import { TERMINAL_STATES } from './outstandingAutopsies.js';
 
 export const MASS_V2_PREFIX = 'massv2_';
 export const MASS_V2_CANCEL_SLOT = 'cancel';
 export const MASS_V2_INFO_SLOT = 'info';
 export const MASS_V2_REASSIGN_SLOT = 'reassign';
+export const MASS_V2_DUPLICATE_SLOT = 'duplicate';
+export const MASS_V2_DUPLICATE_MODAL_PREFIX = 'massv2_dupmodal_';
 export const MASS_V2_REASSIGN_MODAL_PREFIX = 'massv2_reasmodal_';
 export const MASS_V2_STAGING_CHANNEL_ID = '1538008459445010502';
 export const MASS_V2_FORMS_URL = 'https://gtaw-forms.github.io/forms/';
 
 const ACCENT_CYAN = 0x00bcd4;
 const ACCENT_GREEN = 0x2ecc71;
+const ACCENT_RED = 0xe74c3c;
 // (No red accent: morgue misses render inline under the body, not as a
 // separate warning container.)
 
@@ -538,6 +542,7 @@ export function buildMassPanelV2Payload(panelId, groups, discordByMe, { noPing, 
             // button (nothing left to page to). Reassign + links stay.
             ...(inlineMode ? [] : [{ type: 2, style: 1, label: 'Autopsy Information', custom_id: `${MASS_V2_PREFIX}${panelId}_${MASS_V2_INFO_SLOT}` }]),
             ...(devReassign ? [{ type: 2, style: 1, label: 'Reassign', custom_id: `${MASS_V2_PREFIX}${panelId}_${MASS_V2_REASSIGN_SLOT}` }] : []),
+            ...(devReassign ? [{ type: 2, style: 4, label: 'Duplicate', custom_id: `${MASS_V2_PREFIX}${panelId}_${MASS_V2_DUPLICATE_SLOT}` }] : []),
             ...linkButtons,
         ],
     });
@@ -809,6 +814,10 @@ export function startMassPanelV2Watcher(client) {
             try {
                 const v = snap.val() || {};
                 if (!v.massPanelV2 || !v.massPanelV2.panelId) return;
+                // Terminal entries (skipped / cancelled / denied) never
+                // rebuild — the panel was collapsed or retired on purpose
+                // (seen live: #10507's DUPLICATE collapse overwritten).
+                if (TERMINAL_STATES.has(String(v.caseState || '').toLowerCase())) return;
                 const key = snap.key;
                 if (v2WatcherTimers.has(key)) clearTimeout(v2WatcherTimers.get(key));
                 v2WatcherTimers.set(key, setTimeout(async () => {
@@ -838,6 +847,11 @@ export async function refreshMassPanelV2(db, client, requestTopicId, basePath = 
     try {
         if (!db || !requestTopicId) return { refreshed: false, reason: 'no-db-or-topic' };
         const entry = (await db.ref(`${basePath}/${requestTopicId}`).once('value')).val() || {};
+        // Never rebuild a terminal collection's panel — skipped/cancelled
+        // requests were collapsed or retired deliberately.
+        if (TERMINAL_STATES.has(String(entry.caseState || '').toLowerCase())) {
+            return { refreshed: false, reason: 'terminal' };
+        }
         const ref = entry.massPanelV2 || null;
         if (!ref || !ref.panelId || !ref.channelId || !ref.messageId) {
             return { refreshed: false, reason: 'no-panel-ref' };
@@ -887,9 +901,96 @@ export async function refreshMassPanelV2(db, client, requestTopicId, basePath = 
 }
 
 /**
- * Retire a collection's V2 panel when every body completes: disables its
- * rows in place (via a fresh channel/message fetch — the map holds ids, not
- * live objects) plus Firebase cleanup. Best-effort — never throws.
+ * Field-level detail for a Discord API rejection. The top-level message is
+ * almost always the bare "Invalid Form Body" — the actionable part (which
+ * field the API refused) lives in the nested errors / raw payload.
+ */
+function discordApiDetail(err) {
+    try {
+        const det = err?.errors ?? err?.rawError?.errors ?? err?.rawError ?? null;
+        const s = det ? JSON.stringify(det).slice(0, 500) : '';
+        return s ? ` :: ${s}` : '';
+    } catch { return ''; }
+}
+
+/**
+ * Rebuild the terminal render of a V2 mass panel from the live entry and
+ * return it with every interactive component disabled. Rebuilding (instead
+ * of round-tripping the posted message) also rolls the TEXT to the final
+ * all-completed state — a pure button-disable leaves stale "N outstanding"
+ * lines behind. Returns null when the entry yields no assignments (the
+ * caller then falls back to disabling the message in place).
+ * Exported for one-off repairs of panels whose Firebase ref is already gone
+ * (cleanup runs even when the retire edit fails): callers can pass a
+ * reconstructed ref — panelId only feeds button customIds, which are
+ * disabled in the terminal render, so the original id is nice-to-have.
+ */
+export async function buildRetiredV2Payload(store, ref, entry, basePath, requestTopicId) {
+    const { buildPanelAssignmentsFromEntry, groupAssignmentsByMe } = await import('./massAssignmentPanel.js');
+    const assignments = await buildPanelAssignmentsFromEntry(store, entry);
+    if (!assignments || assignments.length === 0) return null;
+    const live = basePath === 'autopsy-requested';
+    const withLinks = live ? await attachLoadUrls(store, requestTopicId, assignments) : assignments;
+    const withTime = live ? await attachDeadlineUnix(store, requestTopicId, withLinks) : withLinks;
+    const allGroups = groupAssignmentsByMe(withTime);
+    const discordByMe = new Map();
+    for (const g of allGroups) discordByMe.set(g.me, await lookupDiscordId(store, g.me));
+    const rebuilt = buildLiveMassV2(ref.panelId, allGroups, discordByMe, {
+        devReassign: ref.devReassign === true,
+        compact: ref.compact === true,
+    });
+    return { flags: rebuilt.flags, components: disableV2Components(rebuilt.components) };
+}
+
+/**
+ * Retire one V2 mass panel at a known message: final-state rebuild + edit.
+ * Exported so one-off repairs can target a message whose Firebase ref is
+ * already gone (cleanup runs even when the edit fails — by design, so the
+ * sweep never retries a dead panel forever).
+ */
+export async function retireMassPanelV2ByMessage(store, botClient, requestTopicId, channelId, messageId, basePath = 'autopsy-requested') {
+    if (!botClient || !channelId || !messageId) return false;
+    try {
+        const entry = store ? (await store.ref(`${basePath}/${requestTopicId}`).once('value')).val() || {} : {};
+        const channel = await botClient.channels.fetch(channelId).catch(() => null);
+        const message = channel && typeof channel.messages?.fetch === 'function'
+            ? await channel.messages.fetch(messageId).catch(() => null)
+            : null;
+        if (!message || typeof message.edit !== 'function') return false;
+        // Prefer the rebuilt terminal render (final text + disabled buttons).
+        // Fall back to disabling the posted components in place with a V2-safe
+        // walk — NEVER re-wrap top-level components in an Action Row: V2
+        // messages carry Text Displays / Containers at the top level and the
+        // API rejects the wrap with "Invalid Form Body" (live: #10501).
+        let edited = false;
+        const ref = entry.massPanelV2 || null;
+        if (ref && ref.panelId) {
+            try {
+                const rebuilt = await buildRetiredV2Payload(store, ref, entry, basePath, requestTopicId);
+                if (rebuilt) {
+                    await message.edit({ flags: rebuilt.flags, components: rebuilt.components, allowedMentions: { parse: [] } });
+                    edited = true;
+                }
+            } catch (rebuildErr) {
+                console.warn(`[MASS-V2] Retire rebuild failed for ${ref.panelId}, trying in-place disable: ${rebuildErr.message}${discordApiDetail(rebuildErr)}`);
+            }
+        }
+        if (!edited) {
+            const flat = (message.components || []).map((c) => (c && typeof c.toJSON === 'function' ? c.toJSON() : c));
+            await message.edit({ components: disableV2Components(flat) });
+        }
+        return true;
+    } catch (err) {
+        console.warn(`[MASS-V2] Retire fetch/edit failed: ${err.message}${discordApiDetail(err)}`);
+        return false;
+    }
+}
+
+/**
+ * Retire a collection's V2 panel when every body completes: rebuilds the
+ * terminal all-completed render in place (via a fresh channel/message fetch —
+ * the map holds ids, not live objects) plus Firebase cleanup. Best-effort —
+ * never throws.
  */
 export async function retireMassPanelV2(db, client, requestTopicId, basePath = 'autopsy-requested') {
     try {
@@ -900,39 +1001,9 @@ export async function retireMassPanelV2(db, client, requestTopicId, basePath = '
         const ref = entry.massPanelV2 || null;
         if (!ref || !ref.panelId) return false;
         const botClient = client || _v2discordClient;
-        const pending = pendingMassV2Panels.get(ref.panelId);
-        if (pending) {
-            pendingMassV2Panels.delete(ref.panelId);
-            try {
-                if (botClient && pending.channelId && pending.messageId) {
-                    const channel = await botClient.channels.fetch(pending.channelId).catch(() => null);
-                    const message = channel && typeof channel.messages?.fetch === 'function'
-                        ? await channel.messages.fetch(pending.messageId).catch(() => null)
-                        : null;
-                    if (message && typeof message.edit === 'function') {
-                        await message.edit({ components: disableV2Components(pending.components) });
-                    }
-                }
-            } catch (err) {
-                console.warn(`[MASS-V2] Retire edit failed for ${ref.panelId}: ${err.message}`);
-            }
-        } else if (botClient && ref.channelId && ref.messageId) {
-            try {
-                const channel = await botClient.channels.fetch(ref.channelId).catch(() => null);
-                const message = channel && typeof channel.messages?.fetch === 'function'
-                    ? await channel.messages.fetch(ref.messageId).catch(() => null)
-                    : null;
-                if (message && typeof message.edit === 'function') {
-                    const rows = (message.components || []).map((row) => ({
-                        type: 1,
-                        components: (row.components || []).map((b) => ({ ...b.toJSON(), disabled: true })),
-                    }));
-                    await message.edit({ components: rows });
-                }
-            } catch (err) {
-                console.warn(`[MASS-V2] Retire fetch/edit failed for ${ref.panelId}: ${err.message}`);
-            }
-        }
+        if (pendingMassV2Panels.has(ref.panelId)) pendingMassV2Panels.delete(ref.panelId);
+        const ok = await retireMassPanelV2ByMessage(store, botClient, requestTopicId, ref.channelId, ref.messageId, basePath);
+        if (!ok) console.warn(`[MASS-V2] Retire edit failed for ${ref.panelId}: message not editable`);
         await cleanupMassV2Records(ref.panelId, basePath, requestTopicId);
         console.log(`[MASS-V2] Retired panel ${ref.panelId} for completed #${requestTopicId}`);
         return true;
@@ -1049,6 +1120,9 @@ export async function handleMassPanelV2Button(interaction) {
     }
     if (slot === MASS_V2_REASSIGN_SLOT) {
         return await openReassignModal(interaction, panelId, pending);
+    }
+    if (slot === MASS_V2_DUPLICATE_SLOT) {
+        return await openDuplicateModal(interaction, panelId, pending);
     }
     if (slot === MASS_V2_INFO_SLOT) {
         // All-data-at-once next page: one ephemeral reply with every ME's
@@ -1424,5 +1498,242 @@ export async function handleMassPanelV2ReassignModal(interaction) {
             console.warn(`[MASS-V2] Panel ${panelId} rebuild after modal reassign failed: ${err.message}`);
         }
     }
+    return true;
+}
+
+// ── Duplicate marking (supervisor-gated) ──
+
+/**
+ * Build the basic DUPLICATE summary that replaces the mass panel once a
+ * supervisor marks the whole request as a duplicate:
+ *   "This request was marked as DUPLICATE: BodyName, BodyName"
+ *   "Medical Examiners: ... · Marked by XYZ"
+ * No interactive buttons remain — nothing left to press for. Case links
+ * stay for context.
+ */
+export function buildMassDuplicatePayload({ caseNumber, bodies = [], mes = [], markedBy, duplicateOf, note, caseUrl, threadUrl } = {}) {
+    const head = `# Marked as DUPLICATE${caseNumber ? ` — Case #${caseNumber}` : ''}\n` +
+        `This request was marked as DUPLICATE: ${(bodies || []).length ? bodies.join(', ') : 'Unknown'}` +
+        `${(mes || []).length ? `\nMedical Examiners: ${mes.join(', ')}` : ''}` +
+        `\nMarked by ${markedBy || 'Supervisor'} · Duplicate of: ${duplicateOf || '?'}` +
+        (note ? `\nNote: ${String(note).slice(0, 300)}` : '');
+    const components = [
+        { type: 17, accent_color: ACCENT_RED, components: [{ type: 10, content: head.slice(0, 3500) }] },
+    ];
+    const links = [];
+    if (threadUrl) links.push({ type: 2, style: 5, label: 'Duplicate Notice', url: threadUrl });
+    if (caseUrl) links.push({ type: 2, style: 5, label: 'Case File', url: caseUrl });
+    links.push({ type: 2, style: 5, label: 'PHMC Forms', url: MASS_V2_FORMS_URL });
+    components.push({ type: 1, components: links });
+    const payload = { flags: MessageFlags.IsComponentsV2, components };
+    return {
+        ...payload,
+        metrics: {
+            textChars: measureV2Text(components),
+            componentCount: countV2Components(components),
+            topLevel: components.length,
+        },
+    };
+}
+
+/**
+ * Collapse a posted mass V2 panel to its DUPLICATE summary. Edits the stored
+ * message in place (or the passed message) and clears the panel records.
+ * Best-effort — never throws; returns { collapsed } for caller logs.
+ */
+export async function collapseMassPanelToDuplicate(db, client, { requestTopicId, result = {}, message = null, basePath } = {}) {
+    try {
+        let target = (message && typeof message.edit === 'function') ? message : null;
+        let panelId = null;
+        let channelId = null;
+        let messageId = null;
+        if (!target && db && requestTopicId) {
+            const base = basePath || 'autopsy-requested';
+            const ref = (await db.ref(`${base}/${requestTopicId}/massPanelV2`).once('value')).val() || null;
+            if (!ref || !ref.panelId || !ref.channelId || !ref.messageId) {
+                return { collapsed: false, reason: 'no-panel-ref' };
+            }
+            panelId = ref.panelId;
+            channelId = ref.channelId;
+            messageId = ref.messageId;
+            const botClient = client || _v2discordClient;
+            if (!botClient) return { collapsed: false, reason: 'no-client' };
+            const channel = await botClient.channels.fetch(channelId).catch(() => null);
+            target = channel && typeof channel.messages?.fetch === 'function'
+                ? await channel.messages.fetch(messageId).catch(() => null)
+                : null;
+        }
+        if (!target || typeof target.edit !== 'function') {
+            if (panelId) await cleanupMassV2Records(panelId, basePath, requestTopicId).catch(() => {});
+            return { collapsed: false, reason: 'message-gone' };
+        }
+        const bodies = (result.bodies || []).map((b) => (b.ooc ? `${b.name} ((${b.ooc}))` : b.name));
+        const payload = buildMassDuplicatePayload({
+            caseNumber: result.caseNumber,
+            bodies,
+            mes: result.mes || [],
+            markedBy: result.markedBy,
+            duplicateOf: result.duplicateOf,
+            note: result.note,
+            caseUrl: result.caseUrl,
+            threadUrl: result.threadUrl,
+        });
+        if (payload.metrics.textChars > V2_TEXT_BUDGET || payload.metrics.componentCount > V2_COMPONENT_BUDGET || payload.metrics.topLevel > 10) {
+            return { collapsed: false, reason: 'over-budget' };
+        }
+        await target.edit({ flags: payload.flags, components: payload.components });
+        try {
+            const memHit = [...pendingMassV2Panels.entries()].find(([, p]) => p && p.messageId === target.id);
+            if (memHit) pendingMassV2Panels.delete(memHit[0]);
+        } catch { /* in-memory cleanup best-effort */ }
+        if (panelId) await cleanupMassV2Records(panelId, basePath, requestTopicId).catch(() => {});
+        console.log(`[MASS-V2] Panel collapsed to DUPLICATE for #${requestTopicId} (dup of ${result.duplicateOf || '?'})`);
+        return { collapsed: true };
+    } catch (err) {
+        console.warn(`[MASS-V2] Duplicate collapse failed for #${requestTopicId}: ${err.message}`);
+        return { collapsed: false, reason: err.message };
+    }
+}
+
+/**
+ * Open the supervisor-gated Duplicate modal for a V2 mass panel. The modal
+ * states exactly what marking does (thread notice + assignment clear +
+ * skip + panel collapse) before the supervisor confirms with the original
+ * case(s). Whole-request only — per-body skips would stay listed as
+ * outstanding (dashboard/outstanding only honor top-level terminal states).
+ */
+export async function openDuplicateModal(interaction, panelId, pending) {
+    const { isSupervisorUp } = await import('./permissions.js');
+    if (!isSupervisorUp(interaction)) {
+        try {
+            await interaction.reply({ content: 'Only Supervisors and up can mark duplicates.', flags: MessageFlags.Ephemeral });
+        } catch { /* [OK] supervisor-gate notice ignored: interaction token already expired or double-acked */ }
+        return true;
+    }
+    if (!pending.requestTopicId) {
+        try {
+            await interaction.reply({ content: 'This prototype panel is not linked to a live case (dummy data) — mark via /mark-duplicate.', flags: MessageFlags.Ephemeral });
+        } catch { /* [OK] unlinked-panel notice ignored: interaction token already expired or double-acked */ }
+        return true;
+    }
+    const order = pending.groups.flatMap((g) => (g.bodies || []).map((b) => ({ ...b, _me: g.me })));
+    const who = order.map((b) => `${b.name || 'Unknown'}` + (b.ooc ? ` ((${b.ooc}))` : '')).join(', ') || 'Unknown';
+    try {
+        const modal = new ModalBuilder()
+            .setCustomId(`${MASS_V2_DUPLICATE_MODAL_PREFIX}${panelId}`)
+            .setTitle('Mark request as duplicate');
+        modal.addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+                `Marking **${who.slice(0, 300)}** as a DUPLICATE will:\n` +
+                `• Post a DUPLICATE notice to the case thread\n` +
+                `• Clear all ME assignments (rotation freed)\n` +
+                `• Mark the whole request skipped (drops from outstanding)\n` +
+                `• Collapse this panel to a DUPLICATE record\n` +
+                `The original case(s) stand as the record of truth.`
+            )
+        );
+        modal.addLabelComponents(
+            new LabelBuilder()
+                .setLabel('Duplicate of (original case numbers)')
+                .setDescription('e.g. Case #559 + #560 — already completed 17 Nov')
+                .setTextInputComponent(
+                    new TextInputBuilder()
+                        .setCustomId('duplicate_of')
+                        .setRequired(true)
+                        .setStyle(TextInputStyle.Short)
+                        .setPlaceholder('Case #559 + #560')
+                        .setMaxLength(200)
+                ),
+            new LabelBuilder()
+                .setLabel('Note (optional, posted to the thread)')
+                .setTextInputComponent(
+                    new TextInputBuilder()
+                        .setCustomId('dup_note')
+                        .setRequired(false)
+                        .setStyle(TextInputStyle.Paragraph)
+                        .setPlaceholder('Same decedents, same DOD/location…')
+                        .setMaxLength(500)
+                )
+        );
+        await interaction.showModal(modal);
+    } catch (err) {
+        console.warn(`[MASS-V2] Panel ${panelId}: duplicate modal failed: ${err.message}`);
+        try {
+            await interaction.reply({ content: 'Could not open the duplicate form — use /mark-duplicate instead.', flags: MessageFlags.Ephemeral });
+        } catch { /* [OK] modal-failure fallback ignored: showModal already failed, interaction likely expired */ }
+    }
+    return true;
+}
+
+/**
+ * Handle the V2 mass duplicate modal submit
+ * (massv2_dupmodal_<panelId>). Supervisor re-checked; executes the shared
+ * performMarkDuplicate core (deferred first), collapses the panel in place,
+ * confirms ephemerally.
+ */
+export async function handleMassPanelV2DuplicateModal(interaction) {
+    if (!interaction || typeof interaction.isModalSubmit !== 'function' || !interaction.isModalSubmit()) return false;
+    const customId = String(interaction.customId || '');
+    if (!customId.startsWith(MASS_V2_DUPLICATE_MODAL_PREFIX)) return false;
+    const { isSupervisorUp } = await import('./permissions.js');
+    if (!isSupervisorUp(interaction)) {
+        try {
+            await interaction.reply({ content: 'Only Supervisors and up can mark duplicates.', flags: MessageFlags.Ephemeral });
+        } catch { /* [OK] modal-submit gate notice ignored: interaction token already expired or double-acked */ }
+        return true;
+    }
+    const panelId = customId.slice(MASS_V2_DUPLICATE_MODAL_PREFIX.length);
+    let duplicateOf = '';
+    let note = '';
+    try {
+        duplicateOf = String(interaction.fields?.getTextInputValue?.('duplicate_of') || '').trim();
+        note = String(interaction.fields?.getTextInputValue?.('dup_note') || '').trim();
+    } catch {
+        duplicateOf = '';
+    }
+    const pending = pendingMassV2Panels.get(panelId);
+    if (!pending || !pending.requestTopicId || !duplicateOf) {
+        try {
+            await interaction.reply({ content: (!duplicateOf ? 'Name the original case(s) first.' : 'Duplicate expired — start again from the panel.'), flags: MessageFlags.Ephemeral });
+        } catch { /* [OK] missing-input notice ignored: interaction token already expired or double-acked */ }
+        return true;
+    }
+    try {
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    } catch { /* [OK] defer ignored: already deferred or acked */ }
+    const db = await v2Db();
+    if (!db) {
+        try {
+            await interaction.editReply({ content: 'Firebase not ready — try again in a moment.' });
+        } catch { /* [OK] db-not-ready notice ignored */ }
+        return true;
+    }
+    const { performMarkDuplicate } = await import('./markDuplicate.js');
+    const markedBy = interaction.user?.tag || interaction.user?.username || 'Supervisor';
+    const res = await performMarkDuplicate({
+        db, topicId: pending.requestTopicId, duplicateOf, note, markedBy,
+        basePath: pending.basePath || 'autopsy-requested',
+    });
+    if (res.ok) {
+        const flip = await collapseMassPanelToDuplicate(db, interaction.client, {
+            requestTopicId: pending.requestTopicId,
+            result: res,
+            message: interaction.message || null,
+            basePath: pending.basePath || 'autopsy-requested',
+        });
+        console.log(`[MASS-V2] Panel ${panelId} duplicate-marked (dup of ${duplicateOf}); collapse: ${flip.collapsed ? 'ok' : flip.reason}`);
+    }
+    try {
+        if (!res.ok) {
+            await interaction.editReply({ content: `Duplicate marking failed: ${res.error || 'unknown error'}` });
+        } else {
+            const names = res.bodies.map((b) => (b.ooc ? `${b.name} ((${b.ooc}))` : b.name)).join(', ');
+            await interaction.editReply({
+                content: `Marked as DUPLICATE: **${names}** (dup of ${duplicateOf}).` +
+                    (res.threadOk ? '' : ' (thread notice failed — check the case thread manually)') +
+                    ' Panel collapsing…',
+            });
+        }
+    } catch (err) { console.warn(`[WARN] Panel ${panelId}: duplicate executed but confirmation editReply failed: ${err.message}`); }
     return true;
 }

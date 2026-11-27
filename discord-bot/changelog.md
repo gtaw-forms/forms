@@ -1,5 +1,30 @@
 # PHMC Discord Bot — Changelog
 
+## DEPLOYED 2026-11-27 — Mass V2 retire rebuilds the terminal panel
+
+### Fixed
+- **Completed mass panels no longer freeze on stale text.** `retireMassPanelV2`'s post-restart fallback re-wrapped the posted message's top-level components in V1 Action Rows — Components-V2 panels (Text Display / Container at top level) are rejected by the API with bare "Invalid Form Body", so the edit died and the panel kept showing e.g. Alyson Frost OUTSTANDING (live: #10501 Cougar Avenue, panel `vmwv0mjqo1`, 2026-11-27 15:12:56). The fallback now rebuilds the terminal all-completed render from the live entry (same pipeline as refresh: `buildPanelAssignmentsFromEntry` → Load links → countdowns → `buildLiveMassV2`, green accent, `0 outstanding · N completed`, struck-through COMPLETED lines) and edits it with `IsComponentsV2` + all buttons disabled + no re-pings; only if the rebuild is impossible does it disable the posted components in place with a V2-safe walk. The in-memory path uses the same rebuild, so retire can never leave pre-completion text behind either.
+- **Discord API errors now log their field detail** (`errors`/`rawError` payload, 500 chars) instead of the bare message, so the next rejection is diagnosable from the log line alone.
+- New exports: `retireMassPanelV2ByMessage` (retire at a known channel/message) and `buildRetiredV2Payload` (terminal payload builder) — used by the #10501 live repair. Verified with a throwaway fake-message test (V2 top-level types preserved, no V1 wrap, final text, all non-link buttons disabled); throwaway deleted after.
+- Live repair for #10501: panel message re-rendered to the completed state via the new path (Firebase ref was already cleaned up, so the repair passed a reconstructed ref — panelId only feeds disabled buttons' customIds).
+
+## DEPLOYED 2026-11-26 — Self-heal respects terminal states (duplicate-marking follow-up)
+
+### Fixed
+- **Skipped requests no longer re-announce or rebuild.** Marking #10507 DUPLICATE set `caseState: skipped`, but two self-heal paths ignored terminal states: the assignment-reply retry reposted "You have been assigned…" to t=10508 at 00:17 (a skipped `multi` fell past the multi branch into the unguarded single-entry branch), and the mass V2 watcher rebuilt the collapsed panel back into a live assignment view. `retryFailedAssignmentReplies` now skips terminal entries in `needsRetry` and the single-entry loop; `refreshMassPanelV2`/`refreshMassPanel` and both watchers return early on terminal entries instead of rebuilding.
+- Live repair for #564: the 00:17 retry post was removed, the thread keeps the DUPLICATE notice (p=25949), the panel was re-collapsed and verified to survive a Firebase change.
+- Tests: `tests/duplicate-selfheal.test.js` (retry skips terminal, still retries live; both refreshes refuse terminal).
+
+## UNDEPLOYED — Supervisor duplicate marking: Duplicate button + /mark-duplicate (2026-11-26)
+
+### Added
+- **Duplicate buttons on all three assignment panels** (single V2, mass V2, legacy mass): red `Duplicate` button beside Reassign, Supervisors-and-up only (owner/leadership bypass via the existing `isSupervisorUp` gate, same as Reassign). Pressing it opens a pop-up that states exactly what marking does (case-thread DUPLICATE notice, ME assignments cleared, request skipped, panel collapsed to a DUPLICATE record) before the supervisor confirms with the original case(s).
+- **Shared `services/markDuplicate.js` core** (`performMarkDuplicate`): validates the request is live (refuses completed/terminal rows), posts the thread notice to f=266, marks the whole request + every body `skipped` with a `DUPLICATE of …` skipReason, frees each assigned ME in the rotation tracker. Errors return `{ok:false}` (never throws); dry-run validates only. Whole-request by design — per-body skips would stay listed as outstanding.
+- **Panel collapse to a basic DUPLICATE record**: `This request was marked as DUPLICATE: BodyName, BodyName — Medical Examiners: … — Marked by XYZ`. All buttons and assignment text are removed; case links stay. Legacy panels get a two-tap confirm (classic modals hold inputs only, so the explanation lives on an ephemeral Continue step).
+- **Owner/supervisor `/mark-duplicate`** (also in the PHMC-guild command set): case number/topic/title-fragment + `duplicate_of` (+ optional note); best-effort collapses any live panels. Covers expired panels with no buttons left.
+- Tests: `tests/mark-duplicate.test.js` (single, multi, refusal paths, thread-failure still skips, dry run writes nothing).
+- Live driver: Case #564 (Sorrentino/Gaeta re-request, already completed as #559/#560) was cancelled by hand with this exact flow — Discord reply, thread reply `p=25949`, `autopsy-requested/10507` skipped.
+
 ## UNDEPLOYED — Slash commands auto-load from commands/ (2026-11-25)
 
 ### Fixed
